@@ -204,7 +204,7 @@ function render() {
       <div class="badge"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : esc(S.perfil.metodologia || 'Tu proceso')}</strong></div></div>
       <div class="row" style="gap:8px">${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
       <button class="avatar" data-act="cuenta" aria-label="Mi cuenta">${esCoach ? '<img src="icons/coach.jpg" alt="">' : esc((S.perfil.nombre || '?').slice(0, 2).toUpperCase())}</button></div>
-    </header><main id="main">${(S.obj && coach) ? vEntreno() : (S.editor && coach) ? vEditor() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : vistas[actual]()}</main>`;
+    </header><main id="main">${(S.obj && coach) ? vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : vistas[actual]()}</main>`;
   $('#tabs').hidden = false;
   $('#tabs-in').innerHTML = tabs.map(([k, l]) => `<button data-act="${coach ? 'ctab' : 'tab'}" data-t="${k}" ${actual === k && !((S.ficha || S.editor || S.obj) && coach) ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span></button>`).join('');
   if (S.dia && ((!coach && S.tab === 'entreno') || (coach && S.obj))) rellenarSesion();
@@ -253,7 +253,7 @@ function vHoy() {
   if (!p) toca = '<div class="empty">Jesús está preparando tu programa. Aparecerá aquí en cuanto esté listo.</div>';
   else if (d) toca = `<div class="line"><div class="ico">${svg('entreno')}</div><div class="grow"><h3>${esc(d.nombre)} · ${esc(d.foco || '')}</h3><div class="small muted">${d.bloques_sesion.length} bloques · ${d.bloques_sesion.reduce((t, b) => t + b.ejercicios_sesion.length, 0)} ejercicios</div></div>${hechoHoy(d.id) ? '<span class="pill ok">Hecho</span>' : `<button class="btn sm" data-act="abrirDia" data-id="${d.id}">Empezar</button>`}</div>`;
   else toca = `<div class="line"><div class="ico">${svg('cal')}</div><div class="grow"><h3>Hoy toca descanso</h3><div class="small muted">${prox ? `Próximo entreno: ${esc(prox.nombre)}` : 'Aprovecha para moverte y cumplir tus pasos.'}</div></div></div>`;
-  const ali = s.modulo_nutricion ? `<div class="stack" style="gap:8px"><span class="small muted">¿Cómo ha ido hoy la alimentación?</span><div class="choice" role="group">${[['si', 'Cumplido'], ['parcial', 'A medias'], ['no', 'No cumplido']].map(([v, l]) => `<button data-act="ali" data-v="${v}" aria-pressed="${r.alimentacion === v}">${l}</button>`).join('')}</div></div>` : '';
+  const _ali = s.modulo_nutricion ? `<div class="stack" style="gap:8px"><span class="small muted">¿Cómo ha ido hoy la alimentación?</span><div class="choice" role="group">${[['si', 'Cumplido'], ['parcial', 'A medias'], ['no', 'No cumplido']].map(([v, l]) => `<button data-act="ali" data-v="${v}" aria-pressed="${r.alimentacion === v}">${l}</button>`).join('')}</div></div>` : '';
   const dur = s.duracion_semanas, semN = s.inicio ? Math.floor((fecha(hoy) - fecha(s.inicio)) / 6048e5) + 1 : null;
   return `<section class="card hero stack">
     <span class="eyebrow">${esc(fLarga(hoy))}</span>
@@ -261,28 +261,28 @@ function vHoy() {
     <div class="small muted">${esc(s.producto || 'Tu proceso')}${p ? ' · ' + esc(p.nombre) : ''}${(() => { const P = proceso(s); return P && !P.antes && !P.fuera ? ' · ' + txtCiclo(P) : ''; })()}</div>
     ${objetivoDe(S.d.ruta) ? `<div style="border-top:1px solid rgba(255,255,255,.14);padding-top:12px" class="stack"><span class="eyebrow">Tu objetivo</span><div class="small">${esc(objetivoDe(S.d.ruta))}</div></div>` : ''}
   </section>
-  ${vLineaTiempo(s)}
+  ${vEventos(s, S.d.presenciales)}
+  ${vLineaTiempo(s, 'Tu proceso', false, p)}
   <section class="section"><h2>Lo que toca hoy</h2><div class="card">${toca}</div></section>
   <section class="section"><h2>Registro de hoy</h2><div class="card stack">
-    <div class="row"><div class="ico">${svg('pasos')}</div><label class="f grow">Pasos de hoy<input id="r-pasos" type="number" inputmode="numeric" min="0" value="${r.pasos ?? ''}" placeholder="Ej. 8500"></label><label class="f" style="width:96px">Horas de pie<input id="r-pie" type="number" inputmode="decimal" min="0" max="24" step="0.5" value="${r.horas_pie ?? ''}" placeholder="Ej. 5"></label></div>
-    ${ali}
+    <div class="row"><div class="ico">${svg('pasos')}</div><label class="f grow">Pasos de hoy${objPasos(s) ? ` <span class="muted">(objetivo ${fmtNum(objPasos(s), 0)})</span>` : ''}<input id="r-pasos" type="number" inputmode="numeric" min="0" value="${r.pasos ?? ''}" placeholder="Ej. 8500"></label></div>
+    <label class="f">Observaciones del día<textarea id="r-obs" rows="2" placeholder="Si no llegaste al objetivo, cuéntame por qué; o cualquier cosa del día que quieras que sepa">${esc(r.observacion || '')}</textarea></label>
     <button class="btn" data-act="guardarDiario">Guardar registro de hoy</button>
     <p class="note">Apúntalo al final del día. Tarda 10 segundos y es lo que permite a Jesús ver tu semana real.</p>
   </div></section>
   <section class="section"><div class="section-head"><h2>Últimos 7 días</h2><span class="small muted">${esc(fCorta(ini))} – ${esc(fCorta(hoy))}</span></div><div class="card stack" style="gap:18px">
     ${(s.modulo_entreno ?? true) ? `<div class="stack" style="gap:8px"><div class="row"><span class="grow small">Entrenamientos</span><b class="num" style="font-family:var(--display);font-size:20px">${w.entrenos}${p?.dias_semana ? ' / ' + p.dias_semana : ''}</b></div>${tira(ini, x => w.diasEntreno.has(x) ? 'ok' : '')}</div>` : ''}
-    ${s.modulo_nutricion ? `<div class="stack" style="gap:8px"><div class="row"><span class="grow small">Alimentación</span><b class="num" style="font-family:var(--display);font-size:20px">${w.aliPct == null ? '—' : w.aliPct + ' %'}</b></div>${tira(ini, x => ({ si: 'ok', parcial: 'part', no: 'no' }[w.aliDias[x]] || ''))}</div>` : ''}
-    <div class="stack" style="gap:8px"><div class="row"><span class="grow small">Pasos (media)</span><b class="num" style="font-family:var(--display);font-size:20px">${w.pasosMedia == null ? '—' : fmtNum(w.pasosMedia, 0)}</b></div>${tira(ini, x => w.diasPasos.has(x) ? 'ok' : '')}</div>
+    ${s.modulo_nutricion && S.d.checkins[0]?.nutricion_pct != null ? `<div class="row"><span class="grow small">Alimentación (último check-in)</span><b class="num" style="font-family:var(--display);font-size:20px">${S.d.checkins[0].nutricion_pct} %</b></div>` : ''}
+    <div class="stack" style="gap:8px"><div class="row"><span class="grow small">Pasos (media · objetivo ${fmtNum(objPasos(s), 0)})</span><b class="num" style="font-family:var(--display);font-size:20px;color:${w.pasosMedia == null ? 'inherit' : w.pasosMedia >= objPasos(s) ? 'var(--ok)' : 'var(--warn)'}">${w.pasosMedia == null ? '—' : fmtNum(w.pasosMedia, 0)}</b></div>${tira(ini, x => w.diasPasos.has(x) ? 'ok' : '')}</div>
   </div></section>
   ${vPresenciales(S.d.servicio, S.d.presenciales, false)}
   ${S.perfil.rol !== 'coach' ? `<section class="section"><div class="card coach"><img src="icons/coach.jpg" alt="Jesús de la Obra"><div class="grow"><span class="eyebrow">Tu coach</span><h3>Jesús de la Obra</h3><div class="small muted">Dudas y ajustes por WhatsApp</div></div></div></section>` : ''}`;
 }
 
 async function guardarDiario(extra = {}) {
-  const row = { alumno_id: S.user.id, fecha: hoyISO(), pasos: numero($('#r-pasos')?.value), horas_pie: numero($('#r-pie')?.value), ...extra };
-  const prev = S.d.diario.find(x => x.fecha === row.fecha);
-  if (prev && !('alimentacion' in extra)) row.alimentacion = prev.alimentacion;
-  const { data, error } = await sb.from('registro_diario').upsert(row, { onConflict: 'alumno_id,fecha' }).select().single();
+  const row = { alumno_id: S.user.id, fecha: hoyISO(), pasos: numero($('#r-pasos')?.value), observacion: $('#r-obs')?.value.trim() || null, ...extra };
+  let { data, error } = await sb.from('registro_diario').upsert(row, { onConflict: 'alumno_id,fecha' }).select().single();
+  if (error && /observacion/.test(error.message || '')) { delete row.observacion; ({ data, error } = await sb.from('registro_diario').upsert(row, { onConflict: 'alumno_id,fecha' }).select().single()); }
   if (error) return fallo(error);
   S.d.diario = S.d.diario.filter(x => x.fecha !== row.fecha).concat(data);
   toast('Registro de hoy guardado'); render();
@@ -337,9 +337,11 @@ function vEjercicio(e, i, ro) {
     return cab + series;
   }).join('');
   const vid = ej.video_url ? `<a class="btn sm" href="${esc(ej.video_url)}" target="_blank" rel="noopener">▶ Vídeo</a>` : `<button class="btn sm ghost" data-act="sinVideo">▶ Vídeo</button>`;
-  return `<div class="card ex" id="ex-${e.id}">
+  const om = ro ? (ro.ses?.omitidos || []).find(o => o.es === e.id) : (S.sesion?.omitidos || []).find(o => o.es === e.id);
+  return `<div class="card ex ${om ? 'omitido' : ''}" id="ex-${e.id}">
+    ${om ? bannerOmitido(om, !ro) : ''}
     ${ej.imagen_url || ej.musculo_img_url ? `<div class="imgs">${ej.imagen_url ? `<button class="img" data-act="verImagen" data-src="${esc(ej.imagen_url)}" aria-label="Ver imagen del ejercicio"><img src="${esc(ej.imagen_url)}" alt="${esc(ej.nombre)}" loading="lazy" onerror="this.parentNode.hidden=true"><span>Ejercicio</span></button>` : ''}${ej.musculo_img_url ? `<button class="img" data-act="verImagen" data-src="${esc(ej.musculo_img_url)}" aria-label="Ver músculo trabajado"><img src="${esc(ej.musculo_img_url)}" alt="Músculo trabajado" loading="lazy" onerror="this.parentNode.hidden=true"><span>Músculo</span></button>` : ''}</div>` : ''}
-    <div class="row" style="align-items:flex-start"><span class="exn num">${i}</span><div class="grow"><h3>${esc(ej.nombre)}</h3><div class="small muted">${e.series} ${e.series === 1 ? 'serie' : 'series'} · ${esc(e.repeticiones)}${e.rir != null ? ' · RIR ' + e.rir : ''}</div></div>${vid}</div>
+    <div class="row" style="align-items:flex-start"><span class="exn num">${i}</span><div class="grow"><h3>${esc(ej.nombre)}</h3><div class="small muted">${e.series} ${e.series === 1 ? 'serie' : 'series'} · ${esc(e.repeticiones)}${e.rir != null ? ' · RIR ' + e.rir : ''}</div></div><div class="stack" style="gap:6px;align-items:flex-end">${vid}${ro ? '' : `<button class="btn sm ghost omitir-b" data-act="omitir" data-es="${e.id}" data-n="${esc(ej.nombre)}">No lo hago</button>`}</div></div>
     ${ej.musculo ? `<div class="chips" style="gap:6px"><span class="pill blue">Músculo: ${esc(ej.musculo)}</span></div>` : ''}
     ${ej.descripcion ? `<p class="small muted">${esc(ej.descripcion)}</p>` : ''}
     ${e.grupo ? `<p class="note">${esc(e.grupo)}</p>` : ''}
@@ -349,6 +351,45 @@ function vEjercicio(e, i, ro) {
     ${ro ? resumenEjCerrado(ro, e) : ''}
     <div class="sets"><span class="h">Nº</span><span class="h">Kg</span><span class="h">Reps</span><span class="h">RIR</span><span class="h">Hecha</span>${filas}</div>
   </div>`;
+}
+
+/* Ejercicio no realizado, con su motivo */
+const MOTIVOS = ['Falta de tiempo', 'Dolor o molestia', 'Máquina ocupada', 'Cansancio', 'Lo cambié por otro'];
+const bannerOmitido = (o, editable) => `<div class="omit-b"><b class="small">No realizado</b><div class="small">${esc(o.motivo)}</div>${editable ? `<button class="linkbtn small" data-act="deshacerOmitir" data-es="${o.es}">Deshacer</button>` : ''}</div>`;
+function formOmitir(es, nombre) {
+  abrirSheet(`<form class="stack" id="f-om"><h2>No hago este ejercicio</h2><p class="small"><b>${esc(nombre)}</b></p>
+    <div class="chips">${MOTIVOS.map(m => `<button type="button" data-mot="${esc(m)}" aria-pressed="false">${esc(m)}</button>`).join('')}</div>
+    <label class="f">Cuéntale a Jesús el motivo<textarea id="om-t" rows="3" placeholder="Ej. me molesta el hombro derecho y prefiero ser precavida"></textarea></label>
+    <button class="btn full" type="submit">Guardar</button><button class="btn ghost full" type="button" data-act="cerrarSheet">Cancelar</button></form>`);
+  const f = $('#f-om');
+  f.addEventListener('click', ev => { const c = ev.target.closest('[data-mot]'); if (!c) return; f.querySelectorAll('[data-mot]').forEach(x => x.setAttribute('aria-pressed', x === c)); });
+  f.addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const chip = f.querySelector('[data-mot][aria-pressed="true"]')?.dataset.mot, txt = $('#om-t').value.trim();
+    if (!chip && !txt) return toast('Indica el motivo');
+    const motivo = [chip, txt].filter(Boolean).join(': ');
+    const z = S.sesion; z.omitidos = (z.omitidos || []).filter(o => o.es !== es).concat({ es, nombre, motivo });
+    if (await guardarOmitidos()) { cerrarSheet(); marcarOmitido(es); toast('Anotado: no realizado'); }
+  });
+}
+async function guardarOmitidos() {
+  try {
+    const id = await asegurarSesion();
+    const { error } = await sb.from('sesiones_hechas').update({ omitidos: S.sesion.omitidos }).eq('id', id);
+    if (error) throw error;
+    const ses = S.d.sesiones.find(x => x.id === id); if (ses) ses.omitidos = S.sesion.omitidos;
+    return true;
+  } catch (err) { fallo(err, /omitidos/.test(err.message || '') ? 'Falta ejecutar el Bloque 10 en Supabase.' : undefined); return false; }
+}
+function marcarOmitido(es) {
+  const card = document.getElementById('ex-' + es); if (!card) return;
+  const o = (S.sesion.omitidos || []).find(x => x.es === es);
+  card.querySelector('.omit-b')?.remove(); card.classList.toggle('omitido', !!o);
+  if (o) card.insertAdjacentHTML('afterbegin', bannerOmitido(o, true));
+}
+async function deshacerOmitir(es) {
+  S.sesion.omitidos = (S.sesion.omitidos || []).filter(o => o.es !== es);
+  if (await guardarOmitidos()) { marcarOmitido(es); toast('Ejercicio recuperado'); }
 }
 
 /* Orden de la sesión y cadenas de superseries (ejercicios unidos por descanso 0) */
@@ -527,7 +568,8 @@ async function abrirDia(id, op = {}) {
   const ids = S.dia.bloques_sesion.flatMap(b => b.ejercicios_sesion.map(e => e.id));
   const hoyS = op.sesionId ? (S.d.sesiones.find(s => s.id === op.sesionId) || { id: op.sesionId, fecha: fechaS, dia_id: id }) : S.d.sesiones.find(s => s.fecha === fechaS && s.dia_id === id);
   const fechaDe = sid => (S.d.sesiones.find(s => s.id === sid) || {}).fecha;
-  if (hoyS) { S.sesion.id = hoyS.id; if (!S.sesion.inicio && hoyS.inicio_at) S.sesion.inicio = new Date(hoyS.inicio_at).getTime(); }
+  if (hoyS) { S.sesion.omitidos = hoyS.omitidos || [];
+    S.sesion.id = hoyS.id; if (!S.sesion.inicio && hoyS.inicio_at) S.sesion.inicio = new Date(hoyS.inicio_at).getTime(); }
   if (ids.length) {
     const { data } = await conRespaldo(() => sb.from('registros_series').select('id,sesion_id,ejercicio_sesion_id,serie,tramo,kg,repeticiones,rir,creado_at').eq('alumno_id', uidSes()).in('ejercicio_sesion_id', ids).order('creado_at', { ascending: false }).limit(1500),
       () => sb.from('registros_series').select('id,sesion_id,ejercicio_sesion_id,serie,kg,repeticiones,rir,creado_at').eq('alumno_id', uidSes()).in('ejercicio_sesion_id', ids).order('creado_at', { ascending: false }).limit(1500));
@@ -651,6 +693,16 @@ function spark(pts, { unit = '', dec = 1, color = 'var(--blue)' } = {}) {
 }
 function serie(med, campo) { return med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)).filter(m => m[campo] != null).map(m => ({ f: m.fecha, v: Number(m[campo]) })); }
 function delta(pts) { if (pts.length < 2) return null; return pts[pts.length - 1].v - pts[0].v; }
+/* Composición corporal: una sola gráfica con desplegable (peso, % grasa, cintura, abdomen) */
+const COMP = [['peso', 'Peso', ' kg', 'var(--blue)'], ['grasa_pct', '% de grasa', ' %', 'var(--gold)'], ['cintura', 'Contorno de cintura', ' cm', 'var(--ink)'], ['abd_bajo', 'Contorno de abdomen', ' cm', 'var(--blue)']];
+function vGraficaComp(med) {
+  const disp = COMP.filter(([c]) => serie(med, c).length);
+  if (!disp.length) return '';
+  const sel = disp.find(([c]) => c === S.grafComp) || disp[0], [c, t, u, col] = sel, p = serie(med, c), dl = delta(p);
+  return `<div class="card stack chart"><div class="row" style="gap:8px"><select class="grow" data-graf="comp" aria-label="Qué medida ver">${disp.map(([k, l]) => `<option value="${k}" ${k === c ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    <div class="row"><b class="num grow" style="font-family:var(--display);font-size:26px">${fmtNum(p[p.length - 1].v)}${u}</b>${dl != null ? `<span class="pill num ${dl <= 0 ? 'ok' : 'warn'}">${dl > 0 ? '+' : ''}${fmtNum(dl)}${u} desde el inicio</span>` : ''}</div>
+    ${spark(p, { unit: u, color: col })}</div>`;
+}
 function vProgreso() {
   const med = S.d.mediciones;
   const campos = [['peso', 'Peso', ' kg', 'var(--blue)'], ['grasa_pct', '% de grasa', ' %', 'var(--gold)'], ['cintura', 'Cintura', ' cm', 'var(--ink)'], ['cadera', 'Cadera', ' cm', 'var(--blue)'], ['abd_bajo', 'Abdomen bajo', ' cm', 'var(--ink)']];
@@ -660,7 +712,7 @@ function vProgreso() {
   return `<section class="stack"><span class="eyebrow">Tu evolución</span><h1>Progreso</h1></section>
   ${objetivoDe(S.d.ruta) ? `<section class="section"><div class="card stack"><span class="eyebrow">Tu objetivo</span><div class="small">${esc(objetivoDe(S.d.ruta))}</div></div></section>` : ''}
   ${med.length ? `<section class="section"><div class="kpis"><div class="kpi"><div class="v num">${k('peso')}</div><div class="l">kg de peso</div></div><div class="kpi"><div class="v num">${k('grasa_pct')}</div><div class="l">% de grasa</div></div><div class="kpi"><div class="v num">${k('cintura')}</div><div class="l">cm de cintura</div></div></div><p class="small muted">Cambio desde tu primera medición (${esc(fCorta(med[0].fecha))} ${fecha(med[0].fecha).getFullYear()}).</p></section>` : ''}
-  <section class="section">${campos.map(([c, t, u, col]) => { const p = serie(med, c); return p.length ? `<div class="card stack chart"><div class="row"><h3 class="grow">${t}</h3><span class="pill blue num">${fmtNum(p[p.length - 1].v)}${u}</span></div>${spark(p, { unit: u, color: col })}</div>` : ''; }).join('') || '<div class="card empty">Aún no hay mediciones. Jesús las añadirá en tu próxima revisión.</div>'}
+  <section class="section">${vGraficaComp(med) || '<div class="card empty">Aún no hay mediciones. Jesús las añadirá en tu próximo control mensual.</div>'}
   <div class="card stack chart"><h3>Entrenamientos por semana</h3><svg viewBox="0 0 320 110" role="img" aria-label="Entrenamientos por semana">${porSem.map((v, i) => { const bw = 304 / 8, h = v / maxS * 76; return `<rect x="${8 + i * bw + 6}" y="${86 - h}" width="${bw - 12}" height="${Math.max(h, 1)}" rx="4" fill="${v >= (S.d.programa?.dias_semana || 99) ? 'var(--ok)' : v ? 'var(--blue)' : 'var(--line)'}"/><text x="${8 + i * bw + bw / 2}" y="${82 - h}" fill="var(--fg)" font-size="11" text-anchor="middle">${v || ''}</text><text x="${8 + i * bw + bw / 2}" y="104" fill="var(--muted)" font-size="10" text-anchor="middle">${esc(fecha(semanas[i]).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric' }))}</text>`; }).join('')}</svg></div></section>
   ${med.length ? `<section class="section"><h2>Mediciones</h2><div class="card tbl"><table><thead><tr><th>Fecha</th><th>Peso</th><th>% grasa</th><th>Cintura</th><th>Cadera</th></tr></thead><tbody>${med.slice().reverse().map(m => `<tr><td>${esc(fCorta(m.fecha))} ${String(fecha(m.fecha).getFullYear()).slice(2)}</td><td class="num">${fmtNum(m.peso)}</td><td class="num">${fmtNum(m.grasa_pct)}</td><td class="num">${fmtNum(m.cintura)}</td><td class="num">${fmtNum(m.cadera)}</td></tr>`).join('')}</tbody></table></div></section>` : ''}`;
 }
@@ -675,9 +727,11 @@ function vCheckin() {
   return `<section class="stack"><span class="eyebrow">Semana del ${esc(fCorta(lunes))} al ${esc(fCorta(sumaDias(lunes, 6)))}</span><h1>Check-in</h1><p class="small muted">${c ? 'Ya lo enviaste esta semana. Puedes corregirlo si algo ha cambiado.' : 'Lo que registras cada día se rellena solo. Aquí solo te pregunto lo que falta.'}</p></section>
   <section class="section"><div class="card stack"><span class="eyebrow">Tu semana en datos</span>
     ${(s.modulo_entreno ?? true) ? `<div class="row small"><span class="grow">Entrenamientos</span><span class="pill ${p && w.entrenos >= p.dias_semana ? 'ok' : 'warn'} num">${w.entrenos}${p ? ' de ' + p.dias_semana : ''}</span></div>` : ''}
-    ${s.modulo_nutricion ? `<div class="row small"><span class="grow">Alimentación</span><span class="pill num">${w.aliPct == null ? 'Sin registros' : w.aliPct + ' %'}</span></div>` : ''}
+
     <div class="row small"><span class="grow">Pasos (media)</span><span class="pill num">${w.pasosMedia == null ? 'Sin registros' : fmtNum(w.pasosMedia, 0)}</span></div>
   </div>
+  ${s.modulo_nutricion ? `<div class="card stack"><label class="f"><span class="row"><span class="grow">¿Qué % de tu alimentación has cumplido esta semana?</span><b class="num" id="k-nut-v" style="color:var(--blue-text)">${c?.nutricion_pct ?? 90} %</b></span><input id="k-nut" type="range" min="0" max="100" step="5" value="${c?.nutricion_pct ?? 90}"></label>
+    <label class="f">Comidas o situaciones a destacar (opcional)<textarea id="k-nali" placeholder="Ej. cena fuera el sábado, semana de vacaciones con la familia…">${esc(c?.nota_alimentacion || '')}</textarea></label></div>` : ''}
   <div class="card stack"><label class="f">¿Qué te ha dificultado aplicar el plan esta semana?<textarea id="k-dif" placeholder="Cambios de horario, comidas fuera, cansancio…">${esc(c?.dificultades || '')}</textarea></label></div>
   <div class="card stack"><span class="small muted">¿Cómo se presenta la semana que viene?</span>
     <div class="chips">${etiquetas.map(t => `<button data-act="chip" data-v="${t}" aria-pressed="${S.chips.has(t)}">${t}</button>`).join('')}</div>
@@ -691,7 +745,9 @@ async function enviarCheckin() {
   const row = { alumno_id: S.user.id, semana_inicio: lunesDe(hoyISO()), dificultades: $('#k-dif').value.trim() || null,
     proxima_semana_etiquetas: [...S.chips], proxima_semana: $('#k-prox').value.trim() || null,
     motivacion: +$('#k-mot').value, implicacion: +$('#k-imp').value, enviado_at: new Date().toISOString() };
-  const { data, error } = await sb.from('checkins').upsert(row, { onConflict: 'alumno_id,semana_inicio' }).select().single();
+  if ($('#k-nut')) { row.nutricion_pct = +$('#k-nut').value; row.nota_alimentacion = $('#k-nali').value.trim() || null; }
+  let { data, error } = await sb.from('checkins').upsert(row, { onConflict: 'alumno_id,semana_inicio' }).select().single();
+  if (error && /nutricion_pct|nota_alimentacion/.test(error.message || '')) { delete row.nutricion_pct; delete row.nota_alimentacion; ({ data, error } = await sb.from('checkins').upsert(row, { onConflict: 'alumno_id,semana_inicio' }).select().single()); }
   if (error) return fallo(error);
   S.d.checkins = [data, ...S.d.checkins.filter(x => x.semana_inicio !== row.semana_inicio)];
   toast('Check-in enviado a Jesús'); S.tab = 'hoy'; render(); window.scrollTo(0, 0);
@@ -705,9 +761,9 @@ async function cargarCoach() {
   const [per, srv, ses, chk, reg, pag, prg, ejs, rut] = await Promise.all([
     sb.from('perfiles').select('*').order('nombre'),
     sb.from('servicios').select('*').eq('activo', true),
-    sb.from('sesiones_hechas').select('id,alumno_id,dia_id,fecha,nota').gte('fecha', desde).order('fecha', { ascending: false }),
+    sb.from('sesiones_hechas').select('*,dias(nombre,foco)').gte('fecha', desde).order('fecha', { ascending: false }),
     sb.from('checkins').select('*').gte('semana_inicio', sumaDias(desde, -7)).order('semana_inicio', { ascending: false }),
-    sb.from('registro_diario').select('*').gte('fecha', sumaDias(hoyISO(), -13)),
+    sb.from('registro_diario').select('*').gte('fecha', sumaDias(hoyISO(), -21)),
     sb.from('pagos').select('*').order('vence'),
     sb.from('programas').select('alumno_id,nombre,dias_semana').eq('activo', true),
     sb.from('ejercicios').select('*').order('nombre'),
@@ -716,24 +772,46 @@ async function cargarCoach() {
   S.c = { perfiles: per.data || [], servicios: srv.data || [], sesiones: ses.data || [], checkins: chk.data || [], diario: reg.data || [], pagos: pag.data || [], programas: prg.data || [], ejercicios: ejs.data || [] };
   S.c.servicios.forEach(x => x._bloques = bloquesDe((rut.data || []).filter(r => r.alumno_id === x.alumno_id)));
 }
+/* Datos de una semana (lunes a domingo) de un alumno */
+function semanaDatos(aid, lunes, src) {
+  const fin = sumaDias(lunes, 6), dentro = f => f >= lunes && f <= fin;
+  const ses = (src.sesiones || []).filter(x => x.alumno_id === aid && dentro(x.fecha)).sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const reg = (src.diario || []).filter(r => r.alumno_id === aid && dentro(r.fecha)).sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const pasos = reg.filter(r => r.pasos != null).map(r => r.pasos);
+  const chk = (src.checkins || []).find(k => k.alumno_id === aid && k.semana_inicio === lunes);
+  const media = k => { const v = ses.filter(x => x[k]).map(x => x[k]); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  return { lunes, fin, ses, entrenos: new Set(ses.map(x => x.fecha + x.dia_id)).size, reg, pasosMedia: pasos.length ? Math.round(pasos.reduce((a, b) => a + b, 0) / pasos.length) : null, diasPasos: pasos.length, chk, nutri: chk?.nutricion_pct ?? null, cansancio: media('cansancio'), poderio: media('poderio') };
+}
+/* Alertas: semana anterior incumplida, o semana en curso por debajo del 50 % a partir del sábado */
 function estadoAlumno(a) {
-  const c = S.c, hoy = hoyISO(), hace7 = sumaDias(hoy, -6);
+  const c = S.c, hoy = hoyISO(), lunes = lunesDe(hoy), dow = (fecha(hoy).getDay() + 6) % 7; // 0 = lunes … 6 = domingo
+  const srv = c.servicios.find(x => x.alumno_id === a.id), dpw = (c.programas.find(p => p.alumno_id === a.id) || {}).dias_semana || 0, obj = objPasos(srv);
   const ses = c.sesiones.filter(s => s.alumno_id === a.id);
-  const ses7 = new Set(ses.filter(s => s.fecha >= hace7).map(s => s.fecha + s.dia_id)).size;
-  const chks = c.checkins.filter(k => k.alumno_id === a.id);
-  const ult = chks[0], ant = chks[1];
+  const chks = c.checkins.filter(k => k.alumno_id === a.id), ult = chks[0], ant = chks[1];
+  const motivos = []; let nivel = 'ok';
+  const sube = n => { if (n === 'bad' || nivel === 'ok') nivel = n; };
   const vencidos = c.pagos.filter(p => p.alumno_id === a.id && !p.pagado_at && p.vence < hoy);
-  const motivos = [];
-  let nivel = 'ok';
-  if (vencidos.length) { nivel = 'bad'; motivos.push(`Pago vencido: ${vencidos.map(p => p.importe + ' €').join(', ')}`); }
-  if (!ses.length || ses[0].fecha < hace7) { nivel = 'bad'; motivos.push(ses.length ? `Sin entrenar desde el ${fCorta(ses[0].fecha)}` : 'Sin entrenamientos registrados'); }
-  if (ult && ult.motivacion <= 4) { nivel = 'bad'; motivos.push(`Motivación ${ult.motivacion}/10`); }
-  else if (ult && ant && ant.motivacion - ult.motivacion >= 3) { if (nivel === 'ok') nivel = 'warn'; motivos.push(`Motivación de ${ant.motivacion} a ${ult.motivacion}`); }
-  if (!chks.some(k => k.semana_inicio >= lunesDe(sumaDias(hoy, -7)))) { if (nivel === 'ok') nivel = 'warn'; motivos.push('Sin check-in reciente'); }
-  const dpw = (c.programas.find(p => p.alumno_id === a.id) || {}).dias_semana || 0;
-  const lunes = lunesDe(hoy), semana = new Set(ses.filter(s => s.fecha >= lunes).map(s => s.fecha + s.dia_id)).size;
+  if (vencidos.length) { sube('bad'); motivos.push(`Pago vencido: ${vencidos.map(p => p.importe + ' €').join(', ')}`); }
+  const enProceso = !srv?.inicio || srv.inicio <= sumaDias(lunes, -7);
+  const pre = semanaDatos(a.id, sumaDias(lunes, -7), c);
+  if (enProceso) {
+    if (dpw && pre.entrenos < dpw) { sube(pre.entrenos <= dpw / 2 ? 'bad' : 'warn'); motivos.push(`Semana pasada: ${pre.entrenos} de ${dpw} entrenos`); }
+    if (pre.pasosMedia == null) { sube('warn'); motivos.push('Semana pasada: sin registro de pasos'); }
+    else if (pre.pasosMedia < obj) { sube('warn'); motivos.push(`Semana pasada: ${fmtNum(pre.pasosMedia, 0)} pasos de media (objetivo ${fmtNum(obj, 0)})`); }
+    if (srv?.modulo_nutricion && pre.nutri != null && pre.nutri < 90) { sube(pre.nutri < 70 ? 'bad' : 'warn'); motivos.push(`Semana pasada: alimentación al ${pre.nutri} %`); }
+  }
+  if (dow >= 5) {
+    const cur = semanaDatos(a.id, lunes, c), dias = dow + 1;
+    if (dpw && cur.entrenos < dpw * 0.5) { sube('bad'); motivos.push(`Esta semana: solo ${cur.entrenos} de ${dpw} entrenos y ya es ${dow === 5 ? 'sábado' : 'domingo'}`); }
+    if (cur.diasPasos < dias * 0.5 || (cur.pasosMedia != null && cur.pasosMedia < obj * 0.5)) { sube('warn'); motivos.push(`Esta semana: pasos registrados ${cur.diasPasos} de ${dias} días${cur.pasosMedia != null ? `, media ${fmtNum(cur.pasosMedia, 0)}` : ''}`); }
+    if (srv?.modulo_nutricion && cur.nutri != null && cur.nutri < 50) { sube('bad'); motivos.push(`Esta semana: alimentación al ${cur.nutri} %`); }
+  }
+  if (ult && ult.motivacion <= 4) { sube('bad'); motivos.push(`Motivación ${ult.motivacion}/10`); }
+  else if (ult && ant && ant.motivacion - ult.motivacion >= 3) { sube('warn'); motivos.push(`Motivación de ${ant.motivacion} a ${ult.motivacion}`); }
+  const semana = new Set(ses.filter(s => s.fecha >= lunes).map(s => s.fecha + s.dia_id)).size;
   const mes = new Set(ses.filter(s => s.fecha >= sumaDias(hoy, -27)).map(s => s.fecha + s.dia_id)).size;
-  return { nivel, motivos, ses7, ult, ultSes: ses[0], dpw, semana, mes };
+  const control = controlEnSemana(srv, lunes);
+  return { nivel, motivos, ult, ultSes: ses[0], dpw, semana, mes, control, ses7: semana };
 }
 function vAlumnos() {
   const c = S.c, als = c.perfiles.filter(p => p.activo !== false);
@@ -743,8 +821,9 @@ function vAlumnos() {
   const venc = c.pagos.filter(p => !p.pagado_at && p.vence < hoyISO());
   return `<section class="stack"><span class="eyebrow">Panel del coach · ${esc(fLarga(hoyISO()))}</span><h1>Tus alumnos</h1></section>
   <section class="section"><div class="kpis"><div class="kpi"><div class="v num">${als.length}</div><div class="l">perfiles activos</div></div><div class="kpi"><div class="v num" style="color:var(--bad)">${est.filter(x => x.e.nivel !== 'ok').length}</div><div class="l">necesitan atención</div></div><div class="kpi"><div class="v num" style="color:${venc.length ? 'var(--bad)' : 'var(--ok)'}">${venc.length}</div><div class="l">pagos vencidos</div></div></div></section>
+  <section class="section"><button class="card reporte-b" data-act="abrirReporte"><div class="ico gold">${svg('checkin')}</div><div class="grow" style="text-align:left"><b>Reporting semanal</b><div class="small muted">Semana del ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -7)))} al ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -1)))} · todos tus alumnos de un vistazo</div></div><span class="small" style="color:var(--blue-text)">Abrir ›</span></button></section>
   ${vResumenCoach(est)}
-  <section class="section"><h2>Alumnos</h2><div class="card">${est.map(({ a, e }) => `<div class="line" data-act="ficha" data-id="${a.id}" style="cursor:pointer"><span style="width:4px;align-self:stretch;border-radius:2px;background:var(--${e.nivel})"></span><div class="grow stack" style="gap:3px"><div class="row"><h3 class="grow">${esc(a.nombre)}</h3><span class="pill ${e.nivel}">${lab[e.nivel]}</span></div><div class="small muted">${esc((c.servicios.find(s => s.alumno_id === a.id) || {}).producto || 'Sin servicio')}${e.ult ? ` · motivación ${e.ult.motivacion}/10` : ''}</div>${e.dpw ? barra('Semana', e.semana, e.dpw) + barra('Últimas 4 semanas', e.mes, e.dpw * 4) : ''}${e.motivos.length ? `<div class="small">${esc(e.motivos.join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no hay alumnos.</div>'}</div>
+  <section class="section"><h2>Alumnos</h2><div class="card">${est.map(({ a, e }) => `<div class="line" data-act="ficha" data-id="${a.id}" style="cursor:pointer"><span style="width:4px;align-self:stretch;border-radius:2px;background:var(--${e.nivel})"></span><div class="grow stack" style="gap:3px"><div class="row"><h3 class="grow">${esc(a.nombre)}</h3>${e.control ? '<span class="pill gold">Control mensual</span>' : ''}<span class="pill ${e.nivel}">${lab[e.nivel]}</span></div><div class="small muted">${esc((c.servicios.find(s => s.alumno_id === a.id) || {}).producto || 'Sin servicio')}${e.ult ? ` · motivación ${e.ult.motivacion}/10` : ''}</div>${e.dpw ? barra('Semana', e.semana, e.dpw) + barra('Últimas 4 semanas', e.mes, e.dpw * 4) : ''}${e.motivos.length ? `<div class="small">${esc(e.motivos.join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no hay alumnos.</div>'}</div>
   <p class="note">Para dar de alta a un alumno nuevo, créalo en Supabase → Authentication → Users. Su perfil aparecerá aquí solo.</p></section>`;
 }
 
@@ -782,7 +861,7 @@ function vFicha() {
   const pagos = S.c.pagos.filter(p => p.alumno_id === a.id);
   return `<section class="stack"><button class="btn sm ghost" data-act="cerrarFicha" style="align-self:flex-start">← Alumnos</button><span class="eyebrow">Ficha del alumno</span><h1>${esc(a.nombre)}</h1>
     <div class="small muted">${esc(a.email)} · ${esc(f.srv?.producto || 'Sin servicio')}${f.prog ? ' · ' + esc(f.prog.nombre) : ''} · alta ${esc(fCorta(a.fecha_alta))}</div>
-    <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn sm" data-act="nuevaMedicion">Añadir medición</button><button class="btn sm ghost" data-act="nuevoPago">Añadir cuota</button><button class="btn sm ghost" data-act="nuevaNota">Nota privada</button><button class="btn sm gold" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc((a.nombre || '').split(' ')[0])}</button></div></section>
+    <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn sm" data-act="nuevaMedicion">Añadir medición</button><button class="btn sm ghost" data-act="nuevoPago">Añadir cuota</button><button class="btn sm ghost" data-act="nuevaNota">Nota privada</button><button class="btn sm" data-act="abrirReporte" data-id="${a.id}">📋 Reporting semanal</button><button class="btn sm gold" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc((a.nombre || '').split(' ')[0])}</button></div></section>
   ${e.motivos.length ? `<section class="section"><div class="card stack"><span class="eyebrow">Para revisar</span><div class="small">${esc(e.motivos.join(' · '))}</div></div></section>` : ''}
   ${vLineaTiempo(f.srv, 'Proceso de ' + ((a.nombre || '').split(' ')[0]), true)}
   ${vEstadisticas(f)}
@@ -792,7 +871,7 @@ function vFicha() {
   ${vRevision(f)}
   ${vTestsFicha(f)}
   <section class="section"><h2>Check-ins</h2><div class="card">${chks.map(k => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(k.semana_inicio))}</span><div class="grow stack" style="gap:4px"><div class="small">Motivación <b>${k.motivacion}/10</b> · implicación <b>${k.implicacion}/10</b></div>${k.dificultades ? `<div class="small"><span class="muted">Dificultades:</span> ${esc(k.dificultades)}</div>` : ''}${(k.proxima_semana_etiquetas || []).length || k.proxima_semana ? `<div class="small"><span class="muted">Semana que viene:</span> ${esc([...(k.proxima_semana_etiquetas || []), k.proxima_semana].filter(Boolean).join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Sin check-ins todavía.</div>'}</div></section>
-  <section class="section"><h2>Registro diario</h2><div class="card tbl"><table><thead><tr><th>Día</th><th>Pasos</th><th>De pie</th><th>Alim.</th></tr></thead><tbody>${diario.map(r => `<tr><td>${esc(fCorta(r.fecha))}</td><td class="num">${r.pasos == null ? '—' : fmtNum(r.pasos, 0)}</td><td class="num">${r.horas_pie == null ? '—' : fmtNum(r.horas_pie) + ' h'}</td><td>${({ si: 'Cumplido', parcial: 'A medias', no: 'No' })[r.alimentacion] || '—'}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">Sin registros en 14 días.</td></tr>'}</tbody></table></div></section>
+  <section class="section"><h2>Registro diario</h2><div class="card tbl"><table><thead><tr><th>Día</th><th>Pasos</th><th>Observación</th></tr></thead><tbody>${diario.map(r => `<tr><td>${esc(fCorta(r.fecha))}</td><td class="num" style="color:${r.pasos == null ? 'inherit' : r.pasos >= objPasos(f.srv) ? 'var(--ok)' : 'var(--warn)'}">${r.pasos == null ? '—' : fmtNum(r.pasos, 0)}</td><td class="small">${esc(r.observacion || '')}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">Sin registros en 3 semanas.</td></tr>'}</tbody></table></div></section>
   <section class="section"><h2>Mediciones</h2><div class="card tbl"><table><thead><tr><th>Fecha</th><th>Peso</th><th>% grasa</th><th>Cintura</th><th>Cadera</th></tr></thead><tbody>${f.med.map(m => `<tr><td>${esc(fCorta(m.fecha))} ${String(fecha(m.fecha).getFullYear()).slice(2)}</td><td class="num">${fmtNum(m.peso)}</td><td class="num">${fmtNum(m.grasa_pct)}</td><td class="num">${fmtNum(m.cintura)}</td><td class="num">${fmtNum(m.cadera)}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">Sin mediciones.</td></tr>'}</tbody></table></div></section>
   <section class="section"><h2>Pagos</h2><div class="card">${pagos.map(lineaPago).join('') || '<div class="empty">Sin cuotas registradas.</div>'}</div></section>
   <section class="section"><h2>Notas privadas</h2><div class="card">${f.notas.map(n => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(n.fecha))}</span><div class="small grow">${esc(n.texto)}</div></div>`).join('') || '<div class="empty">Solo tú ves estas notas.</div>'}</div></section>`;
@@ -877,6 +956,27 @@ function formNota() {
 }
 
 /* ---------- Estadísticas del alumno (coach) ---------- */
+/* ---------- Objetivo de pasos y control mensual ---------- */
+const PASOS_DEF = 8000;
+const objPasos = srv => srv?.objetivo_pasos || PASOS_DEF;
+const sumaMeses = (iso, n) => { const d = fecha(iso), dia = d.getDate(); d.setMonth(d.getMonth() + n); if (d.getDate() < dia) d.setDate(0); return isoDe(d); };
+/* Semana (lunes) en la que cae cada control mensual desde el inicio del proceso */
+function controlesMensuales(srv, hasta = sumaDias(hoyISO(), 70)) {
+  if (!srv?.inicio) return [];
+  const out = []; for (let k = 1; k < 40; k++) { const f = sumaMeses(srv.inicio, k); if (f > hasta) break; out.push({ n: k, fecha: f, lunes: lunesDe(f) }); }
+  return out;
+}
+const controlEnSemana = (srv, lunes) => controlesMensuales(srv, sumaDias(lunes, 6)).find(c => c.lunes === lunes);
+function vEventos(srv, pres) {
+  const hoy = hoyISO(), lunes = lunesDe(hoy), ev = [];
+  const cEsta = controlEnSemana(srv, lunes), cProx = controlEnSemana(srv, sumaDias(lunes, 7));
+  if (cEsta) ev.push(`<div class="line evento"><div class="ico gold">${svg('progreso')}</div><div class="grow"><b class="small">Esta semana toca tu control mensual ${cEsta.n}</b><div class="small muted">Composición corporal, ajustes y mejoras: tienes pendiente la reunión de seguimiento mensual con Jesús.</div></div></div>`);
+  else if (cProx) ev.push(`<div class="line evento"><div class="ico">${svg('progreso')}</div><div class="grow"><b class="small">La semana que viene: control mensual ${cProx.n}</b><div class="small muted">Semana del ${esc(fCorta(cProx.lunes))}. Reunión de seguimiento, composición corporal y ajustes.</div></div></div>`);
+  (pres || []).filter(p => p.estado === 'programada' && p.fecha >= hoy && p.fecha <= sumaDias(hoy, 13)).sort(ordPres).slice(0, 3)
+    .forEach(p => ev.push(`<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">Entrenamiento con Jesús</b><div class="small muted">${esc(fLarga(p.fecha))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</div></div><span class="small muted">›</span></div>`));
+  return ev.length ? `<section class="section"><h2>Próximos eventos</h2><div class="card">${ev.join('')}</div></section>` : '';
+}
+
 /* ---------- Proceso dividido en ciclos de 8 semanas ---------- */
 const SEM_CICLO = 8;
 const esObjetivo = r => r.es_bloque === false || (r.es_bloque == null && /^objetivo/i.test(r.nombre || '') && r.semana_inicio === r.semana_fin);
@@ -918,14 +1018,17 @@ function numEntreno(sesiones, srv, f, sesId, dpw) {
 }
 const nomCiclo = c => c.nombre || `Ciclo ${c.n}`;
 const txtCiclo = x => x ? `${nomCiclo(x.cc)} · Semana ${x.semCiclo} de ${x.cc.sem}${x.n ? ` · Entreno ${x.n}${x.previstos ? ' de ' + x.previstos : ''}` : ''}` : '';
-function vLineaTiempo(srv, titulo = 'Tu proceso', coach = false) {
+function vLineaTiempo(srv, titulo = 'Tu proceso', coach = false, prog = null) {
   const P = proceso(srv);
   if (!P) return coach ? `<section class="section"><div class="card stack"><span class="eyebrow">${esc(titulo)}</span><p class="small muted">Pon la fecha de inicio en "Servicio → Editar" para ver la línea temporal.</p><button class="btn sm" data-act="editarBloques" style="align-self:flex-start">✎ Editar bloques</button></div></section>` : '';
   const fF = iso => fecha(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
   const segs = P.ciclos.map(c => { const est = c.n < P.ciclo || P.fuera ? 100 : c.n === P.ciclo ? P.pctCiclo : 0;
     return `<div class="tl-seg ${c.n === P.ciclo && !P.fuera ? 'now' : ''}" style="flex:${c.sem}"><i style="width:${est}%"></i><span>${c.n}</span></div>`; }).join('');
-  const filas = P.ciclos.map(c => { const hecho = c.n < P.ciclo || P.fuera, act = c.n === P.ciclo && !P.fuera && !P.antes;
-    return `<div class="tl-row ${act ? 'now' : ''}"><span class="tl-dot ${hecho ? 'ok' : act ? 'now' : ''}"></span><div class="grow"><b>${esc(nomCiclo(c))}</b> <span class="small muted">· ${c.sem} semanas</span><div class="small muted">${fF(c.ini)} → ${fF(c.fin)}</div>${c.objetivo ? `<div class="small">🎯 ${esc(c.objetivo)}</div>` : ''}</div><span class="small ${act ? '' : 'muted'}">${hecho ? 'Completado' : act ? `<b>${P.pctCiclo} %</b>` : 'Empieza ' + fF(c.ini)}</span></div>`; }).join('');
+  const filas = P.ciclos.map(c => { const hecho = c.n < P.ciclo || P.fuera, act = c.n === P.ciclo && !P.fuera && !P.antes, pc = hecho ? 100 : act ? P.pctCiclo : 0;
+    const sesiones = act && prog?.dias?.length ? `<div class="stack" style="gap:6px;margin-top:8px"><span class="eyebrow">Tus entrenamientos de este bloque</span>${prog.dias.map(d => `<div class="tl-ses"><b class="small">${esc(d.nombre)} · ${esc(d.foco || '')}</b>${d.objetivo ? `<div class="small muted">${esc(d.objetivo)}</div>` : ''}<div class="small muted">${esc([d.volumen && 'Volumen ' + d.volumen.toLowerCase(), d.intensidad && 'intensidad ' + d.intensidad.toLowerCase()].filter(Boolean).join(' · '))}</div></div>`).join('')}</div>` : '';
+    const cab = `<div class="row"><span class="tl-dot ${hecho ? 'ok' : act ? 'now' : ''}"></span><div class="grow"><b>${esc(nomCiclo(c))}</b> <span class="small muted">· ${c.sem} semanas</span><div class="small muted">${fF(c.ini)} → ${fF(c.fin)}</div>${c.objetivo ? `<div class="small">🎯 ${esc(c.objetivo)}</div>` : ''}</div><span class="small ${act ? '' : 'muted'}">${hecho ? 'Completado' : act ? `<b>${P.pctCiclo} %</b>` : 'Empieza ' + fF(c.ini)}</span></div>
+      <div class="track" style="margin:6px 0 0 22px"><i style="width:${pc}%;background:${hecho ? 'var(--gold)' : 'var(--blue)'}"></i></div>`;
+    return sesiones ? `<details class="tl-row now"><summary>${cab}<div class="small" style="margin:6px 0 0 22px;color:var(--blue-text)">Toca para ver tus entrenamientos de este bloque ›</div></summary>${sesiones}</details>` : `<div class="tl-row ${act ? 'now' : ''}">${cab}</div>`; }).join('');
   const cab = P.antes ? `Empieza el ${fF(srv.inicio)}` : P.fuera ? 'Proceso completado' : `${esc(nomCiclo(P.cc))} (${P.ciclo} de ${P.ciclos.length}) · Semana ${P.semCiclo} de ${P.cc.sem}`;
   return `<section class="section"><div class="card stack">
     <div class="row"><div class="grow"><span class="eyebrow">${esc(titulo)}</span><h3>${cab}</h3></div>${P.sinFin ? '' : `<div style="text-align:right"><b class="num" style="font-family:var(--display);font-size:22px">${P.pctTotal} %</b><div class="small muted">del proceso</div></div>`}</div>
@@ -971,7 +1074,7 @@ function vEstadisticas(f) {
     ${!srv?.duracion_semanas ? '<p class="note" style="margin-top:10px">Añade la fecha de inicio y la duración en "Servicio" para ver el avance del proceso completo.</p>' : ''}
   </div>
   <div class="card stack chart"><h3>Entrenamientos por semana</h3>${barrasSemanas(f.todas, dpw)}</div></section>
-  ${graf ? `<section class="section"><h2>Composición corporal</h2>${graf}</section>` : ''}`;
+  ${graf ? `<section class="section"><h2>Composición corporal</h2>${vGraficaComp(med)}</section>` : ''}`;
 }
 function formServicio() {
   const s = S.ficha.srv || {};
@@ -979,6 +1082,7 @@ function formServicio() {
     <label class="f">Programa / producto contratado<input type="text" id="sv-prod" list="sv-prods" value="${esc(s.producto || '')}" placeholder="Ej. Plan Integral 6 meses" required></label>
     <datalist id="sv-prods">${[...new Set(['Plan Integral 3 meses', 'Plan Integral 6 meses', 'Plan Integral 10 meses', 'Plan Entrenamiento 3 meses', 'Plan Entrenamiento 6 meses', 'Bono 10 sesiones presenciales', 'Bono 15 sesiones presenciales', 'Zero to Fit · Integral', 'Élite Player', ...S.c.servicios.map(x => x.producto).filter(Boolean)])].map(v => `<option value="${esc(v)}">`).join('')}</datalist>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Inicio<input type="date" id="sv-ini" value="${s.inicio || hoyISO()}"></label><label class="f">Duración (semanas)<input type="number" id="sv-dur" min="1" max="104" value="${s.duracion_semanas || ''}" placeholder="Ej. 26"></label></div>
+    <label class="f">Objetivo de pasos diarios<input type="number" id="sv-pasos" min="0" step="500" value="${s.objetivo_pasos || ''}" placeholder="${PASOS_DEF}"></label>
     <label class="f">Sesiones presenciales incluidas (bono)<input type="number" id="sv-pres" min="0" max="200" value="${s.sesiones_incluidas || ''}" placeholder="Ej. 15"></label>
     <div class="stack" style="gap:8px">${[['entreno', 'Entrenamiento', s.modulo_entreno ?? true], ['nutricion', 'Nutrición', s.modulo_nutricion], ['presencial', 'Sesiones presenciales', s.modulo_presencial]].map(([k, l, v]) => `<label class="row small"><input type="checkbox" id="sv-${k}" ${v ? 'checked' : ''} style="width:20px;height:20px"> ${l}</label>`).join('')}</div>
     <button class="btn full" type="submit">Guardar</button></form>`);
@@ -986,8 +1090,11 @@ function formServicio() {
     e.preventDefault();
     const row = { alumno_id: S.ficha.id, producto: $('#sv-prod').value.trim() || 'Servicio', inicio: $('#sv-ini').value, duracion_semanas: numero($('#sv-dur').value), sesiones_incluidas: numero($('#sv-pres').value),
       modulo_entreno: $('#sv-entreno').checked, modulo_nutricion: $('#sv-nutricion').checked, modulo_presencial: $('#sv-presencial').checked, activo: true };
-    const q = s.id ? sb.from('servicios').update(row).eq('id', s.id) : sb.from('servicios').insert(row);
-    const { error } = await q; if (error) return fallo(error);
+    const op = numero($('#sv-pasos').value); if (op) row.objetivo_pasos = op;
+    const guardar = r => s.id ? sb.from('servicios').update(r).eq('id', s.id) : sb.from('servicios').insert(r);
+    let { error } = await guardar(row);
+    if (error && /objetivo_pasos/.test(error.message || '')) { delete row.objetivo_pasos; ({ error } = await guardar(row)); toast('Para guardar el objetivo de pasos falta ejecutar el Bloque 10'); }
+    if (error) return fallo(error);
     cerrarSheet(); toast('Servicio guardado'); await cargarCoach(); if (S.ficha.id === S.user.id) await cargarAlumno(S.user.id); abrirFicha(S.ficha.id);
   });
 }
@@ -1126,6 +1233,73 @@ async function importarImagenes() {
   cerrarSheet(); await cargarAlumno(S.user.id); render();
   abrirSheet(`<div class="stack"><h2>Imágenes actualizadas</h2><p class="small"><b>${ok}</b> imágenes puestas${faltan ? ` · ${faltan} no disponibles todavía` : ''}.</p><p class="note">Ahora están guardadas dentro de la propia app: ya no dependen de Google y no caducan.</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`);
 }
+
+/* ---------- Reporting semanal (coach) ---------- */
+async function abrirReporte(alumno = null, lunes = null) {
+  lunes = lunes || sumaDias(lunesDe(hoyISO()), -7);
+  if (lunes > lunesDe(hoyISO())) lunes = lunesDe(hoyISO());
+  S.reporte = { alumno, lunes, cargando: true }; render(); window.scrollTo(0, 0);
+  const fin = sumaDias(lunes, 6);
+  const filtro = q => alumno ? q.eq('alumno_id', alumno) : q;
+  const [ses, reg, chk, pres] = await Promise.all([
+    filtro(sb.from('sesiones_hechas').select('*,dias(nombre,foco)').gte('fecha', lunes).lte('fecha', fin)),
+    filtro(sb.from('registro_diario').select('*').gte('fecha', lunes).lte('fecha', fin)),
+    filtro(sb.from('checkins').select('*').eq('semana_inicio', lunes)),
+    filtro(sb.from('presenciales').select('*').gte('fecha', lunes).lte('fecha', fin))
+  ]);
+  S.reporte = { alumno, lunes, src: { sesiones: ses.data || [], diario: reg.data || [], checkins: chk.data || [] }, pres: pres.data || [] };
+  render();
+}
+function datosReporte(a, R) {
+  const srv = S.c.servicios.find(x => x.alumno_id === a.id), dpw = (S.c.programas.find(p => p.alumno_id === a.id) || {}).dias_semana || 0, obj = objPasos(srv);
+  const w = semanaDatos(a.id, R.lunes, R.src), P = proceso(srv, R.fin || sumaDias(R.lunes, 6));
+  const pctE = dpw ? Math.round(w.entrenos / dpw * 100) : null, pctP = w.pasosMedia != null ? Math.round(w.pasosMedia / obj * 100) : null;
+  const nivel = x => x == null ? '' : x >= 90 ? 'ok' : x >= 60 ? 'warn' : 'bad';
+  const coment = [];
+  w.ses.forEach(x => {
+    const dia = x.dias ? `${x.dias.nombre}${x.dias.foco ? ' · ' + x.dias.foco : ''}` : 'Entreno';
+    if (x.nota) coment.push(['Entreno', x.fecha, `${dia}: "${x.nota}"`]);
+    if (x.nota_revision) coment.push(['Para la revisión', x.fecha, x.nota_revision]);
+    (x.omitidos || []).forEach(o => coment.push(['No realizado', x.fecha, `${o.nombre}: ${o.motivo}`]));
+    if (x.cansancio >= 4) coment.push(['Cansancio', x.fecha, `${dia}: cansancio ${x.cansancio}/5`]);
+  });
+  w.reg.filter(r => r.observacion).forEach(r => coment.push(['Día', r.fecha, `${r.pasos != null ? fmtNum(r.pasos, 0) + ' pasos · ' : ''}"${r.observacion}"`]));
+  if (w.chk?.nota_alimentacion) coment.push(['Alimentación', R.lunes, w.chk.nota_alimentacion]);
+  if (w.chk?.dificultades) coment.push(['Dificultades de la semana', R.lunes, w.chk.dificultades]);
+  if (w.chk && ((w.chk.proxima_semana_etiquetas || []).length || w.chk.proxima_semana)) coment.push(['Semana siguiente', R.lunes, [...(w.chk.proxima_semana_etiquetas || []), w.chk.proxima_semana].filter(Boolean).join(' · ')]);
+  const pres = (R.pres || []).filter(p => p.alumno_id === a.id);
+  const score = [pctE, srv?.modulo_nutricion ? w.nutri : null, pctP].filter(v => v != null);
+  return { srv, dpw, obj, w, P, pctE, pctP, nivel, coment, pres, control: controlEnSemana(srv, R.lunes), score: score.length ? Math.min(...score) : 100 };
+}
+function vReporteAlumno(a, R, detalle) {
+  const d = datosReporte(a, R), w = d.w;
+  const caja = (t, v, sub, niv) => `<div class="kpi rep ${niv}"><div class="l">${t}</div><b class="num">${v}</b><div class="small muted">${sub}</div></div>`;
+  const semTxt = d.P && !d.P.antes ? `Semana ${d.P.semana} del proceso · ${esc(nomCiclo(d.P.cc))}, semana ${d.P.semCiclo} de ${d.P.cc.sem}` : 'Sin fecha de inicio';
+  const com = detalle ? d.coment : d.coment.slice(0, 4);
+  return `<div class="card stack"><div class="row"><div class="grow"><h3>${esc(a.nombre)}</h3><div class="small muted">${semTxt}</div></div>${detalle ? '' : `<button class="btn sm ghost" data-act="abrirReporte" data-id="${a.id}">Ver</button>`}</div>
+    <div class="kpis">${caja('Entrenos', d.dpw ? `${w.entrenos}/${d.dpw}` : w.entrenos, d.pctE != null ? d.pctE + ' %' : 'sin plan', d.nivel(d.pctE))}
+      ${d.srv?.modulo_nutricion ? caja('Alimentación', w.nutri != null ? w.nutri + ' %' : '—', w.chk ? 'según su check-in' : 'sin check-in', d.nivel(w.nutri)) : ''}
+      ${caja('Pasos', w.pasosMedia != null ? fmtNum(w.pasosMedia, 0) : '—', `obj. ${fmtNum(d.obj, 0)} · ${w.diasPasos}/7 días`, d.nivel(d.pctP))}</div>
+    ${w.cansancio || w.poderio || w.chk ? `<div class="row small muted" style="flex-wrap:wrap;gap:8px">${w.cansancio ? `<span class="pill">Cansancio medio ${fmtNum(w.cansancio)}/5</span>` : ''}${w.poderio ? `<span class="pill">Poderío medio ${fmtNum(w.poderio)}/5</span>` : ''}${w.chk ? `<span class="pill">Motivación ${w.chk.motivacion}/10 · implicación ${w.chk.implicacion}/10</span>` : '<span class="pill warn">Sin check-in</span>'}</div>` : ''}
+    ${d.control ? `<div class="aprox small"><b>Esa semana tocaba el control mensual ${d.control.n}</b> (composición corporal, ajustes y reunión de seguimiento).</div>` : ''}
+    ${d.pres.length ? `<div class="small">Presenciales: ${d.pres.map(p => `${fCorta(p.fecha)} (${({ dada: 'hecha', tarde: 'aviso < 24 h', programada: 'reservada', cancelada: 'cancelada' })[p.estado] || p.estado})`).join(' · ')}</div>` : ''}
+    ${com.length ? `<div class="stack" style="gap:6px"><span class="eyebrow">Lo que ha contado</span>${com.map(([t, f, x]) => `<div class="rep-c"><span class="small muted">${esc(t)} · ${esc(fCorta(f))}</span><div class="small">${esc(x)}</div></div>`).join('')}${!detalle && d.coment.length > 4 ? `<span class="small muted">y ${d.coment.length - 4} más…</span>` : ''}</div>` : '<p class="small muted">No ha dejado comentarios esta semana.</p>'}
+    ${detalle && d.dpw ? `<div class="stack" style="gap:4px"><span class="eyebrow">Entrenamientos</span>${w.ses.map(x => `<div class="line" data-act="repVerSesion" data-id="${x.id}" data-al="${a.id}" style="cursor:pointer"><span class="small muted num" style="width:56px;flex:none">${esc(fCorta(x.fecha))}</span><div class="grow small"><b>${esc(x.dias?.nombre || '')}</b> · ${esc(x.dias?.foco || '')}${x.cansancio ? ` · cansancio ${x.cansancio}/5` : ''}${x.poderio ? ` · poderío ${x.poderio}/5` : ''}</div><span class="small muted">›</span></div>`).join('') || '<p class="small muted">Ningún entrenamiento registrado.</p>'}</div>` : ''}
+    ${detalle ? `<button class="btn full" data-act="reporteFicha" data-id="${a.id}">Abrir su ficha para revisarlo a fondo</button>` : ''}
+  </div>`;
+}
+function vReporte() {
+  const R = S.reporte, fin = sumaDias(R.lunes, 6);
+  const cab = `<section class="stack"><button class="btn sm ghost" data-act="cerrarReporte" style="align-self:flex-start">← Volver</button><span class="eyebrow">Reporting semanal · semana ${esc(String(numSemanaISO(R.lunes)))} del año</span><h1>Semana del ${esc(fCorta(R.lunes))} al ${esc(fCorta(fin))}</h1>
+    <div class="row" style="gap:8px"><button class="btn sm ghost" data-act="reporteSemana" data-d="-7">‹ Anterior</button>${R.lunes < sumaDias(lunesDe(hoyISO()), -7) ? '<button class="btn sm ghost" data-act="reporteSemana" data-d="7">Siguiente ›</button>' : R.lunes < lunesDe(hoyISO()) ? '<button class="btn sm ghost" data-act="reporteSemana" data-d="7">Semana en curso ›</button>' : ''}</div></section>`;
+  if (R.cargando) return cab + '<div class="empty">Preparando el reporting…</div>';
+  R.fin = fin;
+  if (R.alumno) { const a = S.c.perfiles.find(p => p.id === R.alumno) || { id: R.alumno, nombre: 'Alumno' }; return cab + `<section class="section">${vReporteAlumno(a, R, true)}</section>`; }
+  const als = S.c.perfiles.filter(p => p.activo !== false && (S.c.servicios.some(x => x.alumno_id === p.id) || S.c.programas.some(x => x.alumno_id === p.id)));
+  const lista = als.map(a => ({ a, d: datosReporte(a, R) })).sort((x, y) => x.d.score - y.d.score);
+  return cab + `<section class="section"><p class="small muted">Ordenados de menor a mayor cumplimiento. Toca "Ver" para el detalle de cada alumno.</p>${lista.map(({ a }) => vReporteAlumno(a, R, false)).join('') || '<div class="empty">Sin alumnos activos.</div>'}</section>`;
+}
+const numSemanaISO = iso => { const d = fecha(iso); d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7); const y = new Date(d.getFullYear(), 0, 4); return 1 + Math.round(((d - y) / 864e5 - 3 + (y.getDay() + 6) % 7) / 7); };
 
 /* ---------- Bloques del proceso (coach): nombre, objetivo y semanas ---------- */
 function filaBloqueProc(b) {
@@ -1812,7 +1986,7 @@ document.addEventListener('click', async e => {
   const a = b.dataset.act;
   switch (a) {
     case 'tab': S.tab = b.dataset.t; S.dia = null; S.chipsCargados = false; render(); window.scrollTo(0, 0); break;
-    case 'ctab': if (S.obj) await salirComo(); S.ctab = b.dataset.t; S.ficha = null; S.editor = null; render(); window.scrollTo(0, 0); break;
+    case 'ctab': if (S.obj) await salirComo(); S.reporte = null; S.ctab = b.dataset.t; S.ficha = null; S.editor = null; render(); window.scrollTo(0, 0); break;
     case 'modo': if (S.obj) await salirComo(); S.modo = b.dataset.v; S.ficha = null; if (S.modo === 'coach') await cargarCoach(); render(); window.scrollTo(0, 0); break;
     case 'abrirDia': await abrirDia(+b.dataset.id); break;
     case 'cerrarDia': S.dia = null; S.sesion = null; render(); break;
@@ -1825,6 +1999,13 @@ document.addEventListener('click', async e => {
     case 'nuevaPrueba': formNuevaPrueba(+b.dataset.id); break;
     case 'crearPrueba': await crearPrueba(b.dataset.t, +b.dataset.v); break;
     case 'editarPrueba': formPrueba(+b.dataset.id); break;
+    case 'omitir': formOmitir(+b.dataset.es, b.dataset.n); break;
+    case 'deshacerOmitir': await deshacerOmitir(+b.dataset.es); break;
+    case 'abrirReporte': await abrirReporte(b.dataset.id || null); break;
+    case 'reporteSemana': await abrirReporte(S.reporte.alumno, sumaDias(S.reporte.lunes, +b.dataset.d)); break;
+    case 'cerrarReporte': { const al = S.reporte?.alumno; S.reporte = null; if (al && S.ficha?.id === al) render(); else render(); window.scrollTo(0, 0); break; }
+    case 'reporteFicha': S.reporte = null; await abrirFicha(b.dataset.id); break;
+    case 'repVerSesion': { const al = b.dataset.al; S.reporte = null; await abrirFicha(al); await verSesion(+b.dataset.id); break; }
     case 'escala': document.querySelectorAll(`#${b.dataset.g} button`).forEach(x => x.setAttribute('aria-pressed', x === b)); break;
     case 'editarSesion': await editarSesionCerrada(); break;
     case 'entrenarAhora': formEntrenarCon(b.dataset.id); break;
@@ -1881,6 +2062,7 @@ document.addEventListener('click', async e => {
   }
 });
 document.addEventListener('change', async e => {
+  if (e.target.dataset?.graf === 'comp') { S.grafComp = e.target.value; render(); return; }
   const m = (e.target.id || '').match(/^(kg|rp|ri)-(\d+)-(\d+)(?:-(\d+))?$/); if (!m || !S.sesion) return;
   const fila = `${m[2]}-${m[3]}`, z = S.sesion; if (!z.regs[fila]) return;
   const T = +(document.getElementById('ck-' + fila)?.dataset.t || 1), k = m[1] === 'ri' ? T - 1 : +m[4];
@@ -1894,6 +2076,7 @@ document.addEventListener('change', async e => {
 document.addEventListener('input', e => {
   if (e.target.id === 'ej-buscar') { S.filtroEj = e.target.value; const pos = e.target.selectionStart; render(); const i = $('#ej-buscar'); i.focus(); try { i.setSelectionRange(pos, pos); } catch (er) { } }
   if (e.target.id === 'k-mot') $('#k-mot-v').textContent = e.target.value + '/10';
+  if (e.target.id === 'k-nut') $('#k-nut-v').textContent = e.target.value + ' %';
   if (e.target.id === 'k-imp') $('#k-imp-v').textContent = e.target.value + '/10';
 });
 
