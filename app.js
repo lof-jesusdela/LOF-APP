@@ -974,8 +974,8 @@ function vFicha() {
   const tile = (sub, t, v, l1, l2, niv) => `<button class="kpi rep tile ${niv}" data-act="fichaSub" data-s="${sub}"><div class="l">${t} ›</div><b class="num">${v}</b><div class="small muted">${l1}</div>${l2 ? `<div class="small muted">${l2}</div>` : ''}</button>`;
   const fF = iso => fecha(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
   return `<section class="stack"><button class="btn sm ghost" data-act="cerrarFicha" style="align-self:flex-start">← Alumnos</button><span class="eyebrow">Ficha del alumno</span><h1>${esc(a.nombre)}</h1>
-    <div class="small muted">${esc(a.email)} · alta ${esc(fCorta(a.fecha_alta))}</div>
-    <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn sm gold" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm" data-act="abrirReporte" data-id="${a.id}">📋 Reporting semanal</button></div></section>
+    <div class="small muted">${esc(a.email)} · alta ${esc(fCorta(a.fecha_alta))}${a.nombre_fiscal ? ' · ' + esc(a.nombre_fiscal) : ''}</div>
+    <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn sm gold" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm" data-act="abrirReporte" data-id="${a.id}">📋 Reporting semanal</button><button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button></div></section>
   ${e.motivos.length ? `<section class="section"><div class="card stack"><span class="eyebrow">Para revisar</span><div class="small">${esc(e.motivos.join(' · '))}</div></div></section>` : ''}
   <section class="section"><div class="section-head"><h2>Plan</h2><button class="btn sm ghost" data-act="editarServicio">✎ Editar</button></div><div class="card stack">
     <div class="row"><div class="grow"><h3>${esc(srv?.producto || 'Sin plan asignado')}</h3><div class="small muted">${[f.prog && `${esc(f.prog.nombre)}${dpw ? ` · ${dpw} días por semana` : ''}`, srv?.modulo_nutricion && 'con nutrición', (srv?.modulo_presencial || srv?.sesiones_incluidas) && `${srv.sesiones_incluidas || ''} presenciales`.trim()].filter(Boolean).join(' · ') || 'Sin programa'}</div></div>${P && !P.sinFin ? `<b class="num" style="font-family:var(--display);font-size:24px">${P.pctTotal} %</b>` : ''}</div>
@@ -1131,6 +1131,29 @@ function formMedicion() {
     const { error } = await sb.from('mediciones').insert(row);
     if (error) return fallo(error);
     cerrarSheet(); toast('Medición guardada'); await abrirFicha(S.ficha.id); abrirSub('composicion');
+  });
+}
+/* Datos del alumno: nombre visible, nombre completo para facturas, NIF y datos físicos */
+function formDatosAlumno(id) {
+  const a = S.c.perfiles.find(p => p.id === id); if (!a) return;
+  abrirSheet(`<form class="stack" id="f-da"><h2>Datos del alumno</h2>
+    <label class="f">Nombre en la app<input type="text" data-k="nombre" value="${esc(a.nombre || '')}" placeholder="Ej. Carmen Sánchez" required></label>
+    <p class="small muted">Es el nombre que verás en tus listas. Pon nombre y primer apellido para no confundir a dos alumnos con el mismo nombre.</p>
+    <label class="f">Nombre completo (para facturas)<input type="text" data-k="nombre_fiscal" value="${esc(a.nombre_fiscal || '')}" placeholder="Como aparece en su DNI"></label>
+    <label class="f">NIF / NIE<input type="text" data-k="nif" value="${esc(a.nif || '')}"></label>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><label class="f">Sexo<select data-k="sexo"><option value="">—</option><option value="mujer" ${a.sexo === 'mujer' ? 'selected' : ''}>Mujer</option><option value="hombre" ${a.sexo === 'hombre' ? 'selected' : ''}>Hombre</option></select></label>
+    <label class="f">Estatura (cm)<input type="text" inputmode="decimal" data-k="estatura_cm" value="${a.estatura_cm || ''}"></label><label class="f">Nacimiento<input type="date" data-k="fecha_nacimiento" value="${a.fecha_nacimiento || ''}"></label></div>
+    <p class="small muted">Email de acceso: ${esc(a.email || '')}</p>
+    <button class="btn full" type="submit">Guardar</button></form>`);
+  $('#f-da').addEventListener('submit', async e => {
+    e.preventDefault();
+    const upd = {}; document.querySelectorAll('#f-da [data-k]').forEach(i => { const k = i.dataset.k; upd[k] = k === 'estatura_cm' ? numero(i.value) : (i.value.trim() || null); });
+    if (!upd.nombre) return toast('El nombre no puede quedar vacío');
+    let { error } = await sb.from('perfiles').update(upd).eq('id', id);
+    if (error && /column/.test(error.message || '')) { ({ error } = await sb.from('perfiles').update({ nombre: upd.nombre }).eq('id', id)); if (!error) toast('Nombre guardado. Para el resto de datos ejecuta los Bloques 11 y 13'); }
+    if (error) return fallo(error);
+    Object.assign(a, upd); if (id === S.user.id) Object.assign(S.perfil, upd);
+    cerrarSheet(); toast('Datos guardados'); render();
   });
 }
 /* Calculadora suelta (sin guardar), como la de Fit Generation */
@@ -1466,32 +1489,36 @@ function vFacturas() {
     ${S.c.facturasError ? '<div class="empty">Ejecuta el Bloque 11 en Supabase para activar las facturas.</div>' : l.slice(0, 30).map(fa => `<div class="line" data-act="verFactura" data-id="${fa.id}" style="cursor:pointer"><div class="grow"><b class="small">${esc(fa.numero)} · ${esc(fa.cliente_nombre)}</b><div class="small muted">${esc(fDMA(fa.fecha))} · ${esc(fa.concepto)}</div></div><b class="num">${eur(fa.total)} €</b></div>`).join('') || '<div class="empty">Aún no has generado facturas. Pulsa "Factura" en una cuota pagada.</div>'}
     <button class="btn ghost full" data-act="nuevaFactura">＋ Factura sin cuota</button></div></section>`;
 }
-function formFactura(pagoId) {
+function formFactura(pagoId, facId) {
+  const fe = facId ? (S.c.facturas || []).find(x => x.id === facId) : null;
+  if (fe) pagoId = fe.pago_id;
   const p = pagoId ? S.c.pagos.find(x => x.id === pagoId) : null, a = p ? S.c.perfiles.find(x => x.id === p.alumno_id) || {} : {};
   const als = S.c.perfiles;
-  abrirSheet(`<form class="stack" id="f-fac"><h2>Nueva factura</h2>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="f">Número<input type="text" id="fa-n" value="${esc(siguienteNumero())}" required></label><label class="f">Fecha de emisión<input type="date" id="fa-f" value="${hoyISO()}"></label></div>
-    ${p ? '' : `<label class="f">Alumno<select id="fa-al"><option value="">— Otro cliente —</option>${als.map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join('')}</select></label>`}
+  abrirSheet(`<form class="stack" id="f-fac"><h2>${fe ? 'Modificar factura' : 'Nueva factura'}</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="f">Número<input type="text" id="fa-n" value="${esc(fe?.numero || siguienteNumero())}" required></label><label class="f">Fecha de emisión<input type="date" id="fa-f" value="${fe?.fecha || hoyISO()}"></label></div>
+    ${p || fe ? '' : `<label class="f">Alumno<select id="fa-al"><option value="">— Otro cliente —</option>${als.map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join('')}</select></label>`}
     <label class="f">Nombre completo (con los dos apellidos) / razón social<input type="text" id="fa-cn" value="${esc(a.nombre_fiscal || a.nombre || '')}" required></label>
-    ${p && !a.nombre_fiscal ? '<p class="small" style="color:var(--warn)">Escribe su nombre completo tal y como aparece en su DNI. Se guarda en su ficha (solo para facturas) y la próxima vez saldrá solo.</p>' : ''}
+    ${p && !fe && !a.nombre_fiscal ? '<p class="small" style="color:var(--warn)">Escribe su nombre completo tal y como aparece en su DNI. Se guarda en su ficha (solo para facturas) y la próxima vez saldrá solo.</p>' : ''}
     <label class="f">NIF / NIE<input type="text" id="fa-ci" value="${esc(a.nif || '')}" placeholder="Se guarda en su ficha para la próxima vez"></label>
-    <label class="f">Concepto<input type="text" id="fa-co" value="Acompañamiento personalizado" required></label>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="f">Total con IVA (€)<input type="text" inputmode="decimal" id="fa-t" value="${p ? String(p.importe).replace('.', ',') : ''}" required></label><label class="f">Fecha de pago<input type="date" id="fa-fp" value="${(p?.pagado_at || '').slice(0, 10)}"></label></div>
-    <label class="f">Forma de pago<select id="fa-fo">${['Transferencia bancaria', 'Bizum', 'Efectivo', 'Tarjeta'].map(x => `<option>${x}</option>`).join('')}</select></label>
+    <label class="f">Concepto<input type="text" id="fa-co" value="${esc(fe?.concepto || 'Acompañamiento personalizado')}" required></label>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="f">Total con IVA (€)<input type="text" inputmode="decimal" id="fa-t" value="${fe ? String(fe.total).replace('.', ',') : p ? String(p.importe).replace('.', ',') : ''}" required></label><label class="f">Fecha de pago<input type="date" id="fa-fp" value="${fe ? fe.fecha_pago || '' : (p?.pagado_at || '').slice(0, 10)}"></label></div>
+    <label class="f">Forma de pago<select id="fa-fo">${['Transferencia bancaria', 'Bizum', 'Efectivo', 'Tarjeta'].map(x => `<option ${fe?.forma_pago === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
     <p class="small muted" id="fa-calc"></p>
-    <button class="btn full" type="submit">Generar factura</button></form>`);
+    <button class="btn full" type="submit">${fe ? 'Guardar cambios' : 'Generar factura'}</button>${fe ? '<button class="btn ghost full" type="button" id="fa-del" style="color:var(--bad)">Eliminar factura</button>' : ''}</form>`);
+  if (fe) { $('#fa-cn').value = fe.cliente_nombre || ''; $('#fa-ci').value = fe.cliente_nif || ''; }
+  $('#fa-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = `Pulsa otra vez para eliminar la factura ${fe.numero}`; return; } const { error } = await sb.from('facturas').delete().eq('id', fe.id); if (error) return fallo(error); S.c.facturas = S.c.facturas.filter(y => y.id !== fe.id); S.factura = null; cerrarSheet(); toast('Factura eliminada'); render(); });
   const calc = () => { const t = numero($('#fa-t').value) || 0, b = Math.round(t / 1.21 * 100) / 100; $('#fa-calc').textContent = `Base imponible ${eur(b)} € · IVA (21 %) ${eur(t - b)} € · Total ${eur(t)} €`; };
   calc(); $('#fa-t').addEventListener('input', calc);
   $('#fa-al')?.addEventListener('change', ev => { const x = als.find(y => y.id === ev.target.value) || {}; $('#fa-cn').value = x.nombre_fiscal || x.nombre || ''; $('#fa-ci').value = x.nif || ''; });
   $('#f-fac').addEventListener('submit', async e => {
     e.preventDefault();
     const total = numero($('#fa-t').value); if (!total) return toast('Indica el importe');
-    const base = Math.round(total / 1.21 * 100) / 100, alumno = p?.alumno_id || $('#fa-al')?.value || null;
-    const row = { numero: $('#fa-n').value.trim(), fecha: $('#fa-f').value || hoyISO(), alumno_id: alumno, pago_id: p?.id || null, cliente_nombre: $('#fa-cn').value.trim(), cliente_nif: $('#fa-ci').value.trim() || null, concepto: $('#fa-co').value.trim(), base, iva_pct: 21, iva: Math.round((total - base) * 100) / 100, total, forma_pago: $('#fa-fo').value, fecha_pago: $('#fa-fp').value || null };
-    const { data, error } = await sb.from('facturas').insert(row).select().single();
+    const base = Math.round(total / 1.21 * 100) / 100, alumno = fe ? fe.alumno_id : p?.alumno_id || $('#fa-al')?.value || null;
+    const row = { numero: $('#fa-n').value.trim(), fecha: $('#fa-f').value || hoyISO(), alumno_id: alumno, pago_id: fe ? fe.pago_id : p?.id || null, cliente_nombre: $('#fa-cn').value.trim(), cliente_nif: $('#fa-ci').value.trim() || null, concepto: $('#fa-co').value.trim(), base, iva_pct: 21, iva: Math.round((total - base) * 100) / 100, total, forma_pago: $('#fa-fo').value, fecha_pago: $('#fa-fp').value || null };
+    const { data, error } = fe ? await sb.from('facturas').update(row).eq('id', fe.id).select().single() : await sb.from('facturas').insert(row).select().single();
     if (error) return fallo(error, /duplicate|unique/.test(error.message || '') ? 'Ese número de factura ya existe.' : /facturas/.test(error.message || '') ? 'Falta ejecutar el Bloque 11 en Supabase.' : undefined);
     if (alumno) { const upd = { nombre_fiscal: row.cliente_nombre, ...(row.cliente_nif ? { nif: row.cliente_nif } : {}) }; await sb.from('perfiles').update(upd).eq('id', alumno); const x = S.c.perfiles.find(y => y.id === alumno); if (x) Object.assign(x, upd); }
-    S.c.facturas = [data, ...(S.c.facturas || [])]; cerrarSheet(); verFactura(data.id);
+    S.c.facturas = [data, ...(S.c.facturas || []).filter(y => y.id !== data.id)]; cerrarSheet(); if (fe) toast('Factura modificada'); verFactura(data.id);
   });
 }
 function formDatosFiscales() {
@@ -1511,7 +1538,7 @@ function vFacturaDoc() {
   const fa = S.factura, F = S.c.fiscal || {};
   const campo = (l, v, extra = '') => `<div class="fd-f ${extra}"><span>${l}</span><div>${esc(v || '')}</div></div>`;
   return `<section class="stack no-print"><button class="btn sm ghost" data-act="cerrarFactura" style="align-self:flex-start">← Pagos</button>
-    <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" data-act="imprimirFactura">Descargar / imprimir PDF</button>${fa.alumno_id ? '' : ''}</div>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" data-act="imprimirFactura">Descargar / imprimir PDF</button><button class="btn ghost" data-act="editarFactura" data-id="${fa.id}">✎ Modificar</button></div>
     <p class="small muted">En el móvil: pulsa "Descargar / imprimir PDF" y elige "Guardar como PDF" o compártela por WhatsApp.</p></section>
   <div class="factura-doc">
     <div class="fd-top"></div>
@@ -2350,6 +2377,8 @@ document.addEventListener('click', async e => {
     case 'nuevaMedicion': formMedicion(); break;
     case 'misMedidas': formMisMedidas(); break;
     case 'calcGrasa': formCalculadoraGrasa(); break;
+    case 'datosAlumno': formDatosAlumno(b.dataset.id); break;
+    case 'editarFactura': formFactura(null, +b.dataset.id); break;
     case 'nuevoPago': formPago(S.ficha.id); break;
     case 'nuevoPagoGeneral': formPago(null); break;
     case 'nuevaNota': formNota(); break;
