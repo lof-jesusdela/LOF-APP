@@ -199,6 +199,26 @@ details.como>summary{cursor:pointer;color:var(--blue-text)}
 .kpi.rep.ok{border-color:rgba(30,154,94,.4);background:rgba(30,154,94,.06)}.kpi.rep.warn{border-color:rgba(214,140,20,.45);background:rgba(214,140,20,.07)}.kpi.rep.bad{border-color:rgba(210,59,50,.4);background:rgba(210,59,50,.06)}
 .kpi.rep b{font-size:20px;font-family:var(--display)}
 .rep-c{border-left:3px solid var(--gold);padding:2px 0 2px 10px}
+.track.gordo{height:12px}.track.gordo i{background:linear-gradient(90deg,var(--blue),var(--gold))}
+.kpi.tile{text-align:left;font:inherit;color:inherit;cursor:pointer;border:1px solid var(--line)}.kpi.tile .l{color:var(--blue-text);font-weight:700}
+.badge-dot{position:absolute;top:6px;right:calc(50% - 16px);width:9px;height:9px;border-radius:50%;background:var(--bad);border:2px solid var(--surface)}
+#tabs-in button{position:relative}
+.aviso-chk{border:1.5px solid var(--gold);background:var(--gold-soft)}
+.choice.ing{display:flex;gap:6px}.choice.ing button{flex:1}
+.factura-doc{background:#fff;color:#0d2747;max-width:794px;margin:12px auto 30px;padding:0 34px 30px;font-family:Arial,Helvetica,sans-serif;box-shadow:0 2px 14px rgba(0,0,0,.08);border-radius:6px;overflow:hidden}
+.fd-top{height:22px;background:#0d2747;margin:0 -34px 18px}
+.fd-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}.fd-head img{width:62px;height:62px;border-radius:50%}
+.fd-head h1{font-family:Arial,Helvetica,sans-serif;font-size:30px;letter-spacing:.02em;color:#0d2747;margin:0}.fd-sub{font-size:8.5px;color:#4b5c74;letter-spacing:.05em;margin-top:4px}
+.fd-f span{display:block;font-size:7.5px;color:#4b5c74;margin:8px 0 3px;letter-spacing:.03em}.fd-f>div{background:#eef4f9;border:1px solid #c4d6e6;padding:6px 8px;font-size:10px;min-height:14px;color:#0d2747}
+.fd-g2{display:grid;grid-template-columns:1fr 1fr;gap:18px}.fd-g21{display:grid;grid-template-columns:3fr 1.3fr;gap:10px;align-items:end}
+.fd-bar{background:#0d2747;color:#fff;font-size:8.5px;font-weight:700;padding:7px 10px;margin:16px 0 4px;letter-spacing:.04em}
+.fd-mini{font-size:7px;color:#4b5c74;margin-top:4px}.fd-lab{font-size:7px;font-weight:700;color:#4b5c74;margin-top:12px}
+.fd-f.eur{display:flex;align-items:center;gap:6px}.fd-f.eur>div{flex:1}.fd-f.eur b{font-weight:400;font-size:11px}
+.fd-txt{font-size:9px;margin:14px 0 6px}
+.fd-tot{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:10px}.fd-sum{display:flex;flex-direction:column;gap:8px;padding-top:14px}
+.fd-r{display:grid;grid-template-columns:1fr 1fr;align-items:center;font-size:9px;gap:8px}.fd-r.total span{background:#0d2747;color:#fff;font-weight:700;font-size:11px;padding:11px 10px}.fd-r.total .fd-f>div{font-size:12px;padding:9px 8px}
+.fd-pie{font-size:8.5px;font-weight:700;margin-top:150px}
+@media print{body{background:#fff!important}header.top,#tabs,.no-print,#toast,#timer{display:none!important}main{padding:0!important;max-width:none!important}.factura-doc{box-shadow:none;margin:0 auto;border-radius:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{size:A4;margin:0}}
 </style>
 </head>
 <body>
