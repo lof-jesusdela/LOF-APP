@@ -1,0 +1,19 @@
+name: Guardar imágenes de las hojas
+on:
+  push:
+    paths: ['img_fuente.json']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  descargar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/descargar_imagenes.py
+      - run: |
+          git config user.name "lof-bot"
+          git config user.email "lof-bot@users.noreply.github.com"
+          git add img
+          git commit -m "Imágenes de ejercicios guardadas en la app" || echo "sin cambios"
+          git push
