@@ -298,7 +298,8 @@ function vEntreno() {
   const hechoSemana = id => S.d.sesiones.some(s => s.dia_id === id && s.fecha >= lunes);
   const P = proceso(S.d.servicio), Pn = P && !P.antes ? S.d.sesiones.filter(x => x.fecha >= P.cc.ini && x.fecha <= P.cc.fin).length : null;
   return como + `<section class="stack"><span class="eyebrow">${esc(p.nombre)}</span><h1>Entreno</h1>${P && !P.antes && !P.fuera ? `<div class="row" style="flex-wrap:wrap;gap:6px"><span class="pill blue">Ciclo ${P.ciclo}</span><span class="pill gold">Semana ${P.semCiclo} de ${P.cc.sem}</span><span class="pill">${Pn} ${p.dias_semana ? 'de ' + p.dias_semana * P.cc.sem + ' ' : ''}entrenos del ciclo</span></div>` : ''}</section>
-  <section class="section"><div class="card">${p.dias.map(d => `<div class="wk ${norm(d.nombre) === hoyN ? 'today' : ''}"><span class="d">${esc(d.nombre.slice(0, 3))}</span><div class="grow"><h3>${esc(d.foco || d.nombre)}</h3><div class="small muted">${esc(d.volumen || '')} volumen · ${esc(d.intensidad || '')} intensidad</div></div>${hechoSemana(d.id) ? '<span class="pill ok">Hecho</span>' : ''}<button class="btn sm ${norm(d.nombre) === hoyN ? '' : 'ghost'}" data-act="abrirDia" data-id="${d.id}">Abrir</button></div>`).join('')}</div></section>`;
+  <section class="section"><div class="card">${p.dias.map(d => `<div class="wk ${norm(d.nombre) === hoyN ? 'today' : ''}"><span class="d">${esc(d.nombre.slice(0, 3))}</span><div class="grow"><h3>${esc(d.foco || d.nombre)}</h3><div class="small muted">${esc(d.volumen || '')} volumen · ${esc(d.intensidad || '')} intensidad</div></div>${hechoSemana(d.id) ? '<span class="pill ok">Hecho</span>' : ''}<button class="btn sm ${norm(d.nombre) === hoyN ? '' : 'ghost'}" data-act="abrirDia" data-id="${d.id}">Abrir</button></div>`).join('')}</div></section>
+  ${vCalendarioPres()}`;
 }
 
 function gruposDe(pauta) {
@@ -1187,10 +1188,11 @@ function vPresenciales(srv, lista, coach) {
   return `<section class="section"><div class="section-head"><h2>${coach ? 'Entrenamientos presenciales' : 'Tus entrenamientos conmigo'}</h2>${coach ? '<button class="btn sm" data-act="nuevaPres">＋ Añadir</button>' : ''}</div><div class="card stack">
     ${D.total ? `<div class="row"><div class="grow"><b class="num" style="font-family:var(--display);font-size:26px">${D.hechas.length} de ${D.total}</b><div class="small muted">sesiones hechas</div></div><div style="text-align:right"><b class="num" style="font-family:var(--display);font-size:26px;color:var(--blue)">${D.quedan}</b><div class="small muted">${D.quedan === 1 ? 'queda' : 'quedan'}</div></div></div>` : `<p class="small muted">${coach ? 'Indica en "Servicio → Editar" cuántas sesiones presenciales incluye su bono.' : 'Jesús indicará aquí tu bono de sesiones.'}</p>`}
     ${n ? `<div class="cajas">${cajas}</div><div class="row small muted" style="gap:12px;flex-wrap:wrap"><span><i class="lp hecha"></i> Hecha</span><span><i class="lp tarde"></i> Aviso &lt; 24 h (cuenta)</span><span><i class="lp prog"></i> Reservada</span><span><i class="lp libre"></i> Por usar</span></div>` : ''}
-    <div class="stack" style="gap:6px"><span class="eyebrow">Próximos entrenamientos</span>${D.prox.map(p => `<div class="line" ${coach ? `data-act="editarPres" data-id="${p.id}" style="cursor:pointer"` : ''}><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">${esc(fLarga(p.fecha))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</b>${p.nota ? `<div class="small muted">${esc(p.nota)}</div>` : ''}</div></div>`).join('') || '<div class="small muted">No hay ninguno programado.</div>'}</div>
+    <div class="stack" style="gap:6px"><span class="eyebrow">Próximos entrenamientos</span>${D.prox.map(p => `<div class="line" data-act="${coach ? 'editarPres' : 'verPres'}" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">${esc(fLarga(p.fecha))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</b>${p.nota ? `<div class="small muted">${esc(p.nota)}</div>` : ''}</div><span class="small" style="color:var(--blue-text)">${coach ? 'Editar' : 'Ver / cancelar'} ›</span></div>`).join('') || '<div class="small muted">No hay ninguno programado.</div>'}</div>
     ${D.hechas.length ? `<div class="stack" style="gap:6px"><span class="eyebrow">Ya canjeados</span>${D.hechas.slice().reverse().map(p => `<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><span class="caja mini ${p.estado}"><b>${ocup.indexOf(p) + 1}</b></span><div class="grow"><b class="small">${esc(fLarga(p.fecha))}</b><div class="small muted">${esc(qEntreno(p, coach) || (p.estado === 'tarde' ? 'Aviso con menos de 24 h' : p.nota || 'Sesión presencial'))}</div></div><span class="small muted">›</span></div>`).join('')}</div>` : ''}
     ${reservar}
-    ${coach ? `<p class="small muted">Calendly: ${S.calendly ? `<a href="${esc(S.calendly)}" target="_blank" rel="noopener">${esc(S.calendly.replace(/^https?:\/\//, ''))}</a>` : 'sin configurar'} · <button class="linkbtn" data-act="configCalendly">${S.calendly ? 'Cambiar' : 'Configurar'}</button></p>` : ''}
+    ${!coach && D.prox.length ? `<button class="btn ghost full" data-act="cancelarPresLista">Cancelar una sesión reservada</button>` : ''}
+    ${coach ? `<p class="small muted">Calendly y WhatsApp: ${S.calendly ? `<a href="${esc(S.calendly)}" target="_blank" rel="noopener">${esc(S.calendly.replace(/^https?:\/\//, ''))}</a>` : 'sin configurar'} · <button class="linkbtn" data-act="configCalendly">${S.calendly ? 'Cambiar' : 'Configurar'}</button></p>` : ''}
     <p class="note">${REGLA_24H}</p>
   </div></section>`;
 }
@@ -1209,7 +1211,53 @@ function verPres(id) {
     ${dia ? `<div class="card stack"><span class="eyebrow">Qué entrenamos</span><b>${esc(dia.nombre || '')} · ${esc(dia.foco || '')}</b>${ses.registros_series ? `<div class="small muted">${ses.registros_series.length} series registradas</div>` : ''}${ses.duracion_min ? `<div class="small muted">${ses.duracion_min} minutos</div>` : ''}</div>` : `<p class="small muted">${p.estado === 'tarde' ? 'No se entrenó: se avisó con menos de 24 horas.' : 'Sin entrenamiento registrado en la app.'}</p>`}
     ${p.nota ? `<div class="small"><span class="muted">Nota:</span> ${esc(p.nota)}</div>` : ''}
     ${coach ? `<div class="row" style="gap:8px">${p.sesion_id ? `<button class="btn sm" data-act="presVerSesion" data-id="${p.sesion_id}">Ver entrenamiento</button>` : ''}<button class="btn sm ghost" data-act="editarPres" data-id="${p.id}">✎ Editar</button></div>` : ''}
+    ${!coach && p.estado === 'programada' && p.fecha >= hoyISO() ? `<button class="btn ghost full" data-act="cancelarPres" data-id="${p.id}" style="color:var(--bad)">Cancelar esta sesión</button>` : ''}
     <button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
+}
+/* Cancelación por el alumno: solo con más de 24 h de antelación */
+const momentoPres = p => new Date(`${p.fecha}T${hhmm(p.hora) || '00:00'}:00`);
+const faltanHoras = p => (momentoPres(p) - Date.now()) / 36e5;
+const waJesus = txt => { const n = String(S.whatsapp || '').replace(/\D/g, ''); return `https://wa.me/${n}?text=${encodeURIComponent(txt)}`; };
+function cancelarPresLista() {
+  const l = datosPres(S.d.servicio, S.d.presenciales || []).prox;
+  if (l.length === 1) return cancelarPres(l[0].id);
+  abrirSheet(`<div class="stack"><h2>¿Qué sesión quieres cancelar?</h2>${l.map(p => `<button class="btn ghost full" data-act="cancelarPres" data-id="${p.id}" style="text-align:left">${esc(fLarga(p.fecha))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</button>`).join('')}<button class="btn ghost full" data-act="cerrarSheet">Volver</button></div>`);
+}
+function cancelarPres(id) {
+  const p = (S.d.presenciales || []).find(x => x.id === id); if (!p) return;
+  const cuando = `${fLarga(p.fecha)}${p.hora ? ' a las ' + hhmm(p.hora) : ''}`;
+  if (faltanHoras(p) < 24) {
+    return abrirSheet(`<div class="stack"><h2>No se puede cancelar</h2>
+      <p class="small">Tu sesión del <b>${esc(cuando)}</b> es dentro de menos de 24 horas, así que ya no se puede cancelar desde la app.</p>
+      <div class="aprox small">${REGLA_24H}</div>
+      <p class="small">Escríbele a Jesús por WhatsApp y cuéntale qué ha sucedido: si está justificado, él la recolocará.</p>
+      <a class="btn full" href="${esc(waJesus(`Hola Jesús, no voy a poder venir a la sesión del ${cuando}. Te cuento lo que ha pasado: `))}" target="_blank" rel="noopener">Escribir a Jesús por WhatsApp</a>
+      <button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
+  }
+  abrirSheet(`<div class="stack"><h2>Cancelar sesión</h2><p class="small">¿Seguro que quieres cancelar tu sesión del <b>${esc(cuando)}</b>? Como avisas con más de 24 horas, no cuenta como hecha y la puedes volver a reservar.</p>
+    ${p.origen === 'calendly' ? '<p class="note">La reservaste en Calendly: cancélala también desde el email de confirmación de Calendly para liberar el hueco en el calendario de Jesús.</p>' : ''}
+    <button class="btn full" data-act="confirmarCancelPres" data-id="${p.id}" style="background:var(--bad)">Sí, cancelar la sesión</button><button class="btn ghost full" data-act="cerrarSheet">No, mantenerla</button></div>`);
+}
+async function confirmarCancelPres(id) {
+  const p = (S.d.presenciales || []).find(x => x.id === id); if (!p) return;
+  if (faltanHoras(p) < 24) return cancelarPres(id);
+  const { data, error } = await sb.from('presenciales').update({ estado: 'cancelada', nota: [p.nota, 'Cancelada por el alumno el ' + fCorta(hoyISO())].filter(Boolean).join(' · ') }).eq('id', id).select();
+  if (error || !data?.length) return fallo(error || {}, 'No se ha podido cancelar. Escríbele a Jesús por WhatsApp.');
+  cerrarSheet(); toast('Sesión cancelada'); await cargarAlumno(S.user.id); render();
+}
+/* Calendario de próximas sesiones presenciales (pestaña Entreno) */
+function vCalendarioPres() {
+  const l = (S.d.presenciales || []).filter(p => p.estado === 'programada' && p.fecha >= hoyISO()).sort(ordPres);
+  const srv = S.d.servicio; if (!l.length && !srv?.modulo_presencial && !srv?.sesiones_incluidas) return '';
+  const ini = lunesDe(hoyISO()), dias = [...Array(28)].map((_, i) => sumaDias(ini, i)), porDia = {};
+  l.forEach(p => (porDia[p.fecha] ||= []).push(p));
+  const celda = d => { const ps = porDia[d], pas = d < hoyISO(); return `<${ps ? `button data-act="verPres" data-id="${ps[0].id}"` : 'div'} class="cal-d ${ps ? 'con' : ''} ${d === hoyISO() ? 'hoy' : ''} ${pas ? 'pas' : ''}"><b>${fecha(d).getDate()}</b>${ps ? `<span>${hhmm(ps[0].hora) || '●'}</span>` : ''}</${ps ? 'button' : 'div'}>`; };
+  const mes = fecha(ini).toLocaleDateString('es-ES', { month: 'long' }), mes2 = fecha(dias[27]).toLocaleDateString('es-ES', { month: 'long' });
+  return `<section class="section"><div class="section-head"><h2>Tus sesiones con Jesús</h2><span class="small muted">${esc(mes === mes2 ? mes : mes + ' – ' + mes2)}</span></div><div class="card stack">
+    <div class="cal">${['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(x => `<span class="cal-h">${x}</span>`).join('')}${dias.map(celda).join('')}</div>
+    ${l.length ? l.map(p => `<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">${esc(fLarga(p.fecha))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</b><div class="small muted">Entrenamiento presencial con Jesús</div></div><span class="small" style="color:var(--blue-text)">›</span></div>`).join('') : '<p class="small muted">No tienes sesiones reservadas.</p>'}
+    ${S.obj ? '' : '<button class="btn sm" data-act="reservarPres" style="align-self:flex-start">Reservar sesión</button>'}
+  </div></section>`;
 }
 function formPres(id) {
   const p = id ? S.ficha.pres.find(x => x.id === id) : null;
@@ -1237,16 +1285,19 @@ async function cargarPres() {
   S.ficha.pres = data || []; render();
 }
 /* Reserva con Calendly: el alumno elige hueco (llega a Google Calendar de Jesús) y la app lo apunta */
-async function cargarAjustes() { try { const { data } = await sb.from('ajustes').select('*'); S.calendly = (data || []).find(x => x.clave === 'calendly')?.valor || window.LOF_CONFIG?.calendly || ''; } catch (e) { } }
+async function cargarAjustes() { try { const { data } = await sb.from('ajustes').select('*'); S.calendly = (data || []).find(x => x.clave === 'calendly')?.valor || window.LOF_CONFIG?.calendly || ''; S.whatsapp = (data || []).find(x => x.clave === 'whatsapp')?.valor || ''; } catch (e) { } }
 function formCalendly() {
   abrirSheet(`<form class="stack" id="f-cal"><h2>Calendly</h2>
     <p class="small">Pega el enlace de tu evento de Calendly para los entrenamientos presenciales (el que conectas a tu Google Calendar).</p>
     <label class="f">Enlace<input type="url" id="cal-u" value="${esc(S.calendly || '')}" placeholder="https://calendly.com/tu-usuario/entrenamiento-presencial"></label>
+    <label class="f">Tu WhatsApp (con prefijo, para que te escriban si no pueden cancelar)<input type="tel" id="cal-w" value="${esc(S.whatsapp || '')}" placeholder="34600111222"></label>
     <p class="note">Cuando un alumno toque un recuadro libre se abrirá tu Calendly con su nombre y email ya puestos. Calendly te avisa y lo añade a tu Google Calendar; la app guarda la reserva en su bono.</p>
     <button class="btn full" type="submit">Guardar</button></form>`);
   $('#f-cal').addEventListener('submit', async e => {
     e.preventDefault(); const v = $('#cal-u').value.trim();
-    const { error } = await sb.from('ajustes').upsert({ clave: 'calendly', valor: v }, { onConflict: 'clave' });
+    const w = $('#cal-w').value.replace(/\D/g, '');
+    const { error } = await sb.from('ajustes').upsert([{ clave: 'calendly', valor: v }, { clave: 'whatsapp', valor: w }], { onConflict: 'clave' });
+    S.whatsapp = w;
     if (error) return fallo(error, 'Falta ejecutar el Bloque 8 en Supabase.');
     S.calendly = v; cerrarSheet(); toast('Calendly guardado'); render();
   });
@@ -1773,6 +1824,9 @@ document.addEventListener('click', async e => {
     case 'entrenarAhora': formEntrenarCon(b.dataset.id); break;
     case 'verPres': verPres(+b.dataset.id); break;
     case 'reservarPres': await reservarPres(); break;
+    case 'cancelarPresLista': cancelarPresLista(); break;
+    case 'cancelarPres': cancelarPres(+b.dataset.id); break;
+    case 'confirmarCancelPres': await confirmarCancelPres(+b.dataset.id); break;
     case 'configCalendly': formCalendly(); break;
     case 'editarBloques': formBloquesProceso(); break;
     case 'nuevaPres': formPres(); break;
