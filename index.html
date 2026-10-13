@@ -178,6 +178,14 @@ nav.tabs button[aria-current="page"]{color:var(--blue)}
 details.prueba>summary{list-style:none;cursor:pointer}details.prueba>summary::-webkit-details-marker{display:none}
 details.prueba .mas{font-size:20px;color:var(--blue);transition:transform .2s}details.prueba[open] .mas{transform:rotate(45deg)}
 details.como>summary{cursor:pointer;color:var(--blue-text)}
+.cajas{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:6px}
+.caja{aspect-ratio:1;border-radius:12px;border:1.5px dashed var(--line);background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:0;color:var(--muted)}
+.caja b{font-size:16px;font-family:var(--display)}.caja span{font-size:10.5px;font-weight:700}
+.caja.dada{background:var(--blue);border:0;color:#fff}.caja.tarde{background:var(--gold);border:0;color:var(--ink)}
+.lp{display:inline-block;width:12px;height:12px;border-radius:4px;vertical-align:-2px;margin-right:4px}.lp.hecha{background:var(--blue)}.lp.tarde{background:var(--gold)}.lp.libre{border:1.5px dashed var(--line)}.lp.prog{border:2px solid var(--blue)}
+.caja.programada{border:2px solid var(--blue);color:var(--blue-text);background:var(--blue-soft)}.caja.libre{cursor:pointer}
+.caja.mini{width:34px;height:34px;aspect-ratio:auto;flex:none;border-radius:9px}.caja.mini b{font-size:13px}
+.linkbtn{border:0;background:none;padding:0;color:var(--blue-text);font-weight:700;text-decoration:underline}
 </style>
 </head>
 <body>
