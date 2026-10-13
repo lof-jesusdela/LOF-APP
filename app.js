@@ -1217,7 +1217,13 @@ function verPres(id) {
 /* Cancelación por el alumno: solo con más de 24 h de antelación */
 const momentoPres = p => new Date(`${p.fecha}T${hhmm(p.hora) || '00:00'}:00`);
 const faltanHoras = p => (momentoPres(p) - Date.now()) / 36e5;
-const waJesus = txt => { const n = String(S.whatsapp || '').replace(/\D/g, ''); return `https://wa.me/${n}?text=${encodeURIComponent(txt)}`; };
+/* Acepta el número o el enlace de WhatsApp (wa.me, api.whatsapp.com o wa.link) */
+const waJesus = txt => {
+  const v = String(S.whatsapp || '').trim();
+  const m = v.match(/wa\.me\/\+?(\d{6,})/) || v.match(/phone=\+?(\d{6,})/) || (/^[\d\s+()-]+$/.test(v) ? [0, v.replace(/\D/g, '')] : null);
+  if (m) return `https://wa.me/${m[1]}?text=${encodeURIComponent(txt)}`;
+  return /^https?:\/\//.test(v) ? v : `https://wa.me/?text=${encodeURIComponent(txt)}`;
+};
 function cancelarPresLista() {
   const l = datosPres(S.d.servicio, S.d.presenciales || []).prox;
   if (l.length === 1) return cancelarPres(l[0].id);
@@ -1290,12 +1296,12 @@ function formCalendly() {
   abrirSheet(`<form class="stack" id="f-cal"><h2>Calendly</h2>
     <p class="small">Pega el enlace de tu evento de Calendly para los entrenamientos presenciales (el que conectas a tu Google Calendar).</p>
     <label class="f">Enlace<input type="url" id="cal-u" value="${esc(S.calendly || '')}" placeholder="https://calendly.com/tu-usuario/entrenamiento-presencial"></label>
-    <label class="f">Tu WhatsApp (con prefijo, para que te escriban si no pueden cancelar)<input type="tel" id="cal-w" value="${esc(S.whatsapp || '')}" placeholder="34600111222"></label>
+    <label class="f">Tu WhatsApp: pega el enlace a tu chat (o tu número con prefijo)<input type="text" id="cal-w" value="${esc(S.whatsapp || '')}" placeholder="https://wa.me/34600111222"></label>
     <p class="note">Cuando un alumno toque un recuadro libre se abrirá tu Calendly con su nombre y email ya puestos. Calendly te avisa y lo añade a tu Google Calendar; la app guarda la reserva en su bono.</p>
     <button class="btn full" type="submit">Guardar</button></form>`);
   $('#f-cal').addEventListener('submit', async e => {
     e.preventDefault(); const v = $('#cal-u').value.trim();
-    const w = $('#cal-w').value.replace(/\D/g, '');
+    const w = $('#cal-w').value.trim();
     const { error } = await sb.from('ajustes').upsert([{ clave: 'calendly', valor: v }, { clave: 'whatsapp', valor: w }], { onConflict: 'clave' });
     S.whatsapp = w;
     if (error) return fallo(error, 'Falta ejecutar el Bloque 8 en Supabase.');
