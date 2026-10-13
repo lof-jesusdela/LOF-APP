@@ -216,10 +216,74 @@
   "movilidad:Lunes": "img/bloques/movilidad-lunes.jpg",
   "movilidad:Martes": "img/bloques/movilidad-martes.jpg",
   "movilidad:Miércoles": "img/bloques/movilidad-miercoles.jpg",
-  "movilidad:Viernes": "img/bloques/movilidad-viernes.jpg"
+  "movilidad:Viernes": "img/bloques/movilidad-viernes.jpg",
+  "cardio:remo": "img/bloques/remo-cardio.jpg",
+  "cardio:bici": "img/bloques/bici-cardio.jpg",
+  "cardio:cinta inclinada": "img/bloques/cinta-inclinada-cardio.jpg",
+  "movilidad-jl:lunes": "img/bloques/movilidad-jl-lunes.jpg",
+  "movilidad-jl:martes": "img/bloques/movilidad-jl-martes.jpg",
+  "movilidad-jl:jueves": "img/bloques/movilidad-jl-jueves.jpg",
+  "movilidad-jl:viernes": "img/bloques/movilidad-jl-viernes.jpg",
+  "movilidad-jl:sabado": "img/bloques/movilidad-jl-sabado.jpg"
  },
  "Abducción de cadera en polea": {
   "img": "img/ej/abduccion-de-cadera.jpg",
   "musculo_img": "img/mus/abduccion-de-cadera.jpg"
+ },
+ "Crunch lateral con kettlebell": {
+  "img": "img/ej/crunch-lateral-con-kettlebell.jpg",
+  "musculo_img": "img/mus/crunch-lateral-con-kettlebell.jpg"
+ },
+ "Rotación de tronco": {
+  "img": "img/ej/rotacion-de-tronco.jpg",
+  "musculo_img": "img/mus/rotacion-de-tronco.jpg"
+ },
+ "Jalón al pecho neutro": {
+  "img": "img/ej/jalon-al-pecho-neutro.jpg",
+  "musculo_img": "img/mus/jalon-al-pecho-neutro.jpg"
+ },
+ "Remo a 1 mano neutro": {
+  "img": "img/ej/remo-a-1-mano-neutro.jpg",
+  "musculo_img": "img/mus/remo-a-1-mano-neutro.jpg"
+ },
+ "Bíceps supino": {
+  "img": "img/ej/biceps-supino.jpg",
+  "musculo_img": "img/mus/biceps-supino.jpg"
+ },
+ "Sentadilla completa": {
+  "img": "img/ej/sentadilla-completa.jpg",
+  "musculo_img": "img/mus/sentadilla-completa.jpg"
+ },
+ "Flexo-extensión de tobillo": {
+  "img": "img/ej/flexo-extension-de-tobillo.jpg",
+  "musculo_img": "img/mus/flexo-extension-de-tobillo.jpg"
+ },
+ "Peso muerto en Smith": {
+  "img": "img/ej/peso-muerto-en-smith.jpg",
+  "musculo_img": "img/mus/peso-muerto-en-smith.jpg"
+ },
+ "Curl femoral sentado": {
+  "img": "img/ej/curl-femoral-sentado.jpg",
+  "musculo_img": "img/mus/curl-femoral-sentado.jpg"
+ },
+ "Press Pallof en 2 movimientos": {
+  "img": "img/ej/press-pallof-en-2-movimientos.jpg",
+  "musculo_img": "img/mus/press-pallof-en-2-movimientos.jpg"
+ },
+ "Press inclinado neutro": {
+  "img": "img/ej/press-inclinado-neutro.jpg",
+  "musculo_img": "img/mus/press-inclinado-neutro.jpg"
+ },
+ "Apertura de hombro a 1 mano": {
+  "img": "img/ej/apertura-de-hombro-a-1-mano.jpg",
+  "musculo_img": "img/mus/apertura-de-hombro-a-1-mano.jpg"
+ },
+ "Plancha abdominal": {
+  "img": "img/ej/plancha-abdominal.jpg",
+  "musculo_img": "img/mus/plancha-abdominal.jpg"
+ },
+ "Press Pallof": {
+  "img": "img/ej/press-pallof.jpg",
+  "musculo_img": "img/mus/press-pallof.jpg"
  }
 }
