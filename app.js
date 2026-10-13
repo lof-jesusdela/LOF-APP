@@ -737,15 +737,74 @@ function spark(pts, { unit = '', dec = 1, color = 'var(--blue)' } = {}) {
 }
 function serie(med, campo) { return med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)).filter(m => m[campo] != null).map(m => ({ f: m.fecha, v: Number(m[campo]) })); }
 function delta(pts) { if (pts.length < 2) return null; return pts[pts.length - 1].v - pts[0].v; }
+/* ---------- % de grasa: método US Navy (el de la calculadora de Fit Generation) y percentiles por sexo y edad ---------- */
+const RANGOS_GRASA = { mujer: [[39, 21, 33, 39], [59, 23, 35, 40], [999, 24, 36, 42]], hombre: [[39, 8, 20, 25], [59, 11, 22, 28], [999, 13, 25, 30]] };
+const edadDe = (nac, en = hoyISO()) => { if (!nac) return null; const a = fecha(nac), b = fecha(en); let e = b.getFullYear() - a.getFullYear(); if (b.getMonth() < a.getMonth() || (b.getMonth() === a.getMonth() && b.getDate() < a.getDate())) e--; return e; };
+function grasaNavy({ sexo, estatura, cuello, cintura, cadera }) {
+  if (!sexo || !estatura || !cuello || !cintura) return null;
+  const L = Math.log10;
+  let pct;
+  if (sexo === 'hombre') { if (cintura <= cuello) return null; pct = 495 / (1.0324 - 0.19077 * L(cintura - cuello) + 0.15456 * L(estatura)) - 450; }
+  else { if (!cadera || cintura + cadera <= cuello) return null; pct = 495 / (1.29579 - 0.35004 * L(cintura + cadera - cuello) + 0.22100 * L(estatura)) - 450; }
+  return pct > 2 && pct < 70 ? Math.round(pct * 10) / 10 : null;
+}
+function clasifGrasa(pct, sexo, edad) {
+  if (pct == null || !sexo) return null;
+  const [, b, s2, o] = RANGOS_GRASA[sexo].find(r => (edad ?? 30) <= r[0]);
+  const tramo = (edad ?? 30) < 40 ? '20-39' : edad < 60 ? '40-59' : '60-79';
+  if (pct < b) return { l: 'Bajo en grasa', n: 'warn', r: `< ${b} %`, tramo };
+  if (pct <= s2) return { l: 'Saludable', n: 'ok', r: `${b}–${s2} %`, tramo };
+  if (pct <= o) return { l: 'Sobrepeso', n: 'warn', r: `${s2}–${o} %`, tramo };
+  return { l: 'Obesidad', n: 'bad', r: `> ${o} %`, tramo };
+}
+const conKgGrasa = med => med.map(m => ({ ...m, grasa_kg: m.grasa_kg ?? (m.peso && m.grasa_pct ? Math.round(m.peso * m.grasa_pct) / 100 : null) }));
+function vResumenGrasa(med, perfil) {
+  const l = med.filter(m => m.grasa_pct != null); if (!l.length) return '';
+  const u = l[l.length - 1], p0 = l[0], c = clasifGrasa(u.grasa_pct, perfil?.sexo, edadDe(perfil?.fecha_nacimiento, u.fecha));
+  const kg = u.grasa_kg, dkg = l.length > 1 && kg != null && p0.grasa_kg != null ? kg - p0.grasa_kg : null;
+  const mm = u.peso && kg != null ? u.peso - kg : null, mm0 = p0.peso && p0.grasa_kg != null ? p0.peso - p0.grasa_kg : null;
+  return `<div class="grasa-res"><div class="row" style="gap:8px;flex-wrap:wrap"><span class="small"><b>${fmtNum(u.grasa_pct)} % de grasa</b>${kg != null ? ` = ${fmtNum(kg)} kg de grasa` : ''}</span>${c ? `<span class="pill ${c.n}">${c.l}</span>` : ''}</div>
+    ${c ? `<div class="small muted">Rango saludable para ${perfil.sexo === 'mujer' ? 'mujeres' : 'hombres'} de ${c.tramo} años: ${esc(RANGOS_GRASA[perfil.sexo].find(r => (edadDe(perfil.fecha_nacimiento, u.fecha) ?? 30) <= r[0]).slice(1, 3).join('–'))} %</div>` : (perfil && !perfil.sexo ? '<div class="small muted">Indica sexo y fecha de nacimiento para ver su percentil.</div>' : '')}
+    ${dkg != null ? `<div class="small">Desde el inicio: <b style="color:var(--${dkg <= 0 ? 'ok' : 'bad'})">${dkg > 0 ? '+' : ''}${fmtNum(dkg)} kg de grasa</b>${mm != null && mm0 != null ? ` · ${mm - mm0 >= 0 ? '+' : ''}${fmtNum(mm - mm0)} kg de masa magra` : ''}</div>` : ''}</div>`;
+}
+/* Cálculo en vivo dentro de los formularios de medición */
+function enganchaCalcGrasa(form, perfil, alCambiar) {
+  const v = k => numero(form.querySelector(`[data-campo="${k}"]`)?.value), out = form.querySelector('.calc-grasa');
+  const upd = () => {
+    const sexo = form.querySelector('[data-perfil="sexo"]')?.value || perfil.sexo, estatura = numero(form.querySelector('[data-perfil="estatura_cm"]')?.value) || perfil.estatura_cm;
+    const nac = form.querySelector('[data-perfil="fecha_nacimiento"]')?.value || perfil.fecha_nacimiento, edad = edadDe(nac);
+    const pct = grasaNavy({ sexo, estatura, cuello: v('cuello'), cintura: v('cintura'), cadera: v('cadera') }), peso = v('peso');
+    form.dataset.grasaPct = pct ?? ''; form.dataset.grasaKg = pct != null && peso ? Math.round(peso * pct) / 100 : '';
+    if (alCambiar) alCambiar(pct, peso);
+    if (!out) return;
+    if (pct == null) { out.innerHTML = `<span class="small muted">Para calcular el % de grasa hacen falta: sexo, estatura, cuello, cintura${sexo !== 'hombre' ? ' y cadera' : ''}.</span>`; return; }
+    const c = clasifGrasa(pct, sexo, edad);
+    out.innerHTML = `<div class="row" style="gap:8px;flex-wrap:wrap"><b>${fmtNum(pct)} % de grasa</b>${peso ? `<span class="small">${fmtNum(peso * pct / 100)} kg de grasa · ${fmtNum(peso - peso * pct / 100)} kg de masa magra</span>` : ''}${c ? `<span class="pill ${c.n}">${c.l}</span>` : ''}</div><div class="small muted">Método US Navy${c ? ` · ${sexo === 'mujer' ? 'mujer' : 'hombre'} de ${c.tramo} años: saludable ${RANGOS_GRASA[sexo].find(r => (edad ?? 30) <= r[0]).slice(1, 3).join('–')} %` : ''}</div>`;
+  };
+  form.addEventListener('input', upd); upd();
+}
+const camposPerfil = perfil => `${!perfil.sexo || !perfil.estatura_cm || !perfil.fecha_nacimiento ? `<div class="card stack" style="padding:12px;gap:8px"><span class="small"><b>Datos para calcular el % de grasa</b> (solo la primera vez)</span><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+  <label class="f">Sexo<select data-perfil="sexo"><option value="">—</option><option value="mujer" ${perfil.sexo === 'mujer' ? 'selected' : ''}>Mujer</option><option value="hombre" ${perfil.sexo === 'hombre' ? 'selected' : ''}>Hombre</option></select></label>
+  <label class="f">Estatura (cm)<input type="text" inputmode="decimal" data-perfil="estatura_cm" value="${perfil.estatura_cm || ''}"></label>
+  <label class="f">Nacimiento<input type="date" data-perfil="fecha_nacimiento" value="${perfil.fecha_nacimiento || ''}"></label></div></div>` : ''}`;
+async function guardarDatosPerfil(form, id, perfil) {
+  const upd = {}; form.querySelectorAll('[data-perfil]').forEach(i => { const k = i.dataset.perfil, v = k === 'estatura_cm' ? numero(i.value) : i.value || null; if (v != null && v !== perfil[k]) upd[k] = v; });
+  if (!Object.keys(upd).length) return;
+  const { error } = await sb.from('perfiles').update(upd).eq('id', id);
+  if (!error) Object.assign(perfil, upd);
+}
+
 /* Composición corporal: una sola gráfica con desplegable (peso, % grasa, cintura, abdomen) */
-const COMP = [['peso', 'Peso', ' kg', 'var(--blue)'], ['grasa_pct', '% de grasa', ' %', 'var(--gold)'], ['cintura', 'Contorno de cintura', ' cm', 'var(--ink)'], ['abd_bajo', 'Contorno de abdomen', ' cm', 'var(--blue)']];
-function vGraficaComp(med) {
+const COMP = [['peso', 'Peso', ' kg', 'var(--blue)'], ['grasa_pct', '% de grasa', ' %', 'var(--gold)'], ['grasa_kg', 'Kilos de grasa', ' kg', 'var(--bad)'], ['cintura', 'Contorno de cintura', ' cm', 'var(--ink)'], ['abd_bajo', 'Contorno de abdomen', ' cm', 'var(--blue)']];
+function vGraficaComp(med, perfil) {
+  med = conKgGrasa(med);
   const disp = COMP.filter(([c]) => serie(med, c).length);
   if (!disp.length) return '';
   const sel = disp.find(([c]) => c === S.grafComp) || disp[0], [c, t, u, col] = sel, p = serie(med, c), dl = delta(p);
   return `<div class="card stack chart"><div class="row" style="gap:8px"><select class="grow" data-graf="comp" aria-label="Qué medida ver">${disp.map(([k, l]) => `<option value="${k}" ${k === c ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="row"><b class="num grow" style="font-family:var(--display);font-size:26px">${fmtNum(p[p.length - 1].v)}${u}</b>${dl != null ? `<span class="pill num ${dl <= 0 ? 'ok' : 'warn'}">${dl > 0 ? '+' : ''}${fmtNum(dl)}${u} desde el inicio</span>` : ''}</div>
-    ${spark(p, { unit: u, color: col })}</div>`;
+    ${spark(p, { unit: u, color: col })}
+    ${vResumenGrasa(med, perfil)}</div>`;
 }
 function vProgreso() {
   const med = S.d.mediciones;
@@ -756,7 +815,7 @@ function vProgreso() {
   return `<section class="stack"><span class="eyebrow">Tu evolución</span><h1>Progreso</h1><button class="btn" data-act="misMedidas" style="align-self:flex-start">＋ Añadir mis medidas</button></section>
   ${objetivoDe(S.d.ruta) ? `<section class="section"><div class="card stack"><span class="eyebrow">Tu objetivo</span><div class="small">${esc(objetivoDe(S.d.ruta))}</div></div></section>` : ''}
   ${med.length ? `<section class="section"><div class="kpis"><div class="kpi"><div class="v num">${k('peso')}</div><div class="l">kg de peso</div></div><div class="kpi"><div class="v num">${k('grasa_pct')}</div><div class="l">% de grasa</div></div><div class="kpi"><div class="v num">${k('cintura')}</div><div class="l">cm de cintura</div></div></div><p class="small muted">Cambio desde tu primera medición (${esc(fCorta(med[0].fecha))} ${fecha(med[0].fecha).getFullYear()}).</p></section>` : ''}
-  <section class="section">${vGraficaComp(med) || '<div class="card empty">Aún no hay mediciones. Jesús las añadirá en tu próximo control mensual.</div>'}
+  <section class="section">${vGraficaComp(med, S.perfil) || '<div class="card empty">Aún no hay mediciones. Jesús las añadirá en tu próximo control mensual.</div>'}
   <div class="card stack chart"><h3>Entrenamientos por semana</h3><svg viewBox="0 0 320 110" role="img" aria-label="Entrenamientos por semana">${porSem.map((v, i) => { const bw = 304 / 8, h = v / maxS * 76; return `<rect x="${8 + i * bw + 6}" y="${86 - h}" width="${bw - 12}" height="${Math.max(h, 1)}" rx="4" fill="${v >= (S.d.programa?.dias_semana || 99) ? 'var(--ok)' : v ? 'var(--blue)' : 'var(--line)'}"/><text x="${8 + i * bw + bw / 2}" y="${82 - h}" fill="var(--fg)" font-size="11" text-anchor="middle">${v || ''}</text><text x="${8 + i * bw + bw / 2}" y="104" fill="var(--muted)" font-size="10" text-anchor="middle">${esc(fecha(semanas[i]).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric' }))}</text>`; }).join('')}</svg></div></section>
   ${med.length ? `<section class="section"><h2>Mediciones</h2><div class="card tbl"><table><thead><tr><th>Fecha</th><th>Peso</th><th>% grasa</th><th>Cintura</th><th>Cadera</th></tr></thead><tbody>${med.slice().reverse().map(m => `<tr><td>${esc(fCorta(m.fecha))} ${String(fecha(m.fecha).getFullYear()).slice(2)}</td><td class="num">${fmtNum(m.peso)}</td><td class="num">${fmtNum(m.grasa_pct)}</td><td class="num">${fmtNum(m.cintura)}</td><td class="num">${fmtNum(m.cadera)}</td></tr>`).join('')}</tbody></table></div></section>` : ''}`;
 }
@@ -929,7 +988,7 @@ function vFicha() {
     ${tile('habitos', 'Hábitos', pasos7 != null ? fmtNum(pasos7, 0) : '—', `pasos de media · 7 días`, `objetivo ${fmtNum(obj, 0)}`, pasos7 == null ? '' : pasos7 >= obj ? 'ok' : pasos7 >= obj * .7 ? 'warn' : 'bad')}
   </div></section>
   <section class="section"><div class="section-head"><h2>Composición corporal</h2><button class="btn sm ghost" data-act="nuevaMedicion">＋ Medición</button></div>
-    ${vGraficaComp(f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha))) || '<div class="card empty">Sin mediciones todavía.</div>'}
+    ${vGraficaComp(f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), a) || '<div class="card empty">Sin mediciones todavía.</div>'}
     <button class="btn ghost full" data-act="fichaSub" data-s="composicion">Ver todas las medidas y tests ›</button></section>
   ${vPresenciales(srv, f.pres, true)}
   <section class="section"><h2>Check-ins</h2><div class="card">${chks.map(k => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(k.semana_inicio))}</span><div class="grow stack" style="gap:4px"><div class="small">Motivación <b>${k.motivacion}/10</b> · implicación <b>${k.implicacion}/10</b></div>${k.dificultades ? `<div class="small"><span class="muted">Dificultades:</span> ${esc(k.dificultades)}</div>` : ''}${(k.proxima_semana_etiquetas || []).length || k.proxima_semana ? `<div class="small"><span class="muted">Semana que viene:</span> ${esc([...(k.proxima_semana_etiquetas || []), k.proxima_semana].filter(Boolean).join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Sin check-ins todavía.</div>'}</div></section>
@@ -983,7 +1042,7 @@ function vFichaSub(f, a) {
     const med = f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha));
     const campos = [['peso', 'Peso (kg)'], ['grasa_pct', '% grasa'], ['grasa_kg', 'Grasa (kg)'], ['cuello', 'Cuello'], ['pectoral', 'Pectoral'], ['hombros', 'Hombros'], ['cintura', 'Cintura'], ['abd_bajo', 'Abdomen bajo'], ['cadera', 'Cadera'], ['brazo_d', 'Brazo dcho.'], ['brazo_i', 'Brazo izdo.'], ['muslo_d', 'Muslo dcho.'], ['muslo_i', 'Muslo izdo.'], ['gemelo_d', 'Gemelo dcho.'], ['gemelo_i', 'Gemelo izdo.']].filter(([k]) => med.some(m => m[k] != null));
     return cab('Composición corporal') + `
-    <section class="section">${vGraficaComp(med) || '<div class="card empty">Sin mediciones todavía.</div>'}<button class="btn full" data-act="nuevaMedicion">＋ Añadir medición</button></section>
+    <section class="section">${vGraficaComp(med, a) || '<div class="card empty">Sin mediciones todavía.</div>'}<div class="row" style="gap:8px"><button class="btn grow" data-act="nuevaMedicion">＋ Añadir medición</button><button class="btn ghost" data-act="calcGrasa">Calculadora</button></div></section>
     ${med.length ? `<section class="section"><h2>Todas las medidas</h2><div class="card tbl" style="overflow-x:auto"><table><thead><tr><th>Medida</th>${med.map(m => `<th class="num">${esc(fCorta(m.fecha))} ${String(fecha(m.fecha).getFullYear()).slice(2)}</th>`).join('')}<th>Cambio</th></tr></thead><tbody>${campos.map(([k, l]) => { const v = med.filter(m => m[k] != null), dl = v.length > 1 ? v[v.length - 1][k] - v[0][k] : null; return `<tr><td>${l}</td>${med.map(m => `<td class="num">${m[k] == null ? '—' : fmtNum(m[k])}</td>`).join('')}<td class="num"><b>${dl == null ? '—' : (dl > 0 ? '+' : '') + fmtNum(dl)}</b></td></tr>`; }).join('')}</tbody></table></div><p class="small muted">Perímetros en cm.</p></section>` : ''}
     ${vTestsFicha(f)}`;
   }
@@ -1033,32 +1092,56 @@ const MEDIDAS_ALUMNO = [['cuello', 'Cuello', 'incluida la nuez'], ['cintura', 'C
 function formMisMedidas() {
   abrirSheet(`<form class="stack" id="f-mm"><h2>Mis medidas</h2><p class="small">Mídete con una cinta métrica, en cm, a primera hora y antes de comer. Deja vacío lo que no puedas medir.</p>
     <label class="f">Fecha<input type="date" id="mm-f" value="${hoyISO()}" max="${hoyISO()}"></label>
+    ${camposPerfil(S.perfil)}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${MEDIDAS_ALUMNO.map(([k, l, h]) => `<label class="f">${l} <span class="muted" style="font-weight:400">· ${h}</span><input type="text" inputmode="decimal" data-campo="${k}" placeholder="cm"></label>`).join('')}</div>
     <label class="f">Peso (si tienes báscula)<input type="text" inputmode="decimal" data-campo="peso" placeholder="kg"></label>
+    <div class="calc-grasa card" style="padding:12px"></div>
     <button class="btn full" type="submit">Guardar mis medidas</button></form>`);
+  enganchaCalcGrasa($('#f-mm'), S.perfil);
   $('#f-mm').addEventListener('submit', async e => {
     e.preventDefault();
     const row = { alumno_id: S.user.id, fecha: $('#mm-f').value || hoyISO() };
     document.querySelectorAll('#f-mm [data-campo]').forEach(i => { const v = numero(i.value); if (v != null) row[i.dataset.campo] = v; });
     if (Object.keys(row).length < 3) return toast('Escribe al menos una medida');
+    await guardarDatosPerfil($('#f-mm'), S.user.id, S.perfil);
+    const fm = $('#f-mm'); if (fm.dataset.grasaPct) { row.grasa_pct = +fm.dataset.grasaPct; if (fm.dataset.grasaKg) row.grasa_kg = +fm.dataset.grasaKg; }
     const { error } = await sb.from('mediciones').insert(row);
     if (error) return fallo(error, /row-level|policy/.test(error.message || '') ? 'Falta ejecutar el Bloque 12 en Supabase.' : undefined);
     cerrarSheet(); toast('Medidas guardadas. ¡Gracias!'); await cargarAlumno(S.user.id); render();
   });
 }
 function formMedicion() {
-  const c = [['peso', 'Peso (kg)'], ['grasa_pct', '% de grasa'], ['grasa_kg', 'Grasa (kg)'], ['cuello', 'Cuello'], ['cintura', 'Cintura'], ['cadera', 'Cadera'], ['abd_bajo', 'Abdomen bajo'], ['pectoral', 'Pectoral'], ['hombros', 'Hombros'], ['brazo_d', 'Brazo dcho.'], ['brazo_i', 'Brazo izdo.'], ['muslo_d', 'Muslo dcho.'], ['muslo_i', 'Muslo izdo.'], ['gemelo_d', 'Gemelo dcho.'], ['gemelo_i', 'Gemelo izdo.']];
+  const per = S.c.perfiles.find(p => p.id === S.ficha.id) || {};
+  const c = [['peso', 'Peso (kg)'], ['cuello', 'Cuello'], ['cintura', 'Cintura'], ['cadera', 'Cadera'], ['abd_bajo', 'Abdomen bajo'], ['pectoral', 'Pectoral'], ['hombros', 'Hombros'], ['brazo_d', 'Brazo contraído dcho.'], ['brazo_i', 'Brazo contraído izdo.'], ['muslo_d', 'Muslo dcho.'], ['muslo_i', 'Muslo izdo.'], ['gemelo_d', 'Gemelo dcho.'], ['gemelo_i', 'Gemelo izdo.']];
   abrirSheet(`<form class="stack" id="f-med"><h2>Nueva medición</h2><label class="f">Fecha<input type="date" id="m-fecha" value="${hoyISO()}"></label>
+    ${camposPerfil(per)}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${c.map(([k, l]) => `<label class="f">${l}<input type="text" inputmode="decimal" id="m-${k}" data-campo="${k}"></label>`).join('')}</div>
-    <p class="small muted">Perímetros en cm. Deja vacío lo que no midas.</p><button class="btn full" type="submit">Guardar medición</button></form>`);
-  $('#f-med').addEventListener('submit', async e => {
+    <div class="calc-grasa card" style="padding:12px"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">% de grasa<input type="text" inputmode="decimal" id="m-grasa_pct" data-campo="grasa_pct" placeholder="se calcula solo"></label><label class="f">Grasa (kg)<input type="text" inputmode="decimal" id="m-grasa_kg" data-campo="grasa_kg" placeholder="se calcula solo"></label></div>
+    <p class="small muted">Perímetros en cm. Deja vacío lo que no midas. Si usas báscula de bioimpedancia, puedes escribir su % de grasa encima del calculado.</p><button class="btn full" type="submit">Guardar medición</button></form>`);
+  const fm = $('#f-med'); let manual = false;
+  fm.querySelector('#m-grasa_pct').addEventListener('input', () => { manual = true; });
+  enganchaCalcGrasa(fm, per, (pct, peso) => { if (manual) return; fm.querySelector('#m-grasa_pct').value = pct != null ? String(pct).replace('.', ',') : ''; fm.querySelector('#m-grasa_kg').value = pct != null && peso ? String(Math.round(peso * pct) / 100).replace('.', ',') : ''; });
+  fm.addEventListener('submit', async e => {
     e.preventDefault();
+    await guardarDatosPerfil(fm, S.ficha.id, per);
     const row = { alumno_id: S.ficha.id, fecha: $('#m-fecha').value };
-    document.querySelectorAll('#f-med [data-campo]').forEach(i => { const v = numero(i.value); if (v != null) row[i.dataset.campo] = v; });
+    fm.querySelectorAll('[data-campo]').forEach(i => { const v = numero(i.value); if (v != null) row[i.dataset.campo] = v; });
+    if (row.grasa_pct != null && row.grasa_kg == null && row.peso) row.grasa_kg = Math.round(row.peso * row.grasa_pct) / 100;
     const { error } = await sb.from('mediciones').insert(row);
     if (error) return fallo(error);
-    cerrarSheet(); toast('Medición guardada'); abrirFicha(S.ficha.id);
+    cerrarSheet(); toast('Medición guardada'); await abrirFicha(S.ficha.id); abrirSub('composicion');
   });
+}
+/* Calculadora suelta (sin guardar), como la de Fit Generation */
+function formCalculadoraGrasa() {
+  abrirSheet(`<form class="stack" id="f-cg"><h2>Calculadora de % de grasa</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Sexo<select data-perfil="sexo"><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select></label><label class="f">Fecha de nacimiento<input type="date" data-perfil="fecha_nacimiento"></label>
+    <label class="f">Estatura (cm)<input type="text" inputmode="decimal" data-perfil="estatura_cm"></label><label class="f">Peso (kg)<input type="text" inputmode="decimal" data-campo="peso"></label>
+    <label class="f">Cuello (cm)<input type="text" inputmode="decimal" data-campo="cuello"></label><label class="f">Cintura (cm)<input type="text" inputmode="decimal" data-campo="cintura"></label>
+    <label class="f">Cadera (cm, mujeres)<input type="text" inputmode="decimal" data-campo="cadera"></label></div>
+    <div class="calc-grasa card" style="padding:12px"></div><button class="btn ghost full" type="button" data-act="cerrarSheet">Cerrar</button></form>`);
+  enganchaCalcGrasa($('#f-cg'), {});
 }
 function formPago(alumnoId) {
   const als = S.c.perfiles;
@@ -2266,6 +2349,7 @@ document.addEventListener('click', async e => {
     case 'verSesion': await verSesion(+b.dataset.id); break;
     case 'nuevaMedicion': formMedicion(); break;
     case 'misMedidas': formMisMedidas(); break;
+    case 'calcGrasa': formCalculadoraGrasa(); break;
     case 'nuevoPago': formPago(S.ficha.id); break;
     case 'nuevoPagoGeneral': formPago(null); break;
     case 'nuevaNota': formNota(); break;
