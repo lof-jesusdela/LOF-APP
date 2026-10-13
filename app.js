@@ -36,6 +36,7 @@ const IC = {
   checkin: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4h6v3H9zM9 13l2 2 4-4"/>',
   alumnos: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c.8-3.2 3.2-5 6-5s5.2 1.8 6 5"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.2c2.5.2 4.3 1.9 5 4.8"/>',
   pagos: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M7 15h3"/>',
+  ejercicios: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 15l3-3 2 2 3-4M8 8h.01"/>',
   pasos: '<path d="M8 4c1.5 0 2.5 2 2.5 4.5S9.5 13 8 13s-2.5-2-2.5-4.5S6.5 4 8 4zM16 10c1.5 0 2.5 2 2.5 4.5S17.5 19 16 19s-2.5-2-2.5-4.5S14.5 10 16 10z"/>',
   cal: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>'
 };
@@ -151,16 +152,21 @@ function vistaMensaje(t, m, salir) {
 }
 
 /* ---------- Carga de datos ---------- */
-const SEL_PROGRAMA = 'id,nombre,dias_semana,dias(id,numero,nombre,objetivo,volumen,intensidad,foco,bloques_sesion(id,letra,nombre,tipo,agrupacion,duracion,fc_objetivo,maquina,objetivo,detalle,video_url,ejercicios_sesion(id,orden,series,repeticiones,rir,peso_ref,descanso_seg,ajustes,aproximacion_631,grupo,pauta,ejercicios(nombre,video_url),metodos(nombre,explicacion))))';
+// Si la base de datos aún no tiene las columnas nuevas, repite la consulta en su versión anterior.
+async function conRespaldo(a, b) { const r = await a(); if (r.error) { console.warn('Usando consulta anterior:', r.error.message); return await b(); } return r; }
+const SIN_NUEVAS = sel => sel.replace(',imagen_url,musculo_img_url', '').replace(',musculo_img_url', '');
+const SEL_PROGRAMA = 'id,nombre,dias_semana,dias(id,numero,nombre,objetivo,volumen,intensidad,foco,bloques_sesion(id,letra,nombre,tipo,agrupacion,duracion,fc_objetivo,maquina,objetivo,detalle,video_url,ejercicios_sesion(id,orden,series,repeticiones,rir,peso_ref,descanso_seg,ajustes,aproximacion_631,grupo,pauta,ejercicios(nombre,video_url,imagen_url,musculo_img_url,musculo,descripcion),metodos(nombre,explicacion))))';
 
 async function cargarAlumno(uid) {
   const desde = sumaDias(hoyISO(), -60);
   const [srv, prog, med, reg, ses, chk, ruta, met] = await Promise.all([
     sb.from('servicios').select('*').eq('alumno_id', uid).eq('activo', true).order('id', { ascending: false }).limit(1),
-    sb.from('programas').select(SEL_PROGRAMA).eq('alumno_id', uid).eq('activo', true).order('id', { ascending: false }).limit(1),
+    conRespaldo(() => sb.from('programas').select(SEL_PROGRAMA).eq('alumno_id', uid).eq('activo', true).order('id', { ascending: false }).limit(1),
+      () => sb.from('programas').select(SIN_NUEVAS(SEL_PROGRAMA)).eq('alumno_id', uid).eq('activo', true).order('id', { ascending: false }).limit(1)),
     sb.from('mediciones').select('*').eq('alumno_id', uid).eq('es_objetivo', false).order('fecha'),
     sb.from('registro_diario').select('*').eq('alumno_id', uid).gte('fecha', desde),
-    sb.from('sesiones_hechas').select('id,dia_id,fecha,nota').eq('alumno_id', uid).gte('fecha', desde).order('fecha'),
+    conRespaldo(() => sb.from('sesiones_hechas').select('id,dia_id,fecha,nota,inicio_at,duracion_min').eq('alumno_id', uid).gte('fecha', desde).order('fecha'),
+      () => sb.from('sesiones_hechas').select('id,dia_id,fecha,nota').eq('alumno_id', uid).gte('fecha', desde).order('fecha')),
     sb.from('checkins').select('*').eq('alumno_id', uid).order('semana_inicio', { ascending: false }).limit(12),
     sb.from('hoja_ruta').select('*').eq('alumno_id', uid).order('orden'),
     sb.from('metodos').select('nombre,explicacion')
@@ -185,17 +191,17 @@ function tabsAlumno() {
 
 function render() {
   const coach = S.modo === 'coach';
-  const tabs = coach ? [['alumnos', 'Alumnos'], ['pagos', 'Pagos']] : tabsAlumno();
+  const tabs = coach ? [['alumnos', 'Alumnos'], ['ejercicios', 'Ejercicios'], ['pagos', 'Pagos']] : tabsAlumno();
   const actual = coach ? S.ctab : S.tab;
   const esCoach = S.perfil.rol === 'coach';
-  const vistas = { hoy: vHoy, entreno: vEntreno, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, alumnos: vAlumnos, pagos: vPagos };
+  const vistas = { hoy: vHoy, entreno: vEntreno, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, alumnos: vAlumnos, pagos: vPagos, ejercicios: vEjercicios };
   $('#app').innerHTML = `<header class="top">
       <div class="badge"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : esc(S.perfil.metodologia || 'Tu proceso')}</strong></div></div>
       <div class="row" style="gap:8px">${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
       <button class="avatar" data-act="cuenta" aria-label="Mi cuenta">${esCoach ? '<img src="icons/coach.jpg" alt="">' : esc((S.perfil.nombre || '?').slice(0, 2).toUpperCase())}</button></div>
-    </header><main id="main">${(S.ficha && coach) ? vFicha() : vistas[actual]()}</main>`;
+    </header><main id="main">${(S.editor && coach) ? vEditor() : (S.ficha && coach) ? vFicha() : vistas[actual]()}</main>`;
   $('#tabs').hidden = false;
-  $('#tabs-in').innerHTML = tabs.map(([k, l]) => `<button data-act="${coach ? 'ctab' : 'tab'}" data-t="${k}" ${actual === k && !(S.ficha && coach) ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span></button>`).join('');
+  $('#tabs-in').innerHTML = tabs.map(([k, l]) => `<button data-act="${coach ? 'ctab' : 'tab'}" data-t="${k}" ${actual === k && !((S.ficha || S.editor) && coach) ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span></button>`).join('');
   if (S.dia && !coach && S.tab === 'entreno') rellenarSesion();
 }
 
@@ -293,28 +299,73 @@ function gruposDe(pauta) {
 }
 const txtTramo = t => [t.r && `${t.r}${/^\d/.test(String(t.r)) && !/rep|lado|''|por/i.test(t.r) ? ' rep' : ''}`, t.rir != null && t.rir !== '' && `RIR ${t.rir}`, t.kg].filter(Boolean).join(' · ');
 
+const SIN_PESO = /^(sin peso|no|-)?$/i;
+function esSinPeso(e) {
+  const ks = (e.pauta || []).map(t => t.kg).filter(Boolean);
+  return (ks.length ? ks : [e.peso_ref]).every(k => SIN_PESO.test(String(k || '').trim()));
+}
+const kgDe = t => { const m = String(t?.kg || '').match(/(\d+[.,]?\d*)\s*kg/i); return m ? m[1] : ''; };
+
 function vEjercicio(e, i) {
-  const grupos = gruposDe(e.pauta);
+  const grupos = gruposDe(e.pauta), sp = esSinPeso(e), ej = e.ejercicios || {};
   let n = 0;
   const filas = grupos.map((g, gi) => {
-    const descanso = g.tramos[g.tramos.length - 1].d ?? e.descanso_seg ?? 60;
+    const descanso = g.tramos[g.tramos.length - 1].d ?? e.descanso_seg ?? 60, T = g.tramos.length;
     const cab = `<div class="small" style="grid-column:1/-1;margin-top:${gi ? 6 : 0}px"><b>${grupos.length > 1 ? (gi === 0 && g.s === 1 ? 'Serie principal' : `Series ${n + 1}–${n + g.s}`) : `${g.s} ${g.s === 1 ? 'serie' : 'series'}`}</b> · ${esc(txtTramo(g.tramos[0]))} · descanso ${descanso ? seg(descanso) : 'no, sigue'}</div>
-      ${g.tramos.length > 1 ? `<div class="tramos" style="grid-column:1/-1">${g.tramos.map((t, k) => `<button class="tramo" data-act="tramo" data-d="${t.d ?? 0}" data-lbl="${esc(e.ejercicios.nombre)} · tramo ${k + 1}">Tramo ${k + 1}: ${esc(txtTramo(t) || 'igual')}${k < g.tramos.length - 1 ? ` → ${t.d ? seg(t.d) : 'sin pausa'}` : ''}</button>`).join('')}</div>` : ''}`;
+      ${T > 1 ? `<div class="tramos" style="grid-column:1/-1">${g.tramos.map((t, k) => `<button class="tramo" data-act="tramo" data-d="${t.d ?? 0}" data-lbl="${esc(ej.nombre)} · tramo ${k + 1}">Tramo ${k + 1}: ${esc(txtTramo(t) || 'igual')}${k < T - 1 ? ` → ${t.d ? seg(t.d) : 'sin pausa'}` : ''}</button>`).join('')}</div>` : ''}`;
     const series = [...Array(g.s)].map(() => {
-      n++; const k = `${e.id}-${n}`;
-      return `<span class="num muted">${n}</span><input id="kg-${k}" type="text" inputmode="decimal" aria-label="Kg serie ${n}"><input id="rp-${k}" type="number" inputmode="numeric" aria-label="Repeticiones serie ${n}"><input id="ri-${k}" type="number" inputmode="numeric" min="0" max="5" aria-label="RIR serie ${n}"><button class="chk" id="ck-${k}" data-act="serie" data-es="${e.id}" data-n="${n}" data-d="${descanso}" data-lbl="${esc(e.ejercicios.nombre)} · serie ${n}" aria-label="Serie ${n} hecha">${CHK}</button>`;
+      n++; const r = `${e.id}-${n}`;
+      return g.tramos.map((t, k) => {
+        const ult = k === T - 1, id = `${r}-${k}`;
+        return `<span class="num muted" data-row="${r}" ${k === 0 ? `id="row-${r}"` : ''}>${k === 0 ? n : '↳'}</span>`
+          + (sp ? `<span class="small muted" data-row="${r}" style="text-align:center">Sin peso</span>` : `<input id="kg-${id}" data-row="${r}" type="text" inputmode="decimal" placeholder="${esc(kgDe(t))}" aria-label="Kg serie ${n}${T > 1 ? ' tramo ' + (k + 1) : ''}">`)
+          + `<input id="rp-${id}" data-row="${r}" type="number" inputmode="numeric" aria-label="Repeticiones serie ${n}${T > 1 ? ' tramo ' + (k + 1) : ''}">`
+          + (ult ? `<input id="ri-${r}" data-row="${r}" type="number" inputmode="numeric" min="0" max="5" aria-label="RIR serie ${n}"><button class="chk" id="ck-${r}" data-act="serie" data-es="${e.id}" data-n="${n}" data-t="${T}" data-sp="${sp ? 1 : 0}" data-d="${descanso}" data-lbl="${esc(ej.nombre)} · serie ${n}" aria-label="Serie ${n} hecha">${CHK}</button>` : '<span></span><span></span>');
+      }).join('');
     }).join('');
     return cab + series;
   }).join('');
-  const vid = e.ejercicios.video_url ? `<a class="btn sm ghost" href="${esc(e.ejercicios.video_url)}" target="_blank" rel="noopener">Vídeo</a>` : '';
-  return `<div class="card ex">
-    <div class="row" style="align-items:flex-start"><span class="exn num">${i}</span><div class="grow"><h3>${esc(e.ejercicios.nombre)}</h3><div class="small muted">${e.series} ${e.series === 1 ? 'serie' : 'series'} · ${esc(e.repeticiones)}${e.rir != null ? ' · RIR ' + e.rir : ''}</div></div>${vid}</div>
+  const vid = ej.video_url ? `<a class="btn sm" href="${esc(ej.video_url)}" target="_blank" rel="noopener">▶ Vídeo</a>` : `<button class="btn sm ghost" data-act="sinVideo">▶ Vídeo</button>`;
+  return `<div class="card ex" id="ex-${e.id}">
+    ${ej.imagen_url || ej.musculo_img_url ? `<div class="imgs">${ej.imagen_url ? `<button class="img" data-act="verImagen" data-src="${esc(ej.imagen_url)}" aria-label="Ver imagen del ejercicio"><img src="${esc(ej.imagen_url)}" alt="${esc(ej.nombre)}" loading="lazy" onerror="this.parentNode.hidden=true"><span>Ejercicio</span></button>` : ''}${ej.musculo_img_url ? `<button class="img" data-act="verImagen" data-src="${esc(ej.musculo_img_url)}" aria-label="Ver músculo trabajado"><img src="${esc(ej.musculo_img_url)}" alt="Músculo trabajado" loading="lazy" onerror="this.parentNode.hidden=true"><span>Músculo</span></button>` : ''}</div>` : ''}
+    <div class="row" style="align-items:flex-start"><span class="exn num">${i}</span><div class="grow"><h3>${esc(ej.nombre)}</h3><div class="small muted">${e.series} ${e.series === 1 ? 'serie' : 'series'} · ${esc(e.repeticiones)}${e.rir != null ? ' · RIR ' + e.rir : ''}</div></div>${vid}</div>
+    ${ej.musculo ? `<div class="chips" style="gap:6px"><span class="pill blue">Músculo: ${esc(ej.musculo)}</span></div>` : ''}
+    ${ej.descripcion ? `<p class="small muted">${esc(ej.descripcion)}</p>` : ''}
     ${e.grupo ? `<p class="note">${esc(e.grupo)}</p>` : ''}
     <div class="chips" style="gap:6px">${e.metodos ? `<button class="pill gold" data-act="metodo" data-n="${esc(e.metodos.nombre)}">Método: ${esc(e.metodos.nombre)} ⓘ</button>` : ''}${e.aproximacion_631 ? '<button class="pill gold" data-act="metodo" data-n="Aproximación 6·3·1">Aproximación 6·3·1 ⓘ</button>' : ''}</div>
     ${e.ajustes ? `<div class="small" style="color:var(--blue-text)">A tu medida: ${esc(e.ajustes)}</div>` : ''}
     ${e.aproximacion_631 ? vAprox(e) : ''}
     <div class="sets"><span class="h">Nº</span><span class="h">Kg</span><span class="h">Reps</span><span class="h">RIR</span><span class="h">Hecha</span>${filas}</div>
   </div>`;
+}
+
+/* Orden de la sesión y cadenas de superseries (ejercicios unidos por descanso 0) */
+function prepararNavegacion(d) {
+  const orden = [], cadena = {}, series = {};
+  d.bloques_sesion.filter(b => b.tipo === 'fuerza').forEach(b => {
+    let actual = [];
+    b.ejercicios_sesion.forEach((e, i) => {
+      if (i > 0 && (b.ejercicios_sesion[i - 1].descanso_seg ?? 60) !== 0) actual = [];
+      actual.push(e.id); cadena[e.id] = actual; orden.push(e.id); series[e.id] = e.series;
+    });
+  });
+  S.nav = { orden, cadena, series };
+}
+function siguienteFila(es, n) {
+  const { orden, cadena, series } = S.nav, c = cadena[es], i = c.indexOf(es);
+  if (c.length > 1) {
+    for (let j = i + 1; j < c.length; j++) if (series[c[j]] >= n) return [c[j], n];
+    for (let j = 0; j < c.length; j++) if (series[c[j]] >= n + 1) return [c[j], n + 1];
+  } else if (series[es] >= n + 1) return [es, n + 1];
+  const ultimo = c[c.length - 1], k = orden.indexOf(ultimo);
+  return orden[k + 1] ? [orden[k + 1], 1] : null;
+}
+function enfocarFila(es, n) {
+  const el = document.getElementById(`row-${es}-${n}`); if (!el) return;
+  setTimeout(() => {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    document.querySelectorAll(`[data-row="${es}-${n}"]`).forEach(x => { x.classList.add('foco'); setTimeout(() => x.classList.remove('foco'), 2200); });
+  }, 250);
 }
 function vAprox(e) {
   const m = String(e.peso_ref || '').match(/(\d+[.,]?\d*)\s*kg/i), o = m ? m[1] + ' kg' : 'tu peso';
@@ -334,7 +385,10 @@ function vBloque(b, cont) {
 }
 function vSesion() {
   const d = S.dia, cont = { n: 0 };
-  return `<section class="stack"><button class="btn sm ghost" data-act="cerrarDia" style="align-self:flex-start">← Semana</button>
+  prepararNavegacion(d);
+  const ini = S.sesion?.inicio;
+  return `<div class="crono" id="crono">${ini ? `<span class="crono-t num" id="crono-t">${fmtCrono(Date.now() - ini)}</span><span class="small">Entrenamiento en curso</span>` : `<button class="btn sm" data-act="empezarCrono">⏱ Empezar entrenamiento</button><span class="small muted">El cronómetro mide tu sesión completa</span>`}</div>
+  <section class="stack"><button class="btn sm ghost" data-act="cerrarDia" style="align-self:flex-start">← Semana</button>
     <span class="eyebrow">${esc(S.d.programa.nombre)} · ${esc(d.nombre)}</span><h1>${esc(d.foco || d.nombre)}</h1>
     <div class="card stack"><span class="eyebrow">Objetivo de hoy</span><div class="small">${esc(d.objetivo || '')}</div>
     <div class="kpis"><div class="kpi"><div class="l">Volumen</div><b>${esc(d.volumen || '—')}</b></div><div class="kpi"><div class="l">Intensidad</div><b>${esc(d.intensidad || '—')}</b></div><div class="kpi"><div class="l">Foco</div><b>${esc(d.foco || '—')}</b></div></div></div></section>
@@ -342,18 +396,35 @@ function vSesion() {
   <button class="btn full dark" data-act="terminar">Terminar sesión</button></section>`;
 }
 
+/* Cronómetro de la sesión completa (sobrevive a cerrar la app) */
+const claveCrono = () => `lof-ini-${S.user.id}-${S.dia.id}-${hoyISO()}`;
+const fmtCrono = ms => { const t = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = t % 60; return (h ? h + ':' : '') + String(m).padStart(h ? 2 : 1, '0') + ':' + String(s).padStart(2, '0'); };
+function empezarCrono() {
+  if (S.sesion.inicio) return;
+  S.sesion.inicio = Date.now();
+  try { localStorage.setItem(claveCrono(), String(S.sesion.inicio)); } catch (e) { }
+  audio(); pintarCrono();
+}
+function pintarCrono() {
+  const el = $('#crono'); if (!el || !S.sesion?.inicio) return;
+  el.innerHTML = `<span class="crono-t num" id="crono-t">${fmtCrono(Date.now() - S.sesion.inicio)}</span><span class="small">Entrenamiento en curso</span>`;
+}
+setInterval(() => { const t = $('#crono-t'); if (t && S.sesion?.inicio) t.textContent = fmtCrono(Date.now() - S.sesion.inicio); }, 1000);
+
 async function abrirDia(id) {
   S.dia = S.d.programa.dias.find(d => d.id === id);
-  S.sesion = { id: null, regs: {}, valores: {}, ultimos: {} };
+  S.sesion = { id: null, regs: {}, valores: {}, ultimos: {}, inicio: null };
+  try { const v = +localStorage.getItem(claveCrono()); if (v) S.sesion.inicio = v; } catch (e) { }
   S.tab = 'entreno'; window.scrollTo(0, 0);
   const ids = S.dia.bloques_sesion.flatMap(b => b.ejercicios_sesion.map(e => e.id));
   const hoyS = S.d.sesiones.find(s => s.fecha === hoyISO() && s.dia_id === id);
-  if (hoyS) S.sesion.id = hoyS.id;
+  if (hoyS) { S.sesion.id = hoyS.id; if (!S.sesion.inicio && hoyS.inicio_at) S.sesion.inicio = new Date(hoyS.inicio_at).getTime(); }
   if (ids.length) {
-    const { data } = await sb.from('registros_series').select('id,sesion_id,ejercicio_sesion_id,serie,kg,repeticiones,rir,creado_at').eq('alumno_id', S.user.id).in('ejercicio_sesion_id', ids).order('creado_at', { ascending: false }).limit(800);
+    const { data } = await conRespaldo(() => sb.from('registros_series').select('id,sesion_id,ejercicio_sesion_id,serie,tramo,kg,repeticiones,rir,creado_at').eq('alumno_id', S.user.id).in('ejercicio_sesion_id', ids).order('creado_at', { ascending: false }).limit(1500),
+      () => sb.from('registros_series').select('id,sesion_id,ejercicio_sesion_id,serie,kg,repeticiones,rir,creado_at').eq('alumno_id', S.user.id).in('ejercicio_sesion_id', ids).order('creado_at', { ascending: false }).limit(1500));
     (data || []).forEach(r => {
-      const k = `${r.ejercicio_sesion_id}-${r.serie}`;
-      if (hoyS && r.sesion_id === hoyS.id) { if (!S.sesion.regs[k]) { S.sesion.regs[k] = r.id; S.sesion.valores[k] = r; } }
+      const fila = `${r.ejercicio_sesion_id}-${r.serie}`, k = `${fila}-${(r.tramo || 1) - 1}`;
+      if (hoyS && r.sesion_id === hoyS.id) { (S.sesion.regs[fila] ||= []).push(r.id); S.sesion.valores[k] = r; }
       else if (!S.sesion.ultimos[k]) S.sesion.ultimos[k] = r;
     });
   }
@@ -362,52 +433,75 @@ async function abrirDia(id) {
 function rellenarSesion() {
   const z = S.sesion; if (!z) return;
   document.querySelectorAll('.chk[data-act="serie"]').forEach(b => {
-    const k = `${b.dataset.es}-${b.dataset.n}`, v = z.valores[k], u = z.ultimos[k];
-    const kg = $(`#kg-${CSS.escape(k)}`), rp = $(`#rp-${CSS.escape(k)}`), ri = $(`#ri-${CSS.escape(k)}`);
-    if (u) { kg.placeholder = u.kg != null ? fmtNum(u.kg, 2) : ''; rp.placeholder = u.repeticiones ?? ''; ri.placeholder = u.rir ?? ''; }
-    if (v) { kg.value = v.kg != null ? fmtNum(v.kg, 2) : ''; rp.value = v.repeticiones ?? ''; ri.value = v.rir ?? ''; marcar(b, k, true); }
+    const fila = `${b.dataset.es}-${b.dataset.n}`, T = +b.dataset.t;
+    for (let k = 0; k < T; k++) {
+      const v = z.valores[`${fila}-${k}`], u = z.ultimos[`${fila}-${k}`];
+      const kg = document.getElementById(`kg-${fila}-${k}`), rp = document.getElementById(`rp-${fila}-${k}`);
+      if (u) { if (kg && u.kg != null) kg.placeholder = fmtNum(u.kg, 2); if (u.repeticiones != null) rp.placeholder = u.repeticiones; }
+      if (v) { if (kg && v.kg != null) kg.value = fmtNum(v.kg, 2); if (v.repeticiones != null) rp.value = v.repeticiones; }
+    }
+    const ri = document.getElementById(`ri-${fila}`), uL = z.ultimos[`${fila}-${T - 1}`], vL = z.valores[`${fila}-${T - 1}`];
+    if (uL?.rir != null) ri.placeholder = uL.rir;
+    if (vL?.rir != null) ri.value = vL.rir;
+    if (z.regs[fila]) marcar(b, fila, true);
   });
 }
-function marcar(b, k, on) {
+function marcar(b, fila, on) {
   b.classList.toggle('on', on);
-  ['kg', 'rp', 'ri'].forEach(p => $(`#${p}-${CSS.escape(k)}`)?.classList.toggle('on', on));
+  document.querySelectorAll(`input[data-row="${fila}"]`).forEach(x => x.classList.toggle('on', on));
 }
 async function asegurarSesion() {
   if (S.sesion.id) return S.sesion.id;
-  const { data, error } = await sb.from('sesiones_hechas').insert({ alumno_id: S.user.id, dia_id: S.dia.id, fecha: hoyISO() }).select().single();
+  const fila = { alumno_id: S.user.id, dia_id: S.dia.id, fecha: hoyISO() };
+  if (S.sesion.inicio) fila.inicio_at = new Date(S.sesion.inicio).toISOString();
+  const { data, error } = await conRespaldo(() => sb.from('sesiones_hechas').insert(fila).select().single(),
+    () => { delete fila.inicio_at; return sb.from('sesiones_hechas').insert(fila).select().single(); });
   if (error) throw error;
   S.sesion.id = data.id; S.d.sesiones.push(data); return data.id;
 }
 async function toggleSerie(b) {
-  const k = `${b.dataset.es}-${b.dataset.n}`, z = S.sesion;
+  const es = +b.dataset.es, n = +b.dataset.n, T = +b.dataset.t, fila = `${es}-${n}`, z = S.sesion;
   if (b.classList.contains('on')) {
-    const id = z.regs[k]; marcar(b, k, false); delete z.regs[k];
-    if (id) { const { error } = await sb.from('registros_series').delete().eq('id', id); if (error) fallo(error); }
+    const ids = z.regs[fila] || []; marcar(b, fila, false); delete z.regs[fila];
+    if (ids.length) { const { error } = await sb.from('registros_series').delete().in('id', ids); if (error) fallo(error); }
     return;
   }
-  const val = p => $(`#${p}-${CSS.escape(k)}`);
-  const u = z.ultimos[k] || {};
-  const row = { alumno_id: S.user.id, ejercicio_sesion_id: +b.dataset.es, serie: +b.dataset.n,
-    kg: numero(val('kg').value) ?? u.kg ?? null, repeticiones: numero(val('rp').value) ?? u.repeticiones ?? null, rir: numero(val('ri').value) ?? u.rir ?? null };
-  marcar(b, k, true);
+  if (!z.inicio) empezarCrono();
+  const rows = [...Array(T)].map((_, k) => {
+    const u = z.ultimos[`${fila}-${k}`] || {}, kg = document.getElementById(`kg-${fila}-${k}`), rp = document.getElementById(`rp-${fila}-${k}`);
+    return { alumno_id: S.user.id, ejercicio_sesion_id: es, serie: n, tramo: k + 1,
+      kg: kg ? (numero(kg.value) ?? u.kg ?? null) : null, repeticiones: numero(rp.value) ?? u.repeticiones ?? null,
+      rir: k === T - 1 ? (numero(document.getElementById(`ri-${fila}`).value) ?? u.rir ?? null) : null };
+  });
+  marcar(b, fila, true);
   const d = +b.dataset.d;
   if (d > 0) startTimer(d, 'Descanso · ' + b.dataset.lbl); else toast('Sin descanso: sigue con el siguiente');
+  const sig = siguienteFila(es, n); if (sig) enfocarFila(sig[0], sig[1]);
   try {
-    row.sesion_id = await asegurarSesion();
-    const { data, error } = await sb.from('registros_series').insert(row).select('id').single();
+    const sid = await asegurarSesion(); rows.forEach(r => r.sesion_id = sid);
+    const { data, error } = await conRespaldo(() => sb.from('registros_series').insert(rows).select('id'),
+      () => sb.from('registros_series').insert(rows.map(({ tramo, ...x }) => x)).select('id'));
     if (error) throw error;
-    z.regs[k] = data.id; z.valores[k] = row;
-    if (row.kg != null && !val('kg').value) val('kg').value = fmtNum(row.kg, 2);
-    if (row.repeticiones != null && !val('rp').value) val('rp').value = row.repeticiones;
-  } catch (err) { marcar(b, k, false); fallo(err, 'No se ha guardado la serie. Revisa tu conexión.'); }
+    z.regs[fila] = data.map(x => x.id);
+    rows.forEach((r, k) => {
+      z.valores[`${fila}-${k}`] = r;
+      const kg = document.getElementById(`kg-${fila}-${k}`), rp = document.getElementById(`rp-${fila}-${k}`);
+      if (kg && r.kg != null && !kg.value) kg.value = fmtNum(r.kg, 2);
+      if (r.repeticiones != null && !rp.value) rp.value = r.repeticiones;
+    });
+  } catch (err) { marcar(b, fila, false); fallo(err, 'No se ha guardado la serie. Revisa tu conexión.'); }
 }
 function terminar() {
-  abrirSheet(`<div class="stack"><h2>Sesión terminada</h2><label class="f">¿Algo que quieras contarle a Jesús? (opcional)<textarea id="s-nota" placeholder="Molestias, sensaciones, máquinas ocupadas…"></textarea></label><button class="btn full" data-act="guardarSesion">Guardar y salir</button></div>`);
+  const min = S.sesion?.inicio ? Math.max(1, Math.round((Date.now() - S.sesion.inicio) / 60000)) : null;
+  abrirSheet(`<div class="stack"><h2>Sesión terminada</h2>${min ? `<p class="small">Has entrenado <b>${min} minutos</b>.</p>` : ''}<label class="f">¿Algo que quieras contarle a Jesús? (opcional)<textarea id="s-nota" placeholder="Molestias, sensaciones, máquinas ocupadas…"></textarea></label><button class="btn full" data-act="guardarSesion">Guardar y salir</button></div>`);
 }
 async function guardarSesion() {
   try {
-    const id = await asegurarSesion(), nota = $('#s-nota').value.trim();
-    if (nota) { const { error } = await sb.from('sesiones_hechas').update({ nota }).eq('id', id); if (error) throw error; }
+    const id = await asegurarSesion(), nota = $('#s-nota').value.trim(), cambios = {};
+    if (nota) cambios.nota = nota;
+    if (S.sesion.inicio) { cambios.duracion_min = Math.max(1, Math.round((Date.now() - S.sesion.inicio) / 60000)); cambios.inicio_at = new Date(S.sesion.inicio).toISOString(); }
+    if (Object.keys(cambios).length) { const { error } = await conRespaldo(() => sb.from('sesiones_hechas').update(cambios).eq('id', id), () => sb.from('sesiones_hechas').update({ nota: cambios.nota ?? null }).eq('id', id)); if (error) throw error; Object.assign(S.d.sesiones.find(s => s.id === id) || {}, cambios); }
+    try { localStorage.removeItem(claveCrono()); } catch (e) { }
     cerrarSheet(); stopTimer(); S.dia = null; S.sesion = null; S.tab = 'hoy'; toast('Sesión guardada. ¡Buen trabajo!'); render(); window.scrollTo(0, 0);
   } catch (err) { fallo(err); }
 }
@@ -425,11 +519,11 @@ function spark(pts, { unit = '', dec = 1, color = 'var(--blue)' } = {}) {
   const last = pts[pts.length - 1];
   const grid = [...new Set([mx, mn])].map(v => `<line x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-dasharray="3 4"/><text x="${W - pr + 6}" y="${y(v) + 4}" fill="var(--muted)" font-size="11">${fmtNum(v, dec)}${unit}</text>`).join('');
   let ult = -99; const xl = x(pts.length - 1);
-  const ver = pts.map((p, i) => { const ok = i === 0 || i === pts.length - 1 || (x(i) - ult >= 52 && xl - x(i) >= 52); if (ok) ult = x(i); return ok; });
+  const ver = pts.map((p, i) => { const ok = i === 0 || i === pts.length - 1 || (x(i) - ult >= 64 && xl - x(i) >= 64); if (ok) ult = x(i); return ok; });
   const lbl = pts.map((p, i) => ver[i] ? `<text x="${x(i)}" y="${H - 6}" fill="var(--muted)" font-size="10" text-anchor="${i === 0 ? 'start' : i === pts.length - 1 ? 'end' : 'middle'}">${esc(fecha(p.f).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric', year: '2-digit' }))}</text>` : '').join('');
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolución">${grid}<polygon points="${x(0)},${H - pb} ${line} ${x(pts.length - 1)},${H - pb}" fill="${color}" opacity=".1"/><polyline points="${line}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>${pts.map((p, i) => `<circle cx="${x(i)}" cy="${y(p.v)}" r="${i === pts.length - 1 ? 4.5 : 2.5}" fill="${color}" stroke="var(--surface)" stroke-width="1.5"/>`).join('')}${lbl}</svg>`;
 }
-function serie(med, campo) { return med.filter(m => m[campo] != null).map(m => ({ f: m.fecha, v: Number(m[campo]) })); }
+function serie(med, campo) { return med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)).filter(m => m[campo] != null).map(m => ({ f: m.fecha, v: Number(m[campo]) })); }
 function delta(pts) { if (pts.length < 2) return null; return pts[pts.length - 1].v - pts[0].v; }
 function vProgreso() {
   const med = S.d.mediciones;
@@ -481,16 +575,18 @@ async function enviarCheckin() {
    PANEL DEL COACH
    ===================================================================== */
 async function cargarCoach() {
-  const desde = sumaDias(hoyISO(), -28);
-  const [per, srv, ses, chk, reg, pag] = await Promise.all([
+  const desde = sumaDias(hoyISO(), -56);
+  const [per, srv, ses, chk, reg, pag, prg, ejs] = await Promise.all([
     sb.from('perfiles').select('*').order('nombre'),
     sb.from('servicios').select('*').eq('activo', true),
     sb.from('sesiones_hechas').select('id,alumno_id,dia_id,fecha,nota').gte('fecha', desde).order('fecha', { ascending: false }),
     sb.from('checkins').select('*').gte('semana_inicio', sumaDias(desde, -7)).order('semana_inicio', { ascending: false }),
     sb.from('registro_diario').select('*').gte('fecha', sumaDias(hoyISO(), -13)),
-    sb.from('pagos').select('*').order('vence')
+    sb.from('pagos').select('*').order('vence'),
+    sb.from('programas').select('alumno_id,nombre,dias_semana').eq('activo', true),
+    sb.from('ejercicios').select('*').order('nombre')
   ]);
-  S.c = { perfiles: per.data || [], servicios: srv.data || [], sesiones: ses.data || [], checkins: chk.data || [], diario: reg.data || [], pagos: pag.data || [] };
+  S.c = { perfiles: per.data || [], servicios: srv.data || [], sesiones: ses.data || [], checkins: chk.data || [], diario: reg.data || [], pagos: pag.data || [], programas: prg.data || [], ejercicios: ejs.data || [] };
 }
 function estadoAlumno(a) {
   const c = S.c, hoy = hoyISO(), hace7 = sumaDias(hoy, -6);
@@ -506,7 +602,10 @@ function estadoAlumno(a) {
   if (ult && ult.motivacion <= 4) { nivel = 'bad'; motivos.push(`Motivación ${ult.motivacion}/10`); }
   else if (ult && ant && ant.motivacion - ult.motivacion >= 3) { if (nivel === 'ok') nivel = 'warn'; motivos.push(`Motivación de ${ant.motivacion} a ${ult.motivacion}`); }
   if (!chks.some(k => k.semana_inicio >= lunesDe(sumaDias(hoy, -7)))) { if (nivel === 'ok') nivel = 'warn'; motivos.push('Sin check-in reciente'); }
-  return { nivel, motivos, ses7, ult, ultSes: ses[0] };
+  const dpw = (c.programas.find(p => p.alumno_id === a.id) || {}).dias_semana || 0;
+  const lunes = lunesDe(hoy), semana = new Set(ses.filter(s => s.fecha >= lunes).map(s => s.fecha + s.dia_id)).size;
+  const mes = new Set(ses.filter(s => s.fecha >= sumaDias(hoy, -27)).map(s => s.fecha + s.dia_id)).size;
+  return { nivel, motivos, ses7, ult, ultSes: ses[0], dpw, semana, mes };
 }
 function vAlumnos() {
   const c = S.c, als = c.perfiles.filter(p => p.activo !== false);
@@ -516,20 +615,23 @@ function vAlumnos() {
   const venc = c.pagos.filter(p => !p.pagado_at && p.vence < hoyISO());
   return `<section class="stack"><span class="eyebrow">Panel del coach · ${esc(fLarga(hoyISO()))}</span><h1>Tus alumnos</h1></section>
   <section class="section"><div class="kpis"><div class="kpi"><div class="v num">${als.length}</div><div class="l">perfiles activos</div></div><div class="kpi"><div class="v num" style="color:var(--bad)">${est.filter(x => x.e.nivel !== 'ok').length}</div><div class="l">necesitan atención</div></div><div class="kpi"><div class="v num" style="color:${venc.length ? 'var(--bad)' : 'var(--ok)'}">${venc.length}</div><div class="l">pagos vencidos</div></div></div></section>
-  <section class="section"><div class="card">${est.map(({ a, e }) => `<div class="line" data-act="ficha" data-id="${a.id}" style="cursor:pointer"><span style="width:4px;align-self:stretch;border-radius:2px;background:var(--${e.nivel})"></span><div class="grow stack" style="gap:3px"><div class="row"><h3 class="grow">${esc(a.nombre)}</h3><span class="pill ${e.nivel}">${lab[e.nivel]}</span></div><div class="small muted">${esc((c.servicios.find(s => s.alumno_id === a.id) || {}).producto || 'Sin servicio')} · ${e.ses7} entrenos en 7 días${e.ult ? ` · motivación ${e.ult.motivacion}/10` : ''}</div>${e.motivos.length ? `<div class="small">${esc(e.motivos.join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no hay alumnos.</div>'}</div>
+  ${vResumenCoach(est)}
+  <section class="section"><h2>Alumnos</h2><div class="card">${est.map(({ a, e }) => `<div class="line" data-act="ficha" data-id="${a.id}" style="cursor:pointer"><span style="width:4px;align-self:stretch;border-radius:2px;background:var(--${e.nivel})"></span><div class="grow stack" style="gap:3px"><div class="row"><h3 class="grow">${esc(a.nombre)}</h3><span class="pill ${e.nivel}">${lab[e.nivel]}</span></div><div class="small muted">${esc((c.servicios.find(s => s.alumno_id === a.id) || {}).producto || 'Sin servicio')}${e.ult ? ` · motivación ${e.ult.motivacion}/10` : ''}</div>${e.dpw ? barra('Semana', e.semana, e.dpw) + barra('Últimas 4 semanas', e.mes, e.dpw * 4) : ''}${e.motivos.length ? `<div class="small">${esc(e.motivos.join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no hay alumnos.</div>'}</div>
   <p class="note">Para dar de alta a un alumno nuevo, créalo en Supabase → Authentication → Users. Su perfil aparecerá aquí solo.</p></section>`;
 }
 
 async function abrirFicha(id) {
   S.ficha = { id, cargando: true }; render(); window.scrollTo(0, 0);
-  const [med, ses, notas, prog, srv] = await Promise.all([
+  const [med, ses, notas, prog, srv, todas] = await Promise.all([
     sb.from('mediciones').select('*').eq('alumno_id', id).order('fecha', { ascending: false }),
     sb.from('sesiones_hechas').select('id,fecha,nota,dias(nombre,foco),registros_series(id)').eq('alumno_id', id).order('fecha', { ascending: false }).limit(20),
     sb.from('notas_coach').select('*').eq('alumno_id', id).order('fecha', { ascending: false }).limit(20),
     sb.from('programas').select('nombre,dias_semana').eq('alumno_id', id).eq('activo', true).limit(1),
-    sb.from('servicios').select('*').eq('alumno_id', id).eq('activo', true).limit(1)
+    sb.from('servicios').select('*').eq('alumno_id', id).eq('activo', true).limit(1),
+    conRespaldo(() => sb.from('sesiones_hechas').select('fecha,dia_id,duracion_min').eq('alumno_id', id).gte('fecha', sumaDias(hoyISO(), -365)),
+      () => sb.from('sesiones_hechas').select('fecha,dia_id').eq('alumno_id', id).gte('fecha', sumaDias(hoyISO(), -365)))
   ]);
-  S.ficha = { id, med: med.data || [], ses: ses.data || [], notas: notas.data || [], prog: prog.data?.[0], srv: srv.data?.[0] };
+  S.ficha = { id, med: med.data || [], ses: ses.data || [], notas: notas.data || [], prog: prog.data?.[0], srv: srv.data?.[0], todas: todas.data || [] };
   render();
 }
 function vFicha() {
@@ -542,6 +644,8 @@ function vFicha() {
     <div class="small muted">${esc(a.email)} · ${esc(f.srv?.producto || 'Sin servicio')}${f.prog ? ' · ' + esc(f.prog.nombre) : ''} · alta ${esc(fCorta(a.fecha_alta))}</div>
     <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn sm" data-act="nuevaMedicion">Añadir medición</button><button class="btn sm ghost" data-act="nuevoPago">Añadir cuota</button><button class="btn sm ghost" data-act="nuevaNota">Nota privada</button></div></section>
   ${e.motivos.length ? `<section class="section"><div class="card stack"><span class="eyebrow">Para revisar</span><div class="small">${esc(e.motivos.join(' · '))}</div></div></section>` : ''}
+  ${vEstadisticas(f)}
+  <section class="section"><div class="section-head"><h2>Programa</h2><button class="btn sm" data-act="editarPrograma" data-id="${a.id}">${f.prog ? 'Editar programa' : 'Crear programa'}</button></div><div class="card small">${f.prog ? `<b>${esc(f.prog.nombre)}</b> · ${f.prog.dias_semana || '—'} días por semana` : 'Este alumno aún no tiene programa.'}</div></section>
   <section class="section"><h2>Entrenamientos</h2><div class="card">${f.ses.map(s => `<div class="line" data-act="verSesion" data-id="${s.id}" style="cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(s.fecha))}</span><div class="grow"><div class="small"><b>${esc(s.dias?.nombre || '')}</b> · ${esc(s.dias?.foco || '')} · ${s.registros_series.length} series</div>${s.nota ? `<div class="small muted">"${esc(s.nota)}"</div>` : ''}</div><span class="small muted">Ver</span></div>`).join('') || '<div class="empty">Sin entrenamientos registrados.</div>'}</div></section>
   <section class="section"><h2>Check-ins</h2><div class="card">${chks.map(k => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(k.semana_inicio))}</span><div class="grow stack" style="gap:4px"><div class="small">Motivación <b>${k.motivacion}/10</b> · implicación <b>${k.implicacion}/10</b></div>${k.dificultades ? `<div class="small"><span class="muted">Dificultades:</span> ${esc(k.dificultades)}</div>` : ''}${(k.proxima_semana_etiquetas || []).length || k.proxima_semana ? `<div class="small"><span class="muted">Semana que viene:</span> ${esc([...(k.proxima_semana_etiquetas || []), k.proxima_semana].filter(Boolean).join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Sin check-ins todavía.</div>'}</div></section>
   <section class="section"><h2>Registro diario</h2><div class="card tbl"><table><thead><tr><th>Día</th><th>Pasos</th><th>De pie</th><th>Alim.</th></tr></thead><tbody>${diario.map(r => `<tr><td>${esc(fCorta(r.fecha))}</td><td class="num">${r.pasos == null ? '—' : fmtNum(r.pasos, 0)}</td><td class="num">${r.horas_pie == null ? '—' : fmtNum(r.horas_pie) + ' h'}</td><td>${({ si: 'Cumplido', parcial: 'A medias', no: 'No' })[r.alimentacion] || '—'}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">Sin registros en 14 días.</td></tr>'}</tbody></table></div></section>
@@ -601,11 +705,339 @@ function formNota() {
   });
 }
 
+/* ---------- Estadísticas del alumno (coach) ---------- */
+function barra(lbl, v, max, nota) {
+  const pct = max ? Math.min(100, Math.round(v / max * 100)) : 0, col = pct >= 90 ? 'var(--ok)' : pct >= 60 ? 'var(--warn)' : 'var(--bad)';
+  return `<div class="stack" style="gap:5px;margin-top:6px"><div class="row small"><span class="grow">${esc(lbl)}</span><b class="num">${v} / ${max}${nota ? ' ' + esc(nota) : ''} · ${pct} %</b></div><div class="track"><i style="width:${pct}%;background:${col}"></i></div></div>`;
+}
+function barrasSemanas(sesiones, dpw) {
+  const semanas = [...Array(8)].map((_, i) => lunesDe(sumaDias(hoyISO(), -7 * (7 - i))));
+  const cuenta = semanas.map(l => new Set(sesiones.filter(s => s.fecha >= l && s.fecha <= sumaDias(l, 6)).map(s => s.fecha + s.dia_id)).size);
+  const max = Math.max(dpw || 1, ...cuenta), bw = 304 / 8;
+  return `<svg viewBox="0 0 320 110" role="img" aria-label="Entrenamientos por semana">${cuenta.map((v, i) => { const h = v / max * 76; return `<rect x="${8 + i * bw + 6}" y="${86 - h}" width="${bw - 12}" height="${Math.max(h, 1)}" rx="4" fill="${dpw && v >= dpw ? 'var(--ok)' : v ? 'var(--blue)' : 'var(--line)'}"/><text x="${8 + i * bw + bw / 2}" y="${82 - h}" fill="var(--fg)" font-size="11" text-anchor="middle">${v || ''}</text><text x="${8 + i * bw + bw / 2}" y="104" fill="var(--muted)" font-size="10" text-anchor="middle">${esc(fecha(semanas[i]).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric' }))}</text>`; }).join('')}</svg>`;
+}
+function vEstadisticas(f) {
+  const hoy = hoyISO(), dpw = f.prog?.dias_semana || 0, srv = f.srv;
+  const unicas = l => new Set(l.map(s => s.fecha + s.dia_id)).size;
+  const semana = unicas(f.todas.filter(s => s.fecha >= lunesDe(hoy)));
+  const mes = unicas(f.todas.filter(s => s.fecha >= sumaDias(hoy, -27)));
+  let proceso = '';
+  if (srv?.inicio) {
+    const semanas = Math.max(1, Math.ceil((fecha(hoy) - fecha(srv.inicio) + 864e5) / 6048e5));
+    const hechas = unicas(f.todas.filter(s => s.fecha >= srv.inicio));
+    proceso = (dpw ? barra('Proceso completo', hechas, dpw * semanas, 'entrenos') : '')
+      + (srv.duracion_semanas ? barra('Avance del proceso', Math.min(semanas, srv.duracion_semanas), srv.duracion_semanas, 'semanas') : '');
+  }
+  const dur = f.todas.filter(s => s.duracion_min), durMedia = dur.length ? Math.round(dur.reduce((t, s) => t + s.duracion_min, 0) / dur.length) : null;
+  const diario = S.c.diario.filter(r => r.alumno_id === f.id), pasos = diario.filter(r => r.pasos != null);
+  const med = f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha));
+  const graf = [['peso', 'Peso', ' kg', 'var(--blue)'], ['grasa_pct', '% de grasa', ' %', 'var(--gold)'], ['cintura', 'Cintura', ' cm', 'var(--ink)'], ['cadera', 'Cadera', ' cm', 'var(--blue)'], ['abd_bajo', 'Abdomen bajo', ' cm', 'var(--ink)']]
+    .map(([c, t, u, col]) => { const p = serie(med, c); return p.length > 1 ? `<div class="card stack chart"><div class="row"><h3 class="grow">${t}</h3><span class="pill blue num">${fmtNum(p[p.length - 1].v)}${u}</span><span class="pill num ${delta(p) <= 0 ? 'ok' : 'warn'}">${delta(p) > 0 ? '+' : ''}${fmtNum(delta(p))}</span></div>${spark(p, { unit: u, color: col })}</div>` : ''; }).join('');
+  return `<section class="section"><div class="section-head"><h2>Servicio</h2><button class="btn sm ghost" data-act="editarServicio">Editar</button></div>
+    <div class="card small">${srv ? `<b>${esc(srv.producto)}</b> · inicio ${srv.inicio ? esc(fCorta(srv.inicio)) + ' ' + fecha(srv.inicio).getFullYear() : '—'} · ${srv.duracion_semanas ? srv.duracion_semanas + ' semanas' : 'sin duración'} · ${[srv.modulo_entreno && 'entreno', srv.modulo_nutricion && 'nutrición', srv.modulo_presencial && 'presencial'].filter(Boolean).join(', ') || 'sin módulos'}` : 'Sin servicio asignado.'}</div></section>
+  <section class="section"><h2>Cumplimiento</h2><div class="card">
+    ${dpw ? barra('Esta semana', semana, dpw, 'entrenos') + barra('Últimas 4 semanas', mes, dpw * 4, 'entrenos') : '<p class="small muted">Sin programa activo.</p>'}${proceso}
+    <div class="row small" style="margin-top:12px;flex-wrap:wrap;gap:8px"><span class="pill">Pasos medios (14 días): ${pasos.length ? fmtNum(Math.round(pasos.reduce((t, r) => t + r.pasos, 0) / pasos.length), 0) : '—'}</span><span class="pill">Duración media: ${durMedia ? durMedia + ' min' : '—'}</span></div>
+    ${!srv?.duracion_semanas ? '<p class="note" style="margin-top:10px">Añade la fecha de inicio y la duración en "Servicio" para ver el avance del proceso completo.</p>' : ''}
+  </div>
+  <div class="card stack chart"><h3>Entrenamientos por semana</h3>${barrasSemanas(f.todas, dpw)}</div></section>
+  ${graf ? `<section class="section"><h2>Composición corporal</h2>${graf}</section>` : ''}`;
+}
+function formServicio() {
+  const s = S.ficha.srv || {};
+  abrirSheet(`<form class="stack" id="f-srv"><h2>Servicio</h2>
+    <label class="f">Producto<input type="text" id="sv-prod" value="${esc(s.producto || '')}" placeholder="Ej. Plan Integral 6 meses" required></label>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Inicio<input type="date" id="sv-ini" value="${s.inicio || hoyISO()}"></label><label class="f">Duración (semanas)<input type="number" id="sv-dur" min="1" max="104" value="${s.duracion_semanas || ''}" placeholder="Ej. 26"></label></div>
+    <div class="stack" style="gap:8px">${[['entreno', 'Entrenamiento', s.modulo_entreno ?? true], ['nutricion', 'Nutrición', s.modulo_nutricion], ['presencial', 'Sesiones presenciales', s.modulo_presencial]].map(([k, l, v]) => `<label class="row small"><input type="checkbox" id="sv-${k}" ${v ? 'checked' : ''} style="width:20px;height:20px"> ${l}</label>`).join('')}</div>
+    <button class="btn full" type="submit">Guardar</button></form>`);
+  $('#f-srv').addEventListener('submit', async e => {
+    e.preventDefault();
+    const row = { alumno_id: S.ficha.id, producto: $('#sv-prod').value.trim() || 'Servicio', inicio: $('#sv-ini').value, duracion_semanas: numero($('#sv-dur').value),
+      modulo_entreno: $('#sv-entreno').checked, modulo_nutricion: $('#sv-nutricion').checked, modulo_presencial: $('#sv-presencial').checked, activo: true };
+    const q = s.id ? sb.from('servicios').update(row).eq('id', s.id) : sb.from('servicios').insert(row);
+    const { error } = await q; if (error) return fallo(error);
+    cerrarSheet(); toast('Servicio guardado'); await cargarCoach(); if (S.ficha.id === S.user.id) await cargarAlumno(S.user.id); abrirFicha(S.ficha.id);
+  });
+}
+
+/* ---------- Biblioteca de ejercicios (coach) ---------- */
+function vEjercicios() {
+  const l = S.c.ejercicios, filtro = norm(S.filtroEj || '');
+  const vis = l.filter(x => !filtro || norm(x.nombre + ' ' + (x.musculo || '')).includes(filtro));
+  const sinV = l.filter(x => !x.video_url).length, sinF = l.filter(x => !x.imagen_url).length;
+  return `<section class="stack"><span class="eyebrow">Tu biblioteca</span><h1>Ejercicios</h1><p class="small muted">Lo que cambies aquí se ve al instante en los entrenos de todos tus alumnos.</p></section>
+  <section class="section"><div class="kpis"><div class="kpi"><div class="v num">${l.length}</div><div class="l">ejercicios</div></div><div class="kpi"><div class="v num" style="color:${sinV ? 'var(--warn)' : 'var(--ok)'}">${sinV}</div><div class="l">sin vídeo</div></div><div class="kpi"><div class="v num" style="color:${sinF ? 'var(--warn)' : 'var(--ok)'}">${sinF}</div><div class="l">sin foto</div></div></div>
+  ${sinF ? `<button class="btn full" data-act="importarImagenes">Importar imágenes de tus hojas</button><p class="note">Copia la imagen del ejercicio y la del músculo que tenías en tus hojas de Google en los ${sinF} ejercicios que aún no tienen foto.</p>` : ''}
+  <input type="text" id="ej-buscar" placeholder="Buscar por nombre o músculo" value="${esc(S.filtroEj || '')}">
+  <div class="card">${vis.map(x => `<div class="line" data-act="editarEjercicio" data-id="${x.id}" style="cursor:pointer">${x.imagen_url ? `<img src="${esc(x.imagen_url)}" alt="" style="width:48px;height:48px;border-radius:10px;object-fit:cover;flex:none">` : `<div class="ico">${svg('ejercicios')}</div>`}<div class="grow"><h3>${esc(x.nombre)}</h3><div class="small muted">${esc(x.musculo || 'Sin músculo')}</div></div><div class="stack" style="gap:4px;align-items:flex-end"><span class="pill ${x.video_url ? 'ok' : 'warn'}">${x.video_url ? 'Vídeo' : 'Sin vídeo'}</span><span class="pill ${x.imagen_url ? 'ok' : 'warn'}">${x.imagen_url ? 'Foto' : 'Sin foto'}</span>${x.musculo_img_url ? '' : '<span class="pill warn">Sin músculo</span>'}</div></div>`).join('') || '<div class="empty">No hay ejercicios con ese nombre.</div>'}</div></section>`;
+}
+function formEjercicio(id) {
+  const x = S.c.ejercicios.find(z => z.id === id); if (!x) return;
+  abrirSheet(`<form class="stack" id="f-ej"><h2>${esc(x.nombre)}</h2>
+    ${x.imagen_url ? `<img src="${esc(x.imagen_url)}" alt="" style="width:100%;max-height:200px;object-fit:cover;border-radius:12px">` : ''}
+    <label class="f">Foto del ejercicio (desde la galería o la cámara)<input type="file" id="e-foto" accept="image/*"></label>
+    ${x.musculo_img_url ? `<img src="${esc(x.musculo_img_url)}" alt="" style="width:100%;max-height:160px;object-fit:contain;border-radius:12px;background:#fff">` : ''}
+    <label class="f">Imagen del músculo trabajado<input type="file" id="e-mfoto" accept="image/*"></label>
+    <label class="f">Músculo que se trabaja<input type="text" id="e-mus" value="${esc(x.musculo || '')}"></label>
+    <label class="f">Descripción o claves de ejecución<textarea id="e-desc">${esc(x.descripcion || '')}</textarea></label>
+    <label class="f">Enlace del vídeo (YouTube oculto)<input type="text" id="e-vid" inputmode="url" value="${esc(x.video_url || '')}" placeholder="https://youtu.be/…"></label>
+    <p class="err" id="e-err"></p><button class="btn full" type="submit" id="e-btn">Guardar</button></form>`);
+  $('#f-ej').addEventListener('submit', async e => {
+    e.preventDefault(); const btn = $('#e-btn'); btn.disabled = true; btn.textContent = 'Guardando…';
+    try {
+      const cambios = { musculo: $('#e-mus').value.trim() || null, descripcion: $('#e-desc').value.trim() || null, video_url: $('#e-vid').value.trim() || null };
+      const file = $('#e-foto').files[0];
+      if (file) {
+        const blob = await reducirImagen(file, 1000), ruta = `ej-${x.id}-${Date.now()}.jpg`;
+        const up = await sb.storage.from('ejercicios').upload(ruta, blob, { contentType: 'image/jpeg', upsert: true });
+        if (up.error) throw up.error;
+        cambios.imagen_url = sb.storage.from('ejercicios').getPublicUrl(ruta).data.publicUrl;
+      }
+      const mfile = $('#e-mfoto').files[0];
+      if (mfile) {
+        const blob = await reducirImagen(mfile, 900), ruta = `mus-${x.id}-${Date.now()}.jpg`;
+        const up = await sb.storage.from('ejercicios').upload(ruta, blob, { contentType: 'image/jpeg', upsert: true });
+        if (up.error) throw up.error;
+        cambios.musculo_img_url = sb.storage.from('ejercicios').getPublicUrl(ruta).data.publicUrl;
+      }
+      const { error } = await sb.from('ejercicios').update(cambios).eq('id', x.id); if (error) throw error;
+      Object.assign(x, cambios); cerrarSheet(); toast('Ejercicio guardado'); await cargarAlumno(S.user.id); render();
+    } catch (err) { btn.disabled = false; btn.textContent = 'Guardar'; $('#e-err').textContent = 'No se ha podido guardar. Si subías una foto, prueba con otra o revisa la conexión.'; console.error(err); }
+  });
+}
+function reducirImagen(file, max) {
+  return new Promise((ok, ko) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => { const k = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); c.toBlob(b => b ? ok(b) : ko(new Error('imagen')), 'image/jpeg', .82); };
+    img.onerror = ko; img.src = url;
+  });
+}
+
+
+/* ---------- Resumen gráfico del coach ---------- */
+function vResumenCoach(est) {
+  const hoy = hoyISO(), c = S.c;
+  const semanas = [...Array(8)].map((_, i) => lunesDe(sumaDias(hoy, -7 * (7 - i))));
+  const totalSem = semanas.map(l => new Set(c.sesiones.filter(s => s.fecha >= l && s.fecha <= sumaDias(l, 6)).map(s => s.alumno_id + s.fecha + s.dia_id)).size);
+  const previsto = c.programas.reduce((t, p) => t + (p.dias_semana || 0), 0);
+  const conPlan = est.filter(x => x.e.dpw);
+  const pctSem = conPlan.length ? Math.round(conPlan.reduce((t, x) => t + Math.min(1, x.e.semana / x.e.dpw), 0) / conPlan.length * 100) : 0;
+  const pctMes = conPlan.length ? Math.round(conPlan.reduce((t, x) => t + Math.min(1, x.e.mes / (x.e.dpw * 4)), 0) / conPlan.length * 100) : 0;
+  const motiv = c.checkins.filter(k => k.semana_inicio >= lunesDe(sumaDias(hoy, -7)));
+  const motMedia = motiv.length ? (motiv.reduce((t, k) => t + k.motivacion, 0) / motiv.length) : null;
+  const W = 320, H = 130, bw = 304 / 8, max = Math.max(previsto, ...totalSem, 1), y = v => 96 - v / max * 80;
+  const barras = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Entrenamientos de todos tus alumnos por semana">${previsto ? `<line x1="8" x2="312" y1="${y(previsto)}" y2="${y(previsto)}" stroke="var(--ink)" stroke-dasharray="4 4"/><text x="312" y="${y(previsto) - 4}" fill="var(--fg)" font-size="10" text-anchor="end">Previsto: ${previsto}</text>` : ''}${totalSem.map((v, i) => `<rect x="${8 + i * bw + 6}" y="${y(v)}" width="${bw - 12}" height="${Math.max(96 - y(v), 1)}" rx="4" fill="${previsto && v >= previsto ? 'var(--ok)' : 'var(--blue)'}"/><text x="${8 + i * bw + bw / 2}" y="${y(v) - 4}" fill="var(--fg)" font-size="11" text-anchor="middle">${v || ''}</text><text x="${8 + i * bw + bw / 2}" y="114" fill="var(--muted)" font-size="10" text-anchor="middle">${esc(fecha(semanas[i]).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric' }))}</text>`).join('')}</svg>`;
+  const filas = conPlan.map(x => { const p = Math.min(100, Math.round(x.e.mes / (x.e.dpw * 4) * 100)); return { n: x.a.nombre, p }; }).sort((a, b) => a.p - b.p);
+  const horiz = filas.length ? `<svg viewBox="0 0 320 ${filas.length * 30 + 6}" role="img" aria-label="Cumplimiento por alumno">${filas.map((f, i) => { const col = f.p >= 90 ? 'var(--ok)' : f.p >= 60 ? 'var(--warn)' : 'var(--bad)'; return `<text x="0" y="${i * 30 + 19}" fill="var(--fg)" font-size="12">${esc(f.n.length > 14 ? f.n.slice(0, 13) + '…' : f.n)}</text><rect x="110" y="${i * 30 + 6}" width="170" height="16" rx="5" fill="var(--surface-2)"/><rect x="110" y="${i * 30 + 6}" width="${Math.max(2, f.p * 1.7)}" height="16" rx="5" fill="${col}"/><text x="318" y="${i * 30 + 19}" fill="var(--fg)" font-size="12" text-anchor="end">${f.p} %</text>`; }).join('')}</svg>` : '<p class="small muted">Asigna programas para ver el cumplimiento.</p>';
+  const anillo = (pct, lbl) => { const R = 30, C = 2 * Math.PI * R, col = pct >= 90 ? 'var(--ok)' : pct >= 60 ? 'var(--warn)' : 'var(--bad)'; return `<div class="kpi" style="display:flex;flex-direction:column;align-items:center;gap:4px"><svg viewBox="0 0 80 80" width="72" height="72" role="img" aria-label="${lbl} ${pct} %"><circle cx="40" cy="40" r="${R}" fill="none" stroke="var(--surface-2)" stroke-width="9"/><circle cx="40" cy="40" r="${R}" fill="none" stroke="${col}" stroke-width="9" stroke-linecap="round" stroke-dasharray="${C * pct / 100} ${C}" transform="rotate(-90 40 40)"/><text x="40" y="45" text-anchor="middle" font-size="16" font-weight="800" fill="var(--fg)">${pct}%</text></svg><div class="l" style="text-align:center">${lbl}</div></div>`; };
+  return `<section class="section"><h2>Resumen</h2><div class="kpis">${anillo(pctSem, 'Cumplimiento esta semana')}${anillo(pctMes, 'Cumplimiento 4 semanas')}<div class="kpi" style="display:flex;flex-direction:column;justify-content:center;align-items:center"><div class="v num">${motMedia == null ? '—' : fmtNum(motMedia)}</div><div class="l" style="text-align:center">Motivación media (/10)</div></div></div>
+  <div class="card stack chart"><h3>Entrenamientos de tus alumnos por semana</h3>${barras}</div>
+  <div class="card stack chart"><h3>Cumplimiento por alumno · 4 semanas</h3>${horiz}</div></section>`;
+}
+
+/* ---------- Gráfica de pagos ---------- */
+function graficaPagos(P) {
+  const hoy = hoyISO(), base = new Date(hoy.slice(0, 7) + '-01T00:00:00');
+  const meses = [...Array(7)].map((_, i) => { const d = new Date(base); d.setMonth(d.getMonth() + i - 4); return isoDe(d).slice(0, 7); });
+  const datos = meses.map(m => {
+    const cob = P.filter(p => p.pagado_at && p.pagado_at.slice(0, 7) === m).reduce((t, p) => t + Number(p.importe), 0);
+    const pen = P.filter(p => !p.pagado_at && p.vence.slice(0, 7) === m && p.vence >= hoy).reduce((t, p) => t + Number(p.importe), 0);
+    const ven = P.filter(p => !p.pagado_at && p.vence.slice(0, 7) === m && p.vence < hoy).reduce((t, p) => t + Number(p.importe), 0);
+    return { m, cob, pen, ven, tot: cob + pen + ven };
+  });
+  const max = Math.max(1, ...datos.map(d => d.tot)), bw = 304 / 7, y = v => v / max * 84;
+  return `<svg viewBox="0 0 320 134" role="img" aria-label="Ingresos por mes">${datos.map((d, i) => { const x = 8 + i * bw + 5, w = bw - 10; let top = 100; const seg = (v, col) => { if (!v) return ''; const h = y(v); top -= h; return `<rect x="${x}" y="${top}" width="${w}" height="${h}" fill="${col}"/>`; };
+    const barras = seg(d.cob, 'var(--ok)') + seg(d.ven, 'var(--bad)') + seg(d.pen, 'var(--blue)');
+    return `${barras}${d.tot ? `<text x="${x + w / 2}" y="${top - 4}" fill="var(--fg)" font-size="10" text-anchor="middle">${fmtNum(d.tot, 0)}€</text>` : ''}<text x="${x + w / 2}" y="118" fill="${d.m === hoy.slice(0, 7) ? 'var(--blue-text)' : 'var(--muted)'}" font-size="10" font-weight="${d.m === hoy.slice(0, 7) ? 700 : 400}" text-anchor="middle">${esc(new Date(d.m + '-01T00:00:00').toLocaleDateString('es-ES', { month: 'short' }))}</text>`; }).join('')}<line x1="8" x2="312" y1="100" y2="100" stroke="var(--line)"/></svg>`;
+}
+
+/* ---------- Importar imágenes de las hojas ---------- */
+async function importarImagenes() {
+  let mapa;
+  try { mapa = await (await fetch('imagenes.json', { cache: 'no-store' })).json(); } catch (e) { return toast('No se ha podido leer el archivo de imágenes'); }
+  const lista = S.c.ejercicios.filter(x => mapa[x.nombre] && (!x.imagen_url || !x.musculo_img_url));
+  if (!lista.length) return toast('No hay imágenes nuevas que importar');
+  abrirSheet(`<div class="stack"><h2>Importando imágenes</h2><p class="small" id="imp-txt">Preparando…</p><div class="track"><i id="imp-bar" style="width:0"></i></div><p class="note">No cierres la app hasta que termine.</p></div>`);
+  let ok = 0, copias = 0, enlaces = 0, n = 0;
+  const copiar = async (url, ruta) => {
+    try {
+      const resp = await fetch(url); if (!resp.ok) throw new Error(resp.status);
+      const blob = await resp.blob();
+      const up = await sb.storage.from('ejercicios').upload(ruta, blob, { contentType: blob.type || 'image/png', upsert: true });
+      if (up.error) throw up.error;
+      copias++; return sb.storage.from('ejercicios').getPublicUrl(ruta).data.publicUrl;
+    } catch (e) { enlaces++; return url; }
+  };
+  for (const x of lista) {
+    n++; $('#imp-txt').textContent = `${n} de ${lista.length} · ${x.nombre}`; $('#imp-bar').style.width = (n / lista.length * 100) + '%';
+    const m = mapa[x.nombre], cambios = {};
+    if (!x.imagen_url && m.img) cambios.imagen_url = await copiar(m.img, `hoja-ej-${x.id}.png`);
+    if (!x.musculo_img_url && m.musculo_img) cambios.musculo_img_url = await copiar(m.musculo_img, `hoja-mus-${x.id}.png`);
+    if (Object.keys(cambios).length) { const { error } = await sb.from('ejercicios').update(cambios).eq('id', x.id); if (!error) { Object.assign(x, cambios); ok++; } }
+  }
+  cerrarSheet(); await cargarAlumno(S.user.id); render();
+  toast(`${ok} ejercicios con imagen${enlaces ? ' · algunas enlazadas a tu hoja' : ''}`);
+  if (enlaces) setTimeout(() => abrirSheet(`<div class="stack"><h2>Imágenes importadas</h2><p class="small">${copias} imágenes copiadas a tu almacén y ${enlaces} enlazadas directamente a tu hoja de Google (el navegador no permitió copiarlas).</p><p class="note">Las enlazadas se ven igual, pero si algún día borras la hoja o cambias la imagen allí, dejarían de verse. Puedes sustituirlas desde cada ejercicio.</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`), 300);
+}
+
+/* ---------- Editor de programas (coach) ---------- */
+const SEL_EDITOR = 'id,nombre,dias_semana,alumno_id,dias(id,numero,nombre,objetivo,volumen,intensidad,foco,bloques_sesion(id,letra,nombre,tipo,agrupacion,duracion,fc_objetivo,maquina,objetivo,detalle,video_url,ejercicios_sesion(id,orden,ejercicio_id,series,repeticiones,rir,peso_ref,descanso_seg,metodo_id,ajustes,aproximacion_631,grupo,pauta,ejercicios(nombre))))';
+async function abrirEditor(alumnoId) {
+  S.editor = { alumnoId, cargando: true }; render(); window.scrollTo(0, 0);
+  const [prog, met] = await Promise.all([
+    sb.from('programas').select(SEL_EDITOR).eq('alumno_id', alumnoId).eq('activo', true).order('id', { ascending: false }).limit(1),
+    sb.from('metodos').select('id,nombre').order('nombre')
+  ]);
+  const p = prog.data?.[0] || null;
+  if (p) { p.dias.sort((a, b) => a.numero - b.numero); p.dias.forEach(d => { d.bloques_sesion.sort((a, b) => a.letra.localeCompare(b.letra)); d.bloques_sesion.forEach(b => b.ejercicios_sesion.sort((a, b) => a.orden - b.orden)); }); }
+  S.editor = { alumnoId, prog: p, metodos: met.data || [] }; render();
+}
+async function refrescarEditor() { const id = S.editor.alumnoId; await abrirEditor(id); if (id === S.user.id) await cargarAlumno(S.user.id); }
+function vEditor() {
+  const E = S.editor, a = S.c.perfiles.find(x => x.id === E.alumnoId) || {};
+  if (E.cargando) return '<div class="empty">Cargando programa…</div>';
+  const p = E.prog;
+  const resumen = e => { const g = gruposDe(e.pauta); return `${e.series} × ${esc(e.repeticiones)}${e.rir != null ? ' · RIR ' + e.rir : ''}${e.peso_ref ? ' · ' + esc(e.peso_ref) : ''} · desc. ${e.descanso_seg ? seg(e.descanso_seg) : 'no'}${g.some(x => x.tramos.length > 1) ? ' · tramos' : ''}`; };
+  return `<section class="stack"><button class="btn sm ghost" data-act="cerrarEditor" style="align-self:flex-start">← Volver</button><span class="eyebrow">Programa de ${esc(a.nombre || '')}</span><h1>${p ? esc(p.nombre) : 'Sin programa'}</h1>
+    <div class="row" style="gap:8px;flex-wrap:wrap">${p ? `<button class="btn sm ghost" data-act="nuevoPrograma">Cambiar nombre</button><button class="btn sm" data-act="edDia">Añadir día</button>` : `<button class="btn sm" data-act="nuevoPrograma">Crear programa</button>`}</div>
+    <p class="note">Toca cualquier elemento para editarlo. Los cambios los ve el alumno en cuanto vuelve a abrir la app.</p></section>
+  ${p ? p.dias.map(d => `<section class="section"><div class="card stack">
+    <div class="row"><div class="grow"><span class="eyebrow">Día ${d.numero}</span><h2>${esc(d.nombre || '')}</h2><div class="small muted">${esc([d.foco, d.volumen && 'vol. ' + d.volumen, d.intensidad && 'int. ' + d.intensidad].filter(Boolean).join(' · '))}</div></div><button class="btn sm ghost" data-act="edDia" data-id="${d.id}">Editar día</button></div>
+    ${d.bloques_sesion.map(b => `<div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:10px">
+      <div class="row"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}</h3><button class="mini" data-act="edBloque" data-id="${b.id}" aria-label="Editar bloque">✎</button></div>
+      ${b.tipo === 'fuerza' ? `${b.ejercicios_sesion.map((e, i) => `<div class="ed-ej"><div class="grow" data-act="edEj" data-id="${e.id}" style="cursor:pointer;min-width:0"><b class="small">${i + 1}. ${esc(e.ejercicios?.nombre || '')}</b><div class="small muted">${resumen(e)}</div></div><button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="-1" aria-label="Subir" ${i === 0 ? 'disabled' : ''}>↑</button><button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="1" aria-label="Bajar" ${i === b.ejercicios_sesion.length - 1 ? 'disabled' : ''}>↓</button></div>`).join('')}
+        <button class="btn sm ghost" data-act="edEj" data-bloque="${b.id}" style="align-self:flex-start">+ Añadir ejercicio</button>` : `<div class="small muted">${esc(b.tipo === 'cardio' ? [b.duracion, b.fc_objetivo, b.maquina].filter(Boolean).join(' · ') : 'Movilidad')}</div>`}
+    </div>`).join('')}
+    <button class="btn sm ghost" data-act="edBloque" data-dia="${d.id}" style="align-self:flex-start">+ Añadir bloque</button>
+  </div></section>`).join('') : '<div class="section card empty">Crea el programa para empezar a añadir días.</div>'}`;
+}
+function formPrograma() {
+  const p = S.editor.prog;
+  abrirSheet(`<form class="stack" id="f-prog"><h2>${p ? 'Programa' : 'Nuevo programa'}</h2>
+    <label class="f">Nombre<input type="text" id="pg-n" value="${esc(p?.nombre || '')}" placeholder="Ej. Ciclo 2 · Noviembre-Diciembre" required></label>
+    <label class="f">Entrenamientos por semana<input type="number" id="pg-d" min="1" max="7" value="${p?.dias_semana || 3}"></label>
+    <button class="btn full" type="submit">Guardar</button></form>`);
+  $('#f-prog').addEventListener('submit', async e => {
+    e.preventDefault();
+    const row = { nombre: $('#pg-n').value.trim() || 'Programa', dias_semana: numero($('#pg-d').value) };
+    const { error } = p ? await sb.from('programas').update(row).eq('id', p.id) : await sb.from('programas').insert({ ...row, alumno_id: S.editor.alumnoId, activo: true });
+    if (error) return fallo(error);
+    cerrarSheet(); toast('Programa guardado'); await cargarCoach(); refrescarEditor();
+  });
+}
+function formDia(id) {
+  const p = S.editor.prog, d = id ? p.dias.find(x => x.id === id) : null;
+  const DS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+  abrirSheet(`<form class="stack" id="f-dia"><h2>${d ? 'Editar día' : 'Nuevo día'}</h2>
+    <label class="f">Día de la semana<select id="d-n">${DS.map(x => `<option ${norm(x) === norm(d?.nombre) ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+    <label class="f">Objetivo del día<textarea id="d-obj">${esc(d?.objetivo || '')}</textarea></label>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><label class="f">Volumen<input type="text" id="d-vol" value="${esc(d?.volumen || '')}" placeholder="Alto"></label><label class="f">Intensidad<input type="text" id="d-int" value="${esc(d?.intensidad || '')}" placeholder="Alta"></label><label class="f">Foco<input type="text" id="d-foco" value="${esc(d?.foco || '')}" placeholder="Fuerza"></label></div>
+    <button class="btn full" type="submit">Guardar</button>${d ? '<button class="btn ghost full" type="button" id="d-del" style="color:var(--bad)">Eliminar día</button>' : ''}</form>`);
+  $('#f-dia').addEventListener('submit', async e => {
+    e.preventDefault();
+    const row = { nombre: $('#d-n').value, objetivo: $('#d-obj').value.trim() || null, volumen: $('#d-vol').value.trim() || null, intensidad: $('#d-int').value.trim() || null, foco: $('#d-foco').value.trim() || null };
+    const { error } = d ? await sb.from('dias').update(row).eq('id', d.id) : await sb.from('dias').insert({ ...row, programa_id: p.id, numero: (Math.max(0, ...p.dias.map(x => x.numero)) + 1) });
+    if (error) return fallo(error);
+    cerrarSheet(); toast('Día guardado'); refrescarEditor();
+  });
+  $('#d-del')?.addEventListener('click', async ev => { const b = ev.currentTarget; if (!b.dataset.ok) { b.dataset.ok = 1; b.textContent = 'Pulsa otra vez: se borrará el día con todos sus ejercicios'; return; } const { error } = await sb.from('dias').delete().eq('id', d.id); if (error) return fallo(error, 'No se puede borrar: ese día ya tiene entrenos registrados.'); cerrarSheet(); toast('Día eliminado'); refrescarEditor(); });
+}
+function formBloque(id, diaId) {
+  const p = S.editor.prog, dia = p.dias.find(d => d.id === diaId) || p.dias.find(d => d.bloques_sesion.some(b => b.id === id)), b = id ? dia.bloques_sesion.find(x => x.id === id) : null;
+  const sig = String.fromCharCode(65 + (dia?.bloques_sesion.length || 0));
+  abrirSheet(`<form class="stack" id="f-blq"><h2>${b ? 'Editar bloque' : 'Nuevo bloque'}</h2>
+    <div style="display:grid;grid-template-columns:70px 1fr;gap:8px"><label class="f">Letra<input type="text" id="b-l" maxlength="2" value="${esc(b?.letra || sig)}"></label><label class="f">Nombre<input type="text" id="b-n" value="${esc(b?.nombre || '')}" placeholder="Ej. Tren inferior" required></label></div>
+    <label class="f">Tipo<select id="b-t">${[['fuerza', 'Fuerza (ejercicios con series)'], ['cardio', 'Cardio'], ['movilidad', 'Movilidad']].map(([v, l]) => `<option value="${v}" ${b?.tipo === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    <label class="f">Indicación del bloque (superserie, circuito…)<input type="text" id="b-ag" value="${esc(b?.agrupacion || '')}" placeholder="Ej. 1 y 2 juntos (superserie). Descanso 1 minuto."></label>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="f">Duración (cardio)<input type="text" id="b-du" value="${esc(b?.duracion || '')}" placeholder="30 min"></label><label class="f">Frecuencia cardiaca<input type="text" id="b-fc" value="${esc(b?.fc_objetivo || '')}" placeholder="135–140 ppm"></label></div>
+    <label class="f">Máquina<input type="text" id="b-ma" value="${esc(b?.maquina || '')}"></label>
+    <label class="f">Detalle<textarea id="b-de">${esc(b?.detalle || '')}</textarea></label>
+    <label class="f">Vídeo (movilidad)<input type="text" id="b-vi" value="${esc(b?.video_url || '')}" placeholder="https://youtu.be/…"></label>
+    <button class="btn full" type="submit">Guardar</button>${b ? '<button class="btn ghost full" type="button" id="b-del" style="color:var(--bad)">Eliminar bloque</button>' : ''}</form>`);
+  $('#f-blq').addEventListener('submit', async e => {
+    e.preventDefault();
+    const v = k => $(k).value.trim() || null;
+    const row = { letra: v('#b-l') || sig, nombre: v('#b-n') || 'Bloque', tipo: $('#b-t').value, agrupacion: v('#b-ag'), duracion: v('#b-du'), fc_objetivo: v('#b-fc'), maquina: v('#b-ma'), detalle: v('#b-de'), video_url: v('#b-vi') };
+    const { error } = b ? await sb.from('bloques_sesion').update(row).eq('id', b.id) : await sb.from('bloques_sesion').insert({ ...row, dia_id: dia.id });
+    if (error) return fallo(error);
+    cerrarSheet(); toast('Bloque guardado'); refrescarEditor();
+  });
+  $('#b-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez: se borrará el bloque y sus ejercicios'; return; } const { error } = await sb.from('bloques_sesion').delete().eq('id', b.id); if (error) return fallo(error, 'No se puede borrar: ese bloque ya tiene series registradas.'); cerrarSheet(); toast('Bloque eliminado'); refrescarEditor(); });
+}
+function filaTramo(t, primero) {
+  return `<div class="tr-row" data-tramo>
+    <label>Tipo<select data-k="tipo"><option value="serie" ${t.s || primero ? 'selected' : ''}>Nuevas series</option><option value="tramo" ${!t.s && !primero ? 'selected' : ''}>↳ Tramo sin parar</option></select></label>
+    <label>Nº series<input type="number" data-k="s" min="1" max="10" value="${t.s || ''}" placeholder="—"></label>
+    <label>Reps<input type="text" data-k="r" value="${esc(t.r || '')}" placeholder="8–10"></label>
+    <label>Peso<input type="text" data-k="kg" value="${esc(t.kg || '')}" placeholder="20 kg"></label>
+    <label>Desc. (s)<input type="number" data-k="d" min="0" step="5" value="${t.d ?? ''}" placeholder="60"></label>
+    <button type="button" class="mini" data-quitar aria-label="Quitar">✕</button>
+    <label style="grid-column:3/5">RIR<input type="text" data-k="rir" value="${esc(t.rir ?? '')}" placeholder="1"></label>
+  </div>`;
+}
+function formEjSesion(id, bloqueId) {
+  const p = S.editor.prog, todos = p.dias.flatMap(d => d.bloques_sesion), blq = todos.find(b => b.id === bloqueId) || todos.find(b => b.ejercicios_sesion.some(x => x.id === id));
+  const e = id ? blq.ejercicios_sesion.find(x => x.id === id) : null;
+  const pauta = e?.pauta?.length ? e.pauta : [{ s: 3, r: '10', rir: 2, kg: '', d: 90 }];
+  const opts = S.c.ejercicios.map(x => `<option value="${x.id}" ${e?.ejercicio_id === x.id ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('');
+  abrirSheet(`<form class="stack" id="f-ejs"><h2>${e ? 'Editar ejercicio' : 'Añadir ejercicio'}</h2>
+    <label class="f">Ejercicio<select id="es-ej"><option value="">— Elige de tu biblioteca —</option>${opts}<option value="nuevo">+ Ejercicio nuevo…</option></select></label>
+    <label class="f" id="es-nuevo-w" hidden>Nombre del ejercicio nuevo<input type="text" id="es-nuevo"></label>
+    <div class="stack" style="gap:8px"><span class="small muted">Pauta serie a serie. Usa "Tramo sin parar" para dropsets, clusters o rest-pause.</span><div id="es-tramos" class="stack" style="gap:10px">${pauta.map((t, i) => filaTramo(t, i === 0)).join('')}</div><button type="button" class="btn sm ghost" id="es-add" style="align-self:flex-start">+ Añadir fila</button></div>
+    <label class="f">Método<select id="es-met"><option value="">Sin método</option>${S.editor.metodos.map(m => `<option value="${m.id}" ${e?.metodo_id === m.id ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('')}</select></label>
+    <label class="f">Ajustes a su medida<input type="text" id="es-aj" value="${esc(e?.ajustes || '')}" placeholder="Ej. Silla: 5 · pies altos"></label>
+    <label class="f">Indicación de superserie (opcional)<input type="text" id="es-gr" value="${esc(e?.grupo || '')}" placeholder="Ej. 3 y 4 juntos (superserie)"></label>
+    <label class="row small"><input type="checkbox" id="es-631" ${e?.aproximacion_631 ? 'checked' : ''} style="width:20px;height:20px"> Aproximación 6·3·1 antes de empezar</label>
+    <p class="note">Si pones descanso 0 en la última fila, la app enlaza este ejercicio con el siguiente como superserie.</p>
+    <button class="btn full" type="submit">Guardar</button>${e ? '<button class="btn ghost full" type="button" id="es-del" style="color:var(--bad)">Quitar del programa</button>' : ''}</form>`);
+  $('#es-ej').addEventListener('change', ev => { $('#es-nuevo-w').hidden = ev.target.value !== 'nuevo'; });
+  $('#es-add').addEventListener('click', () => { $('#es-tramos').insertAdjacentHTML('beforeend', filaTramo({ d: 0 }, false)); });
+  $('#es-tramos').addEventListener('click', ev => { const q = ev.target.closest('[data-quitar]'); if (q && document.querySelectorAll('#es-tramos [data-tramo]').length > 1) q.closest('[data-tramo]').remove(); });
+  $('#f-ejs').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    try {
+      let ejId = $('#es-ej').value;
+      if (ejId === 'nuevo') {
+        const nombre = $('#es-nuevo').value.trim(); if (!nombre) return toast('Escribe el nombre del ejercicio nuevo');
+        const { data, error } = await sb.from('ejercicios').insert({ nombre }).select().single(); if (error) throw error;
+        S.c.ejercicios.push(data); ejId = data.id;
+      }
+      if (!ejId) return toast('Elige un ejercicio');
+      const filas = [...document.querySelectorAll('#es-tramos [data-tramo]')].map((f, i) => {
+        const g = k => f.querySelector(`[data-k="${k}"]`).value.trim();
+        const t = { r: g('r') || '—' };
+        if (g('tipo') === 'serie' || i === 0) t.s = Math.max(1, numero(g('s')) || 1);
+        const rir = g('rir'); if (rir !== '') t.rir = /^\d+$/.test(rir) ? +rir : rir;
+        if (g('kg')) t.kg = g('kg');
+        t.d = numero(g('d')) ?? 0;
+        return t;
+      });
+      const rirNum = filas.map(t => t.rir).find(v => typeof v === 'number');
+      const row = { ejercicio_id: +ejId, pauta: filas, series: filas.reduce((t, x) => t + (x.s || 0), 0), repeticiones: filas[0].r, rir: rirNum ?? null,
+        peso_ref: filas.find(t => t.kg)?.kg || null, descanso_seg: filas[filas.length - 1].d, metodo_id: numero($('#es-met').value), ajustes: $('#es-aj').value.trim() || null,
+        grupo: $('#es-gr').value.trim() || null, aproximacion_631: $('#es-631').checked };
+      const { error } = e ? await sb.from('ejercicios_sesion').update(row).eq('id', e.id) : await sb.from('ejercicios_sesion').insert({ ...row, bloque_id: blq.id, orden: (Math.max(0, ...blq.ejercicios_sesion.map(x => x.orden)) + 1) });
+      if (error) throw error;
+      cerrarSheet(); toast('Ejercicio guardado'); refrescarEditor();
+    } catch (err) { fallo(err); }
+  });
+  $('#es-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para quitarlo'; return; } const { error } = await sb.from('ejercicios_sesion').delete().eq('id', e.id); if (error) return fallo(error, 'No se puede quitar: ya tiene series registradas. Puedes cambiarlo por otro ejercicio.'); cerrarSheet(); toast('Ejercicio quitado'); refrescarEditor(); });
+}
+async function moverEj(id, dir) {
+  const blq = S.editor.prog.dias.flatMap(d => d.bloques_sesion).find(b => b.ejercicios_sesion.some(x => x.id === id));
+  const l = blq.ejercicios_sesion, i = l.findIndex(x => x.id === id), j = i + dir; if (j < 0 || j >= l.length) return;
+  const a = l[i], b = l[j];
+  const r1 = await sb.from('ejercicios_sesion').update({ orden: b.orden }).eq('id', a.id), r2 = await sb.from('ejercicios_sesion').update({ orden: a.orden }).eq('id', b.id);
+  if (r1.error || r2.error) return fallo(r1.error || r2.error);
+  if (a.orden === b.orden) await sb.from('ejercicios_sesion').update({ orden: b.orden + dir }).eq('id', a.id);
+  refrescarEditor();
+}
+
 /* ---------- Pagos ---------- */
 function lineaPago(p) {
   const hoy = hoyISO(), st = p.pagado_at ? 'pagado' : p.vence < hoy ? 'vencido' : 'pendiente';
   const a = S.c.perfiles.find(x => x.id === p.alumno_id) || {};
-  return `<div class="line"><div class="grow"><h3>${esc(a.nombre || '')}</h3><div class="small muted">${esc(p.concepto)} · vence ${esc(fCorta(p.vence))}${p.pagado_at ? ` · pagado ${esc(fCorta(p.pagado_at))}` : ''}</div></div>
+  return `<div class="line"><div class="grow" data-act="editarPago" data-id="${p.id}" style="cursor:pointer"><h3>${esc(a.nombre || '')}</h3><div class="small muted">${esc(p.concepto)} · vence ${esc(fCorta(p.vence))}${p.pagado_at ? ` · pagado ${esc(fCorta(p.pagado_at))}` : ''}</div></div>
     <div class="stack" style="gap:6px;align-items:flex-end"><b class="num" style="font-family:var(--display);font-size:20px">${fmtNum(p.importe, 2)} €</b>
     ${st === 'pagado' ? '<span class="pill ok">Pagado</span>' : `<div class="row" style="gap:6px">${st === 'vencido' ? `<button class="btn sm ghost" data-act="recordar" data-id="${p.id}">Recordatorio</button>` : ''}<button class="btn sm${st === 'vencido' ? '' : ' ghost'}" data-act="pagar" data-id="${p.id}">Pagado</button></div>`}</div></div>`;
 }
@@ -616,9 +1048,32 @@ function vPagos() {
   const mes = hoy.slice(0, 7), cobMes = P.filter(p => p.pagado_at && p.pagado_at.slice(0, 7) === mes);
   return `<section class="stack"><span class="eyebrow">Cobros</span><h1>Pagos</h1><button class="btn sm" data-act="nuevoPagoGeneral" style="align-self:flex-start">Añadir cuota</button></section>
   <section class="section"><div class="kpis"><div class="kpi"><div class="v num" style="color:var(--ok);font-size:20px">${sum(cobMes)}</div><div class="l">cobrado este mes</div></div><div class="kpi"><div class="v num" style="font-size:20px">${sum(pend)}</div><div class="l">por cobrar</div></div><div class="kpi"><div class="v num" style="color:${venc.length ? 'var(--bad)' : 'var(--ok)'};font-size:20px">${sum(venc)}</div><div class="l">vencido</div></div></div></section>
+  <section class="section"><div class="card stack chart"><div class="row"><h3 class="grow">Ingresos por mes</h3></div>${graficaPagos(P)}<div class="row small" style="gap:14px;flex-wrap:wrap"><span><i class="ley" style="background:var(--ok)"></i>Cobrado</span><span><i class="ley" style="background:var(--blue)"></i>Por cobrar</span><span><i class="ley" style="background:var(--bad)"></i>Vencido</span></div></div></section>
   ${venc.length ? `<section class="section"><h2>Vencidos</h2><div class="card">${venc.map(lineaPago).join('')}</div></section>` : ''}
   <section class="section"><h2>Próximos cobros</h2><div class="card">${pend.map(lineaPago).join('') || '<div class="empty">No hay cuotas pendientes.</div>'}</div></section>
   ${cob.length ? `<section class="section"><h2>Últimos cobrados</h2><div class="card">${cob.map(lineaPago).join('')}</div></section>` : ''}`;
+}
+function formEditarPago(id) {
+  const p = S.c.pagos.find(x => x.id === id); if (!p) return;
+  abrirSheet(`<form class="stack" id="f-ep"><h2>Editar cuota</h2>
+    <label class="f">Concepto<input type="text" id="ep-con" value="${esc(p.concepto)}" required></label>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Vence<input type="date" id="ep-vence" value="${p.vence}"></label><label class="f">Importe (€)<input type="text" inputmode="decimal" id="ep-imp" value="${fmtNum(p.importe, 2)}"></label></div>
+    <label class="f">Fecha de pago (vacío = pendiente)<input type="date" id="ep-pag" value="${p.pagado_at || ''}"></label>
+    <button class="btn full" type="submit">Guardar cambios</button>
+    <button class="btn ghost full" type="button" id="ep-del" style="color:var(--bad)">Eliminar cuota</button></form>`);
+  $('#f-ep').addEventListener('submit', async e => {
+    e.preventDefault();
+    const imp = numero($('#ep-imp').value); if (imp == null) return toast('Indica el importe');
+    const cambios = { concepto: $('#ep-con').value.trim(), vence: $('#ep-vence').value, importe: imp, pagado_at: $('#ep-pag').value || null };
+    const { data, error } = await sb.from('pagos').update(cambios).eq('id', id).select().single(); if (error) return fallo(error);
+    S.c.pagos = S.c.pagos.map(x => x.id === id ? data : x).sort((a, b) => a.vence.localeCompare(b.vence)); cerrarSheet(); toast('Cuota actualizada'); render();
+  });
+  $('#ep-del').addEventListener('click', async ev => {
+    const b = ev.currentTarget;
+    if (!b.dataset.ok) { b.dataset.ok = 1; b.textContent = 'Pulsa otra vez para eliminarla definitivamente'; return; }
+    const { error } = await sb.from('pagos').delete().eq('id', id); if (error) return fallo(error);
+    S.c.pagos = S.c.pagos.filter(x => x.id !== id); cerrarSheet(); toast('Cuota eliminada'); render();
+  });
 }
 async function marcarPagado(id) {
   const { data, error } = await sb.from('pagos').update({ pagado_at: hoyISO() }).eq('id', id).select().single();
@@ -678,7 +1133,7 @@ document.addEventListener('click', async e => {
   const a = b.dataset.act;
   switch (a) {
     case 'tab': S.tab = b.dataset.t; S.dia = null; S.chipsCargados = false; render(); window.scrollTo(0, 0); break;
-    case 'ctab': S.ctab = b.dataset.t; S.ficha = null; render(); window.scrollTo(0, 0); break;
+    case 'ctab': S.ctab = b.dataset.t; S.ficha = null; S.editor = null; render(); window.scrollTo(0, 0); break;
     case 'modo': S.modo = b.dataset.v; S.ficha = null; if (S.modo === 'coach') await cargarCoach(); render(); window.scrollTo(0, 0); break;
     case 'abrirDia': await abrirDia(+b.dataset.id); break;
     case 'cerrarDia': S.dia = null; S.sesion = null; render(); break;
@@ -699,6 +1154,20 @@ document.addEventListener('click', async e => {
     case 'nuevoPago': formPago(S.ficha.id); break;
     case 'nuevoPagoGeneral': formPago(null); break;
     case 'nuevaNota': formNota(); break;
+    case 'editarPago': formEditarPago(+b.dataset.id); break;
+    case 'editarServicio': formServicio(); break;
+    case 'editarEjercicio': formEjercicio(+b.dataset.id); break;
+    case 'empezarCrono': empezarCrono(); break;
+    case 'verImagen': abrirSheet(`<div class="stack"><img src="${esc(b.dataset.src)}" alt="" style="width:100%;border-radius:12px;background:var(--surface-2)"><button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`); break;
+    case 'importarImagenes': await importarImagenes(); break;
+    case 'editarPrograma': await abrirEditor(b.dataset.id); break;
+    case 'cerrarEditor': S.editor = null; render(); window.scrollTo(0, 0); break;
+    case 'edDia': formDia(b.dataset.id ? +b.dataset.id : null); break;
+    case 'edBloque': formBloque(b.dataset.id ? +b.dataset.id : null, b.dataset.dia ? +b.dataset.dia : null); break;
+    case 'edEj': formEjSesion(b.dataset.id ? +b.dataset.id : null, b.dataset.bloque ? +b.dataset.bloque : null); break;
+    case 'moverEj': await moverEj(+b.dataset.id, +b.dataset.dir); break;
+    case 'nuevoPrograma': formPrograma(); break;
+    case 'sinVideo': toast('Jesús todavía no ha subido el vídeo de este ejercicio'); break;
     case 'pagar': await marcarPagado(+b.dataset.id); break;
     case 'recordar': await copiarRecordatorio(+b.dataset.id); break;
     case 'cuenta': vCuenta(); break;
@@ -708,6 +1177,7 @@ document.addEventListener('click', async e => {
   }
 });
 document.addEventListener('input', e => {
+  if (e.target.id === 'ej-buscar') { S.filtroEj = e.target.value; const pos = e.target.selectionStart; render(); const i = $('#ej-buscar'); i.focus(); try { i.setSelectionRange(pos, pos); } catch (er) { } }
   if (e.target.id === 'k-mot') $('#k-mot-v').textContent = e.target.value + '/10';
   if (e.target.id === 'k-imp') $('#k-imp-v').textContent = e.target.value + '/10';
 });
