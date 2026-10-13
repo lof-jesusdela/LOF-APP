@@ -1098,33 +1098,33 @@ async function blobDe(url) {
 async function importarImagenes() {
   let mapa;
   try { mapa = await (await fetch('imagenes.json', { cache: 'no-store' })).json(); } catch (e) { return toast('No se ha podido leer el archivo de imágenes'); }
-  abrirSheet(`<div class="stack"><h2>Actualizando imágenes</h2><p class="small" id="imp-txt">Comprobando qué imágenes faltan o no cargan…</p><div class="track"><i id="imp-bar" style="width:0"></i></div><p class="note">No cierres la app hasta que termine. Puede tardar un par de minutos.</p></div>`);
-  const necesita = async u => !u || esGoogle(u) || !(await cargaBien(u));
+  abrirSheet(`<div class="stack"><h2>Actualizando imágenes</h2><p class="small" id="imp-txt">Comprobando qué imágenes faltan o no cargan…</p><div class="track"><i id="imp-bar" style="width:0"></i></div><p class="note">No cierres la app hasta que termine.</p></div>`);
+  const abs = r => new URL(r, location.href).href;
+  // Se sustituyen: vacías, enlaces de Google (caducan), copias antiguas de la hoja y las que no cargan. Las fotos que subiste tú se respetan.
+  const sustituir = async (actual, nueva) => !actual || esGoogle(actual) || /\/hoja-/.test(actual) || (actual !== nueva && !(await cargaBien(actual)));
   const tareas = [];
   for (const x of S.c.ejercicios) {
     const m = mapa[x.nombre]; if (!m) continue;
-    if (m.img && await necesita(x.imagen_url)) tareas.push({ tabla: 'ejercicios', obj: x, campo: 'imagen_url', url: m.img, ruta: `hoja-ej-${x.id}-${Date.now()}.png`, nombre: x.nombre });
-    if (m.musculo_img && await necesita(x.musculo_img_url)) tareas.push({ tabla: 'ejercicios', obj: x, campo: 'musculo_img_url', url: m.musculo_img, ruta: `hoja-mus-${x.id}-${Date.now()}.png`, nombre: x.nombre + ' · músculo' });
+    if (m.img && x.imagen_url !== abs(m.img) && await sustituir(x.imagen_url, abs(m.img))) tareas.push({ tabla: 'ejercicios', obj: x, campo: 'imagen_url', url: abs(m.img), nombre: x.nombre });
+    if (m.musculo_img && x.musculo_img_url !== abs(m.musculo_img) && await sustituir(x.musculo_img_url, abs(m.musculo_img))) tareas.push({ tabla: 'ejercicios', obj: x, campo: 'musculo_img_url', url: abs(m.musculo_img), nombre: x.nombre + ' · músculo' });
   }
   const B = mapa._bloques || {};
   const { data: progs } = await sb.from('programas').select('nombre,dias(nombre,bloques_sesion(*))');
   for (const p of progs || []) for (const d of p.dias || []) for (const b of d.bloques_sesion || []) {
     if (!('imagen_url' in b)) continue;
-    const url = b.tipo === 'cardio' && /caminata/i.test(b.maquina || b.nombre || '') ? B['cardio:caminata'] : b.tipo === 'movilidad' && /ciclo 1/i.test(p.nombre) ? B['movilidad:' + d.nombre] : null;
-    if (url && await necesita(b.imagen_url)) tareas.push({ tabla: 'bloques_sesion', obj: b, campo: 'imagen_url', url, ruta: `hoja-blq-${b.id}-${Date.now()}.png`, nombre: `${d.nombre} · ${b.nombre}` });
+    const r = b.tipo === 'cardio' && /caminata/i.test(b.maquina || b.nombre || '') ? B['cardio:caminata'] : b.tipo === 'movilidad' && /ciclo 1/i.test(p.nombre) ? B['movilidad:' + d.nombre] : null;
+    if (r && b.imagen_url !== abs(r) && await sustituir(b.imagen_url, abs(r))) tareas.push({ tabla: 'bloques_sesion', obj: b, campo: 'imagen_url', url: abs(r), nombre: `${d.nombre} · ${b.nombre}` });
   }
   if (!tareas.length) { cerrarSheet(); return toast('Todas las imágenes están bien'); }
-  let copias = 0, enlaces = 0, n = 0;
+  let ok = 0, faltan = 0, n = 0;
   for (const t of tareas) {
     n++; $('#imp-txt').textContent = `${n} de ${tareas.length} · ${t.nombre}`; $('#imp-bar').style.width = (n / tareas.length * 100) + '%';
-    let url = t.url;
-    const blob = await blobDe(t.url);
-    if (blob) { const up = await sb.storage.from('ejercicios').upload(t.ruta, blob, { contentType: blob.type || 'image/png', upsert: true }); if (!up.error) { url = sb.storage.from('ejercicios').getPublicUrl(t.ruta).data.publicUrl; copias++; } else enlaces++; } else enlaces++;
-    const { error } = await sb.from(t.tabla).update({ [t.campo]: url }).eq('id', t.obj.id);
-    if (!error) t.obj[t.campo] = url;
+    if (!(await cargaBien(t.url))) { faltan++; continue; }
+    const { error } = await sb.from(t.tabla).update({ [t.campo]: t.url }).eq('id', t.obj.id);
+    if (!error) { t.obj[t.campo] = t.url; ok++; }
   }
   cerrarSheet(); await cargarAlumno(S.user.id); render();
-  abrirSheet(`<div class="stack"><h2>Imágenes actualizadas</h2><p class="small">${tareas.length} imágenes puestas al día: <b>${copias}</b> guardadas en el almacén de la app${enlaces ? ` y <b>${enlaces}</b> enlazadas a tu hoja de Google` : ''}.</p>${enlaces ? '<p class="note">Las enlazadas a Google se ven, pero Google cambia esos enlaces cada cierto tiempo. Si alguna deja de verse, vuelve a pulsar "Actualizar imágenes" o sube la foto desde el ejercicio.</p>' : '<p class="note">Ya no dependen de tus hojas de Google: no caducan.</p>'}<button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`);
+  abrirSheet(`<div class="stack"><h2>Imágenes actualizadas</h2><p class="small"><b>${ok}</b> imágenes puestas${faltan ? ` · ${faltan} no disponibles todavía` : ''}.</p><p class="note">Ahora están guardadas dentro de la propia app: ya no dependen de Google y no caducan.</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`);
 }
 
 /* ---------- Bloques del proceso (coach): nombre, objetivo y semanas ---------- */
