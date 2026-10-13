@@ -1,4 +1,4 @@
-36 de 147 imágenes guardadas
+42 de 162 imágenes guardadas
 img/ej/flexion-lateral-banco-inclinado.png: HTTP Error 403: Forbidden
 img/mus/flexion-lateral-banco-inclinado.png: HTTP Error 403: Forbidden
 img/ej/extension-de-cadera-banco-inclinado.png: HTTP Error 403: Forbidden
@@ -110,3 +110,12 @@ img/bloques/movilidad-lunes.png: HTTP Error 403: Forbidden
 img/bloques/movilidad-martes.png: HTTP Error 403: Forbidden
 img/bloques/movilidad-miercoles.png: HTTP Error 403: Forbidden
 img/bloques/movilidad-viernes.png: HTTP Error 403: Forbidden
+img/mus/crunch-lateral-con-kettlebell.png: HTTP Error 403: Forbidden
+img/mus/rotacion-de-tronco.png: HTTP Error 403: Forbidden
+img/ej/remo-a-1-mano-neutro.png: HTTP Error 403: Forbidden
+img/ej/sentadilla-completa.png: HTTP Error 403: Forbidden
+img/ej/flexo-extension-de-tobillo.png: HTTP Error 403: Forbidden
+img/ej/press-inclinado-neutro.png: HTTP Error 403: Forbidden
+img/bloques/movilidad-jl-martes.png: HTTP Error 403: Forbidden
+img/bloques/movilidad-jl-jueves.png: HTTP Error 403: Forbidden
+img/bloques/movilidad-jl-sabado.png: HTTP Error 403: Forbidden
