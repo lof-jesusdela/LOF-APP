@@ -3,7 +3,8 @@ import json, os, sys, time, urllib.request
 fuente = json.load(open('img_fuente.json'))
 ok, mal = 0, []
 for ruta, url in fuente.items():
-    if os.path.exists(ruta) and os.path.getsize(ruta) > 1000:
+    jpg = os.path.splitext(ruta)[0] + '.jpg'
+    if (os.path.exists(ruta) and os.path.getsize(ruta) > 1000) or os.path.exists(jpg):
         ok += 1; continue
     os.makedirs(os.path.dirname(ruta), exist_ok=True)
     for intento in range(3):
