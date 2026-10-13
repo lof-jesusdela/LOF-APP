@@ -167,6 +167,17 @@ nav.tabs button[aria-current="page"]{color:var(--blue)}
 .sets .foco,.sets input.foco{outline:2px solid var(--blue);outline-offset:1px;border-radius:8px;background:var(--blue-soft)}
 .coach img{width:48px;height:48px;border-radius:50%;object-fit:cover;box-shadow:0 0 0 2px var(--gold);flex:none}
 @media (prefers-reduced-motion:no-preference){.card{animation:in .22s ease both}@keyframes in{from{transform:translateY(4px)}to{transform:none}}}
+.bimg .img{border:0;padding:0;background:#fff;border-radius:12px;overflow:hidden;width:100%;display:block}.bimg img{width:100%;max-height:240px;object-fit:contain;display:block}
+.bimg .ilu{display:none}.bimg.roto .img{display:none}.bimg.roto .ilu{display:block}
+.ilu{width:100%;height:auto;border-radius:12px;display:block}
+.escala{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}.escala button{border:1.5px solid var(--line);background:var(--surface);border-radius:12px;padding:12px 0;font-weight:800;font-size:16px;color:var(--ink)}
+.escala button[aria-pressed="true"]{background:var(--blue);border-color:var(--blue);color:#fff}
+.rev{border-left:3px solid var(--gold);padding-left:8px}
+.pre{white-space:pre-line}
+.lado{display:grid;grid-template-columns:40px 1fr 56px;gap:8px;align-items:center}.lado b{text-align:right}
+details.prueba>summary{list-style:none;cursor:pointer}details.prueba>summary::-webkit-details-marker{display:none}
+details.prueba .mas{font-size:20px;color:var(--blue);transition:transform .2s}details.prueba[open] .mas{transform:rotate(45deg)}
+details.como>summary{cursor:pointer;color:var(--blue-text)}
 </style>
 </head>
 <body>

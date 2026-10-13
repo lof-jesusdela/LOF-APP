@@ -38,6 +38,7 @@ const IC = {
   pagos: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M7 15h3"/>',
   ejercicios: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 15l3-3 2 2 3-4M8 8h.01"/>',
   pasos: '<path d="M8 4c1.5 0 2.5 2 2.5 4.5S9.5 13 8 13s-2.5-2-2.5-4.5S6.5 4 8 4zM16 10c1.5 0 2.5 2 2.5 4.5S17.5 19 16 19s-2.5-2-2.5-4.5S14.5 10 16 10z"/>',
+  tests: '<path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/><path d="M7.5 15h9"/>',
   cal: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>'
 };
 const svg = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${IC[k]}</svg>`;
@@ -155,21 +156,21 @@ function vistaMensaje(t, m, salir) {
 // Si la base de datos aún no tiene las columnas nuevas, repite la consulta en su versión anterior.
 async function conRespaldo(a, b) { const r = await a(); if (r.error) { console.warn('Usando consulta anterior:', r.error.message); return await b(); } return r; }
 const SIN_NUEVAS = sel => sel.replace(',imagen_url,musculo_img_url', '').replace(',musculo_img_url', '');
-const SEL_PROGRAMA = 'id,nombre,dias_semana,dias(id,numero,nombre,objetivo,volumen,intensidad,foco,bloques_sesion(id,letra,nombre,tipo,agrupacion,duracion,fc_objetivo,maquina,objetivo,detalle,video_url,ejercicios_sesion(id,orden,series,repeticiones,rir,peso_ref,descanso_seg,ajustes,aproximacion_631,grupo,pauta,ejercicios(nombre,video_url,imagen_url,musculo_img_url,musculo,descripcion),metodos(nombre,explicacion))))';
+const SEL_PROGRAMA = 'id,nombre,dias_semana,dias(id,numero,nombre,objetivo,volumen,intensidad,foco,bloques_sesion(*,ejercicios_sesion(id,orden,series,repeticiones,rir,peso_ref,descanso_seg,ajustes,aproximacion_631,grupo,pauta,ejercicios(nombre,video_url,imagen_url,musculo_img_url,musculo,descripcion),metodos(nombre,explicacion))))';
 
 async function cargarAlumno(uid) {
   const desde = sumaDias(hoyISO(), -60);
-  const [srv, prog, med, reg, ses, chk, ruta, met] = await Promise.all([
+  const [srv, prog, med, reg, ses, chk, ruta, met, val] = await Promise.all([
     sb.from('servicios').select('*').eq('alumno_id', uid).eq('activo', true).order('id', { ascending: false }).limit(1),
     conRespaldo(() => sb.from('programas').select(SEL_PROGRAMA).eq('alumno_id', uid).eq('activo', true).order('id', { ascending: false }).limit(1),
       () => sb.from('programas').select(SIN_NUEVAS(SEL_PROGRAMA)).eq('alumno_id', uid).eq('activo', true).order('id', { ascending: false }).limit(1)),
     sb.from('mediciones').select('*').eq('alumno_id', uid).eq('es_objetivo', false).order('fecha'),
     sb.from('registro_diario').select('*').eq('alumno_id', uid).gte('fecha', desde),
-    conRespaldo(() => sb.from('sesiones_hechas').select('id,dia_id,fecha,nota,inicio_at,duracion_min').eq('alumno_id', uid).gte('fecha', desde).order('fecha'),
-      () => sb.from('sesiones_hechas').select('id,dia_id,fecha,nota').eq('alumno_id', uid).gte('fecha', desde).order('fecha')),
+    sb.from('sesiones_hechas').select('*').eq('alumno_id', uid).gte('fecha', desde).order('fecha'),
     sb.from('checkins').select('*').eq('alumno_id', uid).order('semana_inicio', { ascending: false }).limit(12),
     sb.from('hoja_ruta').select('*').eq('alumno_id', uid).order('orden'),
-    sb.from('metodos').select('nombre,explicacion')
+    sb.from('metodos').select('nombre,explicacion'),
+    sb.from('valoraciones').select('*,pruebas(*)').eq('alumno_id', uid).order('fecha', { ascending: false })
   ]);
   const p = prog.data?.[0] || null;
   if (p) {
@@ -179,14 +180,15 @@ async function cargarAlumno(uid) {
   S.d = {
     servicio: srv.data?.[0] || null, programa: p, mediciones: med.data || [], diario: reg.data || [],
     sesiones: ses.data || [], checkins: chk.data || [], ruta: ruta.data || [],
-    metodos: Object.fromEntries((met.data || []).map(m => [m.nombre, m.explicacion]))
+    metodos: Object.fromEntries((met.data || []).map(m => [m.nombre, m.explicacion])),
+    valoraciones: ordenarValoraciones(val.data || [])
   };
 }
 
 /* ---------- Render principal ---------- */
 function tabsAlumno() {
   const s = S.d.servicio || {};
-  return [['hoy', 'Hoy'], (s.modulo_entreno ?? true) && ['entreno', 'Entreno'], s.modulo_nutricion && ['nutri', 'Nutrición'], ['progreso', 'Progreso'], ['checkin', 'Check-in']].filter(Boolean);
+  return [['hoy', 'Hoy'], (s.modulo_entreno ?? true) && ['entreno', 'Entreno'], s.modulo_nutricion && ['nutri', 'Nutrición'], ['progreso', 'Progreso'], ['checkin', 'Check-in'], ['tests', 'Tests']].filter(Boolean);
 }
 
 function render() {
@@ -194,12 +196,12 @@ function render() {
   const tabs = coach ? [['alumnos', 'Alumnos'], ['ejercicios', 'Ejercicios'], ['pagos', 'Pagos']] : tabsAlumno();
   const actual = coach ? S.ctab : S.tab;
   const esCoach = S.perfil.rol === 'coach';
-  const vistas = { hoy: vHoy, entreno: vEntreno, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, alumnos: vAlumnos, pagos: vPagos, ejercicios: vEjercicios };
+  const vistas = { hoy: vHoy, entreno: vEntreno, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, tests: vTests, alumnos: vAlumnos, pagos: vPagos, ejercicios: vEjercicios };
   $('#app').innerHTML = `<header class="top">
       <div class="badge"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : esc(S.perfil.metodologia || 'Tu proceso')}</strong></div></div>
       <div class="row" style="gap:8px">${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
       <button class="avatar" data-act="cuenta" aria-label="Mi cuenta">${esCoach ? '<img src="icons/coach.jpg" alt="">' : esc((S.perfil.nombre || '?').slice(0, 2).toUpperCase())}</button></div>
-    </header><main id="main">${(S.obj && coach) ? vEntreno() : (S.editor && coach) ? vEditor() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && coach) ? vFicha() : vistas[actual]()}</main>`;
+    </header><main id="main">${(S.obj && coach) ? vEntreno() : (S.editor && coach) ? vEditor() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : vistas[actual]()}</main>`;
   $('#tabs').hidden = false;
   $('#tabs-in').innerHTML = tabs.map(([k, l]) => `<button data-act="${coach ? 'ctab' : 'tab'}" data-t="${k}" ${actual === k && !((S.ficha || S.editor || S.obj) && coach) ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span></button>`).join('');
   if (S.dia && ((!coach && S.tab === 'entreno') || (coach && S.obj))) rellenarSesion();
@@ -427,6 +429,14 @@ function resumenEjCerrado(ro, e) {
   const dif = va ? Math.round((vh - va) / va * 100) : null;
   return `<div class="small">${hoy} de ${e.series} series hechas${vh ? ` · volumen ${fmtNum(vh, 0)} kg` : ''}${dif != null && hoy ? ` <b style="color:var(--${dif >= 0 ? 'ok' : 'bad'})">(${dif >= 0 ? '+' : ''}${dif} % vs anterior)</b>` : ''}</div>`;
 }
+const CANS = ['', 'Muy fresc@', 'Fresc@', 'Normal', 'Cansad@', 'Agotad@'], POD = ['', 'Sin fuerza', 'Flojo', 'Normal', 'Poderos@', 'Imparable'];
+function vValoracionSesion(s) {
+  if (!s.cansancio && !s.poderio && !s.nota && !s.nota_revision) return '';
+  return `<div class="card stack"><span class="eyebrow">Cómo se sintió</span>
+    ${s.cansancio || s.poderio ? `<div class="kpis" style="grid-template-columns:1fr 1fr"><div class="kpi"><div class="l">Cansancio</div><b>${s.cansancio ? s.cansancio + '/5 · ' + CANS[s.cansancio] : '—'}</b></div><div class="kpi"><div class="l">Poderío</div><b>${s.poderio ? s.poderio + '/5 · ' + POD[s.poderio] : '—'}</b></div></div>` : ''}
+    ${s.nota ? `<div class="small"><span class="muted">Comentario de la sesión:</span> "${esc(s.nota)}"</div>` : ''}
+    ${s.nota_revision ? `<div class="small rev"><span class="muted">Para la revisión:</span> "${esc(s.nota_revision)}"</div>` : ''}</div>`;
+}
 function vSesionCerrada() {
   const v = S.verSes, d = v.dia, cont = { n: 0 }, a = S.c.perfiles.find(p => p.id === S.ficha.id) || {};
   const total = d.bloques_sesion.filter(b => b.tipo === 'fuerza').flatMap(b => b.ejercicios_sesion).reduce((t, e) => t + (+e.series || 0), 0);
@@ -435,7 +445,7 @@ function vSesionCerrada() {
   <section class="stack" style="margin-top:12px"><button class="btn sm ghost" data-act="cerrarVerSesion" style="align-self:flex-start">← Ficha de ${esc((a.nombre || '').split(' ')[0])}</button>
     <span class="eyebrow">${esc(a.nombre || '')} · ${esc(d.nombre)}</span><h1>${esc(d.foco || d.nombre)}</h1>
     ${(() => { const x = numEntreno(S.ficha.todas, S.ficha.srv, v.ses.fecha, v.ses.id, S.ficha.prog?.dias_semana); return x && !x.fuera ? `<div class="row" style="flex-wrap:wrap;gap:6px"><span class="pill blue">Ciclo ${x.ciclo}</span><span class="pill gold">Semana ${x.semCiclo} de ${x.cc.sem}</span><span class="pill">Entreno ${x.n}${x.previstos ? ' de ' + x.previstos : ''} del ciclo</span></div>` : ''; })()}
-    ${v.ses.nota ? `<div class="card stack"><span class="eyebrow">Su comentario</span><div class="small">"${esc(v.ses.nota)}"</div></div>` : ''}
+    ${vValoracionSesion(v.ses)}
     <div class="card stack"><span class="eyebrow">Objetivo del día</span><div class="small">${esc(d.objetivo || '')}</div>
     <div class="kpis"><div class="kpi"><div class="l">Volumen</div><b>${esc(d.volumen || '—')}</b></div><div class="kpi"><div class="l">Intensidad</div><b>${esc(d.intensidad || '—')}</b></div><div class="kpi"><div class="l">Foco</div><b>${esc(d.foco || '—')}</b></div></div></div>
     ${v.antFecha ? `<p class="note">Debajo de cada serie ves lo que hizo la vez anterior (${esc(fCorta(v.antFecha))}).</p>` : ''}</section>
@@ -443,9 +453,20 @@ function vSesionCerrada() {
   ${v.huerfanas.length ? `<div class="card stack"><span class="eyebrow">Ejercicios que ya no están en el programa</span>${v.huerfanas.map(r => `<div class="small num">Serie ${r.serie}: ${r.kg == null ? '—' : fmtNum(r.kg, 2) + ' kg'} × ${r.repeticiones ?? '—'} · RIR ${r.rir ?? '—'}</div>`).join('')}</div>` : ''}
   <button class="btn full ghost" data-act="cerrarVerSesion">Volver a la ficha</button></section>`;
 }
+/* Imagen ilustrativa de cardio y movilidad: la de la hoja o, si no hay, un dibujo propio */
+const ILU = {
+  cardio: `<svg viewBox="0 0 320 150" role="img" aria-label="Cardio"><rect width="320" height="150" fill="#EEF4FF"/><path d="M40 118h210l30-38" stroke="#0B0B0C" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M60 118l-8 18M240 118l8 18" stroke="#0B0B0C" stroke-width="6" stroke-linecap="round"/><circle cx="160" cy="28" r="13" fill="#0066FF"/><path d="M158 44l-6 36 22 34M152 80l-24 34M156 52l26 16 22-8M156 52l-22 18" stroke="#0066FF" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M230 40c10-12 30-12 34 4 4 16-20 30-34 40-14-10-38-24-34-40 4-16 24-16 34-4z" fill="#D4AF37"/><path d="M212 54h12l5-8 6 16 5-8h12" stroke="#fff" stroke-width="3" fill="none" stroke-linejoin="round"/></svg>`,
+  movilidad: `<svg viewBox="0 0 320 150" role="img" aria-label="Movilidad"><rect width="320" height="150" fill="#EEF4FF"/><rect x="40" y="122" width="240" height="10" rx="5" fill="#D4AF37"/><circle cx="104" cy="58" r="13" fill="#0066FF"/><path d="M116 70l52 26 48 26M168 96l-10 26M140 82l-14 40M118 74l-28 24" stroke="#0066FF" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M214 40a40 40 0 0 1 40 40" stroke="#0B0B0C" stroke-width="4" fill="none" stroke-dasharray="6 7" stroke-linecap="round"/><path d="M250 70l4 12 10-8" stroke="#0B0B0C" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+};
+function imgBloque(b) {
+  const ilu = (ILU[b.tipo] || '').replace('<svg', '<svg class="ilu"');
+  if (!b.imagen_url) return ilu;
+  return `<div class="bimg"><button class="img" data-act="verImagen" data-src="${esc(b.imagen_url)}" aria-label="Ver imagen"><img src="${esc(b.imagen_url)}" alt="${esc(b.nombre)}" loading="lazy" onerror="this.closest('.bimg').classList.add('roto')"></button>${ilu}</div>`;
+}
 function vBloque(b, cont, ro) {
   if (b.tipo !== 'fuerza') {
     return `<div class="card stack"><div class="row"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}</h3></div>
+      ${imgBloque(b)}
       ${b.tipo === 'cardio' ? `<div class="kpis" style="grid-template-columns:1fr 1fr"><div class="kpi"><div class="l">Duración</div><b>${esc(b.duracion || '—')}</b></div><div class="kpi"><div class="l">Frecuencia cardiaca</div><b style="color:var(--bad)">${esc(b.fc_objetivo || '—')}</b></div></div><div class="small muted">${esc([b.maquina, b.objetivo].filter(Boolean).join(' · '))}</div>` : ''}
       ${b.detalle ? `<p class="note">${esc(b.detalle)}</p>` : ''}
       ${b.video_url ? `<a class="btn sm ghost" style="align-self:flex-start" href="${esc(b.video_url)}" target="_blank" rel="noopener">Ver vídeo</a>` : ''}</div>`;
@@ -576,14 +597,28 @@ async function toggleSerie(b) {
 function terminar() {
   if (S.obj && S.sesion?.editar) return guardarSesion();
   const min = S.sesion?.inicio ? Math.max(1, Math.round((Date.now() - S.sesion.inicio) / 60000)) : null;
-  abrirSheet(`<div class="stack"><h2>Sesión terminada</h2>${min ? `<p class="small">Has entrenado <b>${min} minutos</b>.</p>` : ''}<label class="f">${S.obj ? 'Nota de la sesión (la verá también el alumno)' : '¿Algo que quieras contarle a Jesús? (opcional)'}<textarea id="s-nota" placeholder="Molestias, sensaciones, máquinas ocupadas…"></textarea></label><button class="btn full" data-act="guardarSesion">Guardar y salir</button></div>`);
+  const escala = (id, txt, ext) => `<div class="stack" style="gap:6px"><span class="small"><b>${txt}</b></span><div class="escala" role="group" id="${id}">${[1, 2, 3, 4, 5].map(n => `<button type="button" data-act="escala" data-g="${id}" data-v="${n}" aria-pressed="false">${n}</button>`).join('')}</div><div class="row small muted"><span class="grow">${ext[0]}</span><span>${ext[1]}</span></div></div>`;
+  const el = S.obj ? 'se ha sentido' : 'te has sentido';
+  abrirSheet(`<div class="stack"><h2>Sesión terminada</h2>${min ? `<p class="small">${S.obj ? 'Ha' : 'Has'} entrenado <b>${min} minutos</b>.</p>` : ''}
+    ${escala('s-cans', `Valora de 1 a 5 ${S.obj ? 'su' : 'tu'} nivel de cansancio`, ['1 · Muy fresc@', '5 · Agotad@'])}
+    ${escala('s-pod', `Valora de 1 a 5 cómo de poderos@ ${el}`, ['1 · Sin fuerza', '5 · Imparable'])}
+    <label class="f">Comentarios de la sesión (opcional)<textarea id="s-nota" placeholder="Molestias, sensaciones, máquinas ocupadas…"></textarea></label>
+    <label class="f">Para la revisión semanal o mensual (opcional)<textarea id="s-rev" placeholder="Algo que quieras que revisemos juntos: progreso, dudas, ajustes…"></textarea></label>
+    <button class="btn full" data-act="guardarSesion">Guardar y salir</button></div>`);
 }
 async function guardarSesion() {
   try {
     if (S.obj && S.sesion?.editar) { const sid = S.sesion.id; cerrarSheet(); stopTimer(); await salirComo(); toast('Cambios guardados'); if (sid) await verSesion(sid); return; }
-    const id = await asegurarSesion(), nota = $('#s-nota').value.trim(), cambios = {};
+    const id = await asegurarSesion(), nota = $('#s-nota').value.trim(), rev = $('#s-rev')?.value.trim(), cambios = {};
     if (nota) cambios.nota = nota;
+    const val = g => { const b = document.querySelector(`#${g} [aria-pressed="true"]`); return b ? +b.dataset.v : null; };
+    const extra = {}; if (val('s-cans')) extra.cansancio = val('s-cans'); if (val('s-pod')) extra.poderio = val('s-pod'); if (rev) extra.nota_revision = rev;
     if (S.sesion.inicio) { cambios.duracion_min = Math.max(1, Math.round((Date.now() - S.sesion.inicio) / 60000)); cambios.inicio_at = new Date(S.sesion.inicio).toISOString(); }
+    if (Object.keys(extra).length) {
+      const r = await sb.from('sesiones_hechas').update(extra).eq('id', id);
+      if (r.error) { console.warn(r.error.message); if (extra.nota_revision) cambios.nota = [nota, 'Para la revisión: ' + extra.nota_revision].filter(Boolean).join('\n'); }
+      else Object.assign(S.d.sesiones.find(s => s.id === id) || {}, extra);
+    }
     if (Object.keys(cambios).length) { const { error } = await conRespaldo(() => sb.from('sesiones_hechas').update(cambios).eq('id', id), () => sb.from('sesiones_hechas').update({ nota: cambios.nota ?? null }).eq('id', id)); if (error) throw error; Object.assign(S.d.sesiones.find(s => s.id === id) || {}, cambios); }
     try { localStorage.removeItem(claveCrono()); } catch (e) { }
     if (S.obj) { cerrarSheet(); stopTimer(); await salirComo(); toast('Sesión guardada en su ficha'); await verSesion(id); return; }
@@ -709,8 +744,7 @@ async function abrirFicha(id) {
   S.ficha = { id, cargando: true }; S.verSes = null; render(); window.scrollTo(0, 0);
   const [med, ses, notas, prog, srv, todas] = await Promise.all([
     sb.from('mediciones').select('*').eq('alumno_id', id).order('fecha', { ascending: false }),
-    conRespaldo(() => sb.from('sesiones_hechas').select('id,fecha,dia_id,nota,duracion_min,dias(nombre,foco),registros_series(id)').eq('alumno_id', id).order('fecha', { ascending: false }).limit(60),
-      () => sb.from('sesiones_hechas').select('id,fecha,dia_id,nota,dias(nombre,foco),registros_series(id)').eq('alumno_id', id).order('fecha', { ascending: false }).limit(60)),
+    sb.from('sesiones_hechas').select('*,dias(nombre,foco),registros_series(id)').eq('alumno_id', id).order('fecha', { ascending: false }).limit(60),
     sb.from('notas_coach').select('*').eq('alumno_id', id).order('fecha', { ascending: false }).limit(20),
     sb.from('programas').select('nombre,dias_semana').eq('alumno_id', id).eq('activo', true).limit(1),
     sb.from('servicios').select('*').eq('alumno_id', id).eq('activo', true).limit(1),
@@ -718,7 +752,16 @@ async function abrirFicha(id) {
       () => sb.from('sesiones_hechas').select('id,fecha,dia_id').eq('alumno_id', id).gte('fecha', sumaDias(hoyISO(), -365)))
   ]);
   S.ficha = { id, med: med.data || [], ses: ses.data || [], notas: notas.data || [], prog: prog.data?.[0], srv: srv.data?.[0], todas: todas.data || [] };
-  render();
+  S.valEd = null; await cargarValoraciones();
+}
+function vRevision(f) {
+  const l = f.ses.filter(s => s.fecha >= sumaDias(hoyISO(), -35) && (s.nota_revision || s.nota || s.cansancio || s.poderio));
+  if (!l.length) return '';
+  const media = k => { const v = l.filter(s => s[k]).map(s => s[k]); return v.length ? fmtNum(v.reduce((a, b) => a + b, 0) / v.length) : '—'; };
+  return `<section class="section"><h2>Para la revisión</h2><div class="card stack">
+    <div class="kpis" style="grid-template-columns:1fr 1fr"><div class="kpi"><div class="l">Cansancio medio (5 sem.)</div><b class="num">${media('cansancio')} / 5</b></div><div class="kpi"><div class="l">Poderío medio (5 sem.)</div><b class="num">${media('poderio')} / 5</b></div></div>
+    ${l.filter(s => s.nota_revision || s.nota).map(s => `<div class="line" style="align-items:flex-start;cursor:pointer" data-act="verSesion" data-id="${s.id}"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(s.fecha))}</span><div class="grow stack" style="gap:3px">${s.nota_revision ? `<div class="small rev">${esc(s.nota_revision)}</div>` : ''}${s.nota ? `<div class="small muted">Sesión: "${esc(s.nota)}"</div>` : ''}</div></div>`).join('')}
+  </div></section>`;
 }
 function vFicha() {
   const f = S.ficha, a = S.c.perfiles.find(p => p.id === f.id) || {};
@@ -733,7 +776,9 @@ function vFicha() {
   ${vLineaTiempo(f.srv, 'Proceso de ' + ((a.nombre || '').split(' ')[0]))}
   ${vEstadisticas(f)}
   <section class="section"><div class="section-head"><h2>Programa</h2><button class="btn sm" data-act="editarPrograma" data-id="${a.id}">${f.prog ? 'Editar programa' : 'Crear programa'}</button></div><div class="card small">${f.prog ? `<b>${esc(f.prog.nombre)}</b> · ${f.prog.dias_semana || '—'} días por semana` : 'Este alumno aún no tiene programa.'}</div></section>
-  <section class="section"><h2>Entrenamientos</h2><div class="card">${f.ses.map(s => `<div class="line" data-act="verSesion" data-id="${s.id}" style="cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(s.fecha))}</span><div class="grow">${(() => { const x = numEntreno(f.todas, f.srv, s.fecha, s.id, f.prog?.dias_semana); return x && !x.fuera ? `<div class="small" style="color:var(--blue-text);font-weight:700">C${x.ciclo} · S${x.semCiclo} · Entreno ${x.n}</div>` : ''; })()}<div class="small"><b>${esc(s.dias?.nombre || '')}</b> · ${esc(s.dias?.foco || '')} · ${s.registros_series.length} series${s.duracion_min ? ` · ${s.duracion_min} min` : ''}</div>${s.nota ? `<div class="small muted">"${esc(s.nota)}"</div>` : ''}</div><span class="small" style="color:var(--blue-text)">Abrir ›</span></div>`).join('') || '<div class="empty">Sin entrenamientos registrados.</div>'}</div><p class="note">Toca un entrenamiento para verlo ejercicio por ejercicio y serie por serie, como lo vio tu alumno.</p></section>
+  <section class="section"><h2>Entrenamientos</h2><div class="card">${f.ses.map(s => `<div class="line" data-act="verSesion" data-id="${s.id}" style="cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(s.fecha))}</span><div class="grow">${(() => { const x = numEntreno(f.todas, f.srv, s.fecha, s.id, f.prog?.dias_semana); return x && !x.fuera ? `<div class="small" style="color:var(--blue-text);font-weight:700">C${x.ciclo} · S${x.semCiclo} · Entreno ${x.n}</div>` : ''; })()}<div class="small"><b>${esc(s.dias?.nombre || '')}</b> · ${esc(s.dias?.foco || '')} · ${s.registros_series.length} series${s.duracion_min ? ` · ${s.duracion_min} min` : ''}${s.cansancio ? ` · cansancio ${s.cansancio}/5` : ''}${s.poderio ? ` · poderío ${s.poderio}/5` : ''}</div>${s.nota_revision ? `<div class="small rev">Para la revisión: "${esc(s.nota_revision)}"</div>` : ''}${s.nota ? `<div class="small muted">"${esc(s.nota)}"</div>` : ''}</div><span class="small" style="color:var(--blue-text)">Abrir ›</span></div>`).join('') || '<div class="empty">Sin entrenamientos registrados.</div>'}</div><p class="note">Toca un entrenamiento para verlo ejercicio por ejercicio y serie por serie, como lo vio tu alumno.</p></section>
+  ${vRevision(f)}
+  ${vTestsFicha(f)}
   <section class="section"><h2>Check-ins</h2><div class="card">${chks.map(k => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(k.semana_inicio))}</span><div class="grow stack" style="gap:4px"><div class="small">Motivación <b>${k.motivacion}/10</b> · implicación <b>${k.implicacion}/10</b></div>${k.dificultades ? `<div class="small"><span class="muted">Dificultades:</span> ${esc(k.dificultades)}</div>` : ''}${(k.proxima_semana_etiquetas || []).length || k.proxima_semana ? `<div class="small"><span class="muted">Semana que viene:</span> ${esc([...(k.proxima_semana_etiquetas || []), k.proxima_semana].filter(Boolean).join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Sin check-ins todavía.</div>'}</div></section>
   <section class="section"><h2>Registro diario</h2><div class="card tbl"><table><thead><tr><th>Día</th><th>Pasos</th><th>De pie</th><th>Alim.</th></tr></thead><tbody>${diario.map(r => `<tr><td>${esc(fCorta(r.fecha))}</td><td class="num">${r.pasos == null ? '—' : fmtNum(r.pasos, 0)}</td><td class="num">${r.horas_pie == null ? '—' : fmtNum(r.horas_pie) + ' h'}</td><td>${({ si: 'Cumplido', parcial: 'A medias', no: 'No' })[r.alimentacion] || '—'}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">Sin registros en 14 días.</td></tr>'}</tbody></table></div></section>
   <section class="section"><h2>Mediciones</h2><div class="card tbl"><table><thead><tr><th>Fecha</th><th>Peso</th><th>% grasa</th><th>Cintura</th><th>Cadera</th></tr></thead><tbody>${f.med.map(m => `<tr><td>${esc(fCorta(m.fecha))} ${String(fecha(m.fecha).getFullYear()).slice(2)}</td><td class="num">${fmtNum(m.peso)}</td><td class="num">${fmtNum(m.grasa_pct)}</td><td class="num">${fmtNum(m.cintura)}</td><td class="num">${fmtNum(m.cadera)}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">Sin mediciones.</td></tr>'}</tbody></table></div></section>
@@ -926,9 +971,9 @@ function vEjercicios() {
   const sinV = l.filter(x => !x.video_url).length, sinF = l.filter(x => !x.imagen_url).length;
   return `<section class="stack"><span class="eyebrow">Tu biblioteca</span><h1>Ejercicios</h1><p class="small muted">Lo que cambies aquí se ve al instante en los entrenos de todos tus alumnos.</p></section>
   <section class="section"><div class="kpis"><div class="kpi"><div class="v num">${l.length}</div><div class="l">ejercicios</div></div><div class="kpi"><div class="v num" style="color:${sinV ? 'var(--warn)' : 'var(--ok)'}">${sinV}</div><div class="l">sin vídeo</div></div><div class="kpi"><div class="v num" style="color:${sinF ? 'var(--warn)' : 'var(--ok)'}">${sinF}</div><div class="l">sin foto</div></div></div>
-  ${sinF ? `<button class="btn full" data-act="importarImagenes">Importar imágenes de tus hojas</button><p class="note">Copia la imagen del ejercicio y la del músculo que tenías en tus hojas de Google en los ${sinF} ejercicios que aún no tienen foto.</p>` : ''}
+  <button class="btn full" data-act="importarImagenes">Actualizar imágenes desde tus hojas</button><p class="note">Pone la imagen del ejercicio, la del músculo y las de cardio y movilidad que tenías en tus hojas, y repara las que no cargan.</p>
   <input type="text" id="ej-buscar" placeholder="Buscar por nombre o músculo" value="${esc(S.filtroEj || '')}">
-  <div class="card">${vis.map(x => `<div class="line" data-act="editarEjercicio" data-id="${x.id}" style="cursor:pointer">${x.imagen_url ? `<img src="${esc(x.imagen_url)}" alt="" style="width:48px;height:48px;border-radius:10px;object-fit:cover;flex:none">` : `<div class="ico">${svg('ejercicios')}</div>`}<div class="grow"><h3>${esc(x.nombre)}</h3><div class="small muted">${esc(x.musculo || 'Sin músculo')}</div></div><div class="stack" style="gap:4px;align-items:flex-end"><span class="pill ${x.video_url ? 'ok' : 'warn'}">${x.video_url ? 'Vídeo' : 'Sin vídeo'}</span><span class="pill ${x.imagen_url ? 'ok' : 'warn'}">${x.imagen_url ? 'Foto' : 'Sin foto'}</span>${x.musculo_img_url ? '' : '<span class="pill warn">Sin músculo</span>'}</div></div>`).join('') || '<div class="empty">No hay ejercicios con ese nombre.</div>'}</div></section>`;
+  <div class="card">${vis.map(x => `<div class="line" data-act="editarEjercicio" data-id="${x.id}" style="cursor:pointer">${x.imagen_url ? `<img src="${esc(x.imagen_url)}" alt="" style="width:48px;height:48px;border-radius:10px;object-fit:cover;flex:none" onerror="this.outerHTML='<span class=&quot;pill bad&quot;>Foto rota</span>'">` : `<div class="ico">${svg('ejercicios')}</div>`}<div class="grow"><h3>${esc(x.nombre)}</h3><div class="small muted">${esc(x.musculo || 'Sin músculo')}</div></div><div class="stack" style="gap:4px;align-items:flex-end"><span class="pill ${x.video_url ? 'ok' : 'warn'}">${x.video_url ? 'Vídeo' : 'Sin vídeo'}</span><span class="pill ${x.imagen_url ? 'ok' : 'warn'}">${x.imagen_url ? 'Foto' : 'Sin foto'}</span>${x.musculo_img_url ? '' : '<span class="pill warn">Sin músculo</span>'}</div></div>`).join('') || '<div class="empty">No hay ejercicios con ese nombre.</div>'}</div></section>`;
 }
 function formEjercicio(id) {
   const x = S.c.ejercicios.find(z => z.id === id); if (!x) return;
@@ -1011,36 +1056,212 @@ function graficaPagos(P) {
 }
 
 /* ---------- Importar imágenes de las hojas ---------- */
+/* Las imágenes de Google Sheets son enlaces temporales: se copian al almacén de la app para que no caduquen */
+const esGoogle = u => /googleusercontent\.com/.test(u || '');
+const cargaBien = url => new Promise(res => { if (!url) return res(false); const im = new Image(), t = setTimeout(() => res(false), 9000); im.onload = () => { clearTimeout(t); res(true); }; im.onerror = () => { clearTimeout(t); res(false); }; im.src = url; });
+async function blobDe(url) {
+  try { const r = await fetch(url, { mode: 'cors' }); if (r.ok) { const b = await r.blob(); if (b.size > 500) return b; } } catch (e) { }
+  return new Promise(res => {
+    const im = new Image(); im.crossOrigin = 'anonymous';
+    im.onload = () => { try { const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight; c.getContext('2d').drawImage(im, 0, 0); c.toBlob(b => res(b), 'image/png'); } catch (e) { res(null); } };
+    im.onerror = () => res(null); im.src = url;
+  });
+}
 async function importarImagenes() {
   let mapa;
   try { mapa = await (await fetch('imagenes.json', { cache: 'no-store' })).json(); } catch (e) { return toast('No se ha podido leer el archivo de imágenes'); }
-  const lista = S.c.ejercicios.filter(x => mapa[x.nombre] && (!x.imagen_url || !x.musculo_img_url));
-  if (!lista.length) return toast('No hay imágenes nuevas que importar');
-  abrirSheet(`<div class="stack"><h2>Importando imágenes</h2><p class="small" id="imp-txt">Preparando…</p><div class="track"><i id="imp-bar" style="width:0"></i></div><p class="note">No cierres la app hasta que termine.</p></div>`);
-  let ok = 0, copias = 0, enlaces = 0, n = 0;
-  const copiar = async (url, ruta) => {
-    try {
-      const resp = await fetch(url); if (!resp.ok) throw new Error(resp.status);
-      const blob = await resp.blob();
-      const up = await sb.storage.from('ejercicios').upload(ruta, blob, { contentType: blob.type || 'image/png', upsert: true });
-      if (up.error) throw up.error;
-      copias++; return sb.storage.from('ejercicios').getPublicUrl(ruta).data.publicUrl;
-    } catch (e) { enlaces++; return url; }
-  };
-  for (const x of lista) {
-    n++; $('#imp-txt').textContent = `${n} de ${lista.length} · ${x.nombre}`; $('#imp-bar').style.width = (n / lista.length * 100) + '%';
-    const m = mapa[x.nombre], cambios = {};
-    if (!x.imagen_url && m.img) cambios.imagen_url = await copiar(m.img, `hoja-ej-${x.id}.png`);
-    if (!x.musculo_img_url && m.musculo_img) cambios.musculo_img_url = await copiar(m.musculo_img, `hoja-mus-${x.id}.png`);
-    if (Object.keys(cambios).length) { const { error } = await sb.from('ejercicios').update(cambios).eq('id', x.id); if (!error) { Object.assign(x, cambios); ok++; } }
+  abrirSheet(`<div class="stack"><h2>Actualizando imágenes</h2><p class="small" id="imp-txt">Comprobando qué imágenes faltan o no cargan…</p><div class="track"><i id="imp-bar" style="width:0"></i></div><p class="note">No cierres la app hasta que termine. Puede tardar un par de minutos.</p></div>`);
+  const necesita = async u => !u || esGoogle(u) || !(await cargaBien(u));
+  const tareas = [];
+  for (const x of S.c.ejercicios) {
+    const m = mapa[x.nombre]; if (!m) continue;
+    if (m.img && await necesita(x.imagen_url)) tareas.push({ tabla: 'ejercicios', obj: x, campo: 'imagen_url', url: m.img, ruta: `hoja-ej-${x.id}-${Date.now()}.png`, nombre: x.nombre });
+    if (m.musculo_img && await necesita(x.musculo_img_url)) tareas.push({ tabla: 'ejercicios', obj: x, campo: 'musculo_img_url', url: m.musculo_img, ruta: `hoja-mus-${x.id}-${Date.now()}.png`, nombre: x.nombre + ' · músculo' });
+  }
+  const B = mapa._bloques || {};
+  const { data: progs } = await sb.from('programas').select('nombre,dias(nombre,bloques_sesion(*))');
+  for (const p of progs || []) for (const d of p.dias || []) for (const b of d.bloques_sesion || []) {
+    if (!('imagen_url' in b)) continue;
+    const url = b.tipo === 'cardio' && /caminata/i.test(b.maquina || b.nombre || '') ? B['cardio:caminata'] : b.tipo === 'movilidad' && /ciclo 1/i.test(p.nombre) ? B['movilidad:' + d.nombre] : null;
+    if (url && await necesita(b.imagen_url)) tareas.push({ tabla: 'bloques_sesion', obj: b, campo: 'imagen_url', url, ruta: `hoja-blq-${b.id}-${Date.now()}.png`, nombre: `${d.nombre} · ${b.nombre}` });
+  }
+  if (!tareas.length) { cerrarSheet(); return toast('Todas las imágenes están bien'); }
+  let copias = 0, enlaces = 0, n = 0;
+  for (const t of tareas) {
+    n++; $('#imp-txt').textContent = `${n} de ${tareas.length} · ${t.nombre}`; $('#imp-bar').style.width = (n / tareas.length * 100) + '%';
+    let url = t.url;
+    const blob = await blobDe(t.url);
+    if (blob) { const up = await sb.storage.from('ejercicios').upload(t.ruta, blob, { contentType: blob.type || 'image/png', upsert: true }); if (!up.error) { url = sb.storage.from('ejercicios').getPublicUrl(t.ruta).data.publicUrl; copias++; } else enlaces++; } else enlaces++;
+    const { error } = await sb.from(t.tabla).update({ [t.campo]: url }).eq('id', t.obj.id);
+    if (!error) t.obj[t.campo] = url;
   }
   cerrarSheet(); await cargarAlumno(S.user.id); render();
-  toast(`${ok} ejercicios con imagen${enlaces ? ' · algunas enlazadas a tu hoja' : ''}`);
-  if (enlaces) setTimeout(() => abrirSheet(`<div class="stack"><h2>Imágenes importadas</h2><p class="small">${copias} imágenes copiadas a tu almacén y ${enlaces} enlazadas directamente a tu hoja de Google (el navegador no permitió copiarlas).</p><p class="note">Las enlazadas se ven igual, pero si algún día borras la hoja o cambias la imagen allí, dejarían de verse. Puedes sustituirlas desde cada ejercicio.</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`), 300);
+  abrirSheet(`<div class="stack"><h2>Imágenes actualizadas</h2><p class="small">${tareas.length} imágenes puestas al día: <b>${copias}</b> guardadas en el almacén de la app${enlaces ? ` y <b>${enlaces}</b> enlazadas a tu hoja de Google` : ''}.</p>${enlaces ? '<p class="note">Las enlazadas a Google se ven, pero Google cambia esos enlaces cada cierto tiempo. Si alguna deja de verse, vuelve a pulsar "Actualizar imágenes" o sube la foto desde el ejercicio.</p>' : '<p class="note">Ya no dependen de tus hojas de Google: no caducan.</p>'}<button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`);
+}
+
+/* ---------- Tests y valoraciones (como el apartado CONTROL de las hojas) ---------- */
+const PLANTILLAS = {
+  '1rm': { titulo: 'Test 1RM · fuerza máxima', cols: 'valor', datos: ['Cintura escapular', 'Bíceps', 'Jalón vertical', 'Pectoral', 'Tríceps', 'Empuje vertical', 'Adductores', 'Glúteos', 'Abdomen'],
+    protocolo: 'Para valorar tu fuerza máxima a 1 sola repetición hace falta una buena aproximación en cada máquina.\n\nAproximación:\n1º Unas 8 repeticiones con un peso medio (exigente pero sin fatiga).\n2º Subes a un peso más exigente para hacer 5-6 repeticiones a RIR 2-3.\n3º 2-3 repeticiones con un peso aún mayor; en la última, bajada muy lenta.\n\nEl 1RM:\nDescansas 30 segundos, eliges un peso con el que creas que solo puedes hacer 1 repetición y lo intentas. Vas subiendo el peso, administrando el descanso, hasta que ya no puedas levantarlo. Se anota el último peso que pudiste.' },
+  descompensacion: { titulo: 'Test de descompensaciones (unilateral)', cols: 'di', datos: ['Empuje unilateral (brazo)', 'Tracción unilateral (brazo)', 'Empuje de pierna', 'Isquiotibiales', 'Cuádriceps'],
+    protocolo: 'Sirve para saber con qué brazo eres más débil en empujes y tracciones, y con qué pierna.\n\nAproximación:\n1º Un peso exigente que no te fatigue: 8-10 repeticiones con ambas extremidades a RIR 2-3.\n2º Subes el peso para hacer 5-6 repeticiones a RIR 2-3.\n\nEl test:\nHaces 1 repetición con una extremidad y acto seguido con la otra (siempre solo 1). Si lo consigues, sigues subiendo el peso hasta que una de las dos no pueda; continúas con la otra hasta que tampoco pueda y anotamos la diferencia. Si no hay descompensación y las dos acaban con el mismo peso, también se anota.' },
+  fc: { titulo: 'Zonas de frecuencia cardiaca', cols: 'valor', datos: ['FC máxima', 'Zona 1 · aeróbica (65–80 %)', 'Zona 2 · umbral anaeróbico (80–90 %)', 'Zona 3 · potencia aeróbica (90–100 %)'],
+    protocolo: 'Estimamos tu frecuencia cardiaca máxima con la fórmula de Tanaka: FC máx = 208,75 − (0,7 × edad).\n\nZona 1: base y cimientos de tu capacidad cardiovascular; predominio de las grasas y fatiga muy baja.\nZona 2: empieza a predominar el metabolismo de los hidratos; la fatiga aparece antes.\nZona 3: zona de potencia (VO2max); solo se mantiene segundos o pocos minutos.' },
+  movilidad: { titulo: 'Movilidad articular', cols: 'valor', datos: ['Cadena lateral', 'Cadena posterior e isquiotibiales', 'Hombros', 'Rotación de cadera', 'Tobillos', 'Cadena anterior'], protocolo: '' },
+  ritmos: { titulo: 'Test de carrera de 5 minutos · ritmos', cols: 'valor', datos: ['Distancia en 5 minutos', 'Ritmo medio (min/km)'],
+    protocolo: 'Calentamiento: en pista o zona con distancia conocida, 10 minutos a ritmo bajo y 5 minutos subiendo el ritmo de forma progresiva. Después, unos 200 m de cambios de ritmo casi máximos (20-30 m) con 20-30 m de recuperación.\n\nParte principal: 5 minutos recorriendo la mayor distancia posible.' },
+  carrera: { titulo: 'Análisis de carrera', cols: 'valor', datos: ['Caminata a 6 km/h', 'Carrera a 12 km/h'], protocolo: 'Grabamos de lado, de espaldas y de frente caminando y corriendo en cinta.' },
+  otra: { titulo: 'Otra prueba', cols: 'valor', datos: [], protocolo: '' }
+};
+const ordenarValoraciones = l => { l.forEach(v => (v.pruebas || []).sort((a, b) => (a.orden || 0) - (b.orden || 0))); return l.sort((a, b) => b.fecha.localeCompare(a.fecha)); };
+const numDe = v => { const m = String(v ?? '').replace(',', '.').match(/-?\d+(\.\d+)?/); return m ? +m[0] : null; };
+const difPct = (d, i) => { const a = numDe(d), b = numDe(i); if (a == null || b == null || !Math.max(a, b)) return null; return Math.round(Math.abs(a - b) / Math.max(a, b) * 100); };
+const resumenPrueba = p => {
+  const ds = p.datos || [];
+  if (p.tipo === 'descompensacion') { const m = Math.max(-1, ...ds.map(x => difPct(x.d, x.i) ?? -1)); return m >= 0 ? `Mayor diferencia: ${m} %` : ''; }
+  if (p.tipo === 'fc') return ds[0]?.valor ? `FC máx ${ds[0].valor}` : '';
+  const con = ds.filter(x => x.valor); return con.length ? `${con.length} ${con.length === 1 ? 'resultado' : 'resultados'}` : '';
+};
+function anteriorDe(lista, val, p) {
+  return lista.filter(v => v.fecha < val.fecha).map(v => (v.pruebas || []).find(x => x.tipo === p.tipo && x.titulo === p.titulo)).find(Boolean);
+}
+function vResultados(p, ant) {
+  const ds = (p.datos || []).filter(x => x.nombre);
+  if (!ds.length) return '';
+  if (p.tipo === 'descompensacion') {
+    return `<div class="stack" style="gap:12px">${ds.map(x => {
+      const a = numDe(x.d), b = numDe(x.i), mx = Math.max(a || 0, b || 0) || 1, pc = difPct(x.d, x.i);
+      const debil = pc ? (a < b ? 'derecho' : 'izquierdo') : null, col = pc == null ? 'var(--muted)' : pc >= 15 ? 'var(--bad)' : pc >= 8 ? 'var(--warn)' : 'var(--ok)';
+      return `<div class="stack" style="gap:5px"><div class="row small"><b class="grow">${esc(x.nombre)}</b>${pc != null ? `<span class="pill" style="color:${col}">${pc} %${debil ? ' · más débil el lado ' + debil : ''}</span>` : ''}</div>
+        <div class="lado"><span class="small muted">Dcha.</span><div class="track"><i style="width:${(a || 0) / mx * 100}%;background:var(--blue)"></i></div><b class="small num">${esc(x.d || '—')}</b></div>
+        <div class="lado"><span class="small muted">Izda.</span><div class="track"><i style="width:${(b || 0) / mx * 100}%;background:var(--gold)"></i></div><b class="small num">${esc(x.i || '—')}</b></div></div>`;
+    }).join('')}<p class="note">Diferencia por encima del 15 %: desequilibrio a trabajar. Entre 8 y 15 %: a vigilar.</p></div>`;
+  }
+  const nums = ds.map(x => numDe(x.valor)), mx = Math.max(1, ...nums.filter(n => n != null)), barras = p.tipo === '1rm';
+  return `<div class="stack" style="gap:8px">${ds.map((x, k) => {
+    const prev = ant && (ant.datos || []).find(y => y.nombre === x.nombre), dv = prev && nums[k] != null && numDe(prev.valor) != null ? nums[k] - numDe(prev.valor) : null;
+    return `<div class="stack" style="gap:4px"><div class="row small"><span class="grow">${esc(x.nombre)}</span><b class="num">${esc(x.valor || '—')}</b>${dv ? `<span class="pill ${dv > 0 ? 'ok' : 'bad'} num">${dv > 0 ? '+' : ''}${fmtNum(dv)}</span>` : ''}</div>${barras && nums[k] != null ? `<div class="track"><i style="width:${nums[k] / mx * 100}%;background:var(--blue)"></i></div>` : ''}</div>`;
+  }).join('')}</div>`;
+}
+function vPrueba(p, lista, val, coach) {
+  const ant = anteriorDe(lista, val, p);
+  return `<details class="card prueba" ${coach ? 'open' : ''}><summary><div class="row"><div class="grow"><h3>${esc(p.titulo)}</h3><div class="small muted">${esc(resumenPrueba(p))}</div></div><span class="mas">＋</span></div></summary>
+    <div class="stack" style="margin-top:12px">
+    ${vResultados(p, ant)}
+    ${ant ? `<p class="small muted">Comparado con ${esc(fCorta(lista.find(v => (v.pruebas || []).includes(ant)).fecha))}.</p>` : ''}
+    ${p.valoracion ? `<div class="stack" style="gap:4px"><span class="eyebrow">Valoración del coach</span><div class="small pre">${esc(p.valoracion)}</div></div>` : ''}
+    ${p.foco ? `<div class="aprox stack" style="gap:4px"><span class="eyebrow">Foco de trabajo</span><div class="small pre">${esc(p.foco)}</div></div>` : ''}
+    ${p.protocolo ? `<details class="como"><summary class="small"><b>Cómo se hace la prueba</b></summary><div class="small pre muted" style="margin-top:8px">${esc(p.protocolo)}</div></details>` : ''}
+    ${p.video_url ? `<a class="btn sm" style="align-self:flex-start" href="${esc(p.video_url)}" target="_blank" rel="noopener">▶ Vídeo</a>` : ''}
+    ${coach ? `<div class="row" style="gap:8px"><button class="btn sm" data-act="editarPrueba" data-id="${p.id}">✎ Editar prueba</button></div>` : ''}
+    </div></details>`;
+}
+function vInforme(val, lista, coach) {
+  return `<div class="card hero stack"><span class="eyebrow">${esc(fLarga(val.fecha))} ${fecha(val.fecha).getFullYear()}</span><h2 style="color:#fff">${esc(val.nombre)}</h2>
+      ${val.resumen ? `<div class="stack" style="gap:6px;border-top:1px solid rgba(255,255,255,.14);padding-top:12px"><span class="eyebrow">Informe · valoración de todo el contexto</span><div class="small pre">${esc(val.resumen)}</div></div>` : `<div class="small muted">${coach ? 'Escribe aquí el informe general con "Editar informe".' : 'Jesús añadirá aquí el informe de la valoración.'}</div>`}
+      ${coach ? `<div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm gold" data-act="editarValoracion" data-id="${val.id}">✎ Editar informe</button><button class="btn sm ghost" data-act="nuevaPrueba" data-id="${val.id}" style="background:#fff">＋ Añadir prueba</button></div>` : ''}</div>
+    <h2 style="margin-top:6px">Pruebas</h2>
+    ${(val.pruebas || []).map(p => vPrueba(p, lista, val, coach)).join('') || '<div class="card empty">Aún no hay pruebas en esta valoración.</div>'}`;
+}
+function vTests() {
+  const l = S.d.valoraciones || [];
+  if (!l.length) return `<section class="stack"><span class="eyebrow">Control y evolución</span><h1>Tests</h1></section><div class="section card empty">Al empezar tu proceso Jesús te hará el test inicial. Aquí verás tu informe y el resultado de cada prueba.</div>`;
+  const sel = l.find(v => v.id === S.valSel) || l[0];
+  return `<section class="stack"><span class="eyebrow">Control y evolución</span><h1>Tests</h1>
+    ${l.length > 1 ? `<div class="chips" style="gap:6px">${l.map(v => `<button class="pill ${v.id === sel.id ? 'blue' : ''}" data-act="verValoracion" data-id="${v.id}">${esc(v.nombre)} · ${esc(fCorta(v.fecha))}</button>`).join('')}</div>` : ''}</section>
+  <section class="section">${vInforme(sel, l, false)}</section>`;
+}
+
+/* Coach: tests en la ficha */
+function vTestsFicha(f) {
+  const l = f.val || [];
+  return `<section class="section"><div class="section-head"><h2>Tests y valoraciones</h2><button class="btn sm" data-act="nuevaValoracion">＋ Nuevo test</button></div>
+    <div class="card">${l.map(v => `<div class="line" data-act="abrirValoracion" data-id="${v.id}" style="cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(v.fecha))}</span><div class="grow"><div class="small"><b>${esc(v.nombre)}</b> · ${(v.pruebas || []).length} pruebas</div>${v.resumen ? `<div class="small muted">${esc(v.resumen.slice(0, 90))}${v.resumen.length > 90 ? '…' : ''}</div>` : ''}</div><span class="small" style="color:var(--blue-text)">Abrir ›</span></div>`).join('') || `<div class="empty">${f.valError ? 'Ejecuta el Bloque 7 en Supabase para activar los tests.' : 'Sin tests todavía. Crea el test inicial con "Nuevo test".'}</div>`}</div></section>`;
+}
+function vValoracionCoach() {
+  const f = S.ficha, val = (f.val || []).find(v => v.id === S.valEd), a = S.c.perfiles.find(p => p.id === f.id) || {};
+  if (!val) { S.valEd = null; return vFicha(); }
+  return `<section class="stack"><button class="btn sm ghost" data-act="cerrarValoracion" style="align-self:flex-start">← Ficha de ${esc((a.nombre || '').split(' ')[0])}</button><span class="eyebrow">${esc(a.nombre || '')} · así lo ve en su pestaña Tests</span></section>
+  <section class="section">${vInforme(val, f.val, true)}</section>`;
+}
+function formValoracion(id) {
+  const v = id ? S.ficha.val.find(x => x.id === id) : null;
+  abrirSheet(`<form class="stack" id="f-val"><h2>${v ? 'Editar informe' : 'Nuevo test'}</h2>
+    <div style="display:grid;grid-template-columns:1fr 140px;gap:8px"><label class="f">Nombre<input type="text" id="v-n" value="${esc(v?.nombre || ((S.ficha.val || []).length ? 'Revaloración' : 'Test inicial'))}"></label><label class="f">Fecha<input type="date" id="v-f" value="${v?.fecha || hoyISO()}"></label></div>
+    <label class="f">Informe · valoración final de todo el contexto<textarea id="v-r" rows="8" placeholder="Lo que hemos observado en todo el proceso de valoración…">${esc(v?.resumen || '')}</textarea></label>
+    ${v ? '' : `<div class="stack" style="gap:8px"><span class="small"><b>Pruebas que incluye</b> (luego puedes añadir o quitar)</span>${Object.entries(PLANTILLAS).filter(([k]) => k !== 'otra').map(([k, t]) => `<label class="row small"><input type="checkbox" data-pl="${k}" ${['1rm', 'descompensacion', 'fc', 'movilidad'].includes(k) ? 'checked' : ''} style="width:20px;height:20px"> ${esc(t.titulo)}</label>`).join('')}</div>`}
+    <button class="btn full" type="submit">Guardar</button>${v ? '<button class="btn ghost full" type="button" id="v-del" style="color:var(--bad)">Eliminar este test</button>' : ''}</form>`);
+  $('#f-val').addEventListener('submit', async e => {
+    e.preventDefault();
+    const row = { nombre: $('#v-n').value.trim() || 'Test', fecha: $('#v-f').value || hoyISO(), resumen: $('#v-r').value.trim() || null };
+    if (v) { const { error } = await sb.from('valoraciones').update(row).eq('id', v.id); if (error) return fallo(error); }
+    else {
+      const { data, error } = await sb.from('valoraciones').insert({ ...row, alumno_id: S.ficha.id }).select().single();
+      if (error) return fallo(error, /valoraciones/.test(error.message || '') ? 'Falta ejecutar el Bloque 7 en Supabase.' : undefined);
+      const tipos = [...document.querySelectorAll('#f-val [data-pl]:checked')].map(x => x.dataset.pl);
+      if (tipos.length) { const { error: e2 } = await sb.from('pruebas').insert(tipos.map((t, k) => nuevaPruebaRow(t, data.id, k))); if (e2) return fallo(e2); }
+      S.valEd = data.id;
+    }
+    cerrarSheet(); toast('Guardado'); await cargarValoraciones();
+  });
+  $('#v-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para borrar el test y sus pruebas'; return; } const { error } = await sb.from('valoraciones').delete().eq('id', v.id); if (error) return fallo(error); cerrarSheet(); S.valEd = null; toast('Test eliminado'); await cargarValoraciones(); });
+}
+const nuevaPruebaRow = (tipo, valId, orden) => { const t = PLANTILLAS[tipo] || PLANTILLAS.otra; return { valoracion_id: valId, alumno_id: S.ficha.id, orden, tipo, titulo: t.titulo, protocolo: t.protocolo || null, datos: t.datos.map(n => t.cols === 'di' ? { nombre: n, d: '', i: '' } : { nombre: n, valor: '' }) }; };
+async function cargarValoraciones() {
+  const { data, error } = await sb.from('valoraciones').select('*,pruebas(*)').eq('alumno_id', S.ficha.id).order('fecha', { ascending: false });
+  S.ficha.val = ordenarValoraciones(data || []); S.ficha.valError = !!error;
+  if (S.obj == null && S.ficha.id === S.user.id && S.d) S.d.valoraciones = S.ficha.val;
+  render();
+}
+function formNuevaPrueba(valId) {
+  abrirSheet(`<div class="stack"><h2>Añadir prueba</h2>${Object.entries(PLANTILLAS).map(([k, t]) => `<button class="btn ghost full" data-act="crearPrueba" data-t="${k}" data-v="${valId}" style="text-align:left">${esc(t.titulo)}</button>`).join('')}<button class="btn ghost full" data-act="cerrarSheet">Cancelar</button></div>`);
+}
+async function crearPrueba(tipo, valId) {
+  const val = S.ficha.val.find(v => v.id === valId);
+  const { data, error } = await sb.from('pruebas').insert(nuevaPruebaRow(tipo, valId, (val?.pruebas || []).length)).select().single();
+  if (error) return fallo(error);
+  cerrarSheet(); await cargarValoraciones(); formPrueba(data.id);
+}
+function filaDato(x, di) {
+  return `<div class="dato" data-dato style="display:grid;grid-template-columns:${di ? '1.4fr 1fr 1fr' : '1.4fr 1fr'} 32px;gap:6px;align-items:end">
+    <label class="f">Prueba<input type="text" data-k="nombre" value="${esc(x.nombre || '')}"></label>
+    ${di ? `<label class="f">Dcha.<input type="text" data-k="d" value="${esc(x.d || '')}" placeholder="kg"></label><label class="f">Izda.<input type="text" data-k="i" value="${esc(x.i || '')}" placeholder="kg"></label>` : `<label class="f">Resultado<input type="text" data-k="valor" value="${esc(x.valor || '')}"></label>`}
+    <button type="button" class="btn sm ghost" data-quitar aria-label="Quitar" style="padding:8px 0">✕</button></div>`;
+}
+function formPrueba(id) {
+  const p = S.ficha.val.flatMap(v => v.pruebas || []).find(x => x.id === id); if (!p) return;
+  const di = p.tipo === 'descompensacion';
+  abrirSheet(`<form class="stack" id="f-pr"><h2>Editar prueba</h2>
+    <label class="f">Título<input type="text" id="p-t" value="${esc(p.titulo)}"></label>
+    ${p.tipo === 'fc' ? `<div class="row" style="gap:8px;align-items:end"><label class="f grow">Edad<input type="number" id="p-edad" min="10" max="90" placeholder="Ej. 38"></label><button type="button" class="btn sm" id="p-calc">Calcular zonas</button></div>` : ''}
+    <div class="stack" id="p-datos" style="gap:8px">${(p.datos || []).map(x => filaDato(x, di)).join('')}</div>
+    <button type="button" class="btn sm ghost" id="p-add" style="align-self:flex-start">＋ Añadir resultado</button>
+    <label class="f">Valoración del coach<textarea id="p-v" rows="5">${esc(p.valoracion || '')}</textarea></label>
+    <label class="f">Foco de trabajo<textarea id="p-f" rows="4">${esc(p.foco || '')}</textarea></label>
+    <label class="f">Cómo se hace la prueba<textarea id="p-pr" rows="5">${esc(p.protocolo || '')}</textarea></label>
+    <label class="f">Vídeo (opcional)<input type="text" id="p-vi" value="${esc(p.video_url || '')}" placeholder="https://…"></label>
+    <button class="btn full" type="submit">Guardar</button><button class="btn ghost full" type="button" id="p-del" style="color:var(--bad)">Eliminar prueba</button></form>`);
+  const cont = $('#p-datos');
+  cont.addEventListener('click', ev => { const q = ev.target.closest('[data-quitar]'); if (q) q.closest('[data-dato]').remove(); });
+  $('#p-add').addEventListener('click', () => cont.insertAdjacentHTML('beforeend', filaDato({}, di)));
+  $('#p-calc')?.addEventListener('click', () => {
+    const e = numero($('#p-edad').value); if (!e) return toast('Indica la edad');
+    const mx = Math.round(208.75 - 0.7 * e), z = (a, b) => `${Math.round(mx * a)}–${Math.round(mx * b)} ppm`;
+    cont.innerHTML = [{ nombre: 'FC máxima', valor: mx + ' ppm' }, { nombre: 'Zona 1 · aeróbica (65–80 %)', valor: z(.65, .8) }, { nombre: 'Zona 2 · umbral anaeróbico (80–90 %)', valor: z(.8, .9) }, { nombre: 'Zona 3 · potencia aeróbica (90–100 %)', valor: z(.9, 1) }].map(x => filaDato(x, false)).join('');
+  });
+  $('#f-pr').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const datos = [...cont.querySelectorAll('[data-dato]')].map(r => Object.fromEntries([...r.querySelectorAll('[data-k]')].map(i => [i.dataset.k, i.value.trim()]))).filter(x => x.nombre);
+    const v = k => $(k).value.trim() || null;
+    const { error } = await sb.from('pruebas').update({ titulo: v('#p-t') || p.titulo, datos, valoracion: v('#p-v'), foco: v('#p-f'), protocolo: v('#p-pr'), video_url: v('#p-vi') }).eq('id', p.id);
+    if (error) return fallo(error);
+    cerrarSheet(); toast('Prueba guardada'); await cargarValoraciones();
+  });
+  $('#p-del').addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para borrarla'; return; } const { error } = await sb.from('pruebas').delete().eq('id', p.id); if (error) return fallo(error); cerrarSheet(); toast('Prueba eliminada'); await cargarValoraciones(); });
 }
 
 /* ---------- Editor de programas (coach) ---------- */
-const SEL_EDITOR = 'id,nombre,dias_semana,alumno_id,dias(id,numero,nombre,objetivo,volumen,intensidad,foco,bloques_sesion(id,letra,nombre,tipo,agrupacion,duracion,fc_objetivo,maquina,objetivo,detalle,video_url,ejercicios_sesion(id,orden,ejercicio_id,series,repeticiones,rir,peso_ref,descanso_seg,metodo_id,ajustes,aproximacion_631,grupo,pauta,ejercicios(nombre))))';
+const SEL_EDITOR = 'id,nombre,dias_semana,alumno_id,dias(id,numero,nombre,objetivo,volumen,intensidad,foco,bloques_sesion(*,ejercicios_sesion(id,orden,ejercicio_id,series,repeticiones,rir,peso_ref,descanso_seg,metodo_id,ajustes,aproximacion_631,grupo,pauta,ejercicios(nombre))))';
 async function abrirEditor(alumnoId) {
   S.editor = { alumnoId, cargando: true }; render(); window.scrollTo(0, 0);
   const [prog, met] = await Promise.all([
@@ -1112,13 +1333,23 @@ function formBloque(id, diaId) {
     <label class="f">Máquina<input type="text" id="b-ma" value="${esc(b?.maquina || '')}"></label>
     <label class="f">Detalle<textarea id="b-de">${esc(b?.detalle || '')}</textarea></label>
     <label class="f">Vídeo (movilidad)<input type="text" id="b-vi" value="${esc(b?.video_url || '')}" placeholder="https://youtu.be/…"></label>
+    ${b?.imagen_url ? `<img src="${esc(b.imagen_url)}" alt="" style="width:100%;max-height:180px;object-fit:contain;border-radius:12px;background:var(--surface-2)">` : ''}
+    <label class="f">Imagen ilustrativa (cardio y movilidad)<input type="file" id="b-img" accept="image/*"></label>
     <button class="btn full" type="submit">Guardar</button>${b ? '<button class="btn ghost full" type="button" id="b-del" style="color:var(--bad)">Eliminar bloque</button>' : ''}</form>`);
   $('#f-blq').addEventListener('submit', async e => {
     e.preventDefault();
     const v = k => $(k).value.trim() || null;
     const row = { letra: v('#b-l') || sig, nombre: v('#b-n') || 'Bloque', tipo: $('#b-t').value, agrupacion: v('#b-ag'), duracion: v('#b-du'), fc_objetivo: v('#b-fc'), maquina: v('#b-ma'), detalle: v('#b-de'), video_url: v('#b-vi') };
+    const file = $('#b-img').files[0];
+    if (file) {
+      toast('Subiendo imagen…');
+      const blob = await reducirImagen(file, 1000), ruta = `bloque-${Date.now()}.jpg`;
+      const up = await sb.storage.from('ejercicios').upload(ruta, blob, { contentType: 'image/jpeg', upsert: true });
+      if (up.error) return fallo(up.error, 'No se ha podido subir la imagen.');
+      row.imagen_url = sb.storage.from('ejercicios').getPublicUrl(ruta).data.publicUrl;
+    }
     const { error } = b ? await sb.from('bloques_sesion').update(row).eq('id', b.id) : await sb.from('bloques_sesion').insert({ ...row, dia_id: dia.id });
-    if (error) return fallo(error);
+    if (error) return fallo(error, /imagen_url/.test(error.message || '') ? 'Falta ejecutar el Bloque 7 en Supabase para guardar imágenes de bloque.' : undefined);
     cerrarSheet(); toast('Bloque guardado'); refrescarEditor();
   });
   $('#b-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez: se borrará el bloque y sus ejercicios'; return; } const { error } = await sb.from('bloques_sesion').delete().eq('id', b.id); if (error) return fallo(error, 'No se puede borrar: ese bloque ya tiene series registradas.'); cerrarSheet(); toast('Bloque eliminado'); refrescarEditor(); });
@@ -1297,6 +1528,15 @@ document.addEventListener('click', async e => {
     case 'abrirDia': await abrirDia(+b.dataset.id); break;
     case 'cerrarDia': S.dia = null; S.sesion = null; render(); break;
     case 'salirComo': await salirComo(); break;
+    case 'verValoracion': S.valSel = +b.dataset.id; render(); break;
+    case 'nuevaValoracion': formValoracion(); break;
+    case 'abrirValoracion': S.valEd = +b.dataset.id; render(); window.scrollTo(0, 0); break;
+    case 'cerrarValoracion': S.valEd = null; render(); window.scrollTo(0, 0); break;
+    case 'editarValoracion': formValoracion(+b.dataset.id); break;
+    case 'nuevaPrueba': formNuevaPrueba(+b.dataset.id); break;
+    case 'crearPrueba': await crearPrueba(b.dataset.t, +b.dataset.v); break;
+    case 'editarPrueba': formPrueba(+b.dataset.id); break;
+    case 'escala': document.querySelectorAll(`#${b.dataset.g} button`).forEach(x => x.setAttribute('aria-pressed', x === b)); break;
     case 'editarSesion': await editarSesionCerrada(); break;
     case 'entrenarAhora': await entrenarAhora(b.dataset.id); break;
     case 'serie': await toggleSerie(b); break;
@@ -1310,7 +1550,7 @@ document.addEventListener('click', async e => {
     case 'chip': { const v = b.dataset.v; S.chips.has(v) ? S.chips.delete(v) : S.chips.add(v); b.setAttribute('aria-pressed', S.chips.has(v)); break; }
     case 'enviarCheckin': await enviarCheckin(); break;
     case 'ficha': await abrirFicha(b.dataset.id); break;
-    case 'cerrarFicha': S.ficha = null; S.verSes = null; render(); break;
+    case 'cerrarFicha': S.ficha = null; S.verSes = null; S.valEd = null; render(); break;
     case 'cerrarVerSesion': S.verSes = null; render(); window.scrollTo(0, 0); break;
     case 'verSesion': await verSesion(+b.dataset.id); break;
     case 'nuevaMedicion': formMedicion(); break;
