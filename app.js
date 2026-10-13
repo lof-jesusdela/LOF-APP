@@ -246,6 +246,17 @@ async function avisoCheckin() {
   const k = 'lof-aviso-chk-' + hoyISO(); try { if (localStorage.getItem(k)) return; localStorage.setItem(k, '1'); } catch (e) { }
   try { const reg = await navigator.serviceWorker?.ready; const op = { body: 'Es fin de semana: rellena tu check-in semanal para Jesús. Tarda 2 minutos.', icon: 'icons/icon-192.png', tag: 'checkin' }; reg ? reg.showNotification('Check-in semanal', op) : new Notification('Check-in semanal', op); } catch (e) { }
 }
+/* Barra de la semana (lunes a domingo): cada comida saludable suma. El color depende del % que lleva
+   respecto a lo que podría llevar hasta hoy: verde ≥85 %, naranja 60–85 %, rojo <60 %. */
+function vBarraIngestas(diario, srv) {
+  const lunes = lunesDe(hoyISO()), I = ingestasSemana(diario, lunes, srv), hoy = hoyISO();
+  const dias = Math.floor((fecha(hoy) - fecha(lunes)) / 864e5) + (I.porDia[hoy] != null ? 1 : 0), posibles = Math.max(1, dias) * I.n;
+  const ritmo = dias ? Math.round(I.hechas / posibles * 100) : null, ev = evalNutri(ritmo), ancho = Math.round(I.hechas / I.total * 100);
+  const col = { ok: 'var(--ok)', warn: 'var(--warn)', bad: 'var(--bad)' }[ev?.[0]] || 'var(--line)';
+  return `<div class="stack" style="gap:8px"><div class="row"><span class="grow small">Alimentación esta semana</span>${ev ? `<span class="pill ${ev[0]}">${ev[1]}</span>` : ''}<b class="num" style="font-family:var(--display);font-size:20px">${I.hechas}/${I.total}</b></div>
+    <div class="track gordo ing"><i style="width:${ancho}%;background:${col}"></i></div>
+    <div class="small muted">${dias ? `Llevas ${I.hechas} de ${posibles} comidas posibles hasta hoy (${ritmo} %). Objetivo: 85 % o más de las ${I.total} de la semana.` : `Cada comida saludable de tu plan suma. Objetivo: 85 % o más de las ${I.total} de la semana.`}</div></div>`;
+}
 function vProcesoGlobal(srv) {
   const P = proceso(srv); if (!P) return '';
   const fF = iso => fecha(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -302,7 +313,7 @@ function vHoy() {
   </div></section>
   <section class="section"><div class="section-head"><h2>Últimos 7 días</h2><span class="small muted">${esc(fCorta(ini))} – ${esc(fCorta(hoy))}</span></div><div class="card stack" style="gap:18px">
     ${(s.modulo_entreno ?? true) ? `<div class="stack" style="gap:8px"><div class="row"><span class="grow small">Entrenamientos</span><b class="num" style="font-family:var(--display);font-size:20px">${w.entrenos}${p?.dias_semana ? ' / ' + p.dias_semana : ''}</b></div>${tira(ini, x => w.diasEntreno.has(x) ? 'ok' : '')}</div>` : ''}
-    ${s.modulo_nutricion ? (() => { const I = ingestasSemana(S.d.diario, ini, s), ev = evalNutri(I.pct); return `<div class="stack" style="gap:8px"><div class="row"><span class="grow small">Alimentación · ${I.hechas} de ${I.total} ingestas</span>${ev ? `<span class="pill ${ev[0]}">${ev[1]}</span>` : ''}<b class="num" style="font-family:var(--display);font-size:20px">${I.pct == null ? '—' : I.pct + ' %'}</b></div>${tira(ini, x => I.porDia[x] == null ? '' : I.porDia[x] >= I.n ? 'ok' : I.porDia[x] > 0 ? 'part' : 'no')}</div>`; })() : ''}
+    ${s.modulo_nutricion ? vBarraIngestas(S.d.diario, s) : ''}
     <div class="stack" style="gap:8px"><div class="row"><span class="grow small">Pasos (media · objetivo ${fmtNum(objPasos(s), 0)})</span><b class="num" style="font-family:var(--display);font-size:20px;color:${w.pasosMedia == null ? 'inherit' : w.pasosMedia >= objPasos(s) ? 'var(--ok)' : 'var(--warn)'}">${w.pasosMedia == null ? '—' : fmtNum(w.pasosMedia, 0)}</b></div>${tira(ini, x => w.diasPasos.has(x) ? 'ok' : '')}</div>
   </div></section>
   ${vPresenciales(S.d.servicio, S.d.presenciales, false)}
@@ -742,7 +753,7 @@ function vProgreso() {
   const k = c => { const p = serie(med, c), dl = delta(p); return dl == null ? '—' : (dl > 0 ? '+' : '') + fmtNum(dl); };
   const semanas = [...Array(8)].map((_, i) => lunesDe(sumaDias(hoyISO(), -7 * (7 - i))));
   const porSem = semanas.map(l => semana(l).entrenos), maxS = Math.max(S.d.programa?.dias_semana || 1, ...porSem);
-  return `<section class="stack"><span class="eyebrow">Tu evolución</span><h1>Progreso</h1></section>
+  return `<section class="stack"><span class="eyebrow">Tu evolución</span><h1>Progreso</h1><button class="btn" data-act="misMedidas" style="align-self:flex-start">＋ Añadir mis medidas</button></section>
   ${objetivoDe(S.d.ruta) ? `<section class="section"><div class="card stack"><span class="eyebrow">Tu objetivo</span><div class="small">${esc(objetivoDe(S.d.ruta))}</div></div></section>` : ''}
   ${med.length ? `<section class="section"><div class="kpis"><div class="kpi"><div class="v num">${k('peso')}</div><div class="l">kg de peso</div></div><div class="kpi"><div class="v num">${k('grasa_pct')}</div><div class="l">% de grasa</div></div><div class="kpi"><div class="v num">${k('cintura')}</div><div class="l">cm de cintura</div></div></div><p class="small muted">Cambio desde tu primera medición (${esc(fCorta(med[0].fecha))} ${fecha(med[0].fecha).getFullYear()}).</p></section>` : ''}
   <section class="section">${vGraficaComp(med) || '<div class="card empty">Aún no hay mediciones. Jesús las añadirá en tu próximo control mensual.</div>'}
@@ -1017,6 +1028,24 @@ async function verSesionLista(id) {
   (data || []).forEach(r => { const es = r.ejercicios_sesion, k = `${es?.bloques_sesion?.letra || ''}${String(es?.orden || 0).padStart(2, '0')}`; (g[k] ||= { n: es?.ejercicios?.nombre || 'Ejercicio', s: [] }).s.push(r); });
   abrirSheet(`<div class="stack"><h2>Series registradas</h2>${Object.keys(g).sort().map(k => `<div class="stack" style="gap:4px"><h3>${esc(g[k].n)}</h3>${g[k].s.map(r => `<div class="small num">Serie ${r.serie}: ${r.kg == null ? '—' : fmtNum(r.kg, 2) + ' kg'} × ${r.repeticiones ?? '—'} rep · RIR ${r.rir ?? '—'}</div>`).join('')}</div>`).join('') || '<p class="muted">No hay series registradas.</p>'}<button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
 }
+/* El alumno online se mide él mismo una vez al mes */
+const MEDIDAS_ALUMNO = [['cuello', 'Cuello', 'incluida la nuez'], ['cintura', 'Cintura', 'bajo la última costilla'], ['abd_bajo', 'Abdomen bajo', 'a la altura del ombligo'], ['cadera', 'Cadera', 'parte más ancha del glúteo'], ['muslo_d', 'Muslo derecho', 'parte más ancha'], ['muslo_i', 'Muslo izquierdo', 'parte más ancha'], ['gemelo_d', 'Gemelo derecho', 'parte más ancha'], ['gemelo_i', 'Gemelo izquierdo', 'parte más ancha'], ['hombros', 'Anchura de hombros', 'medición más ancha'], ['brazo_d', 'Brazo contraído', 'parte más ancha']];
+function formMisMedidas() {
+  abrirSheet(`<form class="stack" id="f-mm"><h2>Mis medidas</h2><p class="small">Mídete con una cinta métrica, en cm, a primera hora y antes de comer. Deja vacío lo que no puedas medir.</p>
+    <label class="f">Fecha<input type="date" id="mm-f" value="${hoyISO()}" max="${hoyISO()}"></label>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${MEDIDAS_ALUMNO.map(([k, l, h]) => `<label class="f">${l} <span class="muted" style="font-weight:400">· ${h}</span><input type="text" inputmode="decimal" data-campo="${k}" placeholder="cm"></label>`).join('')}</div>
+    <label class="f">Peso (si tienes báscula)<input type="text" inputmode="decimal" data-campo="peso" placeholder="kg"></label>
+    <button class="btn full" type="submit">Guardar mis medidas</button></form>`);
+  $('#f-mm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const row = { alumno_id: S.user.id, fecha: $('#mm-f').value || hoyISO() };
+    document.querySelectorAll('#f-mm [data-campo]').forEach(i => { const v = numero(i.value); if (v != null) row[i.dataset.campo] = v; });
+    if (Object.keys(row).length < 3) return toast('Escribe al menos una medida');
+    const { error } = await sb.from('mediciones').insert(row);
+    if (error) return fallo(error, /row-level|policy/.test(error.message || '') ? 'Falta ejecutar el Bloque 12 en Supabase.' : undefined);
+    cerrarSheet(); toast('Medidas guardadas. ¡Gracias!'); await cargarAlumno(S.user.id); render();
+  });
+}
 function formMedicion() {
   const c = [['peso', 'Peso (kg)'], ['grasa_pct', '% de grasa'], ['grasa_kg', 'Grasa (kg)'], ['cuello', 'Cuello'], ['cintura', 'Cintura'], ['cadera', 'Cadera'], ['abd_bajo', 'Abdomen bajo'], ['pectoral', 'Pectoral'], ['hombros', 'Hombros'], ['brazo_d', 'Brazo dcho.'], ['brazo_i', 'Brazo izdo.'], ['muslo_d', 'Muslo dcho.'], ['muslo_i', 'Muslo izdo.'], ['gemelo_d', 'Gemelo dcho.'], ['gemelo_i', 'Gemelo izdo.']];
   abrirSheet(`<form class="stack" id="f-med"><h2>Nueva medición</h2><label class="f">Fecha<input type="date" id="m-fecha" value="${hoyISO()}"></label>
@@ -1064,7 +1093,7 @@ function formNota() {
 
 /* ---------- Estadísticas del alumno (coach) ---------- */
 /* ---------- Objetivo de pasos y control mensual ---------- */
-const PASOS_DEF = 8000;
+const PASOS_DEF = 10000;
 const objPasos = srv => srv?.objetivo_pasos || PASOS_DEF;
 const sumaMeses = (iso, n) => { const d = fecha(iso), dia = d.getDate(); d.setMonth(d.getMonth() + n); if (d.getDate() < dia) d.setDate(0); return isoDe(d); };
 /* Semana (lunes) en la que cae cada control mensual desde el inicio del proceso */
@@ -1077,7 +1106,7 @@ const controlEnSemana = (srv, lunes) => controlesMensuales(srv, sumaDias(lunes, 
 function vEventos(srv, pres) {
   const hoy = hoyISO(), lunes = lunesDe(hoy), ev = [];
   const cEsta = controlEnSemana(srv, lunes), cProx = controlEnSemana(srv, sumaDias(lunes, 7));
-  if (cEsta) ev.push(`<div class="line evento"><div class="ico gold">${svg('progreso')}</div><div class="grow"><b class="small">Esta semana toca tu control mensual ${cEsta.n}</b><div class="small muted">Composición corporal, ajustes y mejoras: tienes pendiente la reunión de seguimiento mensual con Jesús.</div></div></div>`);
+  if (cEsta) ev.push(`<div class="line evento"><div class="ico gold">${svg('progreso')}</div><div class="grow"><b class="small">Esta semana toca tu control mensual ${cEsta.n}</b><div class="small muted">Composición corporal, ajustes y mejoras: tienes pendiente la reunión de seguimiento mensual con Jesús.${srv?.modulo_presencial ? '' : ' Antes de la reunión, tómate tus medidas.'}</div>${srv?.modulo_presencial ? '' : '<button class="btn sm" data-act="misMedidas" style="margin-top:8px">Añadir mis medidas</button>'}</div></div>`);
   else if (cProx) ev.push(`<div class="line evento"><div class="ico">${svg('progreso')}</div><div class="grow"><b class="small">La semana que viene: control mensual ${cProx.n}</b><div class="small muted">Semana del ${esc(fCorta(cProx.lunes))}. Reunión de seguimiento, composición corporal y ajustes.</div></div></div>`);
   (pres || []).filter(p => p.estado === 'programada' && p.fecha >= hoy && p.fecha <= sumaDias(hoy, 13)).sort(ordPres).slice(0, 3)
     .forEach(p => ev.push(`<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">Entrenamiento con Jesús</b><div class="small muted">${esc(fLarga(p.fecha))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</div></div><span class="small muted">›</span></div>`));
@@ -1360,7 +1389,8 @@ function formFactura(pagoId) {
   abrirSheet(`<form class="stack" id="f-fac"><h2>Nueva factura</h2>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="f">Número<input type="text" id="fa-n" value="${esc(siguienteNumero())}" required></label><label class="f">Fecha de emisión<input type="date" id="fa-f" value="${hoyISO()}"></label></div>
     ${p ? '' : `<label class="f">Alumno<select id="fa-al"><option value="">— Otro cliente —</option>${als.map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join('')}</select></label>`}
-    <label class="f">Nombre y apellidos / razón social<input type="text" id="fa-cn" value="${esc(a.nombre_fiscal || a.nombre || '')}" required></label>
+    <label class="f">Nombre completo (con los dos apellidos) / razón social<input type="text" id="fa-cn" value="${esc(a.nombre_fiscal || a.nombre || '')}" required></label>
+    ${p && !a.nombre_fiscal ? '<p class="small" style="color:var(--warn)">Escribe su nombre completo tal y como aparece en su DNI. Se guarda en su ficha (solo para facturas) y la próxima vez saldrá solo.</p>' : ''}
     <label class="f">NIF / NIE<input type="text" id="fa-ci" value="${esc(a.nif || '')}" placeholder="Se guarda en su ficha para la próxima vez"></label>
     <label class="f">Concepto<input type="text" id="fa-co" value="Acompañamiento personalizado" required></label>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="f">Total con IVA (€)<input type="text" inputmode="decimal" id="fa-t" value="${p ? String(p.importe).replace('.', ',') : ''}" required></label><label class="f">Fecha de pago<input type="date" id="fa-fp" value="${(p?.pagado_at || '').slice(0, 10)}"></label></div>
@@ -1377,7 +1407,7 @@ function formFactura(pagoId) {
     const row = { numero: $('#fa-n').value.trim(), fecha: $('#fa-f').value || hoyISO(), alumno_id: alumno, pago_id: p?.id || null, cliente_nombre: $('#fa-cn').value.trim(), cliente_nif: $('#fa-ci').value.trim() || null, concepto: $('#fa-co').value.trim(), base, iva_pct: 21, iva: Math.round((total - base) * 100) / 100, total, forma_pago: $('#fa-fo').value, fecha_pago: $('#fa-fp').value || null };
     const { data, error } = await sb.from('facturas').insert(row).select().single();
     if (error) return fallo(error, /duplicate|unique/.test(error.message || '') ? 'Ese número de factura ya existe.' : /facturas/.test(error.message || '') ? 'Falta ejecutar el Bloque 11 en Supabase.' : undefined);
-    if (alumno && row.cliente_nif) { await sb.from('perfiles').update({ nif: row.cliente_nif }).eq('id', alumno); const x = S.c.perfiles.find(y => y.id === alumno); if (x) x.nif = row.cliente_nif; }
+    if (alumno) { const upd = { nombre_fiscal: row.cliente_nombre, ...(row.cliente_nif ? { nif: row.cliente_nif } : {}) }; await sb.from('perfiles').update(upd).eq('id', alumno); const x = S.c.perfiles.find(y => y.id === alumno); if (x) Object.assign(x, upd); }
     S.c.facturas = [data, ...(S.c.facturas || [])]; cerrarSheet(); verFactura(data.id);
   });
 }
@@ -2235,6 +2265,7 @@ document.addEventListener('click', async e => {
     case 'cerrarVerSesion': S.verSes = null; render(); window.scrollTo(0, 0); break;
     case 'verSesion': await verSesion(+b.dataset.id); break;
     case 'nuevaMedicion': formMedicion(); break;
+    case 'misMedidas': formMisMedidas(); break;
     case 'nuevoPago': formPago(S.ficha.id); break;
     case 'nuevoPagoGeneral': formPago(null); break;
     case 'nuevaNota': formNota(); break;
