@@ -253,9 +253,10 @@ function vHoy() {
   return `<section class="card hero stack">
     <span class="eyebrow">${esc(fLarga(hoy))}</span>
     <h1>Hola, ${esc((S.perfil.nombre || '').split(' ')[0])}</h1>
-    <div class="small muted">${esc(s.producto || 'Tu proceso')}${p ? ' · ' + esc(p.nombre) : ''}${semN && dur ? ` · Semana ${semN} de ${dur}` : ''}</div>
+    <div class="small muted">${esc(s.producto || 'Tu proceso')}${p ? ' · ' + esc(p.nombre) : ''}${(() => { const P = proceso(s); return P && !P.antes && !P.fuera ? ' · ' + txtCiclo(P) : ''; })()}</div>
     ${S.d.ruta[0]?.objetivos?.length ? `<div style="border-top:1px solid rgba(255,255,255,.14);padding-top:12px" class="stack"><span class="eyebrow">Tu objetivo</span><div class="small">${esc(S.d.ruta[0].objetivos.join(' · '))}</div></div>` : ''}
   </section>
+  ${vLineaTiempo(s)}
   <section class="section"><h2>Lo que toca hoy</h2><div class="card">${toca}</div></section>
   <section class="section"><h2>Registro de hoy</h2><div class="card stack">
     <div class="row"><div class="ico">${svg('pasos')}</div><label class="f grow">Pasos de hoy<input id="r-pasos" type="number" inputmode="numeric" min="0" value="${r.pasos ?? ''}" placeholder="Ej. 8500"></label><label class="f" style="width:96px">Horas de pie<input id="r-pie" type="number" inputmode="decimal" min="0" max="24" step="0.5" value="${r.horas_pie ?? ''}" placeholder="Ej. 5"></label></div>
@@ -289,7 +290,8 @@ function vEntreno() {
   const como = S.obj ? `<div class="cerrada" style="margin-bottom:10px"><span class="pill gold">Entrenando a</span><span class="small grow">${esc(S.obj.nombre)} · lo que apuntes se guarda en su ficha</span><button class="btn sm ghost" data-act="salirComo" style="background:#fff">Salir</button></div>` : '';
   const lunes = lunesDe(hoyISO()), hoyN = norm(DIAS[new Date().getDay()]);
   const hechoSemana = id => S.d.sesiones.some(s => s.dia_id === id && s.fecha >= lunes);
-  return como + `<section class="stack"><span class="eyebrow">${esc(p.nombre)}</span><h1>Entreno</h1></section>
+  const P = proceso(S.d.servicio), Pn = P && !P.antes ? S.d.sesiones.filter(x => x.fecha >= P.cc.ini && x.fecha <= P.cc.fin).length : null;
+  return como + `<section class="stack"><span class="eyebrow">${esc(p.nombre)}</span><h1>Entreno</h1>${P && !P.antes && !P.fuera ? `<div class="row" style="flex-wrap:wrap;gap:6px"><span class="pill blue">Ciclo ${P.ciclo}</span><span class="pill gold">Semana ${P.semCiclo} de ${P.cc.sem}</span><span class="pill">${Pn} ${p.dias_semana ? 'de ' + p.dias_semana * P.cc.sem + ' ' : ''}entrenos del ciclo</span></div>` : ''}</section>
   <section class="section"><div class="card">${p.dias.map(d => `<div class="wk ${norm(d.nombre) === hoyN ? 'today' : ''}"><span class="d">${esc(d.nombre.slice(0, 3))}</span><div class="grow"><h3>${esc(d.foco || d.nombre)}</h3><div class="small muted">${esc(d.volumen || '')} volumen · ${esc(d.intensidad || '')} intensidad</div></div>${hechoSemana(d.id) ? '<span class="pill ok">Hecho</span>' : ''}<button class="btn sm ${norm(d.nombre) === hoyN ? '' : 'ghost'}" data-act="abrirDia" data-id="${d.id}">Abrir</button></div>`).join('')}</div></section>`;
 }
 
@@ -432,6 +434,7 @@ function vSesionCerrada() {
   return `<div class="cerrada"><span class="pill ok">Sesión cerrada</span><span class="small grow">${esc(fLarga(v.ses.fecha))}${v.ses.duracion_min ? ` · ${v.ses.duracion_min} min` : ''} · ${hechas} de ${total} series</span><button class="btn sm" data-act="editarSesion">✎ Editar</button></div>
   <section class="stack" style="margin-top:12px"><button class="btn sm ghost" data-act="cerrarVerSesion" style="align-self:flex-start">← Ficha de ${esc((a.nombre || '').split(' ')[0])}</button>
     <span class="eyebrow">${esc(a.nombre || '')} · ${esc(d.nombre)}</span><h1>${esc(d.foco || d.nombre)}</h1>
+    ${(() => { const x = numEntreno(S.ficha.todas, S.ficha.srv, v.ses.fecha, v.ses.id, S.ficha.prog?.dias_semana); return x && !x.fuera ? `<div class="row" style="flex-wrap:wrap;gap:6px"><span class="pill blue">Ciclo ${x.ciclo}</span><span class="pill gold">Semana ${x.semCiclo} de ${x.cc.sem}</span><span class="pill">Entreno ${x.n}${x.previstos ? ' de ' + x.previstos : ''} del ciclo</span></div>` : ''; })()}
     ${v.ses.nota ? `<div class="card stack"><span class="eyebrow">Su comentario</span><div class="small">"${esc(v.ses.nota)}"</div></div>` : ''}
     <div class="card stack"><span class="eyebrow">Objetivo del día</span><div class="small">${esc(d.objetivo || '')}</div>
     <div class="kpis"><div class="kpi"><div class="l">Volumen</div><b>${esc(d.volumen || '—')}</b></div><div class="kpi"><div class="l">Intensidad</div><b>${esc(d.intensidad || '—')}</b></div><div class="kpi"><div class="l">Foco</div><b>${esc(d.foco || '—')}</b></div></div></div>
@@ -449,18 +452,23 @@ function vBloque(b, cont, ro) {
   }
   return `<div class="stack"><div class="row"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}</h3></div>${b.agrupacion ? `<p class="note">${esc(b.agrupacion)}</p>` : ''}${b.ejercicios_sesion.map(e => vEjercicio(e, ++cont.n, ro)).join('')}</div>`;
 }
+function cicloSesion() {
+  const x = numEntreno(S.d.sesiones, S.d.servicio, S.sesion?.fecha || hoyISO(), S.sesion?.id, S.d.programa?.dias_semana);
+  return x && !x.fuera ? `<div class="row" style="flex-wrap:wrap;gap:6px"><span class="pill blue">Ciclo ${x.ciclo}</span><span class="pill gold">Semana ${x.semCiclo} de ${x.cc.sem}</span><span class="pill">Entreno ${x.n}${x.previstos ? ' de ' + x.previstos : ''} del ciclo</span></div>` : '';
+}
 function vSesion() {
   const d = S.dia, cont = { n: 0 };
   prepararNavegacion(d);
   const ini = S.sesion?.inicio;
   const como = S.obj ? `<div class="cerrada" style="margin-bottom:10px"><span class="pill gold">${S.sesion?.editar ? 'Editando' : 'Entrenando a'}</span><span class="small grow">${esc(S.obj.nombre)}${S.sesion?.editar ? ' · sesión del ' + esc(fCorta(S.sesion.fecha)) : ''}</span><button class="btn sm ghost" data-act="${S.sesion?.editar ? 'terminar' : 'salirComo'}" style="background:#fff">${S.sesion?.editar ? 'Listo' : 'Salir'}</button></div>` : '';
-  if (S.sesion?.editar) return como + `<section class="stack"><span class="eyebrow">${esc(S.dia.nombre)}</span><h1>${esc(S.dia.foco || S.dia.nombre)}</h1>
+  if (S.sesion?.editar) return como + `<section class="stack"><span class="eyebrow">${esc(S.dia.nombre)}</span><h1>${esc(S.dia.foco || S.dia.nombre)}</h1>${cicloSesion()}
     <p class="note">Corrige kg, repeticiones o RIR: los cambios de una serie ya marcada se guardan solos al salir de la casilla. Para añadir una serie que no apuntó, rellénala y marca el check. Para borrarla, quita el check.</p></section>
   <section class="section">${d.bloques_sesion.map(b => vBloque(b, cont)).join('')}
   <button class="btn full dark" data-act="terminar">Listo, ver sesión</button></section>`;
   return como + `<div class="crono" id="crono">${ini ? `<span class="crono-t num" id="crono-t">${fmtCrono(Date.now() - ini)}</span><span class="small">Entrenamiento en curso</span>` : `<button class="btn sm" data-act="empezarCrono">⏱ Empezar entrenamiento</button><span class="small muted">El cronómetro mide tu sesión completa</span>`}</div>
   <section class="stack"><button class="btn sm ghost" data-act="cerrarDia" style="align-self:flex-start">← Semana</button>
     <span class="eyebrow">${esc(S.d.programa?.nombre || '')} · ${esc(d.nombre)}</span><h1>${esc(d.foco || d.nombre)}</h1>
+    ${cicloSesion()}
     <div class="card stack"><span class="eyebrow">Objetivo de hoy</span><div class="small">${esc(d.objetivo || '')}</div>
     <div class="kpis"><div class="kpi"><div class="l">Volumen</div><b>${esc(d.volumen || '—')}</b></div><div class="kpi"><div class="l">Intensidad</div><b>${esc(d.intensidad || '—')}</b></div><div class="kpi"><div class="l">Foco</div><b>${esc(d.foco || '—')}</b></div></div></div></section>
   <section class="section">${d.bloques_sesion.map(b => vBloque(b, cont)).join('')}
@@ -706,8 +714,8 @@ async function abrirFicha(id) {
     sb.from('notas_coach').select('*').eq('alumno_id', id).order('fecha', { ascending: false }).limit(20),
     sb.from('programas').select('nombre,dias_semana').eq('alumno_id', id).eq('activo', true).limit(1),
     sb.from('servicios').select('*').eq('alumno_id', id).eq('activo', true).limit(1),
-    conRespaldo(() => sb.from('sesiones_hechas').select('fecha,dia_id,duracion_min').eq('alumno_id', id).gte('fecha', sumaDias(hoyISO(), -365)),
-      () => sb.from('sesiones_hechas').select('fecha,dia_id').eq('alumno_id', id).gte('fecha', sumaDias(hoyISO(), -365)))
+    conRespaldo(() => sb.from('sesiones_hechas').select('id,fecha,dia_id,duracion_min').eq('alumno_id', id).gte('fecha', sumaDias(hoyISO(), -365)),
+      () => sb.from('sesiones_hechas').select('id,fecha,dia_id').eq('alumno_id', id).gte('fecha', sumaDias(hoyISO(), -365)))
   ]);
   S.ficha = { id, med: med.data || [], ses: ses.data || [], notas: notas.data || [], prog: prog.data?.[0], srv: srv.data?.[0], todas: todas.data || [] };
   render();
@@ -722,9 +730,10 @@ function vFicha() {
     <div class="small muted">${esc(a.email)} · ${esc(f.srv?.producto || 'Sin servicio')}${f.prog ? ' · ' + esc(f.prog.nombre) : ''} · alta ${esc(fCorta(a.fecha_alta))}</div>
     <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn sm" data-act="nuevaMedicion">Añadir medición</button><button class="btn sm ghost" data-act="nuevoPago">Añadir cuota</button><button class="btn sm ghost" data-act="nuevaNota">Nota privada</button><button class="btn sm gold" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc((a.nombre || '').split(' ')[0])}</button></div></section>
   ${e.motivos.length ? `<section class="section"><div class="card stack"><span class="eyebrow">Para revisar</span><div class="small">${esc(e.motivos.join(' · '))}</div></div></section>` : ''}
+  ${vLineaTiempo(f.srv, 'Proceso de ' + ((a.nombre || '').split(' ')[0]))}
   ${vEstadisticas(f)}
   <section class="section"><div class="section-head"><h2>Programa</h2><button class="btn sm" data-act="editarPrograma" data-id="${a.id}">${f.prog ? 'Editar programa' : 'Crear programa'}</button></div><div class="card small">${f.prog ? `<b>${esc(f.prog.nombre)}</b> · ${f.prog.dias_semana || '—'} días por semana` : 'Este alumno aún no tiene programa.'}</div></section>
-  <section class="section"><h2>Entrenamientos</h2><div class="card">${f.ses.map(s => `<div class="line" data-act="verSesion" data-id="${s.id}" style="cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(s.fecha))}</span><div class="grow"><div class="small"><b>${esc(s.dias?.nombre || '')}</b> · ${esc(s.dias?.foco || '')} · ${s.registros_series.length} series${s.duracion_min ? ` · ${s.duracion_min} min` : ''}</div>${s.nota ? `<div class="small muted">"${esc(s.nota)}"</div>` : ''}</div><span class="small" style="color:var(--blue-text)">Abrir ›</span></div>`).join('') || '<div class="empty">Sin entrenamientos registrados.</div>'}</div><p class="note">Toca un entrenamiento para verlo ejercicio por ejercicio y serie por serie, como lo vio tu alumno.</p></section>
+  <section class="section"><h2>Entrenamientos</h2><div class="card">${f.ses.map(s => `<div class="line" data-act="verSesion" data-id="${s.id}" style="cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(s.fecha))}</span><div class="grow">${(() => { const x = numEntreno(f.todas, f.srv, s.fecha, s.id, f.prog?.dias_semana); return x && !x.fuera ? `<div class="small" style="color:var(--blue-text);font-weight:700">C${x.ciclo} · S${x.semCiclo} · Entreno ${x.n}</div>` : ''; })()}<div class="small"><b>${esc(s.dias?.nombre || '')}</b> · ${esc(s.dias?.foco || '')} · ${s.registros_series.length} series${s.duracion_min ? ` · ${s.duracion_min} min` : ''}</div>${s.nota ? `<div class="small muted">"${esc(s.nota)}"</div>` : ''}</div><span class="small" style="color:var(--blue-text)">Abrir ›</span></div>`).join('') || '<div class="empty">Sin entrenamientos registrados.</div>'}</div><p class="note">Toca un entrenamiento para verlo ejercicio por ejercicio y serie por serie, como lo vio tu alumno.</p></section>
   <section class="section"><h2>Check-ins</h2><div class="card">${chks.map(k => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(k.semana_inicio))}</span><div class="grow stack" style="gap:4px"><div class="small">Motivación <b>${k.motivacion}/10</b> · implicación <b>${k.implicacion}/10</b></div>${k.dificultades ? `<div class="small"><span class="muted">Dificultades:</span> ${esc(k.dificultades)}</div>` : ''}${(k.proxima_semana_etiquetas || []).length || k.proxima_semana ? `<div class="small"><span class="muted">Semana que viene:</span> ${esc([...(k.proxima_semana_etiquetas || []), k.proxima_semana].filter(Boolean).join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Sin check-ins todavía.</div>'}</div></section>
   <section class="section"><h2>Registro diario</h2><div class="card tbl"><table><thead><tr><th>Día</th><th>Pasos</th><th>De pie</th><th>Alim.</th></tr></thead><tbody>${diario.map(r => `<tr><td>${esc(fCorta(r.fecha))}</td><td class="num">${r.pasos == null ? '—' : fmtNum(r.pasos, 0)}</td><td class="num">${r.horas_pie == null ? '—' : fmtNum(r.horas_pie) + ' h'}</td><td>${({ si: 'Cumplido', parcial: 'A medias', no: 'No' })[r.alimentacion] || '—'}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">Sin registros en 14 días.</td></tr>'}</tbody></table></div></section>
   <section class="section"><h2>Mediciones</h2><div class="card tbl"><table><thead><tr><th>Fecha</th><th>Peso</th><th>% grasa</th><th>Cintura</th><th>Cadera</th></tr></thead><tbody>${f.med.map(m => `<tr><td>${esc(fCorta(m.fecha))} ${String(fecha(m.fecha).getFullYear()).slice(2)}</td><td class="num">${fmtNum(m.peso)}</td><td class="num">${fmtNum(m.grasa_pct)}</td><td class="num">${fmtNum(m.cintura)}</td><td class="num">${fmtNum(m.cadera)}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">Sin mediciones.</td></tr>'}</tbody></table></div></section>
@@ -811,6 +820,51 @@ function formNota() {
 }
 
 /* ---------- Estadísticas del alumno (coach) ---------- */
+/* ---------- Proceso dividido en ciclos de 8 semanas ---------- */
+const SEM_CICLO = 8;
+function proceso(srv, f = hoyISO()) {
+  if (!srv?.inicio) return null;
+  const dias = Math.floor((fecha(f) - fecha(srv.inicio)) / 864e5), semana = Math.floor(dias / 7) + 1;
+  const total = srv.duracion_semanas || Math.max(1, Math.ceil(Math.max(semana, 1) / SEM_CICLO)) * SEM_CICLO;
+  const n = Math.ceil(total / SEM_CICLO), ciclos = [];
+  for (let c = 1; c <= n; c++) {
+    const sem = Math.min(SEM_CICLO, total - (c - 1) * SEM_CICLO), ini = sumaDias(srv.inicio, (c - 1) * SEM_CICLO * 7);
+    ciclos.push({ n: c, sem, ini, fin: sumaDias(ini, sem * 7 - 1) });
+  }
+  const antes = dias < 0, fuera = semana > total;
+  const ciclo = antes ? 1 : Math.min(n, Math.floor((semana - 1) / SEM_CICLO) + 1), cc = ciclos[ciclo - 1];
+  const semCiclo = antes ? 0 : Math.min(cc.sem, semana - (ciclo - 1) * SEM_CICLO);
+  const pctCiclo = antes ? 0 : Math.min(100, Math.round((Math.floor((fecha(f) - fecha(cc.ini)) / 864e5) + 1) / (cc.sem * 7) * 100));
+  const pctTotal = antes ? 0 : Math.min(100, Math.round((dias + 1) / (total * 7) * 100));
+  return { semana, total, ciclos, ciclo, semCiclo, cc, pctCiclo, pctTotal, antes, fuera, sinFin: !srv.duracion_semanas };
+}
+/* Nº de entreno dentro del ciclo (contando la sesión de esa fecha) */
+function numEntreno(sesiones, srv, f, sesId, dpw) {
+  const P = proceso(srv, f); if (!P || P.antes) return null;
+  const enCiclo = sesiones.filter(x => x.fecha >= P.cc.ini && x.fecha <= P.cc.fin);
+  let n = enCiclo.filter(x => x.fecha < f).length;
+  const mismoDia = enCiclo.filter(x => x.fecha === f).sort((a, b) => (a.id || 0) - (b.id || 0));
+  const i = sesId ? mismoDia.findIndex(x => x.id === sesId) : -1;
+  n += i >= 0 ? i + 1 : mismoDia.length + 1;
+  return { ...P, n, previstos: dpw ? dpw * P.cc.sem : null };
+}
+const txtCiclo = x => x ? `Ciclo ${x.ciclo} · Semana ${x.semCiclo} de ${x.cc.sem}${x.n ? ` · Entreno ${x.n}${x.previstos ? ' de ' + x.previstos : ''}` : ''}` : '';
+function vLineaTiempo(srv, titulo = 'Tu proceso') {
+  const P = proceso(srv); if (!P) return '';
+  const fF = iso => fecha(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+  const segs = P.ciclos.map(c => { const est = c.n < P.ciclo || P.fuera ? 100 : c.n === P.ciclo ? P.pctCiclo : 0;
+    return `<div class="tl-seg ${c.n === P.ciclo && !P.fuera ? 'now' : ''}" style="flex:${c.sem}"><i style="width:${est}%"></i><span>${c.n}</span></div>`; }).join('');
+  const filas = P.ciclos.map(c => { const hecho = c.n < P.ciclo || P.fuera, act = c.n === P.ciclo && !P.fuera && !P.antes;
+    return `<div class="tl-row ${act ? 'now' : ''}"><span class="tl-dot ${hecho ? 'ok' : act ? 'now' : ''}"></span><div class="grow"><b>Ciclo ${c.n}</b> <span class="small muted">· ${c.sem} semanas</span><div class="small muted">${fF(c.ini)} → ${fF(c.fin)}</div></div><span class="small ${act ? '' : 'muted'}">${hecho ? 'Completado' : act ? `<b>${P.pctCiclo} %</b>` : 'Empieza ' + fF(c.ini)}</span></div>`; }).join('');
+  const cab = P.antes ? `Empieza el ${fF(srv.inicio)}` : P.fuera ? 'Proceso completado' : `Ciclo ${P.ciclo} de ${P.ciclos.length} · Semana ${P.semCiclo} de ${P.cc.sem}`;
+  return `<section class="section"><div class="card stack">
+    <div class="row"><div class="grow"><span class="eyebrow">${esc(titulo)}</span><h3>${cab}</h3></div>${P.sinFin ? '' : `<div style="text-align:right"><b class="num" style="font-family:var(--display);font-size:22px">${P.pctTotal} %</b><div class="small muted">del proceso</div></div>`}</div>
+    <div class="tl">${segs}</div>
+    ${!P.antes && !P.fuera ? `<div class="small">El ciclo ${P.ciclo} va al <b>${P.pctCiclo} %</b> y termina el <b>${fF(P.cc.fin)}</b>${P.ciclos[P.ciclo] ? `; el ciclo ${P.ciclo + 1} empieza el ${fF(P.ciclos[P.ciclo].ini)}` : ''}.</div>` : ''}
+    <div class="stack" style="gap:0">${filas}</div>
+    ${P.sinFin ? '<p class="note">Duración total sin definir: se muestran los ciclos hasta hoy.</p>' : ''}
+  </div></section>`;
+}
 function barra(lbl, v, max, nota) {
   const pct = max ? Math.min(100, Math.round(v / max * 100)) : 0, col = pct >= 90 ? 'var(--ok)' : pct >= 60 ? 'var(--warn)' : 'var(--bad)';
   return `<div class="stack" style="gap:5px;margin-top:6px"><div class="row small"><span class="grow">${esc(lbl)}</span><b class="num">${v} / ${max}${nota ? ' ' + esc(nota) : ''} · ${pct} %</b></div><div class="track"><i style="width:${pct}%;background:${col}"></i></div></div>`;
