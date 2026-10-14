@@ -2561,7 +2561,7 @@ async function pedirAvisos() {
 async function notificarFin() {
   try {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
-    const reg = await navigator.serviceWorker?.ready, op = { body: T.lbl.replace(/^Descanso · /, '') || 'A por la siguiente serie 💪', icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: 'descanso', renotify: true, vibrate: [300, 150, 300, 150, 300] };
+    const reg = await navigator.serviceWorker?.ready, op = { body: T.lbl.replace(/^Descanso · /, '') || 'Fin del descanso', icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: 'descanso', renotify: true, vibrate: [300, 150, 300, 150, 300] };
     reg ? reg.showNotification('Fin del descanso', op) : new Notification('Fin del descanso', op);
   } catch (e) { }
 }
