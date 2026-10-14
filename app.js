@@ -2527,9 +2527,9 @@ function vCuenta() {
 }
 
 /* ---------- Temporizador de descanso ---------- */
-/* Al terminar: alarma tipo despertador que se repite hasta que el alumno la para (máx. 30 s), pantalla de aviso a todo color,
-   vibración (Android) y, si la app está en segundo plano y tiene permiso, una notificación. Cuenta atrás 3-2-1 con pitidos cortos. */
-const T = { end: 0, total: 0, iv: null, ctx: null, lock: null, alarma: null, pre: -1, lbl: '' };
+/* Al terminar: pantalla de marca con el logo, 3 toques tipo triángulo musical, vibración (Android) y, si la app está
+   en segundo plano y tiene permiso, una notificación. Se para con el botón, con "Silenciar" o al bloquear la pantalla. */
+const T = { end: 0, total: 0, iv: null, ctx: null, lock: null, fin: false, lbl: '', voces: [] };
 const fmtT = ms => { const t = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); };
 function audio() {
   try {
@@ -2537,15 +2537,21 @@ function audio() {
     T.ctx = T.ctx || new (window.AudioContext || window.webkitAudioContext)(); if (T.ctx.state === 'suspended') T.ctx.resume();
   } catch (e) { }
 }
-function tono(c, t0, f, dur, vol = .6) {
-  const o = c.createOscillator(), g = c.createGain(); o.type = 'square'; o.frequency.value = f;
-  g.gain.setValueAtTime(.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + .01); g.gain.setValueAtTime(vol, t0 + dur - .03); g.gain.exponentialRampToValueAtTime(.0001, t0 + dur);
-  o.connect(g).connect(c.destination); o.start(t0); o.stop(t0 + dur + .02);
+/* Un toque de triángulo: golpe seco y resonancia metálica larga (parciales inarmónicos que se apagan poco a poco) */
+function triangulo(c, t0) {
+  const f = 1850, parciales = [[1, .5, 1.6], [2.76, .22, 1.1], [5.40, .12, .8], [8.93, .06, .5]];
+  const salida = c.createGain(); salida.gain.value = .9; salida.connect(c.destination);
+  parciales.forEach(([m, vol, dur]) => {
+    const o = c.createOscillator(), g = c.createGain(); o.type = 'sine'; o.frequency.value = f * m;
+    g.gain.setValueAtTime(.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + .004); g.gain.exponentialRampToValueAtTime(.0001, t0 + dur);
+    o.connect(g).connect(salida); o.start(t0); o.stop(t0 + dur + .05); T.voces.push(o);
+  });
 }
-function pitidoCorto() { try { const c = T.ctx; if (c) tono(c, c.currentTime, 1000, .09, .25); } catch (e) { } }
-/* Una ráfaga de despertador: bip-bip-bip-bip (1,6 s) */
-function rafaga() { try { const c = T.ctx; if (!c) return; if (c.state === 'suspended') c.resume(); [0, .2, .4, .6].forEach((d, k) => tono(c, c.currentTime + d, k % 2 ? 1760 : 1320, .14)); } catch (e) { } }
-function beep() { rafaga(); }
+function tresToques() {
+  try { const c = T.ctx; if (!c) return; if (c.state === 'suspended') c.resume(); T.voces = []; [0, .55, 1.1].forEach(d => triangulo(c, c.currentTime + .05 + d)); } catch (e) { }
+}
+function callar() { T.voces.forEach(o => { try { o.stop(); } catch (e) { } }); T.voces = []; try { navigator.vibrate && navigator.vibrate(0); } catch (e) { } }
+function beep() { tresToques(); }
 async function pedirAvisos() {
   try {
     if (!('Notification' in window) || Notification.permission !== 'default' || localStorage.getItem('lof-avisos-pedido')) return;
@@ -2555,40 +2561,45 @@ async function pedirAvisos() {
 async function notificarFin() {
   try {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
-    const reg = await navigator.serviceWorker?.ready, op = { body: 'A por la siguiente serie 💪', icon: 'icons/icon-192.png', tag: 'descanso', renotify: true, requireInteraction: true, vibrate: [500, 200, 500, 200, 500] };
-    reg ? reg.showNotification('⏰ Descanso terminado', op) : new Notification('⏰ Descanso terminado', op);
+    const reg = await navigator.serviceWorker?.ready, op = { body: T.lbl.replace(/^Descanso · /, '') || 'A por la siguiente serie 💪', icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: 'descanso', renotify: true, vibrate: [300, 150, 300, 150, 300] };
+    reg ? reg.showNotification('Fin del descanso', op) : new Notification('Fin del descanso', op);
   } catch (e) { }
 }
 async function startTimer(sec, lbl) {
-  audio(); pararAlarma(); clearInterval(T.iv); T.total = sec * 1000; T.end = Date.now() + T.total; T.pre = -1; T.lbl = lbl;
+  audio(); pararAlarma(); clearInterval(T.iv); T.total = sec * 1000; T.end = Date.now() + T.total; T.fin = false; T.lbl = lbl;
   const el = $('#timer'); el.hidden = false; el.classList.remove('done'); $('#t-lbl').textContent = lbl;
   try { if (navigator.wakeLock && !T.lock) T.lock = await navigator.wakeLock.request('screen'); } catch (e) { }
   if (sec >= 45) pedirAvisos();
   tick(); T.iv = setInterval(tick, 250);
 }
 function tick() {
+  if (T.fin) return;
   const left = T.end - Date.now();
   $('#t-clock').textContent = fmtT(left);
   $('#t-bar').style.width = Math.min(100, (1 - left / T.total) * 100) + '%';
-  const s = Math.ceil(left / 1000);
-  if (s >= 1 && s <= 3 && s !== T.pre && T.total >= 10000) { T.pre = s; pitidoCorto(); }
-  if (left <= 0) { clearInterval(T.iv); finTimer(left); }
+  if (left <= 0) { clearInterval(T.iv); T.iv = null; finTimer(left); }
 }
 function finTimer(left) {
-  $('#timer').classList.add('done'); $('#t-lbl').textContent = '¡Descanso terminado!';
+  if (T.fin) return; T.fin = true; // una sola alarma por descanso, aunque se vuelva a la app varias veces
+  $('#timer').classList.add('done'); $('#t-lbl').textContent = 'Fin del descanso';
   if (document.hidden) notificarFin();
-  if (left < -60000) return; // volvió a la app mucho después: sin alarma, solo el aviso en pantalla
+  if (left < -60000) return; // volvió a la app mucho después: sin alarma, solo el aviso en la barra
   const ov = $('#alarma'); ov.hidden = false; $('#al-lbl').textContent = T.lbl.replace(/^Descanso · /, '');
-  let n = 0; const sonar = () => { rafaga(); try { navigator.vibrate && navigator.vibrate([400, 150, 400, 150, 400]); } catch (e) { } if (++n >= 15) pararAlarma(); };
-  sonar(); T.alarma = setInterval(sonar, 2000);
+  const m = ov.querySelector('[data-silenciar]'); m.setAttribute('aria-pressed', 'false'); m.textContent = '🔇 Silenciar';
+  tresToques(); try { navigator.vibrate && navigator.vibrate([300, 250, 300, 250, 300]); } catch (e) { }
 }
-function pararAlarma() { clearInterval(T.alarma); T.alarma = null; const ov = $('#alarma'); if (ov) ov.hidden = true; try { navigator.vibrate && navigator.vibrate(0); } catch (e) { } }
-function stopTimer() { clearInterval(T.iv); pararAlarma(); $('#timer').hidden = true; try { T.lock?.release(); } catch (e) { } T.lock = null; }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !$('#timer').hidden && T.iv) tick(); });
+function pararAlarma() { callar(); const ov = $('#alarma'); if (ov) ov.hidden = true; }
+function stopTimer() { clearInterval(T.iv); T.iv = null; T.fin = true; pararAlarma(); $('#timer').hidden = true; try { T.lock?.release(); } catch (e) { } T.lock = null; }
+/* Bloquear la pantalla o salir de la app para la alarma al momento */
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') { callar(); return; }
+  if (!$('#timer').hidden && T.iv) tick();
+});
 
 /* ---------- Eventos ---------- */
 document.addEventListener('click', async e => {
-  if (e.target.closest('[data-alarma]')) { pararAlarma(); $('#timer').hidden = true; try { T.lock?.release(); } catch (x) { } T.lock = null; return; }
+  if (e.target.closest('[data-silenciar]')) { const b = e.target.closest('[data-silenciar]'); callar(); b.setAttribute('aria-pressed', 'true'); b.textContent = 'Silenciada'; return; }
+  if (e.target.closest('[data-alarma]')) { stopTimer(); return; }
   const tm = e.target.closest('[data-tm]');
   if (tm) {
     if (tm.dataset.tm === 'plus') { T.end += 15000; T.total += 15000; if ($('#timer').classList.contains('done')) { $('#timer').classList.remove('done'); clearInterval(T.iv); T.iv = setInterval(tick, 250); } }

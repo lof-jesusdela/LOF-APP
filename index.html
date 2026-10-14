@@ -152,15 +152,20 @@ nav.tabs button[aria-current="page"]{color:var(--blue)}
 .timer .bar i{display:block;height:100%;background:var(--glow)}
 .timer button{border:0;border-radius:10px;padding:8px 10px;font-weight:700;font-size:13px;background:rgba(255,255,255,.12);color:var(--on-ink)}
 .timer.done .in{background:var(--blue)}
-.alarma{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--blue);color:#fff;animation:al-pulso 1s ease-in-out infinite alternate;cursor:pointer}
-@keyframes al-pulso{from{background:#0066FF}to{background:#0B3D91}}
-.al-in{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;max-width:420px}
-.al-ico{font-size:72px;line-height:1;animation:al-ring .25s linear infinite alternate}@keyframes al-ring{from{transform:rotate(-12deg)}to{transform:rotate(12deg)}}
-.al-t{font-family:var(--display);font-weight:800;font-size:40px;line-height:1.05;text-transform:uppercase}
-.al-s{font-size:16px;opacity:.85}
-.al-b{border:0;border-radius:16px;padding:16px 26px;font-weight:800;font-size:18px;background:#fff;color:var(--blue);margin-top:8px}
-.al-n{font-size:13px;opacity:.7}
-@media (prefers-reduced-motion:reduce){.alarma,.al-ico{animation:none}}
+.alarma{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;padding:24px 20px calc(24px + env(safe-area-inset-bottom,0px));color:var(--on-ink);background:radial-gradient(90% 60% at 50% 30%,rgba(0,102,255,.38) 0%,rgba(0,102,255,0) 70%),var(--ink)}
+.al-in{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;width:100%;max-width:400px}
+.al-logo{position:relative;width:120px;height:120px;margin-bottom:10px}
+.al-logo img{width:120px;height:120px;border-radius:50%;object-fit:cover;box-shadow:0 0 0 3px var(--gold),0 12px 40px rgba(0,102,255,.45);position:relative;z-index:1}
+.al-logo::before,.al-logo::after{content:'';position:absolute;inset:0;border-radius:50%;border:2px solid var(--gold);animation:al-onda 1.6s ease-out infinite}
+.al-logo::after{animation-delay:.8s;border-color:var(--glow)}
+@keyframes al-onda{from{transform:scale(1);opacity:.9}to{transform:scale(1.9);opacity:0}}
+.al-e{font-size:11px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--gold)}
+.al-t{font-family:var(--display);font-weight:800;font-size:46px;line-height:.95;text-transform:uppercase;letter-spacing:.01em}
+.al-s{font-size:15px;color:var(--on-ink-muted);min-height:1.4em}
+.al-b{width:100%;border:0;border-radius:16px;padding:17px 20px;font-weight:800;font-size:17px;background:var(--blue);color:#fff;margin-top:14px;box-shadow:0 8px 24px rgba(0,102,255,.4)}
+.al-m{border:1px solid rgba(255,255,255,.22);background:transparent;color:var(--on-ink);border-radius:14px;padding:12px 18px;font-weight:700;font-size:14px}
+.al-m[aria-pressed="true"]{opacity:.55}
+@media (prefers-reduced-motion:reduce){.al-logo::before,.al-logo::after{animation:none;opacity:0}}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(150px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--on-ink);font-weight:700;font-size:14px;padding:10px 16px;border-radius:12px;z-index:9;max-width:calc(100% - 32px)}
 .sheet{position:fixed;inset:0;z-index:10;background:rgba(12,13,16,.45);display:flex;align-items:flex-end;justify-content:center}
 .sheet .in{background:var(--surface);width:100%;max-width:460px;border-radius:20px 20px 0 0;padding:20px 16px calc(20px + env(safe-area-inset-bottom,0px));max-height:85vh;overflow:auto}
@@ -278,7 +283,14 @@ details.plan-ap{border-top:1px solid var(--line);padding:10px 0}details.plan-ap:
 <div class="app" id="app"><div class="login"><img src="icons/logo-96.jpg" alt="LOF"><p class="muted" style="text-align:center">Cargando…</p></div></div>
 <nav class="tabs" id="tabs" hidden><div class="in" id="tabs-in"></div></nav>
 <div class="timer" id="timer" hidden><div class="in"><div class="clock num" id="t-clock">0:00</div><div class="grow"><div class="lbl" id="t-lbl">Descanso</div><div class="bar"><i id="t-bar" style="width:0"></i></div></div><button data-tm="plus">+15 s</button><button data-tm="skip">Saltar</button></div></div>
-<div class="alarma" id="alarma" hidden data-alarma role="alertdialog" aria-label="Descanso terminado"><div class="al-in"><div class="al-ico">⏰</div><div class="al-t">¡Descanso terminado!</div><div class="al-s" id="al-lbl"></div><button class="al-b" data-alarma>A por la siguiente serie</button><div class="al-n">Toca en cualquier sitio para parar la alarma</div></div></div>
+<div class="alarma" id="alarma" hidden role="alertdialog" aria-modal="true" aria-labelledby="al-tit"><div class="al-in">
+  <div class="al-logo"><img src="icons/icon-192.png" alt="La Obra Fitness"></div>
+  <div class="al-e">La Obra Fitness</div>
+  <div class="al-t" id="al-tit">Fin del descanso</div>
+  <div class="al-s" id="al-lbl"></div>
+  <button class="al-b" data-alarma>A por la siguiente serie</button>
+  <button class="al-m" data-silenciar aria-pressed="false">🔇 Silenciar</button>
+</div></div></div>
 <div class="toast" id="toast" hidden></div>
 <div class="sheet" id="sheet" hidden><div class="in" id="sheet-in"></div></div>
 
