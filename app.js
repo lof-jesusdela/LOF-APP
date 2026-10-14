@@ -381,44 +381,77 @@ function esSinPeso(e) {
 }
 const kgDe = t => { const m = String(t?.kg || '').match(/(\d+[.,]?\d*)\s*kg/i); return m ? m[1] : ''; };
 
+/* "A tu medida": solo ajustes de máquina y material (polea, silla, banco, agarre…); los consejos de ejecución van en el vídeo */
+const AJUSTE_RE = /(polea|silla|asiento|banco|inclinaci|respaldo|pecho|agarre|material|barra|mancuerna|kettlebell|m[aá]quina|altura|ajuste|almohadilla|rodillo|cuerda|disco|prono|supino|neutro|tabla|\bpin\b|smith|el[aá]stic|goma|bosu|caj[oó]n|flecha|apertura|tobillera|plataforma|soporte|step)/i;
+function ajustesMaquina(txt) {
+  return String(txt || '').split(/\s*·\s*/).map(x => x.trim()).filter(x => x && !/^sin descanso/i.test(x) && (AJUSTE_RE.test(x) || /^\d+\s*[ºª°]\s*(y\s*\d+\s*[ºª°]\s*)?serie/i.test(x)));
+}
+/* Lo planificado aparece dentro de cada casilla; si el alumno no escribe nada, al marcar "Hecha" se guarda eso */
+const repsPh = r => { const t = String(r ?? '').trim(); if (!t) return ''; if (/^m[aá]x/i.test(t) || /^rir/i.test(t)) return 'Máx'; const m = t.match(/^(\d+)\s*(?:[-–a]\s*(\d+))?/i); return m ? (m[2] ? `${m[1]}–${m[2]}` : m[1]) : ''; };
+const valPh = el => el ? numero(String(el.placeholder || '').split('–')[0]) : null;
 function vEjercicio(e, i, ro) {
-  const grupos = gruposDe(e.pauta), sp = esSinPeso(e), ej = e.ejercicios || {};
+  const grupos = gruposDe(e.pauta), sp = esSinPeso(e), ej = e.ejercicios || {}, plan = ro?.plan;
+  const kg0 = kgDe(grupos[0]?.tramos[0]) || kgDe({ kg: e.peso_ref });
   let n = 0;
-  const filas = grupos.map((g, gi) => {
-    const descanso = g.tramos[g.tramos.length - 1].d ?? e.descanso_seg ?? 60, T = g.tramos.length;
-    const cab = `<div class="small" style="grid-column:1/-1;margin-top:${gi ? 6 : 0}px"><b>${grupos.length > 1 ? (gi === 0 && g.s === 1 ? 'Serie principal' : `Series ${n + 1}–${n + g.s}`) : `${g.s} ${g.s === 1 ? 'serie' : 'series'}`}</b> · ${esc(txtTramo(g.tramos[0]))} · descanso ${descanso ? seg(descanso) : 'no, sigue'}</div>
-      ${T > 1 ? `<div class="tramos" style="grid-column:1/-1">${g.tramos.map((t, k) => ro ? `<span class="tramo">Tramo ${k + 1}: ${esc(txtTramo(t) || 'igual')}</span>` : `<button class="tramo" data-act="tramo" data-d="${t.d ?? 0}" data-lbl="${esc(ej.nombre)} · tramo ${k + 1}">Tramo ${k + 1}: ${esc(txtTramo(t) || 'igual')}${k < T - 1 ? ` → ${t.d ? seg(t.d) : 'sin pausa'}` : ''}</button>`).join('')}</div>` : ''}`;
-    const series = [...Array(g.s)].map(() => {
+  const filas = grupos.map(g => {
+    const descanso = g.tramos[g.tramos.length - 1].d ?? e.descanso_seg ?? 60, T = g.tramos.length, t0 = g.tramos[0];
+    return [...Array(g.s)].map(() => {
       n++; const r = `${e.id}-${n}`;
-      if (ro?.plan) return g.tramos.map((t, k) => `<span class="num muted">${k ? '↳' : n}</span><span class="small">${sp ? 'Sin peso' : esc(t.kg || g.tramos[0].kg || '—')}</span><span class="small">${esc(t.r || '—')}</span><span class="small num">${t.rir ?? (k ? '' : e.rir ?? '—')}</span><span></span>`).join('');
-      if (ro) return filaCerrada(ro, r, n, T, sp);
+      if (ro && !plan) return filaCerrada(ro, r, n, T, sp);
       return g.tramos.map((t, k) => {
-        const ult = k === T - 1, id = `${r}-${k}`;
-        return `<span class="num muted" data-row="${r}" ${k === 0 ? `id="row-${r}"` : ''}>${k === 0 ? n : '↳'}</span>`
-          + (sp ? `<span class="small muted" data-row="${r}" style="text-align:center">Sin peso</span>` : `<input id="kg-${id}" data-row="${r}" type="text" inputmode="decimal" placeholder="${esc(kgDe(t))}" aria-label="Kg serie ${n}${T > 1 ? ' tramo ' + (k + 1) : ''}">`)
-          + `<input id="rp-${id}" data-row="${r}" type="number" inputmode="numeric" aria-label="Repeticiones serie ${n}${T > 1 ? ' tramo ' + (k + 1) : ''}">`
-          + (ult ? `<input id="ri-${r}" data-row="${r}" type="number" inputmode="numeric" min="0" max="5" aria-label="RIR serie ${n}"><button class="chk" id="ck-${r}" data-act="serie" data-es="${e.id}" data-n="${n}" data-t="${T}" data-sp="${sp ? 1 : 0}" data-d="${descanso}" data-lbl="${esc(ej.nombre)} · serie ${n}" aria-label="Serie ${n} hecha">${CHK}</button>` : '<span></span><span></span>');
+        const ult = k === T - 1, id = `${r}-${k}`, kgP = kgDe(t) || kgDe(t0) || kg0, rpP = repsPh(t.r || t0.r), riP = t.rir ?? (ult ? t0.rir ?? e.rir : '') ?? '';
+        const pausa = !ult && t.d ? (plan ? `<span class="small muted">${seg(t.d)}</span>` : `<button class="pausa" data-act="tramo" data-d="${t.d}" data-lbl="${esc(ej.nombre)} · pausa">${seg(t.d)}</button>`) : '<span></span>';
+        const nc = `<span class="num muted" data-row="${r}" ${k === 0 && !plan ? `id="row-${r}"` : ''}>${k === 0 ? n : '↳'}</span>`;
+        if (plan) return nc + `<span class="cas">${sp ? '—' : esc(kgP || '—')}</span><span class="cas">${esc(rpP || '—')}</span><span class="cas">${ult ? esc(riP === '' ? '—' : String(riP)) : ''}</span>` + (ult ? '<span></span>' : pausa);
+        return nc
+          + (sp ? `<span class="small muted" data-row="${r}" style="text-align:center">—</span>` : `<input id="kg-${id}" data-row="${r}" type="text" inputmode="decimal" placeholder="${esc(kgP)}" aria-label="Kg serie ${n}${T > 1 ? ' tramo ' + (k + 1) : ''}">`)
+          + `<input id="rp-${id}" data-row="${r}" type="text" inputmode="numeric" placeholder="${esc(rpP)}" aria-label="Repeticiones serie ${n}${T > 1 ? ' tramo ' + (k + 1) : ''}">`
+          + (ult ? `<input id="ri-${r}" data-row="${r}" type="text" inputmode="numeric" placeholder="${esc(String(riP))}" aria-label="RIR serie ${n}"><button class="chk" id="ck-${r}" data-act="serie" data-es="${e.id}" data-n="${n}" data-t="${T}" data-sp="${sp ? 1 : 0}" data-d="${descanso}" data-lbl="${esc(ej.nombre)} · serie ${n}" aria-label="Serie ${n} hecha">${CHK}</button>` : '<span></span>' + pausa);
       }).join('');
     }).join('');
-    return cab + series;
   }).join('');
   const vid = ej.video_url ? `<a class="btn sm" href="${esc(ej.video_url)}" target="_blank" rel="noopener">▶ Vídeo</a>` : `<button class="btn sm ghost" data-act="sinVideo">▶ Vídeo</button>`;
   const om = ro ? (ro.ses?.omitidos || []).find(o => o.es === e.id) : (S.sesion?.omitidos || []).find(o => o.es === e.id);
+  const desc = grupos.length ? grupos[grupos.length - 1].tramos.slice(-1)[0].d ?? e.descanso_seg : e.descanso_seg;
+  const cadena = !ro && S.nav?.cadena?.[e.id];
+  const sup = cadena && cadena.length > 1 ? (cadena[cadena.length - 1] === e.id ? 'Superserie · último' : 'Superserie') : '';
+  const aj = ajustesMaquina(e.ajustes);
+  const com = ((ro ? ro.ses?.comentarios : S.sesion?.comentarios) || []).find(c => c.es === e.id)?.texto;
   return `<div class="card ex ${om ? 'omitido' : ''}" id="ex-${e.id}">
     ${om ? bannerOmitido(om, !ro) : ''}
     ${ej.imagen_url || ej.musculo_img_url ? `<div class="imgs">${ej.imagen_url ? `<button class="img" data-act="verImagen" data-src="${esc(ej.imagen_url)}" aria-label="Ver imagen del ejercicio"><img src="${esc(ej.imagen_url)}" alt="${esc(ej.nombre)}" loading="lazy" onerror="this.parentNode.hidden=true"><span>Ejercicio</span></button>` : ''}${ej.musculo_img_url ? `<button class="img" data-act="verImagen" data-src="${esc(ej.musculo_img_url)}" aria-label="Ver músculo trabajado"><img src="${esc(ej.musculo_img_url)}" alt="Músculo trabajado" loading="lazy" onerror="this.parentNode.hidden=true"><span>Músculo</span></button>` : ''}</div>` : ''}
-    <div class="row" style="align-items:flex-start"><span class="exn num">${i}</span><div class="grow"><h3>${esc(ej.nombre)}</h3><div class="small muted">${e.series} ${e.series === 1 ? 'serie' : 'series'} · ${esc(e.repeticiones)}${e.rir != null ? ' · RIR ' + e.rir : ''}</div></div><div class="stack" style="gap:6px;align-items:flex-end">${vid}${ro ? '' : `<button class="btn sm ghost omitir-b" data-act="omitir" data-es="${e.id}" data-n="${esc(ej.nombre)}">No lo hago</button>`}</div></div>
-    ${ej.musculo ? `<div class="chips" style="gap:6px"><span class="pill blue">Músculo: ${esc(ej.musculo)}</span></div>` : ''}
-    ${ej.descripcion ? `<p class="small muted">${esc(ej.descripcion)}</p>` : ''}
-    ${e.grupo ? `<p class="note">${esc(e.grupo)}</p>` : ''}
-    <div class="chips" style="gap:6px">${e.metodos ? `<button class="pill gold" data-act="metodo" data-n="${esc(e.metodos.nombre)}">Método: ${esc(e.metodos.nombre)} ⓘ</button>` : ''}${e.aproximacion_631 ? '<button class="pill gold" data-act="metodo" data-n="Aproximación 6·3·1">Aproximación 6·3·1 ⓘ</button>' : ''}</div>
-    ${e.ajustes ? `<div class="small" style="color:var(--blue-text)">A tu medida: ${esc(e.ajustes)}</div>` : ''}
-    ${e.aproximacion_631 ? (ro ? '<p class="note">Con aproximación 6·3·1 antes de las series.</p>' : vAprox(e)) : ''}
-    ${ro && !ro.plan ? resumenEjCerrado(ro, e) : ''}
-    <div class="sets"><span class="h">Nº</span><span class="h">Kg</span><span class="h">Reps</span><span class="h">RIR</span><span class="h">${ro?.plan ? '' : 'Hecha'}</span>${filas}</div>
+    <div class="row" style="align-items:flex-start"><span class="exn num">${i}</span><div class="grow"><h3>${esc(ej.nombre)}</h3>${!ej.musculo_img_url && ej.musculo ? `<div class="small muted">${esc(ej.musculo)}</div>` : ''}</div><div class="stack" style="gap:6px;align-items:flex-end">${vid}${ro ? '' : `<button class="btn sm ghost omitir-b" data-act="omitir" data-es="${e.id}" data-n="${esc(ej.nombre)}">No lo hago</button>`}</div></div>
+    <div class="chips ex-chips"><span class="pill">${e.series} ${e.series === 1 ? 'serie' : 'series'}</span><span class="pill">${desc ? 'Descanso ' + seg(desc) : 'Sin descanso'}</span>${e.metodos ? `<button class="pill gold" data-act="metodo" data-n="${esc(e.metodos.nombre)}">${esc(e.metodos.nombre)} ⓘ</button>` : ''}${e.aproximacion_631 ? '<button class="pill gold" data-act="metodo" data-n="Aproximación 6·3·1">Aproximación 6·3·1 ⓘ</button>' : ''}${sup ? `<button class="pill blue" data-act="metodo" data-n="Superserie">${sup} ⓘ</button>` : ''}</div>
+    ${aj.length ? `<div class="small a-medida"><b>A tu medida:</b> ${aj.map(esc).join(' · ')}</div>` : ''}
+    ${e.aproximacion_631 && !ro ? vAprox(e) : ''}
+    ${ro && !plan ? resumenEjCerrado(ro, e) : ''}
+    <div class="sets"><span class="h">Nº</span><span class="h">Kg</span><span class="h">Reps</span><span class="h">RIR</span><span class="h">${plan ? '' : 'Hecha'}</span>${filas}</div>
+    ${plan ? '' : ro ? (com ? `<div class="ex-com small"><b>Comentario:</b> ${esc(com)}</div>` : '') : `<div class="ex-com-w" id="com-${e.id}">${com ? `<div class="ex-com small">${esc(com)} <button class="linkbtn small" data-act="comentarEj" data-es="${e.id}">Editar</button></div>` : `<button class="linkbtn small" data-act="comentarEj" data-es="${e.id}">＋ Comentario sobre este ejercicio</button>`}</div>`}
   </div>`;
 }
-
+/* Comentario opcional del alumno sobre un ejercicio */
+function formComentarioEj(es) {
+  const z = S.sesion; if (!z) return;
+  const e = S.dia.bloques_sesion.flatMap(b => b.ejercicios_sesion).find(x => x.id === es), nombre = e?.ejercicios?.nombre || 'Ejercicio';
+  const act = (z.comentarios || []).find(c => c.es === es)?.texto || '';
+  abrirSheet(`<form class="stack" id="f-cej"><h2>Comentario</h2><p class="small"><b>${esc(nombre)}</b></p>
+    <label class="f">¿Algo que quieras contarle a Jesús de este ejercicio?<textarea id="cej-t" rows="4" placeholder="Ej. la polea 16 se me queda corta, me molesta un poco el hombro…">${esc(act)}</textarea></label>
+    <button class="btn full" type="submit">Guardar</button>${act ? '<button class="btn ghost full" type="button" id="cej-del">Borrar comentario</button>' : ''}</form>`);
+  const guardar = async texto => {
+    const antes = z.comentarios || [];
+    z.comentarios = antes.filter(c => c.es !== es).concat(texto ? [{ es, nombre, texto }] : []);
+    try {
+      const id = await asegurarSesion();
+      const { error } = await sb.from('sesiones_hechas').update({ comentarios: z.comentarios }).eq('id', id); if (error) throw error;
+      const ses = S.d.sesiones.find(x => x.id === id); if (ses) ses.comentarios = z.comentarios;
+      cerrarSheet(); toast(texto ? 'Comentario guardado' : 'Comentario borrado');
+      const w = document.getElementById('com-' + es);
+      if (w) w.innerHTML = texto ? `<div class="ex-com small">${esc(texto)} <button class="linkbtn small" data-act="comentarEj" data-es="${es}">Editar</button></div>` : `<button class="linkbtn small" data-act="comentarEj" data-es="${es}">＋ Comentario sobre este ejercicio</button>`;
+    } catch (err) { z.comentarios = antes; fallo(err, /comentarios/.test(err.message || '') ? 'Falta ejecutar el Bloque 19 en Supabase.' : 'No se ha podido guardar el comentario.'); }
+  };
+  $('#f-cej').addEventListener('submit', ev => { ev.preventDefault(); guardar($('#cej-t').value.trim()); });
+  $('#cej-del')?.addEventListener('click', () => guardar(''));
+}
 /* Ejercicio no realizado, con su motivo */
 const MOTIVOS = ['Falta de tiempo', 'Dolor o molestia', 'Máquina ocupada', 'Cansancio', 'Lo cambié por otro'];
 const bannerOmitido = (o, editable) => `<div class="omit-b"><b class="small">No realizado</b><div class="small">${esc(o.motivo)}</div>${editable ? `<button class="linkbtn small" data-act="deshacerOmitir" data-es="${o.es}">Deshacer</button>` : ''}</div>`;
@@ -639,7 +672,7 @@ async function abrirDia(id, op = {}) {
   const ids = S.dia.bloques_sesion.flatMap(b => b.ejercicios_sesion.map(e => e.id));
   const hoyS = op.sesionId ? (S.d.sesiones.find(s => s.id === op.sesionId) || { id: op.sesionId, fecha: fechaS, dia_id: id }) : S.d.sesiones.find(s => s.fecha === fechaS && s.dia_id === id);
   const fechaDe = sid => (S.d.sesiones.find(s => s.id === sid) || {}).fecha;
-  if (hoyS) { S.sesion.omitidos = hoyS.omitidos || [];
+  if (hoyS) { S.sesion.omitidos = hoyS.omitidos || []; S.sesion.comentarios = hoyS.comentarios || [];
     S.sesion.id = hoyS.id; if (!S.sesion.inicio && hoyS.inicio_at) S.sesion.inicio = new Date(hoyS.inicio_at).getTime(); }
   if (ids.length) {
     const { data } = await conRespaldo(() => sb.from('registros_series').select('id,sesion_id,ejercicio_sesion_id,serie,tramo,kg,repeticiones,rir,creado_at').eq('alumno_id', uidSes()).in('ejercicio_sesion_id', ids).order('creado_at', { ascending: false }).limit(1500),
@@ -659,11 +692,11 @@ function rellenarSesion() {
     for (let k = 0; k < T; k++) {
       const v = z.valores[`${fila}-${k}`], u = z.ultimos[`${fila}-${k}`];
       const kg = document.getElementById(`kg-${fila}-${k}`), rp = document.getElementById(`rp-${fila}-${k}`);
-      if (u) { if (kg && u.kg != null) kg.placeholder = fmtNum(u.kg, 2); if (u.repeticiones != null) rp.placeholder = u.repeticiones; }
+      if (u) { if (kg && u.kg != null && !kg.placeholder) kg.placeholder = fmtNum(u.kg, 2); if (u.repeticiones != null && !rp.placeholder) rp.placeholder = u.repeticiones; }
       if (v) { if (kg && v.kg != null) kg.value = fmtNum(v.kg, 2); if (v.repeticiones != null) rp.value = v.repeticiones; }
     }
     const ri = document.getElementById(`ri-${fila}`), uL = z.ultimos[`${fila}-${T - 1}`], vL = z.valores[`${fila}-${T - 1}`];
-    if (uL?.rir != null) ri.placeholder = uL.rir;
+    if (uL?.rir != null && !ri.placeholder) ri.placeholder = uL.rir;
     if (vL?.rir != null) ri.value = vL.rir;
     if (z.regs[fila]) marcar(b, fila, true);
   });
@@ -692,8 +725,8 @@ async function toggleSerie(b) {
   const rows = [...Array(T)].map((_, k) => {
     const u = z.ultimos[`${fila}-${k}`] || {}, kg = document.getElementById(`kg-${fila}-${k}`), rp = document.getElementById(`rp-${fila}-${k}`);
     return { alumno_id: uidSes(), ejercicio_sesion_id: es, serie: n, tramo: k + 1,
-      kg: kg ? (numero(kg.value) ?? u.kg ?? null) : null, repeticiones: numero(rp.value) ?? u.repeticiones ?? null,
-      rir: k === T - 1 ? (numero(document.getElementById(`ri-${fila}`).value) ?? u.rir ?? null) : null };
+      kg: kg ? (numero(kg.value) ?? valPh(kg) ?? u.kg ?? null) : null, repeticiones: numero(rp.value) ?? valPh(rp) ?? u.repeticiones ?? null,
+      rir: k === T - 1 ? (() => { const ri = document.getElementById(`ri-${fila}`); return numero(ri.value) ?? valPh(ri) ?? u.rir ?? null; })() : null };
   });
   marcar(b, fila, true);
   const d = z.editar ? 0 : +b.dataset.d;
@@ -1747,6 +1780,7 @@ function datosReporte(a, R) {
     if (x.nota) coment.push(['Entreno', x.fecha, `${dia}: "${x.nota}"`]);
     if (x.nota_revision) coment.push(['Para la revisión', x.fecha, x.nota_revision]);
     (x.omitidos || []).forEach(o => coment.push(['No realizado', x.fecha, `${o.nombre}: ${o.motivo}`]));
+    (x.comentarios || []).forEach(o => coment.push(['Ejercicio', x.fecha, `${o.nombre}: "${o.texto}"`]));
     if (x.cansancio >= 4) coment.push(['Cansancio', x.fecha, `${dia}: cansancio ${x.cansancio}/5`]);
   });
   w.reg.filter(r => r.observacion).forEach(r => coment.push(['Día', r.fecha, `${r.pasos != null ? fmtNum(r.pasos, 0) + ' pasos · ' : ''}"${r.observacion}"`]));
@@ -2527,7 +2561,7 @@ document.addEventListener('click', async e => {
     case 'serie': await toggleSerie(b); break;
     case 'tramo': { const d = +b.dataset.d; if (d > 0) startTimer(d, 'Pausa · ' + b.dataset.lbl); else toast('Sin pausa: sigue con el siguiente tramo'); break; }
     case 'aprox': b.classList.add('on'); if (b.dataset.j === '2') startTimer(60, 'Descanso tras la aproximación 6·3·1'); else toast(b.dataset.j === '0' ? 'Ahora 3 repeticiones con tu peso objetivo' : 'Ahora 1 repetición por encima del objetivo'); break;
-    case 'metodo': { const n = b.dataset.n; abrirSheet(`<div class="stack"><span class="eyebrow">Método</span><h2>${esc(n)}</h2><p>${esc(S.d.metodos[n] || 'Pregúntale a Jesús por este método.')}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`); break; }
+    case 'metodo': { const n = b.dataset.n; abrirSheet(`<div class="stack"><span class="eyebrow">Método</span><h2>${esc(n)}</h2><p class="pre">${esc((S.d?.metodos || {})[n] || 'Pregúntale a Jesús por este método.')}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`); break; }
     case 'terminar': terminar(); break;
     case 'guardarSesion': await guardarSesion(); break;
     case 'guardarDiario': await guardarDiario(); break;
@@ -2540,6 +2574,7 @@ document.addEventListener('click', async e => {
     case 'cerrarFicha': S.ficha = null; S.verSes = null; S.verPlan = null; S.valEd = null; render(); break;
     case 'cerrarVerSesion': S.verSes = null; render(); window.scrollTo(0, 0); break;
     case 'verPlan': verPlan(+b.dataset.p, +b.dataset.d); break;
+    case 'comentarEj': formComentarioEj(+b.dataset.es); break;
     case 'editarApartado': formApartado(b.dataset.sec, b.dataset.k); break;
     case 'nuevoApartado': formApartado(b.dataset.sec, null); break;
     case 'cerrarPlan': S.verPlan = null; render(); window.scrollTo(0, 0); break;
