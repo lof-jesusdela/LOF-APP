@@ -978,6 +978,93 @@ function vBloqueActual(f, a) {
       <div>${pr.dias.map(d => `<div class="line" data-act="verPlan" data-p="${pr.id}" data-d="${d.id}" style="cursor:pointer"><span class="pill gold num">${d.numero}</span><div class="grow"><b class="small">${esc(d.nombre)}</b>${d.foco ? ` <span class="small muted">· ${esc(d.foco)}</span>` : ''}<div class="small muted">${d.bloques_sesion.filter(b => b.tipo === 'fuerza').reduce((t, b) => t + b.ejercicios_sesion.length, 0)} ejercicios${d.bloques_sesion.some(b => b.tipo !== 'fuerza') ? ' · ' + [...new Set(d.bloques_sesion.filter(b => b.tipo !== 'fuerza').map(b => b.tipo))].join(' y ') : ''}</div></div><span class="small" style="color:var(--blue-text)">Ver ›</span></div>`).join('')}</div>
       <p class="note">Toca un día para ver su entrenamiento tal como lo ve ${esc(nom)}, sin empezar la sesión.</p></div>` : '<div class="card empty">Aún no tiene programa activo.</div>'}</section>`;
 }
+/* ---------- Planificación completa del alumno (solo la ve el coach) ---------- */
+const APARTADOS = {
+  entreno: [['enfoque', 'Enfoque y notas del entrenamiento']],
+  alimentacion: [['contexto', 'Informe de su contexto'], ['equivalencias', 'Equivalencias visuales'], ['contextos', 'Contextos metabólicos'], ['menus', 'Menús contextualizados'], ['suplementacion', 'Suplementación'], ['analitica', 'Conclusiones de su analítica']],
+  habitos: [['principales', 'Hábitos principales'], ['pasos', 'Pasos'], ['actividad', 'Calorías mínimas diarias de actividad'], ['sueno', 'Sueño']]
+};
+async function cargarPlanificacion(f) {
+  const { data, error } = await sb.from('planificacion').select('*').eq('alumno_id', f.id).order('orden');
+  f.planErr = error ? (/planificacion/.test(error.message || '') ? 'Falta ejecutar el Bloque 17 en Supabase para guardar la planificación.' : error.message) : null;
+  f.plan = data || [];
+  const rutas = [...new Set(f.plan.flatMap(x => x.imagenes || []))];
+  f.planImg = f.planImg || {};
+  const faltan = rutas.filter(r => !f.planImg[r]);
+  if (faltan.length) {
+    const r = await sb.storage.from('planificacion').createSignedUrls(faltan, 6 * 3600);
+    (r.data || []).forEach(x => { if (x.signedUrl) f.planImg[x.path] = x.signedUrl; });
+  }
+}
+function apartadosDe(f, sec) {
+  const l = (f.plan || []).filter(x => x.seccion === sec);
+  const base = APARTADOS[sec].map(([k, t], i) => l.find(x => x.clave === k) || { seccion: sec, clave: k, titulo: t, orden: i, vacio: true });
+  return [...base, ...l.filter(x => !APARTADOS[sec].some(([k]) => k === x.clave))];
+}
+function vApartado(f, x, abierto, extra = '') {
+  const imgs = (x.imagenes || []).map(r => f.planImg?.[r]).filter(Boolean);
+  const vacio = !x.contenido && !imgs.length && !extra;
+  return `<details class="plan-ap" ${abierto ? 'open' : ''}><summary><b class="grow">${esc(x.titulo)}</b>${vacio ? '<span class="pill">Sin rellenar</span>' : imgs.length ? `<span class="small muted">${imgs.length} ${imgs.length === 1 ? 'imagen' : 'imágenes'}</span>` : ''}</summary>
+    <div class="stack" style="gap:10px;padding-top:8px">${extra}${x.contenido ? `<div class="small pre">${esc(x.contenido)}</div>` : ''}
+    ${imgs.length ? `<div class="plan-imgs">${imgs.map(u => `<button class="img" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver imagen"><img src="${esc(u)}" alt="" loading="lazy"></button>`).join('')}</div>` : ''}
+    ${vacio ? '<p class="small muted">Aún no has escrito nada aquí.</p>' : ''}
+    <button class="btn sm ghost" data-act="editarApartado" data-sec="${x.seccion}" data-k="${esc(x.clave)}" style="align-self:flex-start">✎ ${vacio ? 'Rellenar' : 'Editar'}</button></div></details>`;
+}
+function vPlanificacion(f, a) {
+  const srv = f.srv, P = proceso(srv), og = objetivoDe(f.ruta), obj = objPasos(srv);
+  const fF = iso => fecha(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+  const extras = { pasos: `<div class="kpis" style="grid-template-columns:1fr"><div class="kpi"><div class="l">Objetivo de pasos en la app</div><b class="num">${fmtNum(obj, 0)} al día</b></div></div>` };
+  const sec = (k, t, ico, cuerpo) => `<section class="section"><div class="card stack"><div class="row"><div class="ico gold">${svg(ico)}</div><h2 class="grow" style="margin:0">${t}</h2></div>${cuerpo}</div></section>`;
+  return `${f.planErr ? `<div class="aprox small">${esc(f.planErr)}</div>` : ''}
+  <section class="section"><div class="card stack"><span class="eyebrow">Plan de acompañamiento</span><h3>${esc(srv?.producto || 'Sin plan asignado')}</h3>
+    <div class="small muted">${[srv?.inicio && 'Inicio ' + fF(srv.inicio), P && !P.sinFin && 'final ' + fF(P.ciclos[P.ciclos.length - 1].fin), srv?.modulo_nutricion && 'con nutrición', srv?.sesiones_incluidas && srv.sesiones_incluidas + ' presenciales'].filter(Boolean).join(' · ')}</div>
+    <p class="note">Solo tú ves esta planificación. ${esc((a.nombre || '').split(' ')[0])} no tiene acceso a nada de esta pantalla.</p></div></section>
+  ${sec('entreno', 'Entrenamiento', 'entreno', `<div class="aprox small"><b>Objetivo del proceso:</b> ${og ? esc(og) : 'sin definir (ponlo en "Editar bloques")'}</div>`)}
+  ${vLineaTiempo(srv, 'Bloques de entrenamiento', true, progDeCiclo(f, P))}
+  <section class="section"><div class="card stack">${apartadosDe(f, 'entreno').map(x => vApartado(f, x, false)).join('')}<button class="linkbtn small" data-act="nuevoApartado" data-sec="entreno">＋ Añadir apartado</button></div></section>
+  ${sec('alimentacion', 'Alimentación', 'nutri', `${srv?.modulo_nutricion ? '' : '<p class="small muted">Su plan no incluye nutrición, pero puedes guardar aquí lo que quieras.</p>'}${apartadosDe(f, 'alimentacion').map((x, i) => vApartado(f, x, i === 0 && !!x.contenido)).join('')}<button class="linkbtn small" data-act="nuevoApartado" data-sec="alimentacion">＋ Añadir apartado</button>`)}
+  ${sec('habitos', 'Hábitos', 'pasos', `${apartadosDe(f, 'habitos').map((x, i) => vApartado(f, x, i === 0 && !!x.contenido, extras[x.clave] || '')).join('')}<button class="linkbtn small" data-act="nuevoApartado" data-sec="habitos">＋ Añadir apartado</button>`)}`;
+}
+function formApartado(sec, clave) {
+  const f = S.ficha, nuevo = !clave, x = nuevo ? { seccion: sec, clave: 'extra-' + Date.now(), titulo: '', imagenes: [], orden: 50 } : apartadosDe(f, sec).find(z => z.clave === clave);
+  if (!x) return;
+  const fijo = APARTADOS[sec].some(([k]) => k === x.clave);
+  abrirSheet(`<form class="stack" id="f-ap"><h2>${nuevo ? 'Nuevo apartado' : esc(x.titulo)}</h2>
+    ${fijo ? '' : `<label class="f">Título<input type="text" id="ap-t" value="${esc(x.titulo)}" placeholder="Ej. Pautas para comer fuera" required></label>`}
+    <label class="f">Contenido<textarea id="ap-c" rows="10" placeholder="Escribe o pega aquí el texto">${esc(x.contenido || '')}</textarea></label>
+    ${(x.imagenes || []).length ? `<div class="stack" style="gap:6px"><span class="small"><b>Imágenes</b> · marca las que quieras quitar</span><div class="plan-imgs">${x.imagenes.map((r, i) => `<label class="plan-q"><img src="${esc(f.planImg?.[r] || '')}" alt=""><span><input type="checkbox" data-quitar="${i}"> Quitar</span></label>`).join('')}</div></div>` : ''}
+    <label class="f">Añadir imágenes (menús, equivalencias, tablas…)<input type="file" id="ap-f" accept="image/*" multiple></label>
+    <p class="small muted">Las imágenes se guardan en un espacio privado: solo tú puedes verlas.</p>
+    <p class="err" id="ap-err"></p><button class="btn full" type="submit" id="ap-b">Guardar</button>
+    ${!nuevo && !fijo ? '<button class="btn ghost full" type="button" id="ap-del" style="color:var(--bad)">Eliminar apartado</button>' : ''}</form>`);
+  $('#ap-del')?.addEventListener('click', async () => {
+    if (!confirm('¿Eliminar este apartado y sus imágenes?')) return;
+    if ((x.imagenes || []).length) await sb.storage.from('planificacion').remove(x.imagenes);
+    const { error } = await sb.from('planificacion').delete().eq('id', x.id); if (error) return fallo(error);
+    cerrarSheet(); toast('Apartado eliminado'); await cargarPlanificacion(f); render();
+  });
+  $('#f-ap').addEventListener('submit', async e => {
+    e.preventDefault(); const btn = $('#ap-b'); btn.disabled = true; btn.textContent = 'Guardando…';
+    try {
+      const quitar = [...document.querySelectorAll('#f-ap [data-quitar]:checked')].map(c => x.imagenes[+c.dataset.quitar]);
+      let imagenes = (x.imagenes || []).filter(r => !quitar.includes(r));
+      for (const file of $('#ap-f').files) {
+        const blob = await reducirImagen(file, 1600), ruta = `${f.id}/${sec}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.jpg`;
+        const up = await sb.storage.from('planificacion').upload(ruta, blob, { contentType: 'image/jpeg' });
+        if (up.error) throw up.error;
+        imagenes.push(ruta);
+      }
+      if (quitar.length) await sb.storage.from('planificacion').remove(quitar);
+      const fila = { alumno_id: f.id, seccion: sec, clave: x.clave, titulo: fijo ? x.titulo : ($('#ap-t').value.trim() || 'Apartado'), contenido: $('#ap-c').value.trim() || null, imagenes, orden: x.orden ?? 50, actualizado_at: new Date().toISOString() };
+      const r = x.id ? await sb.from('planificacion').update(fila).eq('id', x.id) : await sb.from('planificacion').insert(fila);
+      if (r.error) throw r.error;
+      cerrarSheet(); toast('Guardado'); await cargarPlanificacion(f); render();
+    } catch (err) {
+      btn.disabled = false; btn.textContent = 'Guardar';
+      $('#ap-err').textContent = /planificacion|bucket|not found/i.test(err.message || '') ? 'Falta ejecutar el Bloque 17 en Supabase.' : 'No se ha podido guardar. Revisa la conexión e inténtalo de nuevo.'; console.error(err);
+    }
+  });
+}
 /* Vista de solo lectura de un día del programa (lo planificado, sin registrar nada) */
 function verPlan(pid, did) {
   const pr = (S.ficha.programas || []).find(p => p.id === pid), dia = pr?.dias.find(d => d.id === did);
@@ -1024,7 +1111,8 @@ function vFicha() {
     <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn sm gold" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm" data-act="abrirReporte" data-id="${a.id}">📋 Reporting semanal</button><button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button></div></section>
   ${e.motivos.length ? `<section class="section"><div class="card stack"><span class="eyebrow">Para revisar</span><div class="small">${esc(e.motivos.join(' · '))}</div></div></section>` : ''}
   <section class="section"><div class="section-head"><h2>Plan</h2><button class="btn sm ghost" data-act="editarServicio">✎ Editar</button></div><div class="card stack">
-    <div class="row"><div class="grow"><h3>${esc(srv?.producto || 'Sin plan asignado')}</h3><div class="small muted">${[f.prog && `${esc(f.prog.nombre)}${dpw ? ` · ${dpw} días por semana` : ''}`, srv?.modulo_nutricion && 'con nutrición', (srv?.modulo_presencial || srv?.sesiones_incluidas) && `${srv.sesiones_incluidas || ''} presenciales`.trim()].filter(Boolean).join(' · ') || 'Sin programa'}</div></div>${P && !P.sinFin ? `<b class="num" style="font-family:var(--display);font-size:24px">${P.pctTotal} %</b>` : ''}</div>
+    <button class="plan-b" data-act="fichaSub" data-s="plan"><div class="grow"><h3>${esc(srv?.producto || 'Sin plan asignado')} <span style="color:var(--blue-text)">›</span></h3><div class="small" style="color:var(--blue-text)">Ver toda su planificación: entrenamiento, alimentación y hábitos</div></div></button>
+    <div class="row"><div class="grow"><div class="small muted">${[f.prog && `${esc(f.prog.nombre)}${dpw ? ` · ${dpw} días por semana` : ''}`, srv?.modulo_nutricion && 'con nutrición', (srv?.modulo_presencial || srv?.sesiones_incluidas) && `${srv.sesiones_incluidas || ''} presenciales`.trim()].filter(Boolean).join(' · ') || 'Sin programa'}</div></div>${P && !P.sinFin ? `<b class="num" style="font-family:var(--display);font-size:24px">${P.pctTotal} %</b>` : ''}</div>
     ${P ? `<div class="track gordo"><i style="width:${P.pctTotal}%"></i></div><div class="row small muted"><span class="grow">${P.antes ? 'Empieza' : 'Inicio'} ${esc(fF(srv.inicio))}${!P.antes && !P.fuera ? ` · semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''}</span>${P.sinFin ? '' : `<span>Final ${esc(fF(P.ciclos[P.ciclos.length - 1].fin))}</span>`}</div>` : '<p class="small muted">Pon la fecha de inicio y la duración en "Editar".</p>'}
     ${e.control ? '<div class="aprox small"><b>Esta semana toca su control mensual</b> (composición corporal, ajustes y reunión de seguimiento).</div>' : ''}
   </div></section>
@@ -1048,6 +1136,7 @@ async function abrirSub(sub) {
   const tareas = [];
   if (sub === 'entreno' && !f.programas) tareas.push(cargarProgramasFicha(f));
   if ((sub === 'habitos' || sub === 'alimentacion') && !f.diarioLargo) tareas.push(sb.from('registro_diario').select('*').eq('alumno_id', f.id).gte('fecha', sumaDias(hoyISO(), -55)).then(r => { f.diarioLargo = (r.data || []).sort((a, b) => b.fecha.localeCompare(a.fecha)); }));
+  if (sub === 'plan' || sub === 'alimentacion') { tareas.push(cargarPlanificacion(f)); if (!f.programas) tareas.push(cargarProgramasFicha(f)); }
   if (sub === 'alimentacion' && f.planNutri === undefined) tareas.push(sb.from('planes_nutricion').select('*').eq('alumno_id', f.id).limit(1).then(r => { f.planNutri = r.data?.[0] || null; }));
   if (tareas.length) { await Promise.all(tareas); if (S.fichaSub === sub) render(); }
 }
@@ -1067,11 +1156,12 @@ function vFichaSub(f, a) {
     ${vRevision(f)}
     <section class="section"><h2>Todos los entrenamientos</h2><div class="card">${f.ses.map(linea).join('') || '<div class="empty">Sin entrenamientos registrados.</div>'}</div></section>`;
   }
+  if (sub === 'plan') return cab('Planificación') + vPlanificacion(f, a);
   if (sub === 'alimentacion') {
     const dl = f.diarioLargo || [], n = comidasDia(srv), sems = [0, 1, 2, 3].map(k => sumaDias(lunes, -7 * k)), pn = f.planNutri;
     const chk = S.c.checkins.filter(k => k.alumno_id === a.id && k.nota_alimentacion);
     return cab('Alimentación') + `
-    <section class="section"><div class="section-head"><h2>Plan de alimentación y suplementación</h2></div><div class="card stack">${pn ? `${pn.conclusiones ? `<div class="small pre">${esc(pn.conclusiones)}</div>` : ''}${pn.registro_7_dias ? `<details><summary class="small"><b>Registro de 7 días</b></summary><div class="small pre muted">${esc(pn.registro_7_dias)}</div></details>` : ''}` : '<p class="small muted">Aquí aparecerán su plan de alimentación y su suplementación cuando los carguemos en la app (módulo de nutrición en preparación).</p>'}</div></section>
+    <section class="section"><button class="card reporte-b" data-act="fichaSub" data-s="plan"><div class="ico gold">${svg('checkin')}</div><div class="grow" style="text-align:left"><b>Su plan de alimentación</b><div class="small muted">Informe de su contexto, equivalencias, contextos metabólicos, menús y suplementación</div></div><span class="small" style="color:var(--blue-text)">Abrir ›</span></button></section>
     <section class="section"><div class="section-head"><h2>Cumplimiento por ingestas</h2><button class="btn sm ghost" data-act="editarComidas">${n} ingestas/día · cambiar</button></div><div class="card">
       ${sems.map(l => { const I = ingestasSemana(dl, l, srv), ev = evalNutri(I.pct); return `<div class="line"><span class="small muted" style="width:96px;flex:none">${esc(fCorta(l))} – ${esc(fCorta(sumaDias(l, 6)))}</span><div class="grow small">${I.hechas} de ${I.total} ingestas${I.dias < 7 ? ` · ${I.dias} días registrados` : ''}</div>${ev ? `<span class="pill ${ev[0]}">${I.pct} % · ${ev[1]}</span>` : '<span class="small muted">sin datos</span>'}</div>`; }).join('')}
       <p class="note">Bien: 85 % o más de las ingestas de la semana. Regular: entre 60 y 85 %. Mal: por debajo del 60 %.</p></div></section>
@@ -2430,6 +2520,8 @@ document.addEventListener('click', async e => {
     case 'cerrarFicha': S.ficha = null; S.verSes = null; S.verPlan = null; S.valEd = null; render(); break;
     case 'cerrarVerSesion': S.verSes = null; render(); window.scrollTo(0, 0); break;
     case 'verPlan': verPlan(+b.dataset.p, +b.dataset.d); break;
+    case 'editarApartado': formApartado(b.dataset.sec, b.dataset.k); break;
+    case 'nuevoApartado': formApartado(b.dataset.sec, null); break;
     case 'cerrarPlan': S.verPlan = null; render(); window.scrollTo(0, 0); break;
     case 'verSesion': await verSesion(+b.dataset.id); break;
     case 'nuevaMedicion': formMedicion(); break;
