@@ -389,24 +389,63 @@ function ajustesMaquina(txt) {
 /* Lo planificado aparece dentro de cada casilla; si el alumno no escribe nada, al marcar "Hecha" se guarda eso */
 const repsPh = r => { const t = String(r ?? '').trim(); if (!t) return ''; if (/^m[aá]x/i.test(t) || /^rir/i.test(t)) return 'Máx'; const m = t.match(/^(\d+)\s*(?:[-–a]\s*(\d+))?/i); return m ? (m[2] ? `${m[1]}–${m[2]}` : m[1]) : ''; };
 const valPh = el => el ? numero(String(el.placeholder || '').split('–')[0]) : null;
+const MULTI = { 'Dropset': [2, 0], 'Rest-pause': [2, 20], 'Cluster': [3, 30], 'Myo reps': [3, 30], 'Unilateral doble': [2, 0], 'Unilateral contraste': [2, 0] };
+const kgTxt = x => /^\d+([.,]\d+)?$/.test(x.trim()) ? x.trim() + ' kg' : x.trim();
+function trocear(t, metodo, forzar) {
+  const r = String(t.r || ''), pausaTxt = r.match(/\((\d+)\s*(?:''|´´|"|seg)[^)]*\)/i);
+  const limpio = r.replace(/\([^)]*entre[^)]*\)/gi, '').trim();
+  let partes = /\s\by\s\b/.test(limpio) && /\(RIR/i.test(limpio) ? limpio.split(/\s+y\s+/) : limpio.split(/\s*[+/]\s*/);
+  partes = partes.map(x => x.replace(/^por lado:\s*/i, '').trim()).filter(Boolean);
+  const rirs = String(t.rir ?? '').split(/\s*(?:\by\b|·|,|\/)\s*/).map(x => x.trim()).filter(x => x !== '');
+  const kgs = String(t.kg || '').split(/\s*(?:→|\+|\s-\s)\s*/).map(x => x.trim()).filter(Boolean);
+  const def = MULTI[metodo] || [1, 0];
+  const n = Math.max(partes.length, rirs.length, kgs.filter(k => /\d/.test(k)).length > 1 ? kgs.length : 1, forzar ? def[0] : 1);
+  if (n < 2) return [t];
+  const pausa = pausaTxt ? +pausaTxt[1] : def[1];
+  return [...Array(n)].map((_, k) => {
+    const p = partes[Math.min(k, partes.length - 1)] || r, enP = p.match(/RIR\s*(\d)/i);
+    const rp = /^R(IR)?\s*\d/i.test(p) ? (partes.find(x => !/^R(IR)?\s*\d/i.test(x)) || r) : p.replace(/\([^)]*\)/g, '').trim();
+    const x = { r: rp, d: k === n - 1 ? (t.d ?? 60) : pausa };
+    if (k === 0) x.s = t.s || 1;
+    const rir = enP ? +enP[1] : rirs.length ? rirs[Math.min(k, rirs.length - 1)] : /^R(IR)?\s*(\d)/i.test(p) ? +p.match(/\d/)[0] : (k === 0 ? t.rir : undefined);
+    if (rir !== undefined && rir !== '') x.rir = isNaN(+rir) ? rir : +rir;
+    const kg = kgs.length > 1 ? kgs[Math.min(k, kgs.length - 1)] : (k && metodo === 'Dropset' ? '' : t.kg);
+    if (kg) x.kg = kgTxt(kg); else if (kg === '') x.kg = ''; // bajada de peso sin indicar: la casilla muestra ↓
+    return x;
+  });
+}
+function pautaEfectiva(e) {
+  const met = e.metodos?.nombre, g = gruposDe(e.pauta);
+  // Topset en una sola línea ("4 / 8+8 / 8+8"): la 1ª serie pesada y el resto en mini-bloques
+  if (met === 'Topset' && g.length === 1 && g[0].tramos.length === 1 && g[0].s > 1 && String(g[0].tramos[0].r).split('/').length === g[0].s) {
+    const t = g[0].tramos[0], ps = String(t.r).split('/').map(x => x.trim());
+    return ps.flatMap((p, k) => trocear({ ...t, s: 1, r: p }, 'Dropset', false));
+  }
+  return g.flatMap((gr, gi) => {
+    if (gr.tramos.length > 1) return gr.tramos;
+    const t = { ...gr.tramos[0], s: gr.s }, forzar = met === 'Topset' ? gi > 0 : !!MULTI[met];
+    return trocear(t, met === 'Topset' ? (/''|´´|seg/.test(t.r || '') ? 'Rest-pause' : 'Dropset') : met, forzar);
+  });
+}
 function vEjercicio(e, i, ro) {
-  const grupos = gruposDe(e.pauta), sp = esSinPeso(e), ej = e.ejercicios || {}, plan = ro?.plan;
+  const grupos = gruposDe(pautaEfectiva(e)), sp = esSinPeso(e), ej = e.ejercicios || {}, plan = ro?.plan;
   const kg0 = kgDe(grupos[0]?.tramos[0]) || kgDe({ kg: e.peso_ref });
   let n = 0;
   const filas = grupos.map(g => {
-    const descanso = g.tramos[g.tramos.length - 1].d ?? e.descanso_seg ?? 60, T = g.tramos.length, t0 = g.tramos[0];
+    const tr = g.tramos, descanso = tr[tr.length - 1].d ?? e.descanso_seg ?? 60, T = tr.length, t0 = tr[0];
     return [...Array(g.s)].map(() => {
       n++; const r = `${e.id}-${n}`;
       if (ro && !plan) return filaCerrada(ro, r, n, T, sp);
-      return g.tramos.map((t, k) => {
-        const ult = k === T - 1, id = `${r}-${k}`, kgP = kgDe(t) || kgDe(t0) || kg0, rpP = repsPh(t.r || t0.r), riP = t.rir ?? (ult ? t0.rir ?? e.rir : '') ?? '';
+      return tr.map((t, k) => {
+        const ult = k === T - 1, id = `${r}-${k}`, kgP = t.kg === '' ? '↓' : kgDe(t) || kgDe(t0) || kg0, rpP = repsPh(t.r || t0.r), riP = t.rir ?? (ult ? t0.rir ?? e.rir ?? '' : '');
         const pausa = !ult && t.d ? (plan ? `<span class="small muted">${seg(t.d)}</span>` : `<button class="pausa" data-act="tramo" data-d="${t.d}" data-lbl="${esc(ej.nombre)} · pausa">${seg(t.d)}</button>`) : '<span></span>';
-        const nc = `<span class="num muted" data-row="${r}" ${k === 0 && !plan ? `id="row-${r}"` : ''}>${k === 0 ? n : '↳'}</span>`;
-        if (plan) return nc + `<span class="cas">${sp ? '—' : esc(kgP || '—')}</span><span class="cas">${esc(rpP || '—')}</span><span class="cas">${ult ? esc(riP === '' ? '—' : String(riP)) : ''}</span>` + (ult ? '<span></span>' : pausa);
+        const nc = `<span class="num muted nlab" data-row="${r}" ${k === 0 && !plan ? `id="row-${r}"` : ''}>${k === 0 ? n : t.lado ? '' : '↳'}${t.lado ? `<i>${t.lado}</i>` : ''}</span>`;
+        if (plan) return nc + `<span class="cas">${sp ? '—' : esc(kgP || '—')}</span><span class="cas">${esc(rpP || '—')}</span><span class="cas">${esc(riP === '' || riP == null ? '—' : String(riP))}</span>` + (ult ? '<span></span>' : pausa);
         return nc
           + (sp ? `<span class="small muted" data-row="${r}" style="text-align:center">—</span>` : `<input id="kg-${id}" data-row="${r}" type="text" inputmode="decimal" placeholder="${esc(kgP)}" aria-label="Kg serie ${n}${T > 1 ? ' tramo ' + (k + 1) : ''}">`)
           + `<input id="rp-${id}" data-row="${r}" type="text" inputmode="numeric" placeholder="${esc(rpP)}" aria-label="Repeticiones serie ${n}${T > 1 ? ' tramo ' + (k + 1) : ''}">`
-          + (ult ? `<input id="ri-${r}" data-row="${r}" type="text" inputmode="numeric" placeholder="${esc(String(riP))}" aria-label="RIR serie ${n}"><button class="chk" id="ck-${r}" data-act="serie" data-es="${e.id}" data-n="${n}" data-t="${T}" data-sp="${sp ? 1 : 0}" data-d="${descanso}" data-lbl="${esc(ej.nombre)} · serie ${n}" aria-label="Serie ${n} hecha">${CHK}</button>` : '<span></span>' + pausa);
+          + `<input id="ri-${id}" data-row="${r}" type="text" inputmode="numeric" placeholder="${esc(String(riP ?? ''))}" aria-label="RIR serie ${n}${T > 1 ? ' tramo ' + (k + 1) : ''}">`
+          + (ult ? `<button class="chk" id="ck-${r}" data-act="serie" data-es="${e.id}" data-n="${n}" data-t="${T}" data-sp="${sp ? 1 : 0}" data-d="${descanso}" data-lbl="${esc(ej.nombre)} · serie ${n}" aria-label="Serie ${n} hecha">${CHK}</button>` : pausa);
       }).join('');
     }).join('');
   }).join('');
@@ -421,7 +460,7 @@ function vEjercicio(e, i, ro) {
     ${om ? bannerOmitido(om, !ro) : ''}
     ${ej.imagen_url || ej.musculo_img_url ? `<div class="imgs">${ej.imagen_url ? `<button class="img" data-act="verImagen" data-src="${esc(ej.imagen_url)}" aria-label="Ver imagen del ejercicio"><img src="${esc(ej.imagen_url)}" alt="${esc(ej.nombre)}" loading="lazy" onerror="this.parentNode.hidden=true"><span>Ejercicio</span></button>` : ''}${ej.musculo_img_url ? `<button class="img" data-act="verImagen" data-src="${esc(ej.musculo_img_url)}" aria-label="Ver músculo trabajado"><img src="${esc(ej.musculo_img_url)}" alt="Músculo trabajado" loading="lazy" onerror="this.parentNode.hidden=true"><span>Músculo</span></button>` : ''}</div>` : ''}
     <div class="row" style="align-items:flex-start"><span class="exn num">${i}</span><div class="grow"><h3>${esc(ej.nombre)}</h3>${!ej.musculo_img_url && ej.musculo ? `<div class="small muted">${esc(ej.musculo)}</div>` : ''}</div><div class="stack" style="gap:6px;align-items:flex-end">${vid}${ro ? '' : `<button class="btn sm ghost omitir-b" data-act="omitir" data-es="${e.id}" data-n="${esc(ej.nombre)}">No lo hago</button>`}</div></div>
-    <div class="chips ex-chips"><span class="pill">${e.series} ${e.series === 1 ? 'serie' : 'series'}</span><span class="pill">${desc ? 'Descanso ' + seg(desc) : 'Sin descanso'}</span>${e.metodos ? `<button class="pill gold" data-act="metodo" data-n="${esc(e.metodos.nombre)}">${esc(e.metodos.nombre)} ⓘ</button>` : ''}${e.aproximacion_631 ? '<button class="pill gold" data-act="metodo" data-n="Aproximación 6·3·1">Aproximación 6·3·1 ⓘ</button>' : ''}${sup ? `<button class="pill blue" data-act="metodo" data-n="Superserie">${sup} ⓘ</button>` : ''}</div>
+    <div class="chips ex-chips"><span class="pill">${e.series} ${e.series === 1 ? 'serie' : 'series'}</span><span class="pill">${desc ? 'Descanso ' + seg(desc) : 'Sin descanso'}</span>${e.metodos ? `<button class="pill gold" data-act="metodo" data-n="${esc(e.metodos.nombre)}">${esc(e.metodos.nombre)} ⓘ</button>` : ''}${e.aproximacion_631 ? '<button class="pill gold" data-act="metodo" data-n="Aproximación 6·3·1">Aproximación 6·3·1 ⓘ</button>' : ''}</div>
     ${aj.length ? `<div class="small a-medida"><b>A tu medida:</b> ${aj.map(esc).join(' · ')}</div>` : ''}
     ${e.aproximacion_631 && !ro ? vAprox(e) : ''}
     ${ro && !plan ? resumenEjCerrado(ro, e) : ''}
@@ -492,20 +531,23 @@ async function deshacerOmitir(es) {
 }
 
 /* Orden de la sesión y cadenas de superseries (ejercicios unidos por descanso 0) */
+/* Superseries: un ejercicio se encadena con el anterior si este no tenía descanso o su nota dice "juntos/superserie";
+   una nota de superserie nueva abre su propio grupo. Devuelve los grupos de ejercicios de un bloque. */
+function cadenasDe(L) {
+  const junta = g => /juntos|super\s*(serie|set)|circuito/i.test(g || ''), out = [];
+  L.forEach((e, i) => {
+    const p = L[i - 1];
+    const enlaza = p && ((p.descanso_seg ?? 60) === 0 || junta(p.grupo)) && !(junta(e.grupo) && e.grupo !== p.grupo);
+    if (enlaza) out[out.length - 1].push(e); else out.push([e]);
+  });
+  return out;
+}
 function prepararNavegacion(d) {
   const orden = [], cadena = {}, series = {};
-  d.bloques_sesion.filter(b => b.tipo === 'fuerza').forEach(b => {
-    let actual = [];
-    const L = b.ejercicios_sesion, junta = g => /juntos|super\s*(serie|set)|circuito/i.test(g || '');
-    L.forEach((e, i) => {
-      // Se encadena con el anterior si este no tenía descanso o su nota dice "juntos/superserie";
-      // una nota de superserie nueva en este ejercicio abre su propio grupo.
-      const p = L[i - 1];
-      const enlaza = p && ((p.descanso_seg ?? 60) === 0 || junta(p.grupo)) && !(junta(e.grupo) && e.grupo !== p.grupo);
-      if (!enlaza) actual = [];
-      actual.push(e.id); cadena[e.id] = actual; orden.push(e.id); series[e.id] = e.series;
-    });
-  });
+  d.bloques_sesion.filter(b => b.tipo === 'fuerza').forEach(b => cadenasDe(b.ejercicios_sesion).forEach(g => {
+    const ids = g.map(e => e.id);
+    g.forEach(e => { cadena[e.id] = ids; orden.push(e.id); series[e.id] = e.series; });
+  }));
   S.nav = { orden, cadena, series };
 }
 function siguienteFila(es, n) {
@@ -567,7 +609,7 @@ function filaCerrada(ro, r, n, T, sp) {
     html += `<span class="num muted">${k === 0 ? n : '↳'}</span>`
       + (sp ? `<span class="small muted" style="text-align:center">Sin peso</span>` : `<span class="ro num ${cls}">${kg(v(k))}</span>`)
       + `<span class="ro num ${cls}">${rp(v(k))}</span>`
-      + (ult ? `<span class="ro num ${cls}">${v(k)?.rir ?? '—'}</span><span class="chk ${hecha ? 'on' : ''}" aria-label="${hecha ? 'Hecha' : 'No registrada'}">${CHK}</span>` : '<span></span><span></span>');
+      + `<span class="ro num ${cls}">${v(k)?.rir ?? (ult ? '—' : '')}</span>` + (ult ? `<span class="chk ${hecha ? 'on' : ''}" aria-label="${hecha ? 'Hecha' : 'No registrada'}">${CHK}</span>` : '<span></span>');
     if (a(k)) html += `<span></span><span class="ant num">Anterior: ${sp ? '' : kg(a(k)) + ' kg × '}${rp(a(k))} rep${a(k).rir != null ? ' · RIR ' + a(k).rir : ''}</span><span></span>`;
   }
   return html;
@@ -622,7 +664,13 @@ function vBloque(b, cont, ro) {
       ${b.detalle ? `<p class="note">${esc(b.detalle)}</p>` : ''}
       ${b.video_url ? `<a class="btn sm ghost" style="align-self:flex-start" href="${esc(b.video_url)}" target="_blank" rel="noopener">Ver vídeo</a>` : ''}</div>`;
   }
-  return `<div class="stack"><div class="row"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}</h3></div>${b.agrupacion ? `<p class="note">${esc(b.agrupacion)}</p>` : ''}${b.ejercicios_sesion.map(e => vEjercicio(e, ++cont.n, ro)).join('')}</div>`;
+  const grupos = cadenasDe(b.ejercicios_sesion);
+  return `<div class="stack"><div class="row"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}</h3></div>${grupos.length === b.ejercicios_sesion.length && b.agrupacion ? `<p class="note">${esc(b.agrupacion)}</p>` : ''}${grupos.map(g => {
+    if (g.length === 1) return vEjercicio(g[0], ++cont.n, ro);
+    const ult = g[g.length - 1], d = ult.descanso_seg ?? 60, n0 = cont.n + 1;
+    const cards = g.map((e, k) => vEjercicio(e, ++cont.n, ro) + (k < g.length - 1 ? '<div class="ss-sig">↓ Sin descanso, sigue con el siguiente</div>' : '')).join('');
+    return `<div class="superserie"><div class="ss-cab"><b>Superserie · ejercicios ${n0} a ${cont.n}</b><span class="small">Hazlos seguidos, sin descanso entre ellos. Al terminar el último, descansa ${d ? seg(d) : 'lo justo'} y repite la secuencia.</span></div>${cards}</div>`;
+  }).join('')}</div>`;
 }
 function cicloSesion() {
   const x = numEntreno(S.d.sesiones, S.d.servicio, S.sesion?.fecha || hoyISO(), S.sesion?.id, S.d.programa?.dias_semana);
@@ -694,10 +742,9 @@ function rellenarSesion() {
       const kg = document.getElementById(`kg-${fila}-${k}`), rp = document.getElementById(`rp-${fila}-${k}`);
       if (u) { if (kg && u.kg != null && !kg.placeholder) kg.placeholder = fmtNum(u.kg, 2); if (u.repeticiones != null && !rp.placeholder) rp.placeholder = u.repeticiones; }
       if (v) { if (kg && v.kg != null) kg.value = fmtNum(v.kg, 2); if (v.repeticiones != null) rp.value = v.repeticiones; }
+      const ri = document.getElementById(`ri-${fila}-${k}`);
+      if (ri) { if (u?.rir != null && !ri.placeholder) ri.placeholder = u.rir; if (v?.rir != null) ri.value = v.rir; }
     }
-    const ri = document.getElementById(`ri-${fila}`), uL = z.ultimos[`${fila}-${T - 1}`], vL = z.valores[`${fila}-${T - 1}`];
-    if (uL?.rir != null && !ri.placeholder) ri.placeholder = uL.rir;
-    if (vL?.rir != null) ri.value = vL.rir;
     if (z.regs[fila]) marcar(b, fila, true);
   });
 }
@@ -726,7 +773,7 @@ async function toggleSerie(b) {
     const u = z.ultimos[`${fila}-${k}`] || {}, kg = document.getElementById(`kg-${fila}-${k}`), rp = document.getElementById(`rp-${fila}-${k}`);
     return { alumno_id: uidSes(), ejercicio_sesion_id: es, serie: n, tramo: k + 1,
       kg: kg ? (numero(kg.value) ?? valPh(kg) ?? u.kg ?? null) : null, repeticiones: numero(rp.value) ?? valPh(rp) ?? u.repeticiones ?? null,
-      rir: k === T - 1 ? (() => { const ri = document.getElementById(`ri-${fila}`); return numero(ri.value) ?? valPh(ri) ?? u.rir ?? null; })() : null };
+      rir: (() => { const ri = document.getElementById(`ri-${fila}-${k}`); return ri ? numero(ri.value) ?? valPh(ri) ?? u.rir ?? null : null; })() };
   });
   marcar(b, fila, true);
   const d = z.editar ? 0 : +b.dataset.d;
