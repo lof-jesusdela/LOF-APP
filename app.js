@@ -382,9 +382,11 @@ function esSinPeso(e) {
 const kgDe = t => { const m = String(t?.kg || '').match(/(\d+[.,]?\d*)\s*kg/i); return m ? m[1] : ''; };
 
 /* "A tu medida": solo ajustes de máquina y material (polea, silla, banco, agarre…); los consejos de ejecución van en el vídeo */
-const AJUSTE_RE = /(polea|silla|asiento|banco|inclinaci|respaldo|pecho|agarre|material|barra|mancuerna|kettlebell|m[aá]quina|altura|ajuste|almohadilla|rodillo|cuerda|disco|prono|supino|neutro|tabla|\bpin\b|smith|el[aá]stic|goma|bosu|caj[oó]n|flecha|apertura|tobillera|plataforma|soporte|step)/i;
+const AJUSTE_RE = /(polea|silla|asiento|banco|inclinaci|respaldo|agarre|material|barra|mancuerna|kettlebell|m[aá]quina|almohadilla|rodillo|cuerda|disco|prono|supino|neutro|\btabla\b|\bpin\b|smith|el[aá]stic|goma|caj[oó]n|flecha|tobillera|plataforma|soporte)/i;
 function ajustesMaquina(txt) {
-  return String(txt || '').split(/\s*·\s*/).map(x => x.trim()).filter(x => x && !/^sin descanso/i.test(x) && (AJUSTE_RE.test(x) || /^\d+\s*[ºª°]\s*(y\s*\d+\s*[ºª°]\s*)?serie/i.test(x)));
+  // Se queda con los ajustes de máquina y material: "Silla: 3", "Polea: 16", "Rodilla: 1 respaldo: 8", "Agarre neutro", "Barra Z"…
+  return String(txt || '').split(/\s*·\s*/).map(x => x.trim()).filter(x => x && !/^sin descanso/i.test(x)
+    && (AJUSTE_RE.test(x) || /^[a-záéíóúñ ]{2,22}:\s*[\w\d]/i.test(x) || /^\d+\s*[ºª°]\s*(y\s*\d+\s*[ºª°]\s*)?(serie|miniserie)/i.test(x)));
 }
 /* Lo planificado aparece dentro de cada casilla; si el alumno no escribe nada, al marcar "Hecha" se guarda eso */
 const repsPh = r => { const t = String(r ?? '').trim(); if (!t) return ''; if (/^m[aá]x/i.test(t) || /^rir/i.test(t)) return 'Máx'; const m = t.match(/^(\d+)\s*(?:[-–a]\s*(\d+))?/i); return m ? (m[2] ? `${m[1]}–${m[2]}` : m[1]) : ''; };
@@ -2525,33 +2527,68 @@ function vCuenta() {
 }
 
 /* ---------- Temporizador de descanso ---------- */
-const T = { end: 0, total: 0, iv: null, ctx: null, lock: null };
+/* Al terminar: alarma tipo despertador que se repite hasta que el alumno la para (máx. 30 s), pantalla de aviso a todo color,
+   vibración (Android) y, si la app está en segundo plano y tiene permiso, una notificación. Cuenta atrás 3-2-1 con pitidos cortos. */
+const T = { end: 0, total: 0, iv: null, ctx: null, lock: null, alarma: null, pre: -1, lbl: '' };
 const fmtT = ms => { const t = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); };
-function audio() { try { T.ctx = T.ctx || new (window.AudioContext || window.webkitAudioContext)(); if (T.ctx.state === 'suspended') T.ctx.resume(); } catch (e) { } }
-function beep() {
-  try { const c = T.ctx; if (!c) return; [0, .35, .7].forEach(d => { const o = c.createOscillator(), g = c.createGain(); o.frequency.value = d < .7 ? 880 : 1320; g.gain.setValueAtTime(.0001, c.currentTime + d); g.gain.exponentialRampToValueAtTime(.45, c.currentTime + d + .02); g.gain.exponentialRampToValueAtTime(.0001, c.currentTime + d + .28); o.connect(g).connect(c.destination); o.start(c.currentTime + d); o.stop(c.currentTime + d + .3); }); } catch (e) { }
+function audio() {
+  try {
+    if (navigator.audioSession) navigator.audioSession.type = 'transient'; // iPhone: suena aunque haya música, bajándola un momento
+    T.ctx = T.ctx || new (window.AudioContext || window.webkitAudioContext)(); if (T.ctx.state === 'suspended') T.ctx.resume();
+  } catch (e) { }
+}
+function tono(c, t0, f, dur, vol = .6) {
+  const o = c.createOscillator(), g = c.createGain(); o.type = 'square'; o.frequency.value = f;
+  g.gain.setValueAtTime(.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + .01); g.gain.setValueAtTime(vol, t0 + dur - .03); g.gain.exponentialRampToValueAtTime(.0001, t0 + dur);
+  o.connect(g).connect(c.destination); o.start(t0); o.stop(t0 + dur + .02);
+}
+function pitidoCorto() { try { const c = T.ctx; if (c) tono(c, c.currentTime, 1000, .09, .25); } catch (e) { } }
+/* Una ráfaga de despertador: bip-bip-bip-bip (1,6 s) */
+function rafaga() { try { const c = T.ctx; if (!c) return; if (c.state === 'suspended') c.resume(); [0, .2, .4, .6].forEach((d, k) => tono(c, c.currentTime + d, k % 2 ? 1760 : 1320, .14)); } catch (e) { } }
+function beep() { rafaga(); }
+async function pedirAvisos() {
+  try {
+    if (!('Notification' in window) || Notification.permission !== 'default' || localStorage.getItem('lof-avisos-pedido')) return;
+    localStorage.setItem('lof-avisos-pedido', '1'); await Notification.requestPermission();
+  } catch (e) { }
+}
+async function notificarFin() {
+  try {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const reg = await navigator.serviceWorker?.ready, op = { body: 'A por la siguiente serie 💪', icon: 'icons/icon-192.png', tag: 'descanso', renotify: true, requireInteraction: true, vibrate: [500, 200, 500, 200, 500] };
+    reg ? reg.showNotification('⏰ Descanso terminado', op) : new Notification('⏰ Descanso terminado', op);
+  } catch (e) { }
 }
 async function startTimer(sec, lbl) {
-  audio(); clearInterval(T.iv); T.total = sec * 1000; T.end = Date.now() + T.total;
+  audio(); pararAlarma(); clearInterval(T.iv); T.total = sec * 1000; T.end = Date.now() + T.total; T.pre = -1; T.lbl = lbl;
   const el = $('#timer'); el.hidden = false; el.classList.remove('done'); $('#t-lbl').textContent = lbl;
   try { if (navigator.wakeLock && !T.lock) T.lock = await navigator.wakeLock.request('screen'); } catch (e) { }
+  if (sec >= 45) pedirAvisos();
   tick(); T.iv = setInterval(tick, 250);
 }
 function tick() {
   const left = T.end - Date.now();
   $('#t-clock').textContent = fmtT(left);
   $('#t-bar').style.width = Math.min(100, (1 - left / T.total) * 100) + '%';
-  if (left <= 0) {
-    clearInterval(T.iv); $('#timer').classList.add('done'); $('#t-lbl').textContent = '¡Descanso terminado! A por la siguiente';
-    beep(); try { navigator.vibrate && navigator.vibrate([300, 150, 300]); } catch (e) { }
-    setTimeout(() => { if (Date.now() - T.end > 3500) $('#timer').hidden = true; }, 4000);
-  }
+  const s = Math.ceil(left / 1000);
+  if (s >= 1 && s <= 3 && s !== T.pre && T.total >= 10000) { T.pre = s; pitidoCorto(); }
+  if (left <= 0) { clearInterval(T.iv); finTimer(left); }
 }
-function stopTimer() { clearInterval(T.iv); $('#timer').hidden = true; try { T.lock?.release(); } catch (e) { } T.lock = null; }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !$('#timer').hidden && T.end > Date.now()) tick(); });
+function finTimer(left) {
+  $('#timer').classList.add('done'); $('#t-lbl').textContent = '¡Descanso terminado!';
+  if (document.hidden) notificarFin();
+  if (left < -60000) return; // volvió a la app mucho después: sin alarma, solo el aviso en pantalla
+  const ov = $('#alarma'); ov.hidden = false; $('#al-lbl').textContent = T.lbl.replace(/^Descanso · /, '');
+  let n = 0; const sonar = () => { rafaga(); try { navigator.vibrate && navigator.vibrate([400, 150, 400, 150, 400]); } catch (e) { } if (++n >= 15) pararAlarma(); };
+  sonar(); T.alarma = setInterval(sonar, 2000);
+}
+function pararAlarma() { clearInterval(T.alarma); T.alarma = null; const ov = $('#alarma'); if (ov) ov.hidden = true; try { navigator.vibrate && navigator.vibrate(0); } catch (e) { } }
+function stopTimer() { clearInterval(T.iv); pararAlarma(); $('#timer').hidden = true; try { T.lock?.release(); } catch (e) { } T.lock = null; }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !$('#timer').hidden && T.iv) tick(); });
 
 /* ---------- Eventos ---------- */
 document.addEventListener('click', async e => {
+  if (e.target.closest('[data-alarma]')) { pararAlarma(); $('#timer').hidden = true; try { T.lock?.release(); } catch (x) { } T.lock = null; return; }
   const tm = e.target.closest('[data-tm]');
   if (tm) {
     if (tm.dataset.tm === 'plus') { T.end += 15000; T.total += 15000; if ($('#timer').classList.contains('done')) { $('#timer').classList.remove('done'); clearInterval(T.iv); T.iv = setInterval(tick, 250); } }
