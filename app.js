@@ -205,7 +205,7 @@ function render() {
       <div class="badge"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : esc(S.perfil.metodologia || 'Tu proceso')}</strong></div></div>
       <div class="row" style="gap:8px">${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
       <button class="avatar" data-act="cuenta" aria-label="Mi cuenta">${esCoach ? '<img src="icons/coach.jpg" alt="">' : esc((S.perfil.nombre || '?').slice(0, 2).toUpperCase())}</button></div>
-    </header><main id="main">${(S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : vistas[actual]()}</main>`;
+    </header><main id="main">${(S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : vistas[actual]()}</main>`;
   $('#tabs').hidden = false;
   $('#tabs-in').innerHTML = tabs.map(([k, l]) => `<button data-act="${coach ? 'ctab' : 'tab'}" data-t="${k}" ${actual === k && !((S.ficha || S.editor || S.obj) && coach) ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${!coach && k === 'checkin' && tocaCheckin() ? '<i class="badge-dot"></i>' : ''}</button>`).join('');
   if (S.dia && ((!coach && S.tab === 'entreno') || (coach && S.obj))) rellenarSesion();
@@ -369,6 +369,7 @@ function vEjercicio(e, i, ro) {
       ${T > 1 ? `<div class="tramos" style="grid-column:1/-1">${g.tramos.map((t, k) => ro ? `<span class="tramo">Tramo ${k + 1}: ${esc(txtTramo(t) || 'igual')}</span>` : `<button class="tramo" data-act="tramo" data-d="${t.d ?? 0}" data-lbl="${esc(ej.nombre)} · tramo ${k + 1}">Tramo ${k + 1}: ${esc(txtTramo(t) || 'igual')}${k < T - 1 ? ` → ${t.d ? seg(t.d) : 'sin pausa'}` : ''}</button>`).join('')}</div>` : ''}`;
     const series = [...Array(g.s)].map(() => {
       n++; const r = `${e.id}-${n}`;
+      if (ro?.plan) return g.tramos.map((t, k) => `<span class="num muted">${k ? '↳' : n}</span><span class="small">${sp ? 'Sin peso' : esc(t.kg || g.tramos[0].kg || '—')}</span><span class="small">${esc(t.r || '—')}</span><span class="small num">${t.rir ?? (k ? '' : e.rir ?? '—')}</span><span></span>`).join('');
       if (ro) return filaCerrada(ro, r, n, T, sp);
       return g.tramos.map((t, k) => {
         const ult = k === T - 1, id = `${r}-${k}`;
@@ -392,8 +393,8 @@ function vEjercicio(e, i, ro) {
     <div class="chips" style="gap:6px">${e.metodos ? `<button class="pill gold" data-act="metodo" data-n="${esc(e.metodos.nombre)}">Método: ${esc(e.metodos.nombre)} ⓘ</button>` : ''}${e.aproximacion_631 ? '<button class="pill gold" data-act="metodo" data-n="Aproximación 6·3·1">Aproximación 6·3·1 ⓘ</button>' : ''}</div>
     ${e.ajustes ? `<div class="small" style="color:var(--blue-text)">A tu medida: ${esc(e.ajustes)}</div>` : ''}
     ${e.aproximacion_631 ? (ro ? '<p class="note">Con aproximación 6·3·1 antes de las series.</p>' : vAprox(e)) : ''}
-    ${ro ? resumenEjCerrado(ro, e) : ''}
-    <div class="sets"><span class="h">Nº</span><span class="h">Kg</span><span class="h">Reps</span><span class="h">RIR</span><span class="h">Hecha</span>${filas}</div>
+    ${ro && !ro.plan ? resumenEjCerrado(ro, e) : ''}
+    <div class="sets"><span class="h">Nº</span><span class="h">Kg</span><span class="h">Reps</span><span class="h">RIR</span><span class="h">${ro?.plan ? '' : 'Hecha'}</span>${filas}</div>
   </div>`;
 }
 
@@ -939,7 +940,7 @@ function vAlumnos() {
 }
 
 async function abrirFicha(id) {
-  S.ficha = { id, cargando: true }; S.verSes = null; S.fichaSub = null; render(); window.scrollTo(0, 0);
+  S.ficha = { id, cargando: true }; S.verSes = null; S.verPlan = null; S.fichaSub = null; render(); window.scrollTo(0, 0);
   const [med, ses, notas, prog, srv, todas] = await Promise.all([
     sb.from('mediciones').select('*').eq('alumno_id', id).order('fecha', { ascending: false }),
     sb.from('sesiones_hechas').select('*,dias(nombre,foco),registros_series(id)').eq('alumno_id', id).order('fecha', { ascending: false }).limit(60),
@@ -953,7 +954,47 @@ async function abrirFicha(id) {
   S.valEd = null;
   const [pr, ru] = await Promise.all([sb.from('presenciales').select('*').eq('alumno_id', id).order('fecha'), sb.from('hoja_ruta').select('*').eq('alumno_id', id).order('orden')]);
   S.ficha.pres = pr.data || []; S.ficha.ruta = ru.data || []; if (S.ficha.srv) S.ficha.srv._bloques = bloquesDe(S.ficha.ruta);
-  await cargarValoraciones();
+  const f = S.ficha; await Promise.all([cargarValoraciones(), cargarProgramasFicha(f)]);
+  if (S.ficha === f && !S.verSes && !S.fichaSub) render();
+}
+/* Todos los programas del alumno (con días y ejercicios); el activo es su bloque actual */
+async function cargarProgramasFicha(f) {
+  const q = sel => () => sb.from('programas').select(sel).eq('alumno_id', f.id).order('id');
+  const r = await conRespaldo(q('activo,ciclo,' + SEL_PROGRAMA), () => conRespaldo(q('activo,' + SEL_PROGRAMA), q('activo,' + SIN_NUEVAS(SEL_PROGRAMA))));
+  const l = r.data || [];
+  l.forEach(p => { (p.dias ||= []).sort((a, b) => a.numero - b.numero); p.dias.forEach(ordenarDia); });
+  f.programas = l; f.progFull = l.filter(p => p.activo !== false).pop() || null;
+}
+/* Programa de cada bloque del proceso: el marcado con ese nº de ciclo o, en el bloque en curso, el activo */
+const progDeCiclo = (f, P) => c => {
+  const l = f.programas || [], con = l.filter(p => p.ciclo === c.n);
+  return con.find(p => p.activo !== false) || con[con.length - 1] || (P && c.n === P.ciclo && f.progFull && f.progFull.ciclo == null ? f.progFull : null);
+};
+function vBloqueActual(f, a) {
+  const pr = f.progFull, P = proceso(f.srv), nom = (a.nombre || '').split(' ')[0];
+  const cab = P && !P.antes && !P.fuera ? `${esc(nomCiclo(P.cc))} · semana ${P.semCiclo} de ${P.cc.sem}` : 'Programa activo';
+  return `<section class="section"><div class="section-head"><h2>Bloque de entrenamiento actual</h2><button class="btn sm ghost" data-act="editarPrograma" data-id="${a.id}">${pr ? '✎ Editar' : 'Crear programa'}</button></div>
+    ${pr ? `<div class="card stack"><div><span class="eyebrow">${cab}</span><h3>${esc(pr.nombre)}</h3><div class="small muted">${pr.dias.length} ${pr.dias.length === 1 ? 'entrenamiento' : 'entrenamientos'}${pr.dias_semana ? ` · ${pr.dias_semana} días por semana` : ''}</div></div>
+      <div>${pr.dias.map(d => `<div class="line" data-act="verPlan" data-p="${pr.id}" data-d="${d.id}" style="cursor:pointer"><span class="pill gold num">${d.numero}</span><div class="grow"><b class="small">${esc(d.nombre)}</b>${d.foco ? ` <span class="small muted">· ${esc(d.foco)}</span>` : ''}<div class="small muted">${d.bloques_sesion.filter(b => b.tipo === 'fuerza').reduce((t, b) => t + b.ejercicios_sesion.length, 0)} ejercicios${d.bloques_sesion.some(b => b.tipo !== 'fuerza') ? ' · ' + [...new Set(d.bloques_sesion.filter(b => b.tipo !== 'fuerza').map(b => b.tipo))].join(' y ') : ''}</div></div><span class="small" style="color:var(--blue-text)">Ver ›</span></div>`).join('')}</div>
+      <p class="note">Toca un día para ver su entrenamiento tal como lo ve ${esc(nom)}, sin empezar la sesión.</p></div>` : '<div class="card empty">Aún no tiene programa activo.</div>'}</section>`;
+}
+/* Vista de solo lectura de un día del programa (lo planificado, sin registrar nada) */
+function verPlan(pid, did) {
+  const pr = (S.ficha.programas || []).find(p => p.id === pid), dia = pr?.dias.find(d => d.id === did);
+  if (!dia) return toast('No se encuentra ese entrenamiento');
+  S.verPlan = { pr, dia }; render(); window.scrollTo(0, 0);
+}
+function vPlanDia() {
+  const { pr, dia: d } = S.verPlan, a = S.c.perfiles.find(p => p.id === S.ficha.id) || {}, cont = { n: 0 }, nom = (a.nombre || '').split(' ')[0];
+  const c = pr.ciclo ? (proceso(S.ficha.srv)?.ciclos || []).find(x => x.n === pr.ciclo) : null;
+  return `<div class="cerrada"><span class="pill blue">Planificado</span><span class="small grow">${esc(pr.nombre)}${c ? ' · ' + esc(nomCiclo(c)) : ''}${pr.activo === false ? ' · bloque anterior' : ''}</span><button class="btn sm" data-act="editarPrograma" data-id="${a.id}">✎ Editar</button></div>
+  <section class="stack" style="margin-top:12px"><button class="btn sm ghost" data-act="cerrarPlan" style="align-self:flex-start">← ${S.fichaSub ? 'Entrenamiento' : 'Ficha'} de ${esc(nom)}</button>
+    <div class="chips">${pr.dias.map(x => `<button data-act="verPlan" data-p="${pr.id}" data-d="${x.id}" aria-pressed="${x.id === d.id}">${esc(x.nombre)}</button>`).join('')}</div>
+    <span class="eyebrow">${esc(a.nombre || '')} · ${esc(d.nombre)}</span><h1>${esc(d.foco || d.nombre)}</h1>
+    <div class="card stack"><span class="eyebrow">Objetivo del día</span><div class="small">${esc(d.objetivo || '')}</div>
+    <div class="kpis"><div class="kpi"><div class="l">Volumen</div><b>${esc(d.volumen || '—')}</b></div><div class="kpi"><div class="l">Intensidad</div><b>${esc(d.intensidad || '—')}</b></div><div class="kpi"><div class="l">Foco</div><b>${esc(d.foco || '—')}</b></div></div></div></section>
+  <section class="section">${d.bloques_sesion.map(b => vBloque(b, cont, { plan: true })).join('')}
+  <button class="btn full ghost" data-act="cerrarPlan">Volver</button></section>`;
 }
 function vRevision(f) {
   const l = f.ses.filter(s => s.fecha >= sumaDias(hoyISO(), -35) && (s.nota_revision || s.nota || s.cansancio || s.poderio));
@@ -995,6 +1036,7 @@ function vFicha() {
   <section class="section"><div class="section-head"><h2>Composición corporal</h2><button class="btn sm ghost" data-act="nuevaMedicion">＋ Medición</button></div>
     ${vGraficaComp(f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), a) || '<div class="card empty">Sin mediciones todavía.</div>'}
     <button class="btn ghost full" data-act="fichaSub" data-s="composicion">Ver todas las medidas y tests ›</button></section>
+  ${vBloqueActual(f, a)}
   ${vPresenciales(srv, f.pres, true)}
   <section class="section"><h2>Check-ins</h2><div class="card">${chks.map(k => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(k.semana_inicio))}</span><div class="grow stack" style="gap:4px"><div class="small">Motivación <b>${k.motivacion}/10</b> · implicación <b>${k.implicacion}/10</b></div>${k.dificultades ? `<div class="small"><span class="muted">Dificultades:</span> ${esc(k.dificultades)}</div>` : ''}${(k.proxima_semana_etiquetas || []).length || k.proxima_semana ? `<div class="small"><span class="muted">Semana que viene:</span> ${esc([...(k.proxima_semana_etiquetas || []), k.proxima_semana].filter(Boolean).join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Sin check-ins todavía.</div>'}</div></section>
   <section class="section"><div class="section-head"><h2>Plan de pagos</h2><button class="btn sm ghost" data-act="nuevoPago">＋ Cuota</button></div><div class="card">${pagos.map(lineaPago).join('') || '<div class="empty">Sin cuotas registradas.</div>'}</div></section>
@@ -1004,7 +1046,7 @@ function vFicha() {
 async function abrirSub(sub) {
   const f = S.ficha; S.fichaSub = sub; render(); window.scrollTo(0, 0);
   const tareas = [];
-  if (sub === 'entreno' && !f.progFull) tareas.push(conRespaldo(() => sb.from('programas').select(SEL_PROGRAMA).eq('alumno_id', f.id).eq('activo', true).limit(1), () => sb.from('programas').select(SIN_NUEVAS(SEL_PROGRAMA)).eq('alumno_id', f.id).eq('activo', true).limit(1)).then(r => { const pr = r.data?.[0]; if (pr) { (pr.dias ||= []).sort((a, b) => a.numero - b.numero); pr.dias.forEach(ordenarDia); } f.progFull = pr || null; }));
+  if (sub === 'entreno' && !f.programas) tareas.push(cargarProgramasFicha(f));
   if ((sub === 'habitos' || sub === 'alimentacion') && !f.diarioLargo) tareas.push(sb.from('registro_diario').select('*').eq('alumno_id', f.id).gte('fecha', sumaDias(hoyISO(), -55)).then(r => { f.diarioLargo = (r.data || []).sort((a, b) => b.fecha.localeCompare(a.fecha)); }));
   if (sub === 'alimentacion' && f.planNutri === undefined) tareas.push(sb.from('planes_nutricion').select('*').eq('alumno_id', f.id).limit(1).then(r => { f.planNutri = r.data?.[0] || null; }));
   if (tareas.length) { await Promise.all(tareas); if (S.fichaSub === sub) render(); }
@@ -1020,7 +1062,7 @@ function vFichaSub(f, a) {
     <section class="section"><div class="section-head"><h2>Programa</h2><button class="btn sm" data-act="editarPrograma" data-id="${a.id}">${f.prog ? '✎ Editar programa' : 'Crear programa'}</button></div><div class="card small">${f.prog ? `<b>${esc(f.prog.nombre)}</b> · ${dpw || '—'} días por semana` : 'Aún no tiene programa.'}</div></section>
     <section class="section"><h2>Esta semana</h2><div class="card">${dpw ? barra('Entrenos de la semana', unicas(semana), dpw, '') + barra('Últimas 4 semanas', mes, dpw * 4, '') : ''}${semana.map(linea).join('') || '<div class="empty">Aún no ha entrenado esta semana.</div>'}</div></section>
     ${P && !P.antes ? `<section class="section"><h2>Resto del bloque · ${esc(nomCiclo(P.cc))}</h2><div class="card">${bloque.map(linea).join('') || '<div class="empty">Sin entrenamientos anteriores en este bloque.</div>'}</div></section>` : ''}
-    ${vLineaTiempo(srv, 'Ciclos de entrenamiento', true, f.progFull)}
+    ${vLineaTiempo(srv, 'Ciclos de entrenamiento', true, progDeCiclo(f, P))}
     <section class="section"><div class="card stack chart"><h3>Entrenamientos por semana</h3>${barrasSemanas(f.todas, dpw)}</div></section>
     ${vRevision(f)}
     <section class="section"><h2>Todos los entrenamientos</h2><div class="card">${f.ses.map(linea).join('') || '<div class="empty">Sin entrenamientos registrados.</div>'}</div></section>`;
@@ -1272,10 +1314,11 @@ function vLineaTiempo(srv, titulo = 'Tu proceso', coach = false, prog = null) {
   const segs = P.ciclos.map(c => { const est = c.n < P.ciclo || P.fuera ? 100 : c.n === P.ciclo ? P.pctCiclo : 0;
     return `<div class="tl-seg ${c.n === P.ciclo && !P.fuera ? 'now' : ''}" style="flex:${c.sem}"><i style="width:${est}%"></i><span>${c.n}</span></div>`; }).join('');
   const filas = P.ciclos.map(c => { const hecho = c.n < P.ciclo || P.fuera, act = c.n === P.ciclo && !P.fuera && !P.antes, pc = hecho ? 100 : act ? P.pctCiclo : 0;
-    const sesiones = act && prog?.dias?.length ? `<div class="stack" style="gap:6px;margin-top:8px"><span class="eyebrow">Tus entrenamientos de este bloque</span>${prog.dias.map(d => `<div class="tl-ses"><b class="small">${esc(d.nombre)} · ${esc(d.foco || '')}</b>${d.objetivo ? `<div class="small muted">${esc(d.objetivo)}</div>` : ''}<div class="small muted">${esc([d.volumen && 'Volumen ' + d.volumen.toLowerCase(), d.intensidad && 'intensidad ' + d.intensidad.toLowerCase()].filter(Boolean).join(' · '))}</div></div>`).join('')}</div>` : '';
+    const pc2 = typeof prog === 'function' ? prog(c) : act ? prog : null;
+    const sesiones = pc2?.dias?.length ? `<div class="stack" style="gap:6px;margin-top:8px"><span class="eyebrow">${coach ? esc(pc2.nombre) + ' · toca un día para verlo' : 'Tus entrenamientos de este bloque'}</span>${pc2.dias.map(d => `<div class="tl-ses" ${coach ? `data-act="verPlan" data-p="${pc2.id}" data-d="${d.id}" style="cursor:pointer"` : ''}><b class="small">${esc(d.nombre)} · ${esc(d.foco || '')}${coach ? ' <span style="color:var(--blue-text)">›</span>' : ''}</b>${d.objetivo ? `<div class="small muted">${esc(d.objetivo)}</div>` : ''}<div class="small muted">${esc([d.volumen && 'Volumen ' + d.volumen.toLowerCase(), d.intensidad && 'intensidad ' + d.intensidad.toLowerCase()].filter(Boolean).join(' · '))}</div></div>`).join('')}</div>` : '';
     const cab = `<div class="row"><span class="tl-dot ${hecho ? 'ok' : act ? 'now' : ''}"></span><div class="grow"><b>${esc(nomCiclo(c))}</b> <span class="small muted">· ${c.sem} semanas</span><div class="small muted">${fF(c.ini)} → ${fF(c.fin)}</div>${c.objetivo ? `<div class="small">🎯 ${esc(c.objetivo)}</div>` : ''}</div><span class="small ${act ? '' : 'muted'}">${hecho ? 'Completado' : act ? `<b>${P.pctCiclo} %</b>` : 'Empieza ' + fF(c.ini)}</span></div>
       <div class="track" style="margin:6px 0 0 22px"><i style="width:${pc}%;background:${hecho ? 'var(--gold)' : 'var(--blue)'}"></i></div>`;
-    return sesiones ? `<details class="tl-row now"><summary>${cab}<div class="small" style="margin:6px 0 0 22px;color:var(--blue-text)">Toca para ver tus entrenamientos de este bloque ›</div></summary>${sesiones}</details>` : `<div class="tl-row ${act ? 'now' : ''}">${cab}</div>`; }).join('');
+    return sesiones ? `<details class="tl-row ${act ? 'now' : ''}"><summary>${cab}<div class="small" style="margin:6px 0 0 22px;color:var(--blue-text)">Toca para ver ${coach ? 'los' : 'tus'} entrenamientos de este bloque ›</div></summary>${sesiones}</details>` : `<div class="tl-row ${act ? 'now' : ''}">${cab}</div>`; }).join('');
   const cab = P.antes ? `Empieza el ${fF(srv.inicio)}` : P.fuera ? 'Proceso completado' : `${esc(nomCiclo(P.cc))} (${P.ciclo} de ${P.ciclos.length}) · Semana ${P.semCiclo} de ${P.cc.sem}`;
   return `<section class="section"><div class="card stack">
     <div class="row"><div class="grow"><span class="eyebrow">${esc(titulo)}</span><h3>${cab}</h3></div>${P.sinFin ? '' : `<div style="text-align:right"><b class="num" style="font-family:var(--display);font-size:22px">${P.pctTotal} %</b><div class="small muted">del proceso</div></div>`}</div>
@@ -1872,8 +1915,11 @@ async function registrarPresencial(sesId) {
 function formNuevoCiclo() {
   const p = S.editor.prog; if (!p) return;
   const m = String(p.nombre).match(/ciclo\s*(\d+)/i), sug = m ? `Ciclo ${+m[1] + 1}` : 'Ciclo 2';
+  const aid = p.alumno_id || S.editor.alumnoId, P = proceso(S.c.servicios.find(x => x.alumno_id === aid));
+  const prev = p.ciclo || P?.ciclo || 1, cic = P?.ciclos || [], def = cic.some(c => c.n === prev + 1) ? prev + 1 : prev;
   abrirSheet(`<form class="stack" id="f-nc"><h2>Nuevo ciclo</h2><p class="small">Se crea una copia de <b>${esc(p.nombre)}</b> con todos sus días, bloques y ejercicios para que la modifiques. El ciclo anterior queda guardado con su historial.</p>
     <label class="f">Nombre del nuevo ciclo<input type="text" id="nc-n" value="${esc(sug)}"></label>
+    ${cic.length ? `<label class="f">Bloque del proceso al que pertenece<select id="nc-c">${cic.map(c => `<option value="${c.n}" ${c.n === def ? 'selected' : ''}>${esc(nomCiclo(c))} · ${esc(fCorta(c.ini))} – ${esc(fCorta(c.fin))}</option>`).join('')}</select></label>` : ''}
     <button class="btn full" type="submit">Crear ciclo</button></form>`);
   $('#f-nc').addEventListener('submit', async e => {
     e.preventDefault(); const btn = e.submitter; btn.disabled = true; btn.textContent = 'Copiando…';
@@ -1890,6 +1936,11 @@ function formNuevoCiclo() {
         }
       }
       await sb.from('programas').update({ activo: false }).eq('id', p.id);
+      const nc = +($('#nc-c')?.value || 0);
+      if (nc) { // si falta la columna (Bloque 15) no pasa nada: se sigue mostrando como bloque actual
+        await sb.from('programas').update({ ciclo: nc }).eq('id', np.id);
+        if (nc > 1) await sb.from('programas').update({ ciclo: nc - 1 }).eq('id', p.id).is('ciclo', null);
+      }
       cerrarSheet(); toast('Nuevo ciclo creado'); await cargarCoach(); refrescarEditor();
     } catch (err) { btn.disabled = false; btn.textContent = 'Crear ciclo'; fallo(err, 'No se ha podido crear el ciclo.'); }
   });
@@ -2376,8 +2427,10 @@ document.addEventListener('click', async e => {
     case 'chip': { const v = b.dataset.v; S.chips.has(v) ? S.chips.delete(v) : S.chips.add(v); b.setAttribute('aria-pressed', S.chips.has(v)); break; }
     case 'enviarCheckin': await enviarCheckin(); break;
     case 'ficha': await abrirFicha(b.dataset.id); break;
-    case 'cerrarFicha': S.ficha = null; S.verSes = null; S.valEd = null; render(); break;
+    case 'cerrarFicha': S.ficha = null; S.verSes = null; S.verPlan = null; S.valEd = null; render(); break;
     case 'cerrarVerSesion': S.verSes = null; render(); window.scrollTo(0, 0); break;
+    case 'verPlan': verPlan(+b.dataset.p, +b.dataset.d); break;
+    case 'cerrarPlan': S.verPlan = null; render(); window.scrollTo(0, 0); break;
     case 'verSesion': await verSesion(+b.dataset.id); break;
     case 'nuevaMedicion': formMedicion(); break;
     case 'misMedidas': formMisMedidas(); break;
@@ -2394,7 +2447,7 @@ document.addEventListener('click', async e => {
     case 'verImagen': abrirSheet(`<div class="stack"><img src="${esc(b.dataset.src)}" alt="" style="width:100%;border-radius:12px;background:var(--surface-2)"><button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`); break;
     case 'importarImagenes': await importarImagenes(); break;
     case 'editarPrograma': await abrirEditor(b.dataset.id); break;
-    case 'cerrarEditor': S.editor = null; render(); window.scrollTo(0, 0); break;
+    case 'cerrarEditor': S.editor = null; S.verPlan = null; if (S.ficha && !S.ficha.cargando) await cargarProgramasFicha(S.ficha); render(); window.scrollTo(0, 0); break;
     case 'edDia': formDia(b.dataset.id ? +b.dataset.id : null); break;
     case 'edBloque': formBloque(b.dataset.id ? +b.dataset.id : null, b.dataset.dia ? +b.dataset.dia : null); break;
     case 'edEj': formEjSesion(b.dataset.id ? +b.dataset.id : null, b.dataset.bloque ? +b.dataset.bloque : null); break;
