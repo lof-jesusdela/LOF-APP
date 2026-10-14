@@ -195,6 +195,24 @@ function tabsAlumno() {
   return [['hoy', 'Hoy'], (s.modulo_entreno ?? true) && ['entreno', 'Entreno'], s.modulo_nutricion && ['nutri', 'Nutrición'], ['progreso', 'Progreso'], ['checkin', 'Check-in'], ['tests', 'Tests']].filter(Boolean);
 }
 
+/* Escritorio (iPad / Mac): barra lateral con la lista de alumnos y fichas a dos columnas */
+function claseMain() {
+  if (S.factura || S.obj || S.editor || S.verPlan || S.verSes || S.valEd) return '';
+  if (S.reporte) return S.reporte.alumno ? '' : 'rejilla';
+  if (S.ficha) return !S.fichaSub || S.fichaSub === 'plan' ? 'dos' : '';
+  return '';
+}
+function vLateral(actual) {
+  if (!S.c?.perfiles) return '';
+  const orden = { bad: 0, warn: 1, ok: 2 };
+  const als = S.c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach').map(a => ({ a, e: estadoAlumno(a) })).sort((x, y) => orden[x.e.nivel] - orden[y.e.nivel] || (x.a.nombre || '').localeCompare(y.a.nombre || ''));
+  const nav = [['alumnos', 'Alumnos'], ['ejercicios', 'Ejercicios'], ['pagos', 'Pagos']];
+  return `<aside class="lateral" aria-label="Navegación del coach">
+    <nav class="lat-nav">${nav.map(([k, l]) => `<button data-act="ctab" data-t="${k}" ${actual === k && !S.ficha && !S.reporte && !S.editor && !S.obj ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span></button>`).join('')}<button data-act="abrirReporte" ${S.reporte && !S.reporte.alumno ? 'aria-current="page"' : ''}>${svg('checkin')}<span>Reporting semanal</span></button></nav>
+    <div class="eyebrow" style="margin:18px 12px 6px">Alumnos · ${als.length}</div>
+    <div class="lat-al">${als.map(({ a, e }) => `<button data-act="ficha" data-id="${a.id}" ${S.ficha?.id === a.id ? 'aria-current="page"' : ''}><i style="background:var(--${e.nivel})"></i><span class="grow">${esc(a.nombre)}</span>${e.control ? '<b class="small" style="color:var(--gold-ink)">●</b>' : ''}</button>`).join('')}</div>
+  </aside>`;
+}
 function render() {
   const coach = S.modo === 'coach';
   const tabs = coach ? [['alumnos', 'Alumnos'], ['ejercicios', 'Ejercicios'], ['pagos', 'Pagos']] : tabsAlumno();
@@ -205,7 +223,8 @@ function render() {
       <div class="badge"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : esc(S.perfil.metodologia || 'Tu proceso')}</strong></div></div>
       <div class="row" style="gap:8px">${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
       <button class="avatar" data-act="cuenta" aria-label="Mi cuenta">${esCoach ? '<img src="icons/coach.jpg" alt="">' : esc((S.perfil.nombre || '?').slice(0, 2).toUpperCase())}</button></div>
-    </header><main id="main">${(S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : vistas[actual]()}</main>`;
+    </header>${coach ? vLateral(actual) : ''}<main id="main" class="${coach ? claseMain() : ''}">${(S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : vistas[actual]()}</main>`;
+  document.body.classList.toggle('modo-coach', coach);
   $('#tabs').hidden = false;
   $('#tabs-in').innerHTML = tabs.map(([k, l]) => `<button data-act="${coach ? 'ctab' : 'tab'}" data-t="${k}" ${actual === k && !((S.ficha || S.editor || S.obj) && coach) ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${!coach && k === 'checkin' && tocaCheckin() ? '<i class="badge-dot"></i>' : ''}</button>`).join('');
   if (S.dia && ((!coach && S.tab === 'entreno') || (coach && S.obj))) rellenarSesion();
@@ -1016,12 +1035,11 @@ function vPlanificacion(f, a) {
   const extras = { pasos: `<div class="kpis" style="grid-template-columns:1fr"><div class="kpi"><div class="l">Objetivo de pasos en la app</div><b class="num">${fmtNum(obj, 0)} al día</b></div></div>` };
   const sec = (k, t, ico, cuerpo) => `<section class="section"><div class="card stack"><div class="row"><div class="ico gold">${svg(ico)}</div><h2 class="grow" style="margin:0">${t}</h2></div>${cuerpo}</div></section>`;
   return `${f.planErr ? `<div class="aprox small">${esc(f.planErr)}</div>` : ''}
-  <section class="section"><div class="card stack"><span class="eyebrow">Plan de acompañamiento</span><h3>${esc(srv?.producto || 'Sin plan asignado')}</h3>
+  <section class="section span"><div class="card stack"><span class="eyebrow">Plan de acompañamiento</span><h3>${esc(srv?.producto || 'Sin plan asignado')}</h3>
     <div class="small muted">${[srv?.inicio && 'Inicio ' + fF(srv.inicio), P && !P.sinFin && 'final ' + fF(P.ciclos[P.ciclos.length - 1].fin), srv?.modulo_nutricion && 'con nutrición', srv?.sesiones_incluidas && srv.sesiones_incluidas + ' presenciales'].filter(Boolean).join(' · ')}</div>
     <p class="note">Solo tú ves esta planificación. ${esc((a.nombre || '').split(' ')[0])} no tiene acceso a nada de esta pantalla.</p></div></section>
-  ${sec('entreno', 'Entrenamiento', 'entreno', `<div class="aprox small"><b>Objetivo del proceso:</b> ${og ? esc(og) : 'sin definir (ponlo en "Editar bloques")'}</div>`)}
-  ${vLineaTiempo(srv, 'Bloques de entrenamiento', true, progDeCiclo(f, P))}
-  <section class="section"><div class="card stack">${apartadosDe(f, 'entreno').map(x => vApartado(f, x, false)).join('')}<button class="linkbtn small" data-act="nuevoApartado" data-sec="entreno">＋ Añadir apartado</button></div></section>
+  <section class="section plan-grupo">${sec('entreno', 'Entrenamiento', 'entreno', `<div class="aprox small"><b>Objetivo del proceso:</b> ${og ? esc(og) : 'sin definir (ponlo en "Editar bloques")'}</div>${apartadosDe(f, 'entreno').map(x => vApartado(f, x, false)).join('')}<button class="linkbtn small" data-act="nuevoApartado" data-sec="entreno">＋ Añadir apartado</button>`)}
+  ${vLineaTiempo(srv, 'Bloques de entrenamiento', true, progDeCiclo(f, P))}</section>
   ${sec('alimentacion', 'Alimentación', 'nutri', `${srv?.modulo_nutricion ? '' : '<p class="small muted">Su plan no incluye nutrición, pero puedes guardar aquí lo que quieras.</p>'}${apartadosDe(f, 'alimentacion').map((x, i) => vApartado(f, x, i === 0 && !!x.contenido)).join('')}<button class="linkbtn small" data-act="nuevoApartado" data-sec="alimentacion">＋ Añadir apartado</button>`)}
   ${sec('habitos', 'Hábitos', 'pasos', `${apartadosDe(f, 'habitos').map((x, i) => vApartado(f, x, i === 0 && !!x.contenido, extras[x.clave] || '')).join('')}<button class="linkbtn small" data-act="nuevoApartado" data-sec="habitos">＋ Añadir apartado</button>`)}`;
 }
@@ -1763,7 +1781,7 @@ function vReporte() {
   if (R.alumno) { const a = S.c.perfiles.find(p => p.id === R.alumno) || { id: R.alumno, nombre: 'Alumno' }; return cab + `<section class="section">${vReporteAlumno(a, R, true)}</section>`; }
   const als = S.c.perfiles.filter(p => p.activo !== false && (S.c.servicios.some(x => x.alumno_id === p.id) || S.c.programas.some(x => x.alumno_id === p.id)));
   const lista = als.map(a => ({ a, d: datosReporte(a, R) })).sort((x, y) => x.d.score - y.d.score);
-  return cab + `<section class="section"><p class="small muted">Ordenados de menor a mayor cumplimiento. Toca "Ver" para el detalle de cada alumno.</p>${lista.map(({ a }) => vReporteAlumno(a, R, false)).join('') || '<div class="empty">Sin alumnos activos.</div>'}</section>`;
+  return cab + `<section class="section rep-lista"><p class="small muted">Ordenados de menor a mayor cumplimiento. Toca "Ver" para el detalle de cada alumno.</p>${lista.map(({ a }) => vReporteAlumno(a, R, false)).join('') || '<div class="empty">Sin alumnos activos.</div>'}</section>`;
 }
 const numSemanaISO = iso => { const d = fecha(iso); d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7); const y = new Date(d.getFullYear(), 0, 4); return 1 + Math.round(((d - y) / 864e5 - 3 + (y.getDay() + 6) % 7) / 7); };
 

@@ -222,6 +222,33 @@ details.plan-ap{border-top:1px solid var(--line);padding:10px 0}details.plan-ap:
 .fd-tot{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:10px}.fd-sum{display:flex;flex-direction:column;gap:8px;padding-top:14px}
 .fd-r{display:grid;grid-template-columns:1fr 1fr;align-items:center;font-size:9px;gap:8px}.fd-r.total span{background:#0d2747;color:#fff;font-weight:700;font-size:11px;padding:11px 10px}.fd-r.total .fd-f>div{font-size:12px;padding:9px 8px}
 .fd-pie{font-size:8.5px;font-weight:700;margin-top:150px}
+
+/* ---------- Escritorio del coach (iPad horizontal, Mac) ---------- */
+.lateral{display:none}
+@media (min-width:900px){
+  body.modo-coach .app{max-width:1280px;padding-left:272px;padding-right:32px;padding-bottom:48px}
+  body.modo-coach nav.tabs{display:none}
+  body.modo-coach .lateral{display:flex;flex-direction:column;position:fixed;top:0;bottom:0;left:max(0px,calc(50% - 640px));width:240px;padding:84px 12px 20px;border-right:1px solid var(--line);background:var(--bg);overflow-y:auto;z-index:4}
+  .lat-nav,.lat-al{display:flex;flex-direction:column;gap:2px}
+  .lateral button{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;cursor:pointer;font-weight:600;font-size:14px;color:var(--fg)}
+  .lateral button:hover{background:var(--surface-2)}.lateral button:focus-visible{outline:2px solid var(--blue)}
+  .lateral button[aria-current="page"]{background:var(--blue);color:#fff}
+  .lateral svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  .lat-al i{width:8px;height:8px;border-radius:50%;flex:none}
+  .lat-al button[aria-current="page"] i{outline:2px solid #fff}
+  body.modo-coach header.top{margin-left:-272px;padding-left:24px}
+  body.modo-coach main.dos{columns:2;column-gap:28px}
+  body.modo-coach main.dos>section{break-inside:avoid;-webkit-column-break-inside:avoid}
+  body.modo-coach main.dos>section:first-child,body.modo-coach main.dos>section.span,body.modo-coach main.dos>.aprox{column-span:all;-webkit-column-span:all}
+  body.modo-coach main.dos>section.section{margin-top:0;margin-bottom:24px}
+  body.modo-coach main.dos>section.plan-grupo>.section:first-child{margin-top:0}
+  body.modo-coach main.rejilla .rep-lista{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+  body.modo-coach main.rejilla .rep-lista>p{grid-column:1/-1}
+  body.modo-coach .sheet{align-items:center}
+  body.modo-coach .sheet .in{max-width:560px;border-radius:20px;max-height:88vh}
+  body.modo-coach .toast{bottom:32px}
+  body.modo-coach .timer{left:272px;bottom:24px}
+}
 @media print{body{background:#fff!important}header.top,#tabs,.no-print,#toast,#timer{display:none!important}main{padding:0!important;max-width:none!important}.factura-doc{box-shadow:none;margin:0 auto;border-radius:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{size:A4;margin:0}}
 .track.gordo.ing i{transition:width .4s}
 .grasa-res{border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:4px}
