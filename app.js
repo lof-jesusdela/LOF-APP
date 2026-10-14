@@ -441,8 +441,13 @@ function prepararNavegacion(d) {
   const orden = [], cadena = {}, series = {};
   d.bloques_sesion.filter(b => b.tipo === 'fuerza').forEach(b => {
     let actual = [];
-    b.ejercicios_sesion.forEach((e, i) => {
-      if (i > 0 && (b.ejercicios_sesion[i - 1].descanso_seg ?? 60) !== 0) actual = [];
+    const L = b.ejercicios_sesion, junta = g => /juntos|super\s*(serie|set)|circuito/i.test(g || '');
+    L.forEach((e, i) => {
+      // Se encadena con el anterior si este no tenía descanso o su nota dice "juntos/superserie";
+      // una nota de superserie nueva en este ejercicio abre su propio grupo.
+      const p = L[i - 1];
+      const enlaza = p && ((p.descanso_seg ?? 60) === 0 || junta(p.grupo)) && !(junta(e.grupo) && e.grupo !== p.grupo);
+      if (!enlaza) actual = [];
       actual.push(e.id); cadena[e.id] = actual; orden.push(e.id); series[e.id] = e.series;
     });
   });
