@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - run: pip install pillow
       - run: python3 scripts/descargar_imagenes.py
       - run: |
           git config user.name "lof-bot"

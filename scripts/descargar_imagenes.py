@@ -14,7 +14,15 @@ for ruta, url in fuente.items():
                 tipo, datos = r.headers.get('Content-Type', ''), r.read()
             if not tipo.startswith('image/') or len(datos) < 1000:
                 raise ValueError(f'no es imagen ({tipo}, {len(datos)} bytes)')
-            open(ruta, 'wb').write(datos); ok += 1; break
+            if ruta.endswith('.jpg'):
+                # JPEG ligero (máx. 900 px) para que la app cargue rápido en el móvil
+                import io
+                from PIL import Image
+                im = Image.open(io.BytesIO(datos)); im = im.convert('RGB') if im.mode != 'RGB' else im
+                im.thumbnail((900, 900)); im.save(ruta, 'JPEG', quality=82, optimize=True)
+            else:
+                open(ruta, 'wb').write(datos)
+            ok += 1; break
         except Exception as e:
             err = str(e); time.sleep(2)
     else:
