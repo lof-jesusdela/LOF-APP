@@ -189,6 +189,7 @@ async function cargarAlumno(uid) {
   };
   if (S.d.servicio) S.d.servicio._bloques = bloquesDe(S.d.ruta);
   if (S.d.servicio?.modulo_futbol) await cargarFutbol(uid, S.d);
+  { const r = await sb.from('revisiones').select('*').eq('alumno_id', uid).order('fecha', { ascending: false }); S.d.revisiones = r.data || []; S.d.revisionesErr = !!r.error; }
 }
 
 /* ---------- Render principal ---------- */
@@ -989,6 +990,7 @@ async function cargarCoach() {
   const [fa, ap] = await Promise.all([sb.from('facturas').select('*').order('numero', { ascending: false }), sb.from('ajustes_privados').select('*')]);
   await cargarPlantillas();
   if (S.c.servicios.some(x => x.modulo_futbol)) await cargarFutbolCoach();
+  { const r = await sb.from('revisiones').select('*').order('fecha', { ascending: false }); S.c.revisiones = r.data || []; S.c.revisionesErr = !!r.error; }
   S.c.facturas = fa.data || []; S.c.facturasError = !!fa.error; S.c.fiscal = Object.fromEntries((ap.data || []).map(x => [x.clave, x.valor]));
 }
 /* Datos de una semana (lunes a domingo) de un alumno */
@@ -1031,7 +1033,8 @@ function estadoAlumno(a) {
   else if (ult && ant && ant.motivacion - ult.motivacion >= 3) { sube('warn'); motivos.push(`Motivación de ${ant.motivacion} a ${ult.motivacion}`); }
   const semana = new Set(ses.filter(s => s.fecha >= lunes).map(s => s.fecha + s.dia_id)).size;
   const mes = new Set(ses.filter(s => s.fecha >= sumaDias(hoy, -27)).map(s => s.fecha + s.dia_id)).size;
-  const control = controlEnSemana(srv, lunes);
+  const control = revisionPendiente(srv, (c.revisiones || []).filter(r => r.alumno_id === a.id), c.revisionesErr) || (c.revisionesErr ? controlEnSemana(srv, lunes) : null);
+  if (control?.atrasada) { sube('warn'); motivos.push(`Revisión mensual ${control.n} pendiente desde el ${fCorta(control.fecha)}`); }
   return { nivel, motivos, ult, ultSes: ses[0], dpw, semana, mes, control, ses7: semana };
 }
 function vAlumnos() {
@@ -1045,7 +1048,7 @@ function vAlumnos() {
   <section class="section"><button class="card reporte-b" data-act="abrirReporte"><div class="ico gold">${svg('checkin')}</div><div class="grow" style="text-align:left"><b>Reporting semanal</b><div class="small muted">Semana del ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -7)))} al ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -1)))} · todos tus alumnos de un vistazo</div></div><span class="small" style="color:var(--blue-text)">Abrir ›</span></button></section>
   ${vFutbolCoach()}
   ${vResumenCoach(est)}
-  <section class="section"><h2>Alumnos</h2><div class="card">${est.map(({ a, e }) => `<div class="line" data-act="ficha" data-id="${a.id}" style="cursor:pointer"><span style="width:4px;align-self:stretch;border-radius:2px;background:var(--${e.nivel})"></span><div class="grow stack" style="gap:3px"><div class="row"><h3 class="grow">${esc(a.nombre)}</h3>${e.control ? '<span class="pill gold">Control mensual</span>' : ''}<span class="pill ${e.nivel}">${lab[e.nivel]}</span></div><div class="small muted">${esc((c.servicios.find(s => s.alumno_id === a.id) || {}).producto || 'Sin servicio')}${e.ult ? ` · motivación ${e.ult.motivacion}/10` : ''}</div>${e.dpw ? barra('Semana', e.semana, e.dpw) + barra('Últimas 4 semanas', e.mes, e.dpw * 4) : ''}${e.motivos.length ? `<div class="small">${esc(e.motivos.join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no hay alumnos.</div>'}</div>
+  <section class="section"><h2>Alumnos</h2><div class="card">${est.map(({ a, e }) => `<div class="line" data-act="ficha" data-id="${a.id}" style="cursor:pointer"><span style="width:4px;align-self:stretch;border-radius:2px;background:var(--${e.nivel})"></span><div class="grow stack" style="gap:3px"><div class="row"><h3 class="grow">${esc(a.nombre)}</h3>${e.control ? '<span class="pill gold">Revisión mensual</span>' : ''}<span class="pill ${e.nivel}">${lab[e.nivel]}</span></div><div class="small muted">${esc((c.servicios.find(s => s.alumno_id === a.id) || {}).producto || 'Sin servicio')}${e.ult ? ` · motivación ${e.ult.motivacion}/10` : ''}</div>${e.dpw ? barra('Semana', e.semana, e.dpw) + barra('Últimas 4 semanas', e.mes, e.dpw * 4) : ''}${e.motivos.length ? `<div class="small">${esc(e.motivos.join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no hay alumnos.</div>'}</div>
   <p class="note">Para dar de alta a un alumno nuevo, créalo en Supabase → Authentication → Users. Su perfil aparecerá aquí solo.</p></section>`;
 }
 
@@ -1088,6 +1091,38 @@ function vBloqueActual(f, a) {
     ${pr ? `<div class="card stack"><div><span class="eyebrow">${cab}</span><h3>${esc(pr.nombre)}</h3><div class="small muted">${pr.dias.length} ${pr.dias.length === 1 ? 'entrenamiento' : 'entrenamientos'}${pr.dias_semana ? ` · ${pr.dias_semana} días por semana` : ''}</div></div>
       <div>${pr.dias.map(d => `<div class="line" data-act="verPlan" data-p="${pr.id}" data-d="${d.id}" style="cursor:pointer"><span class="pill gold num">${d.numero}</span><div class="grow"><b class="small">${esc(d.nombre)}</b>${d.foco ? ` <span class="small muted">· ${esc(d.foco)}</span>` : ''}<div class="small muted">${d.bloques_sesion.filter(b => b.tipo === 'fuerza').reduce((t, b) => t + b.ejercicios_sesion.length, 0)} ejercicios${d.bloques_sesion.some(b => b.tipo !== 'fuerza') ? ' · ' + [...new Set(d.bloques_sesion.filter(b => b.tipo !== 'fuerza').map(b => b.tipo))].join(' y ') : ''}</div></div><span class="small" style="color:var(--blue-text)">Ver ›</span></div>`).join('')}</div>
       <p class="note">Toca un día para ver su entrenamiento tal como lo ve ${esc(nom)}, sin empezar la sesión.</p></div>` : '<div class="card empty">Aún no tiene programa activo.</div>'}</section>`;
+}
+/* ---------- Revisión mensual: aviso desde 3 días antes del aniversario mensual hasta que se registra ---------- */
+function revisionPendiente(srv, revs, sinTabla) {
+  if (sinTabla || !srv?.inicio) return null;
+  const hoy = hoyISO(), cs = controlesMensuales(srv, sumaDias(hoy, 3)).filter(c => c.fecha >= sumaDias(hoy, -35));
+  const c = cs[cs.length - 1]; if (!c) return null;
+  if ((revs || []).some(r => r.control_n === c.n || (r.fecha >= sumaDias(c.fecha, -10) && r.fecha <= sumaDias(c.fecha, 25)))) return null;
+  return { ...c, atrasada: hoy > sumaDias(c.fecha, 7) };
+}
+function formRevision(n, id) {
+  const f = S.ficha, a = S.c.perfiles.find(p => p.id === f.id) || {}, r = id ? (S.c.revisiones || []).find(x => x.id === id) || {} : {};
+  abrirSheet(`<form class="stack" id="f-rev"><h2>Revisión mensual${n || r.control_n ? ' ' + (n || r.control_n) : ''}</h2><p class="small muted">${esc(a.nombre || '')}: 10-15 minutos para ver cómo se siente, sus objetivos y su composición corporal.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Fecha<input type="date" id="rv-f" value="${r.fecha || hoyISO()}"></label><label class="f">Formato<select id="rv-t">${['Videollamada', 'Llamada', 'Presencial'].map(v => `<option ${v === r.formato ? 'selected' : ''}>${v}</option>`).join('')}</select></label></div>
+    <label class="f">¿Cómo se siente?${escala10('rv-s', r.sensacion, ['1 · Muy mal', '10 · Genial'])}</label>
+    <label class="f">Consecución de objetivos<textarea id="rv-o" rows="2" placeholder="Qué ha conseguido este mes y qué le falta">${esc(r.objetivos || '')}</textarea></label>
+    <label class="f">Resumen y objetivos para el próximo mes (lo ve el alumno)<textarea id="rv-r" rows="3">${esc(r.resumen || '')}</textarea></label>
+    ${id ? '' : '<label class="f">Nota privada (solo tú, se guarda en tus notas)<textarea id="rv-n" rows="2"></textarea></label>'}
+    <button class="btn full" type="submit">Guardar revisión</button></form>`);
+  $('#f-rev').addEventListener('submit', async e => {
+    e.preventDefault();
+    const row = { alumno_id: f.id, control_n: n || r.control_n || null, fecha: $('#rv-f').value, formato: $('#rv-t').value, sensacion: valEscala('rv-s'), objetivos: $('#rv-o').value.trim() || null, resumen: $('#rv-r').value.trim() || null };
+    const nota = $('#rv-n')?.value.trim();
+    const q = id ? await sb.from('revisiones').update(row).eq('id', id) : await sb.from('revisiones').insert(row);
+    if (q.error) return fallo(q.error, /revisiones/.test(q.error.message || '') ? 'Falta ejecutar el Bloque 22 en Supabase.' : undefined);
+    if (nota) await sb.from('notas_coach').insert({ alumno_id: f.id, texto: `Revisión mensual${row.control_n ? ' ' + row.control_n : ''}: ${nota}` });
+    cerrarSheet(); toast('Revisión guardada'); const r2 = await sb.from('revisiones').select('*').order('fecha', { ascending: false }); S.c.revisiones = r2.data || []; S.c.revisionesErr = !!r2.error; abrirFicha(f.id);
+  });
+}
+function vRevisionesFicha(a) {
+  const l = (S.c.revisiones || []).filter(r => r.alumno_id === a.id);
+  if (!l.length) return '';
+  return `<section class="section"><div class="section-head"><h2>Revisiones mensuales</h2><button class="btn sm ghost" data-act="revision">＋ Revisión</button></div><div class="card">${l.map(r => `<div class="line" data-act="revision" data-id="${r.id}" style="align-items:flex-start;cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(r.fecha))}</span><div class="grow small"><b>${r.control_n ? 'Revisión ' + r.control_n : 'Revisión'}</b> · ${esc(r.formato || '')}${r.sensacion ? ` · se siente <b>${r.sensacion}/10</b>` : ''}${r.resumen ? `<div class="muted">${esc(r.resumen)}</div>` : ''}</div></div>`).join('')}</div></section>`;
 }
 /* ======================= ELITE PLAYER · futbolistas: partidos, wellness y carga ======================= */
 const ZONAS = ['Isquiotibiales', 'Aductor', 'Cuádriceps', 'Gemelo', 'Tobillo', 'Rodilla', 'Cadera / pubis', 'Espalda', 'Otra'];
@@ -1198,7 +1233,8 @@ function formWellness(tipo, f, alumnoId) {
     ${q('¿Cómo te sentías ANTES del partido?', escala10('w-antes', d.antes, ['1 · Muy mal', '10 · Perfecto']))}
     ${q('¿Cómo te sentiste DURANTE el partido?', escala10('w-durante', d.durante, ['1 · Muy mal', '10 · Perfecto']))}
     ${q('¿Cómo te sientes DESPUÉS?', escala10('w-despues', d.despues, ['1 · Muy mal', '10 · Perfecto']))}
-    ${q('¿Cómo de duro ha sido el partido?', escala10('w-rpe', d.rpe, ['1 · Muy suave', '10 · Máximo']))}`;
+    ${q('¿Cómo de duro ha sido el partido?', escala10('w-rpe', d.rpe, ['1 · Muy suave', '10 · Máximo']))}
+    ${q('Datos del GPS (opcional)', `<span class="small muted">Sube la captura o el PDF que te dé el club.${(d.gps || []).length ? ` Ya has subido ${d.gps.length} ${d.gps.length === 1 ? 'archivo' : 'archivos'}.` : ''}</span><input type="file" id="w-gps" accept="image/*,application/pdf" multiple>`)}`;
   if (tipo === 'lunes') cuerpo = `
     ${q('Fatiga general hoy', escala10('w-fat', d.fatiga, ['1 · Fresco', '10 · Destrozado']))}
     ${q('Dolor muscular / agujetas', escala10('w-dolor', d.dolor, ['1 · Nada', '10 · Mucho']))}
@@ -1225,8 +1261,19 @@ function formWellness(tipo, f, alumnoId) {
       datos.fatiga = valEscala('w-fat'); if (!datos.fatiga) return $('#w-err').textContent = 'Indica tu fatiga general.';
     }
     if (tipo === 'partido') {
-      Object.assign(datos, { minutos: numero($('#w-min').value) ?? 0, antes: valEscala('w-antes'), durante: valEscala('w-durante'), despues: valEscala('w-despues'), rpe: valEscala('w-rpe'), partido_id: pt?.id || null });
+      Object.assign(datos, { minutos: numero($('#w-min').value) ?? 0, antes: valEscala('w-antes'), durante: valEscala('w-durante'), despues: valEscala('w-despues'), rpe: valEscala('w-rpe'), partido_id: pt?.id || null, gps: d.gps || [] });
       if (!datos.antes || !datos.despues) return $('#w-err').textContent = 'Responde al menos cómo te sentías antes y después.';
+      const files = [...($('#w-gps')?.files || [])];
+      if (files.length) {
+        $('#w-b').disabled = true; $('#w-b').textContent = 'Subiendo GPS…';
+        try {
+          for (const fl of files) {
+            const pdf = /pdf/i.test(fl.type), blob = pdf ? fl : await reducirImagen(fl, 1800), ruta = `${alumnoId || uidSes()}/${f}-${Math.random().toString(36).slice(2, 8)}.${pdf ? 'pdf' : 'jpg'}`;
+            const up = await sb.storage.from('gps').upload(ruta, blob, { contentType: pdf ? 'application/pdf' : 'image/jpeg' }); if (up.error) throw up.error;
+            datos.gps.push(ruta);
+          }
+        } catch (err) { $('#w-b').disabled = false; $('#w-b').textContent = 'Enviar a Jesús'; return fallo(err, /bucket|not found/i.test(err.message || '') ? 'Falta ejecutar el Bloque 22 en Supabase.' : 'No se ha podido subir el GPS.'); }
+      }
     }
     if (tipo === 'lunes') { Object.assign(datos, { fatiga: valEscala('w-fat'), dolor: valEscala('w-dolor'), sueno: valEscala('w-sueno'), semana: $('#w-semana').value.trim() || null }); if (!datos.fatiga) return $('#w-err').textContent = 'Indica tu fatiga general.'; }
     const btn = $('#w-b'); btn.disabled = true; btn.textContent = 'Enviando…';
@@ -1279,7 +1326,7 @@ function vFutbolFicha(a) {
       <div class="row"><span class="md-chip">${esc(M.md || '—')}</span><div class="grow"><b>${esc(M.txt)}</b>${M.prox ? `<div class="small muted">${esc(M.prox.rival || 'Partido')} · ${esc(fCorta(M.prox.fecha))}${M.prox.hora ? ' · ' + esc(M.prox.hora) : ''}${M.prox.nivel ? ' · rival ' + esc(M.prox.nivel.toLowerCase()) : ''}</div>` : ''}</div></div>
       <div class="kpis"><div class="kpi"><div class="l">Fatiga</div><b class="num" style="color:var(--${nivelFat(uf?.v) || 'fg'})">${uf ? uf.v + '/10' : '—'}</b></div><div class="kpi"><div class="l">Carga 7 días</div><b class="num">${fmtNum(C.aguda, 0)}</b></div><div class="kpi"><div class="l">ACWR</div><b class="num" style="color:var(--${na || 'fg'})">${C.acwr != null ? fmtNum(C.acwr) : '—'}</b><div class="small muted">${ta}</div></div></div>
       <div class="chart">${graficaCarga(w)}</div>
-      <div><span class="eyebrow">Últimas respuestas</span>${ult.map(x => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(x.fecha))}</span><div class="grow small"><b>${{ diario: 'Diario', partido: 'Partido', lunes: 'Lunes' }[x.tipo]}</b> · ${esc(resumenW(x))}${x.datos?.nota ? `<div class="muted">"${esc(x.datos.nota)}"</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no ha respondido ningún cuestionario.</div>'}</div>
+      <div><span class="eyebrow">Últimas respuestas</span>${ult.map(x => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(x.fecha))}</span><div class="grow small"><b>${{ diario: 'Diario', partido: 'Partido', lunes: 'Lunes' }[x.tipo]}</b> · ${esc(resumenW(x))}${x.datos?.nota ? `<div class="muted">"${esc(x.datos.nota)}"</div>` : ''}${(x.datos?.gps || []).length ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:4px">${x.datos.gps.map((g, i) => `<button class="pill blue" data-act="verGps" data-r="${esc(g)}">📎 GPS ${x.datos.gps.length > 1 ? i + 1 : ''}${/\.pdf$/.test(g) ? ' (PDF)' : ''}</button>`).join('')}</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no ha respondido ningún cuestionario.</div>'}</div>
       ${p.length ? `<details><summary class="small"><b>Partidos (${p.length})</b></summary>${p.slice().reverse().map(x => `<div class="line" data-act="partido" data-al="${a.id}" data-id="${x.id}" style="cursor:pointer"><span class="small num" style="width:64px">${esc(fCorta(x.fecha))}</span><span class="small grow">${esc(x.rival || 'Partido')}${x.competicion ? ' · ' + esc(x.competicion) : ''}${x.minutos != null ? ` · ${x.minutos}′` : ''}</span></div>`).join('')}</details>` : ''}
     </div></section>`;
 }
@@ -1506,7 +1553,7 @@ function vFicha() {
     <button class="plan-b" data-act="fichaSub" data-s="plan"><div class="grow"><h3>${esc(srv?.producto || 'Sin plan asignado')} <span style="color:var(--blue-text)">›</span></h3><div class="small" style="color:var(--blue-text)">Ver toda su planificación: entrenamiento, alimentación y hábitos</div></div></button>
     <div class="row"><div class="grow"><div class="small muted">${[f.prog && `${esc(f.prog.nombre)}${dpw ? ` · ${dpw} días por semana` : ''}`, srv?.modulo_nutricion && 'con nutrición', (srv?.modulo_presencial || srv?.sesiones_incluidas) && `${srv.sesiones_incluidas || ''} presenciales`.trim()].filter(Boolean).join(' · ') || 'Sin programa'}</div></div>${P && !P.sinFin ? `<b class="num" style="font-family:var(--display);font-size:24px">${P.pctTotal} %</b>` : ''}</div>
     ${P ? `<div class="track gordo"><i style="width:${P.pctTotal}%"></i></div><div class="row small muted"><span class="grow">${P.antes ? 'Empieza' : 'Inicio'} ${esc(fF(srv.inicio))}${!P.antes && !P.fuera ? ` · semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''}</span>${P.sinFin ? '' : `<span>Final ${esc(fF(P.ciclos[P.ciclos.length - 1].fin))}</span>`}</div>` : '<p class="small muted">Pon la fecha de inicio y la duración en "Editar".</p>'}
-    ${e.control ? '<div class="aprox small"><b>Esta semana toca su control mensual</b> (composición corporal, ajustes y reunión de seguimiento).</div>' : ''}
+    ${e.control ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>Toca su revisión mensual ${e.control.n}</b> (${esc(fCorta(e.control.fecha))}): llamada o videollamada de 10-15 minutos para ver cómo se siente, sus objetivos y su composición corporal.</div><button class="btn sm gold" data-act="revision" data-n="${e.control.n}">Registrar revisión</button></div>` : ''}
   </div></section>
   ${srv?.modulo_futbol ? vFutbolFicha(a) : ''}
   <section class="section"><h2>Cumplimiento</h2><div class="kpis">
@@ -1518,6 +1565,7 @@ function vFicha() {
     ${vGraficaComp(f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), a) || '<div class="card empty">Sin mediciones todavía.</div>'}
     <button class="btn ghost full" data-act="fichaSub" data-s="composicion">Ver todas las medidas y tests ›</button></section>
   ${vBloqueActual(f, a)}
+  ${vRevisionesFicha(a)}
   ${vPresenciales(srv, f.pres, true)}
   <section class="section"><h2>Check-ins</h2><div class="card">${chks.map(k => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(k.semana_inicio))}</span><div class="grow stack" style="gap:4px"><div class="small">Motivación <b>${k.motivacion}/10</b> · implicación <b>${k.implicacion}/10</b></div>${k.dificultades ? `<div class="small"><span class="muted">Dificultades:</span> ${esc(k.dificultades)}</div>` : ''}${(k.proxima_semana_etiquetas || []).length || k.proxima_semana ? `<div class="small"><span class="muted">Semana que viene:</span> ${esc([...(k.proxima_semana_etiquetas || []), k.proxima_semana].filter(Boolean).join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Sin check-ins todavía.</div>'}</div></section>
   <section class="section"><div class="section-head"><h2>Plan de pagos</h2><button class="btn sm ghost" data-act="nuevoPago">＋ Cuota</button></div><div class="card">${pagos.map(lineaPago).join('') || '<div class="empty">Sin cuotas registradas.</div>'}</div></section>
@@ -1741,8 +1789,10 @@ function controlesMensuales(srv, hasta = sumaDias(hoyISO(), 70)) {
 const controlEnSemana = (srv, lunes) => controlesMensuales(srv, sumaDias(lunes, 6)).find(c => c.lunes === lunes);
 function vEventos(srv, pres) {
   const hoy = hoyISO(), lunes = lunesDe(hoy), ev = [];
-  const cEsta = controlEnSemana(srv, lunes), cProx = controlEnSemana(srv, sumaDias(lunes, 7));
-  if (cEsta) ev.push(`<div class="line evento"><div class="ico gold">${svg('progreso')}</div><div class="grow"><b class="small">Esta semana toca tu control mensual ${cEsta.n}</b><div class="small muted">Composición corporal, ajustes y mejoras: tienes pendiente la reunión de seguimiento mensual con Jesús.${srv?.modulo_presencial ? '' : ' Antes de la reunión, tómate tus medidas.'}</div>${srv?.modulo_presencial ? '' : '<button class="btn sm" data-act="misMedidas" style="margin-top:8px">Añadir mis medidas</button>'}</div></div>`);
+  const rev = revisionPendiente(srv, S.d?.revisiones || [], S.d?.revisionesErr);
+  const cEsta = rev || (S.d?.revisionesErr ? controlEnSemana(srv, lunes) : null), cProx = !cEsta && controlEnSemana(srv, sumaDias(lunes, 7));
+  if (rev) ev.push(`<div class="line evento"><div class="ico gold">${svg('progreso')}</div><div class="grow"><b class="small">Toca tu revisión mensual con Jesús</b><div class="small muted">Una llamada o videollamada de 10-15 minutos para ver cómo te sientes, cómo vas con tus objetivos y tu composición corporal. Escríbele para agendarla.</div><div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px">${waJesus(`Hola Jesús, me toca la revisión mensual ${rev.n}. ¿Cuándo te viene bien la llamada?`) ? `<a class="btn sm" href="${esc(waJesus(`Hola Jesús, me toca la revisión mensual ${rev.n}. ¿Cuándo te viene bien la llamada?`))}" target="_blank" rel="noopener">Agendar por WhatsApp</a>` : ''}${srv?.modulo_presencial ? '' : '<button class="btn sm ghost" data-act="misMedidas">Añadir mis medidas</button>'}</div></div></div>`);
+  else if (cEsta) ev.push(`<div class="line evento"><div class="ico gold">${svg('progreso')}</div><div class="grow"><b class="small">Esta semana toca tu control mensual ${cEsta.n}</b><div class="small muted">Composición corporal, ajustes y mejoras: tienes pendiente la reunión de seguimiento mensual con Jesús.${srv?.modulo_presencial ? '' : ' Antes de la reunión, tómate tus medidas.'}</div>${srv?.modulo_presencial ? '' : '<button class="btn sm" data-act="misMedidas" style="margin-top:8px">Añadir mis medidas</button>'}</div></div>`);
   else if (cProx) ev.push(`<div class="line evento"><div class="ico">${svg('progreso')}</div><div class="grow"><b class="small">La semana que viene: control mensual ${cProx.n}</b><div class="small muted">Semana del ${esc(fCorta(cProx.lunes))}. Reunión de seguimiento, composición corporal y ajustes.</div></div></div>`);
   (pres || []).filter(p => p.estado === 'programada' && p.fecha >= hoy && p.fecha <= sumaDias(hoy, 13)).sort(ordPres).slice(0, 3)
     .forEach(p => ev.push(`<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">Entrenamiento con Jesús</b><div class="small muted">${esc(fLarga(p.fecha))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</div></div><span class="small muted">›</span></div>`));
@@ -2972,6 +3022,8 @@ document.addEventListener('click', async e => {
     case 'duplicarPlantilla': formGuardarPlantilla(+b.dataset.id, true); break;
     case 'borrarPlantilla': await borrarPlantilla(+b.dataset.id); break;
     case 'comentarEj': formComentarioEj(+b.dataset.es); break;
+    case 'revision': formRevision(+b.dataset.n || null, b.dataset.id ? +b.dataset.id : null); break;
+    case 'verGps': { const r = await sb.storage.from('gps').createSignedUrls([b.dataset.r], 3600); const u = r.data?.[0]?.signedUrl; if (!u) { toast('No se ha podido abrir el archivo'); break; } if (/\.pdf$/i.test(b.dataset.r)) window.open(u, '_blank', 'noopener'); else abrirSheet(`<div class="stack"><img src="${esc(u)}" alt="GPS" style="width:100%;border-radius:12px"><a class="btn ghost full" href="${esc(u)}" target="_blank" rel="noopener">Abrir en grande</a><button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`); break; }
     case 'wellness': formWellness(b.dataset.t, b.dataset.f || null, b.dataset.al || null); break;
     case 'partido': formPartido(b.dataset.id ? +b.dataset.id : null, b.dataset.al || null); break;
     case 'escala10': { const g = b.closest('.escala10'); g.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); break; }
