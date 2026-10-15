@@ -228,7 +228,7 @@ function render() {
       <div class="badge"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : esc(S.perfil.metodologia || 'Tu proceso')}</strong></div></div>
       <div class="row" style="gap:8px">${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
       <button class="avatar" data-act="cuenta" aria-label="Mi cuenta">${esCoach ? '<img src="icons/coach.jpg" alt="">' : esc((S.perfil.nombre || '?').slice(0, 2).toUpperCase())}</button></div>
-    </header>${coach && ANCHO.matches ? vLateral(actual) : ''}<main id="main" class="${coach ? claseMain() : ''}">${(S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : vistas[actual]()}</main>`;
+    </header>${S.prueba ? vBannerPrueba() : ''}${coach && ANCHO.matches ? vLateral(actual) : ''}<main id="main" class="${coach ? claseMain() : ''}">${(S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : vistas[actual]()}</main>`;
   document.body.classList.toggle('modo-coach', coach);
   $('#tabs').hidden = false;
   $('#tabs-in').innerHTML = tabs.map(([k, l]) => `<button data-act="${coach ? 'ctab' : 'tab'}" data-t="${k}" ${actual === k && !((S.ficha || S.editor || S.obj) && coach) ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${!coach && ((k === 'checkin' && tocaCheckin()) || (k === 'hoy' && pendientesFutbol().length)) ? '<i class="badge-dot"></i>' : ''}</button>`).join('');
@@ -1179,6 +1179,8 @@ function pendientesFutbol() {
   const jugados = (S.d.partidos || []).filter(p => p.fecha <= hoy && p.fecha >= sumaDias(hoy, -3) && !wDe(w, p.fecha, 'partido'));
   jugados.forEach(p => out.push({ t: 'partido', f: p.fecha, txt: `Cuestionario del partido${p.rival ? ' contra ' + p.rival : ''}`, sub: p.fecha === hoy ? 'Rellénalo al terminar: antes, durante y después.' : 'Te falta contarle a Jesús cómo fue.' }));
   if (dow === 0 && !wDe(w, hoy, 'lunes')) out.push({ t: 'lunes', f: hoy, txt: 'Cuestionario del lunes', sub: 'Tu fatiga tras el fin de semana para ajustar la semana. 1 minuto.' });
+  const dom = dow === 6 ? hoy : dow === 0 ? sumaDias(hoy, -1) : null;
+  if (dom && !wDe(w, dom, 'semana')) out.push({ t: 'semana', f: dom, txt: 'Comparte la planificación de tu equipo', sub: 'La semana que viene del club (entrenos, horarios, partido). Escríbela o sube una foto o PDF. Así Jesús te deja tu semana lista el lunes.' });
   if (!wDe(w, hoy, 'diario') && !jugados.some(p => p.fecha === hoy)) out.push({ t: 'diario', f: hoy, txt: 'Check diario', sub: 'Carga con el equipo, tu sesión y tu fatiga. 30 segundos.' });
   return out;
 }
@@ -1240,10 +1242,14 @@ function formWellness(tipo, f, alumnoId) {
     ${q('Dolor muscular / agujetas', escala10('w-dolor', d.dolor, ['1 · Nada', '10 · Mucho']))}
     ${q('¿Cómo has dormido este fin de semana?', escala10('w-sueno', d.sueno, ['1 · Fatal', '10 · Genial']))}
     <label class="f">¿Cómo es tu semana con el equipo? (días y horarios de entreno, partido…)<textarea id="w-semana" rows="2" placeholder="Ej. entreno L-M-X-J 10:00, viernes libre, partido sábado 18:00">${esc(d.semana || '')}</textarea></label>`;
-  abrirSheet(`<form class="stack" id="f-w"><h2>${{ diario: 'Check diario', partido: 'Cuestionario del partido', lunes: 'Cuestionario del lunes' }[tipo]}</h2><span class="small muted">${esc(fLarga(f))}</span>
+  if (tipo === 'semana') cuerpo = `
+    <p class="small muted">Lo que te haya pasado el club para la semana que viene: días y horarios de entreno, tipo de sesión, día libre y partido. Con escribirla o subir la foto/PDF es suficiente.</p>
+    <label class="f">Planificación del equipo<textarea id="w-plan" rows="5" placeholder="Ej. Lunes libre · Martes 10:00 fuerza + táctica · Miércoles 10:00 alta intensidad · Jueves 10:00 · Viernes activación · Sábado partido 18:00">${esc(d.texto || '')}</textarea></label>
+    ${q('Foto o PDF de la planificación (opcional)', `${(d.archivos || []).length ? `<span class="small muted">Ya has subido ${d.archivos.length} ${d.archivos.length === 1 ? 'archivo' : 'archivos'}.</span>` : ''}<input type="file" id="w-arch" accept="image/*,application/pdf" multiple>`)}`;
+  abrirSheet(`<form class="stack" id="f-w"><h2>${{ diario: 'Check diario', partido: 'Cuestionario del partido', lunes: 'Cuestionario del lunes', semana: 'Planificación de tu equipo' }[tipo]}</h2><span class="small muted">${tipo === 'semana' ? 'Semana del ' + esc(fCorta(sumaDias(f, 1))) + ' al ' + esc(fCorta(sumaDias(f, 7))) : esc(fLarga(f))}</span>
     ${cuerpo}
-    ${q('¿Alguna molestia? (opcional)', chipsZonas(d.molestias))}
-    <label class="f">${tipo === 'lunes' ? '¿Algo que Jesús deba saber para planificar tu semana?' : 'Comentario (opcional)'}<textarea id="w-nota" rows="2">${esc(d.nota || d.molestia_txt || '')}</textarea></label>
+    ${tipo === 'semana' ? '' : q('¿Alguna molestia? (opcional)', chipsZonas(d.molestias))}
+    <label class="f">${tipo === 'lunes' ? '¿Algo que Jesús deba saber para planificar tu semana?' : tipo === 'semana' ? '¿Algo más que deba saber Jesús? (opcional)' : 'Comentario (opcional)'}<textarea id="w-nota" rows="2">${esc(d.nota || d.molestia_txt || '')}</textarea></label>
     <p class="err" id="w-err"></p><button class="btn full" type="submit" id="w-b">Enviar a Jesús</button></form>`);
   const F = $('#f-w');
   F.addEventListener('click', ev => {
@@ -1263,17 +1269,12 @@ function formWellness(tipo, f, alumnoId) {
     if (tipo === 'partido') {
       Object.assign(datos, { minutos: numero($('#w-min').value) ?? 0, antes: valEscala('w-antes'), durante: valEscala('w-durante'), despues: valEscala('w-despues'), rpe: valEscala('w-rpe'), partido_id: pt?.id || null, gps: d.gps || [] });
       if (!datos.antes || !datos.despues) return $('#w-err').textContent = 'Responde al menos cómo te sentías antes y después.';
-      const files = [...($('#w-gps')?.files || [])];
-      if (files.length) {
-        $('#w-b').disabled = true; $('#w-b').textContent = 'Subiendo GPS…';
-        try {
-          for (const fl of files) {
-            const pdf = /pdf/i.test(fl.type), blob = pdf ? fl : await reducirImagen(fl, 1800), ruta = `${alumnoId || uidSes()}/${f}-${Math.random().toString(36).slice(2, 8)}.${pdf ? 'pdf' : 'jpg'}`;
-            const up = await sb.storage.from('gps').upload(ruta, blob, { contentType: pdf ? 'application/pdf' : 'image/jpeg' }); if (up.error) throw up.error;
-            datos.gps.push(ruta);
-          }
-        } catch (err) { $('#w-b').disabled = false; $('#w-b').textContent = 'Enviar a Jesús'; return fallo(err, /bucket|not found/i.test(err.message || '') ? 'Falta ejecutar el Bloque 22 en Supabase.' : 'No se ha podido subir el GPS.'); }
-      }
+      if (!await subirArchivosW($('#w-gps'), datos.gps, `${alumnoId || uidSes()}/${f}`, 'Subiendo GPS…', 'No se ha podido subir el GPS.')) return;
+    }
+    if (tipo === 'semana') {
+      Object.assign(datos, { texto: $('#w-plan').value.trim() || null, archivos: d.archivos || [] });
+      if (!datos.texto && !($('#w-arch')?.files || []).length && !datos.archivos.length) return $('#w-err').textContent = 'Escribe la planificación o sube una foto o PDF.';
+      if (!await subirArchivosW($('#w-arch'), datos.archivos, `${alumnoId || uidSes()}/semana-${f}`, 'Subiendo…', 'No se ha podido subir el archivo.')) return;
     }
     if (tipo === 'lunes') { Object.assign(datos, { fatiga: valEscala('w-fat'), dolor: valEscala('w-dolor'), sueno: valEscala('w-sueno'), semana: $('#w-semana').value.trim() || null }); if (!datos.fatiga) return $('#w-err').textContent = 'Indica tu fatiga general.'; }
     const btn = $('#w-b'); btn.disabled = true; btn.textContent = 'Enviando…';
@@ -1284,6 +1285,19 @@ function formWellness(tipo, f, alumnoId) {
     cerrarSheet(); toast('¡Recibido! Gracias'); if (alumnoId) await cargarFutbolCoach(); else await cargarFutbol(S.user.id, S.d); render();
   });
 }
+/* Sube imágenes (reducidas) o PDF al espacio privado "gps" (carpeta del jugador) y añade las rutas a la lista */
+async function subirArchivosW(input, lista, prefijo, txt, msg) {
+  const files = [...(input?.files || [])]; if (!files.length) return true;
+  const btn = $('#w-b'); btn.disabled = true; btn.textContent = txt;
+  try {
+    for (const fl of files) {
+      const pdf = /pdf/i.test(fl.type), blob = pdf ? fl : await reducirImagen(fl, 1800), ruta = `${prefijo}-${Math.random().toString(36).slice(2, 8)}.${pdf ? 'pdf' : 'jpg'}`;
+      const up = await sb.storage.from('gps').upload(ruta, blob, { contentType: pdf ? 'application/pdf' : 'image/jpeg' }); if (up.error) throw up.error;
+      lista.push(ruta);
+    }
+    return true;
+  } catch (err) { btn.disabled = false; btn.textContent = 'Enviar a Jesús'; fallo(err, /bucket|not found/i.test(err.message || '') ? 'Falta ejecutar el Bloque 22 en Supabase.' : msg); return false; }
+}
 /* ---- Lado del coach ---- */
 const futDe = aid => ({ w: (S.c.wellness || []).filter(x => x.alumno_id === aid), p: (S.c.partidos || []).filter(x => x.alumno_id === aid) });
 function alertasFutbol(aid) {
@@ -1292,6 +1306,7 @@ function alertasFutbol(aid) {
   molestiasRecientes(w, 3).slice(-1).forEach(m => out.push(['warn', `Molestia: ${m.z.join(', ')}`]));
   const C = cargasSemana(w); if (C.acwr != null && C.acwr > 1.5) out.push(['bad', `Pico de carga (ACWR ${fmtNum(C.acwr)})`]);
   if (dow <= 1 && !wDe(w, sumaDias(hoy, -dow), 'lunes')) out.push(['warn', 'Sin cuestionario del lunes']);
+  if (dow <= 1 && !wDe(w, sumaDias(hoy, -dow - 1), 'semana')) out.push(['warn', 'Sin planificación del equipo']);
   return out;
 }
 function vFutbolCoach() {
@@ -1312,10 +1327,15 @@ function graficaCarga(w) {
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Carga y fatiga de los últimos 14 días">${barras}${pts.length > 1 ? `<polyline points="${pts.join(' ')}" fill="none" stroke="var(--fg)" stroke-width="1.6" stroke-dasharray="3 3"/>` : ''}${fat.map((v, i) => v == null ? '' : `<circle cx="${8 + i * bw + bw / 2}" cy="${100 - v * 9}" r="3.2" fill="var(--${nivelFat(v) || 'fg'})"/>`).join('')}${dias.map((f, i) => i % 2 ? '' : `<text x="${8 + i * bw + bw / 2}" y="${H - 10}" font-size="9" fill="var(--muted)" text-anchor="middle">${fecha(f).getDate()}/${fecha(f).getMonth() + 1}</text>`).join('')}</svg>
   <div class="row small muted" style="gap:12px;flex-wrap:wrap"><span><i class="ley" style="background:var(--blue)"></i>Equipo</span><span><i class="ley" style="background:var(--gold)"></i>Sesión LOF</span><span><i class="ley" style="background:var(--bad)"></i>Partido</span><span>● Fatiga (1-10)</span></div>`;
 }
+function botonesArchivos(x) {
+  const l = x.datos?.gps?.length ? x.datos.gps : x.datos?.archivos || [], et = x.tipo === 'semana' ? 'Planificación' : 'GPS';
+  return l.length ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:4px">${l.map((g, i) => `<button class="pill blue" data-act="verGps" data-r="${esc(g)}">📎 ${et}${l.length > 1 ? ' ' + (i + 1) : ''}${/\.pdf$/.test(g) ? ' (PDF)' : ''}</button>`).join('')}</div>` : '';
+}
 function resumenW(x) {
   const d = x.datos || {}, m = (d.molestias || []).length ? ` · molestia: ${d.molestias.join(', ')}` : '';
   if (x.tipo === 'diario') return `Fatiga ${d.fatiga ?? '—'}/10 · equipo ${d.eq_min ? `${d.eq_min}′ esfuerzo ${d.eq_rpe}` : 'no'} · sesión ${d.lof_rpe ? `esfuerzo ${d.lof_rpe}` : 'no'}${m}`;
   if (x.tipo === 'partido') return `${d.minutos ?? 0}′ jugados · antes ${d.antes ?? '—'} · durante ${d.durante ?? '—'} · después ${d.despues ?? '—'} · esfuerzo ${d.rpe ?? '—'}${m}`;
+  if (x.tipo === 'semana') return `Planificación del equipo${d.texto ? ': ' + d.texto : ''}`;
   return `Fatiga ${d.fatiga ?? '—'}/10 · dolor ${d.dolor ?? '—'} · sueño ${d.sueno ?? '—'}${d.semana ? ' · semana: ' + d.semana : ''}${m}`;
 }
 function vFutbolFicha(a) {
@@ -1325,10 +1345,106 @@ function vFutbolFicha(a) {
     <div class="card stack">
       <div class="row"><span class="md-chip">${esc(M.md || '—')}</span><div class="grow"><b>${esc(M.txt)}</b>${M.prox ? `<div class="small muted">${esc(M.prox.rival || 'Partido')} · ${esc(fCorta(M.prox.fecha))}${M.prox.hora ? ' · ' + esc(M.prox.hora) : ''}${M.prox.nivel ? ' · rival ' + esc(M.prox.nivel.toLowerCase()) : ''}</div>` : ''}</div></div>
       <div class="kpis"><div class="kpi"><div class="l">Fatiga</div><b class="num" style="color:var(--${nivelFat(uf?.v) || 'fg'})">${uf ? uf.v + '/10' : '—'}</b></div><div class="kpi"><div class="l">Carga 7 días</div><b class="num">${fmtNum(C.aguda, 0)}</b></div><div class="kpi"><div class="l">ACWR</div><b class="num" style="color:var(--${na || 'fg'})">${C.acwr != null ? fmtNum(C.acwr) : '—'}</b><div class="small muted">${ta}</div></div></div>
+      ${(() => { const sw = w.filter(x => x.tipo === 'semana' && x.fecha >= sumaDias(hoyISO(), -8)).sort((a, b) => b.fecha.localeCompare(a.fecha))[0]; return sw ? `<div class="aprox small"><b>Semana del equipo · del ${esc(fCorta(sumaDias(sw.fecha, 1)))} al ${esc(fCorta(sumaDias(sw.fecha, 7)))}</b>${sw.datos?.texto ? `<div class="pre" style="margin-top:4px">${esc(sw.datos.texto)}</div>` : ''}${sw.datos?.nota ? `<div class="muted">"${esc(sw.datos.nota)}"</div>` : ''}${botonesArchivos(sw)}</div>` : ((fecha(hoyISO()).getDay() + 6) % 7 <= 1 ? '<div class="small muted">Aún no ha compartido la planificación de su equipo para esta semana.</div>' : ''); })()}
       <div class="chart">${graficaCarga(w)}</div>
-      <div><span class="eyebrow">Últimas respuestas</span>${ult.map(x => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(x.fecha))}</span><div class="grow small"><b>${{ diario: 'Diario', partido: 'Partido', lunes: 'Lunes' }[x.tipo]}</b> · ${esc(resumenW(x))}${x.datos?.nota ? `<div class="muted">"${esc(x.datos.nota)}"</div>` : ''}${(x.datos?.gps || []).length ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:4px">${x.datos.gps.map((g, i) => `<button class="pill blue" data-act="verGps" data-r="${esc(g)}">📎 GPS ${x.datos.gps.length > 1 ? i + 1 : ''}${/\.pdf$/.test(g) ? ' (PDF)' : ''}</button>`).join('')}</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no ha respondido ningún cuestionario.</div>'}</div>
+      <div><span class="eyebrow">Últimas respuestas</span>${ult.map(x => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(x.fecha))}</span><div class="grow small"><b>${{ diario: 'Diario', partido: 'Partido', lunes: 'Lunes', semana: 'Domingo' }[x.tipo]}</b> · ${esc(resumenW(x))}${x.datos?.nota ? `<div class="muted">"${esc(x.datos.nota)}"</div>` : ''}${botonesArchivos(x)}</div></div>`).join('') || '<div class="empty">Aún no ha respondido ningún cuestionario.</div>'}</div>
       ${p.length ? `<details><summary class="small"><b>Partidos (${p.length})</b></summary>${p.slice().reverse().map(x => `<div class="line" data-act="partido" data-al="${a.id}" data-id="${x.id}" style="cursor:pointer"><span class="small num" style="width:64px">${esc(fCorta(x.fecha))}</span><span class="small grow">${esc(x.rival || 'Partido')}${x.competicion ? ' · ' + esc(x.competicion) : ''}${x.minutos != null ? ` · ${x.minutos}′` : ''}</span></div>`).join('')}</details>` : ''}
     </div></section>`;
+}
+/* ---------- Alumno de prueba: ver una plantilla tal como la vería un alumno, sin cuenta y sin guardar nada ----------
+   Mientras dura, las lecturas y escrituras van a una base de datos en memoria (sb.from / sb.storage se sustituyen). */
+const UID_PRUEBA = '00000000-0000-4000-8000-0000000000aa';
+function baseEnMemoria(seed) {
+  const db = JSON.parse(JSON.stringify(seed)), blobs = {}; let nextId = 900000;
+  const builder = table => {
+    const st = { filtros: [], orden: [], op: 'select', payload: null, single: false, maybe: false, limit: null, conflict: null };
+    const api = {
+      select() { return api; },
+      eq(c, v) { st.filtros.push(r => String(r[c]) === String(v)); return api; },
+      neq(c, v) { st.filtros.push(r => String(r[c]) !== String(v)); return api; },
+      gte(c, v) { st.filtros.push(r => r[c] != null && r[c] >= v); return api; },
+      lte(c, v) { st.filtros.push(r => r[c] != null && r[c] <= v); return api; },
+      gt(c, v) { st.filtros.push(r => r[c] != null && r[c] > v); return api; },
+      lt(c, v) { st.filtros.push(r => r[c] != null && r[c] < v); return api; },
+      in(c, vs) { const set = new Set(vs.map(String)); st.filtros.push(r => set.has(String(r[c]))); return api; },
+      is(c, v) { st.filtros.push(r => (r[c] ?? null) === v); return api; },
+      order(c, o = {}) { st.orden.push([c, o.ascending !== false]); return api; },
+      limit(n) { st.limit = n; return api; },
+      maybeSingle() { st.single = true; st.maybe = true; return api; },
+      single() { st.single = true; return api; },
+      insert(p) { st.op = 'insert'; st.payload = p; return api; },
+      upsert(p, o = {}) { st.op = 'upsert'; st.payload = p; st.conflict = o.onConflict ? o.onConflict.split(',') : null; return api; },
+      update(p) { st.op = 'update'; st.payload = p; return api; },
+      delete() { st.op = 'delete'; return api; },
+      then(ok, ko) { return Promise.resolve(run()).then(ok, ko); }
+    };
+    const fin = out => st.single ? (out.length || st.maybe ? { data: out[0] || null, error: null } : { data: null, error: { message: 'Sin filas' } }) : { data: out, error: null };
+    function run() {
+      const rows = db[table] || (db[table] = []);
+      if (st.op === 'insert' || st.op === 'upsert') {
+        const out = (Array.isArray(st.payload) ? st.payload : [st.payload]).map(r => {
+          const ya = st.op === 'upsert' && st.conflict && rows.find(x => st.conflict.every(k => String(x[k]) === String(r[k])));
+          if (ya) return Object.assign(ya, JSON.parse(JSON.stringify(r)));
+          const n = { id: nextId++, creado_at: new Date().toISOString(), ...JSON.parse(JSON.stringify(r)) }; rows.push(n); return n;
+        });
+        return fin(out);
+      }
+      let out = rows.filter(r => st.filtros.every(f => f(r)));
+      if (st.op === 'update') { out.forEach(r => Object.assign(r, JSON.parse(JSON.stringify(st.payload)))); return fin(out); }
+      if (st.op === 'delete') { db[table] = rows.filter(r => !out.includes(r)); return { data: null, error: null }; }
+      st.orden.slice().reverse().forEach(([c, asc]) => out = out.slice().sort((a, b) => (a[c] ?? '') < (b[c] ?? '') ? (asc ? -1 : 1) : (a[c] ?? '') > (b[c] ?? '') ? (asc ? 1 : -1) : 0));
+      if (st.limit) out = out.slice(0, st.limit);
+      return fin(JSON.parse(JSON.stringify(out)));
+    }
+    return api;
+  };
+  const storage = { from: () => ({
+    upload: async (ruta, blob) => { blobs[ruta] = URL.createObjectURL(blob); return { data: { path: ruta }, error: null }; },
+    remove: async () => ({ data: [], error: null }),
+    getPublicUrl: ruta => ({ data: { publicUrl: blobs[ruta] || '' } }),
+    createSignedUrls: async rutas => ({ data: rutas.map(r => ({ path: r, signedUrl: blobs[r] || null })), error: null })
+  }) };
+  return { from: builder, storage, rpc: async () => ({ data: null, error: { message: 'No disponible en modo prueba' } }) };
+}
+async function probarPlantilla(id) {
+  const pl = (S.c.plantillas || []).find(p => p.id === id) || {};
+  const [pr, met] = await Promise.all([
+    conRespaldo(() => sb.from('programas').select(SEL_PROGRAMA).eq('id', id).limit(1), () => sb.from('programas').select(SIN_NUEVAS(SEL_PROGRAMA)).eq('id', id).limit(1)),
+    sb.from('metodos').select('nombre,explicacion')
+  ]);
+  const prog = pr.data?.[0]; if (!prog) return toast('No se ha podido cargar la plantilla');
+  if (!(prog.dias || []).length) return toast('La plantilla está vacía: añádele días antes de probarla');
+  const hoy = hoyISO(), futbol = /futbol/.test(norm(pl.categoria)), u = UID_PRUEBA;
+  const seed = {
+    perfiles: [{ id: u, nombre: 'Alumno de prueba', rol: 'alumno', consentimiento_at: hoy }],
+    servicios: [{ id: 1, alumno_id: u, producto: pl.nombre || prog.nombre, inicio: sumaDias(lunesDe(hoy), -7), duracion_semanas: 8, modulo_entreno: true, modulo_nutricion: true, modulo_futbol: futbol, objetivo_pasos: 10000, activo: true }],
+    programas: [{ ...prog, alumno_id: u, activo: true }],
+    metodos: met.data || [],
+    partidos: futbol ? [{ id: 1, alumno_id: u, fecha: sumaDias(hoy, -2), hora: '18:00', rival: 'Rival de prueba', local: true, competicion: 'Liga' }, { id: 2, alumno_id: u, fecha: sumaDias(hoy, 3), hora: '17:00', rival: 'Próximo rival', local: false, competicion: 'Liga', nivel: 'Exigente' }] : []
+  };
+  stopTimer();
+  const fake = baseEnMemoria(seed);
+  S.prueba = { id, nombre: pl.nombre || prog.nombre, futbol, guard: { user: S.user, perfil: S.perfil, d: S.d, modo: S.modo, tab: S.tab, ctab: S.ctab, dia: S.dia, sesion: S.sesion, ficha: S.ficha, editor: S.editor, verPlan: S.verPlan } };
+  S.prueba.propios = Object.fromEntries(['from', 'rpc', 'storage'].map(k => [k, Object.getOwnPropertyDescriptor(sb, k)]));
+  ['from', 'rpc', 'storage'].forEach(k => Object.defineProperty(sb, k, { value: fake[k], configurable: true, writable: true }));
+  Object.assign(S, { user: { id: u, email: 'prueba@lof' }, perfil: seed.perfiles[0], modo: 'alumno', tab: 'hoy', dia: null, sesion: null, ficha: null, editor: null, verPlan: null });
+  S.perfil.metodologia = 'Modo prueba';
+  await cargarAlumno(u); render(); window.scrollTo(0, 0);
+}
+async function salirPrueba() {
+  if (!S.prueba) return;
+  stopTimer();
+  Object.entries(S.prueba.propios).forEach(([k, d]) => { delete sb[k]; if (d) Object.defineProperty(sb, k, d); });
+  const g = S.prueba.guard, id = S.prueba.id; S.prueba = null;
+  Object.assign(S, g, { dia: null, sesion: null });
+  await cargarCoach();
+  if (g.editor?.plantilla) await abrirEditor(null, id); else { S.ctab = 'plantillas'; S.editor = null; S.ficha = null; render(); }
+  window.scrollTo(0, 0);
+}
+function vBannerPrueba() {
+  const P = S.prueba;
+  return `<div class="prueba-b"><div class="row" style="gap:10px;align-items:flex-start"><div class="grow"><b>Modo prueba · ${esc(P.nombre)}</b><div class="small">Así lo verá tu alumno. Puedes tocarlo todo: nada de lo que hagas se guarda.</div></div><button class="btn sm" data-act="salirPrueba">Salir</button></div>
+    ${P.futbol ? `<div class="row small" style="gap:6px;flex-wrap:wrap;margin-top:8px"><span>Probar cuestionarios:</span>${[['diario', 'Diario', hoyISO()], ['partido', 'Partido', sumaDias(hoyISO(), -2)], ['lunes', 'Lunes', hoyISO()], ['semana', 'Domingo', sumaDias(lunesDe(hoyISO()), 6)]].map(([t, l, f]) => `<button class="pill" data-act="wellness" data-t="${t}" data-f="${f}">${l}</button>`).join('')}</div>` : ''}</div>`;
 }
 /* ---------- Plantillas de programa por tipo de alumno (programas sin alumno asignado; los alumnos no las ven) ---------- */
 const CATEGORIAS = ['Futbolistas alto rendimiento', 'Recomposición hombres', 'Recomposición mujeres', 'Salud +55 · lesiones y enfermedades', 'Otras'];
@@ -1346,7 +1462,7 @@ function vPlantillas() {
   ${CATEGORIAS.map(c => { const ps = porCat(c); if (!ps.length && c === 'Otras') return ''; return `<section class="section"><h2>${esc(c)}</h2>${ps.map(p => `<div class="card stack">
       <div class="row"><div class="grow"><h3>${esc(p.nombre)}</h3><div class="small muted">${(p.dias || []).length} ${(p.dias || []).length === 1 ? 'día' : 'días'} · ${nEjs(p)} ejercicios${p.dias_semana ? ` · ${p.dias_semana} por semana` : ''}</div></div></div>
       ${(p.dias || []).length ? `<div class="chips">${p.dias.map(d => `<span class="pill">${esc(d.nombre || 'Día ' + d.numero)}${d.foco ? ' · ' + esc(d.foco) : ''}</span>`).join('')}</div>` : '<p class="small muted">Vacía: entra en "Editar" para añadir sus días, o pásame tu Excel y la monto.</p>'}
-      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="asignarPlantilla" data-id="${p.id}">Asignar a un alumno</button><button class="btn sm ghost" data-act="editarPlantilla" data-id="${p.id}">✎ Editar</button><button class="btn sm ghost" data-act="duplicarPlantilla" data-id="${p.id}">Duplicar</button><button class="btn sm ghost" data-act="borrarPlantilla" data-id="${p.id}" style="color:var(--bad)">Eliminar</button></div>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm gold" data-act="probarPlantilla" data-id="${p.id}">👁 Ver como alumno de prueba</button><button class="btn sm" data-act="asignarPlantilla" data-id="${p.id}">Asignar a un alumno</button><button class="btn sm ghost" data-act="editarPlantilla" data-id="${p.id}">✎ Editar</button><button class="btn sm ghost" data-act="duplicarPlantilla" data-id="${p.id}">Duplicar</button><button class="btn sm ghost" data-act="borrarPlantilla" data-id="${p.id}" style="color:var(--bad)">Eliminar</button></div>
     </div>`).join('') || '<div class="card empty">Aún no hay plantillas de este tipo.</div>'}</section>`; }).join('')}
   ${S.c.plantillasErr ? `<p class="note">Falta ejecutar el Bloque 20 en Supabase para guardar el tipo de alumno de cada plantilla.</p>` : ''}`;
 }
@@ -2663,7 +2779,7 @@ function vEditor() {
   const p = E.prog;
   const resumen = e => { const g = gruposDe(e.pauta); return `${e.series} × ${esc(e.repeticiones)}${e.rir != null ? ' · RIR ' + e.rir : ''}${e.peso_ref ? ' · ' + esc(e.peso_ref) : ''} · desc. ${e.descanso_seg ? seg(e.descanso_seg) : 'no'}${g.some(x => x.tramos.length > 1) ? ' · tramos' : ''}`; };
   return `<section class="stack"><button class="btn sm ghost" data-act="cerrarEditor" style="align-self:flex-start">← Volver</button><span class="eyebrow">${E.plantilla ? 'Plantilla · ' + esc(p?.categoria || 'sin categoría') : 'Programa de ' + esc(a.nombre || '')}</span><h1>${p ? esc(p.nombre) : 'Sin programa'}</h1>
-    <div class="row" style="gap:8px;flex-wrap:wrap">${p ? `<button class="btn sm ghost" data-act="nuevoPrograma">Cambiar nombre</button><button class="btn sm" data-act="edDia">Añadir día</button>${E.plantilla ? '' : '<button class="btn sm gold" data-act="nuevoCiclo">Nuevo ciclo (copiar)</button>'}` : `<button class="btn sm" data-act="nuevoPrograma">Crear programa</button>`}</div>
+    <div class="row" style="gap:8px;flex-wrap:wrap">${p ? `<button class="btn sm ghost" data-act="nuevoPrograma">Cambiar nombre</button><button class="btn sm" data-act="edDia">Añadir día</button>${E.plantilla ? `<button class="btn sm gold" data-act="probarPlantilla" data-id="${p.id}">👁 Ver como alumno de prueba</button>` : '<button class="btn sm gold" data-act="nuevoCiclo">Nuevo ciclo (copiar)</button>'}` : `<button class="btn sm" data-act="nuevoPrograma">Crear programa</button>`}</div>
     <p class="note">${E.plantilla ? 'Toca cualquier elemento para editarlo. Los cambios solo afectan a la plantilla: los alumnos que ya la tienen asignada conservan su copia.' : 'Toca cualquier elemento para editarlo. Los cambios los ve el alumno en cuanto vuelve a abrir la app.'}</p></section>
   ${p ? p.dias.map(d => `<section class="section"><div class="card stack">
     <div class="row"><div class="grow"><span class="eyebrow">Día ${d.numero}</span><h2>${esc(d.nombre || '')}</h2><div class="small muted">${esc([d.foco, d.volumen && 'vol. ' + d.volumen, d.intensidad && 'int. ' + d.intensidad].filter(Boolean).join(' · '))}</div></div><button class="btn sm ghost" data-act="edDia" data-id="${d.id}">Editar día</button></div>
@@ -3022,6 +3138,8 @@ document.addEventListener('click', async e => {
     case 'duplicarPlantilla': formGuardarPlantilla(+b.dataset.id, true); break;
     case 'borrarPlantilla': await borrarPlantilla(+b.dataset.id); break;
     case 'comentarEj': formComentarioEj(+b.dataset.es); break;
+    case 'probarPlantilla': await probarPlantilla(+b.dataset.id); break;
+    case 'salirPrueba': await salirPrueba(); break;
     case 'revision': formRevision(+b.dataset.n || null, b.dataset.id ? +b.dataset.id : null); break;
     case 'verGps': { const r = await sb.storage.from('gps').createSignedUrls([b.dataset.r], 3600); const u = r.data?.[0]?.signedUrl; if (!u) { toast('No se ha podido abrir el archivo'); break; } if (/\.pdf$/i.test(b.dataset.r)) window.open(u, '_blank', 'noopener'); else abrirSheet(`<div class="stack"><img src="${esc(u)}" alt="GPS" style="width:100%;border-radius:12px"><a class="btn ghost full" href="${esc(u)}" target="_blank" rel="noopener">Abrir en grande</a><button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`); break; }
     case 'wellness': formWellness(b.dataset.t, b.dataset.f || null, b.dataset.al || null); break;
@@ -3056,7 +3174,7 @@ document.addEventListener('click', async e => {
     case 'sinVideo': toast('Jesús todavía no ha subido el vídeo de este ejercicio'); break;
     case 'pagar': await marcarPagado(+b.dataset.id); break;
     case 'recordar': await copiarRecordatorio(+b.dataset.id); break;
-    case 'cuenta': vCuenta(); break;
+    case 'cuenta': if (S.prueba) { await salirPrueba(); break; } vCuenta(); break;
     case 'cambiarClave': cerrarSheet(); vistaNuevaClave(); break;
     case 'cerrarSheet': cerrarSheet(); break;
     case 'salir': cerrarSheet(); stopTimer(); await sb.auth.signOut(); break;
