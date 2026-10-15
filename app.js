@@ -329,7 +329,7 @@ function vHoy() {
   ${vEventos(s, S.d.presenciales)}
   ${vProcesoGlobal(s)}
   <section class="section"><h2>Lo que toca hoy</h2><div class="card">${toca}</div></section>
-  <section class="section"><h2>Registro de hoy</h2><div class="card stack">
+  ${s.modulo_futbol ? vSemanaFutbol(ini, w, p) : `<section class="section"><h2>Registro de hoy</h2><div class="card stack">
     <div class="row"><div class="ico">${svg('pasos')}</div><label class="f grow">Pasos de hoy${objPasos(s) ? ` <span class="muted">(objetivo ${fmtNum(objPasos(s), 0)})</span>` : ''}<input id="r-pasos" type="number" inputmode="numeric" min="0" value="${r.pasos ?? ''}" placeholder="Ej. 8500"></label></div>
     ${s.modulo_nutricion ? `<div class="stack" style="gap:6px"><span class="small">Ingestas de tu plan cumplidas hoy <span class="muted">(de ${comidasDia(s)})</span></span><div class="choice ing" role="group">${[...Array(comidasDia(s) + 1)].map((_, k) => `<button data-act="ingestas" data-v="${k}" aria-pressed="${r.ingestas === k}">${k}</button>`).join('')}</div></div>` : ''}
     <label class="f">Observaciones del día<textarea id="r-obs" rows="2" placeholder="Si no llegaste al objetivo, cuéntame por qué; o cualquier cosa del día que quieras que sepa">${esc(r.observacion || '')}</textarea></label>
@@ -340,7 +340,7 @@ function vHoy() {
     ${(s.modulo_entreno ?? true) ? `<div class="stack" style="gap:8px"><div class="row"><span class="grow small">Entrenamientos</span><b class="num" style="font-family:var(--display);font-size:20px">${w.entrenos}${p?.dias_semana ? ' / ' + p.dias_semana : ''}</b></div>${tira(ini, x => w.diasEntreno.has(x) ? 'ok' : '')}</div>` : ''}
     ${s.modulo_nutricion ? vBarraIngestas(S.d.diario, s) : ''}
     <div class="stack" style="gap:8px"><div class="row"><span class="grow small">Pasos (media · objetivo ${fmtNum(objPasos(s), 0)})</span><b class="num" style="font-family:var(--display);font-size:20px;color:${w.pasosMedia == null ? 'inherit' : w.pasosMedia >= objPasos(s) ? 'var(--ok)' : 'var(--warn)'}">${w.pasosMedia == null ? '—' : fmtNum(w.pasosMedia, 0)}</b></div>${tira(ini, x => w.diasPasos.has(x) ? 'ok' : '')}</div>
-  </div></section>
+  </div></section>`}
   ${vPresenciales(S.d.servicio, S.d.presenciales, false)}
   ${S.perfil.rol !== 'coach' ? `<section class="section"><div class="card coach"><img src="icons/coach.jpg" alt="Jesús de la Obra"><div class="grow"><span class="eyebrow">Tu coach</span><h3>Jesús de la Obra</h3><div class="small muted">Dudas y ajustes por WhatsApp</div></div></div></section>` : ''}`;
 }
@@ -648,7 +648,7 @@ function vSesionCerrada() {
     <div class="card stack"><span class="eyebrow">Objetivo del día</span><div class="small">${esc(d.objetivo || '')}</div>
     <div class="kpis"><div class="kpi"><div class="l">Volumen</div><b>${esc(d.volumen || '—')}</b></div><div class="kpi"><div class="l">Intensidad</div><b>${esc(d.intensidad || '—')}</b></div><div class="kpi"><div class="l">Foco</div><b>${esc(d.foco || '—')}</b></div></div></div>
     ${v.antFecha ? `<p class="note">Debajo de cada serie ves lo que hizo la vez anterior (${esc(fCorta(v.antFecha))}).</p>` : ''}</section>
-  <section class="section">${d.bloques_sesion.map(b => vBloque(b, cont, v)).join('')}
+  <section class="section">${vBloquesDia(d, cont, v)}
   ${v.huerfanas.length ? `<div class="card stack"><span class="eyebrow">Ejercicios que ya no están en el programa</span>${v.huerfanas.map(r => `<div class="small num">Serie ${r.serie}: ${r.kg == null ? '—' : fmtNum(r.kg, 2) + ' kg'} × ${r.repeticiones ?? '—'} · RIR ${r.rir ?? '—'}</div>`).join('')}</div>` : ''}
   <button class="btn full ghost" data-act="cerrarVerSesion">Volver a la ficha</button></section>`;
 }
@@ -661,6 +661,15 @@ function imgBloque(b) {
   const ilu = (ILU[b.tipo] || '').replace('<svg', '<svg class="ilu"');
   if (!b.imagen_url) return ilu;
   return `<div class="bimg"><button class="img" data-act="verImagen" data-src="${esc(b.imagen_url)}" aria-label="Ver imagen"><img src="${esc(b.imagen_url)}" alt="${esc(b.nombre)}" loading="lazy" onerror="this.closest('.bimg').classList.add('roto')"></button>${ilu}</div>`;
+}
+/* Bloques del día; en día de partido se separan "Antes del partido" y "Después del partido" */
+const MOMENTOS = { pre: ['🏟️ Antes del partido', 'Activación: hazlo antes de salir al campo'], post: ['🏁 Después del partido', 'Recuperación: al terminar el partido'] };
+function vBloquesDia(d, cont, ro) {
+  let act = null;
+  return d.bloques_sesion.map(b => {
+    const m = MOMENTOS[b.momento] ? b.momento : null, cab = m && m !== act ? `<div class="momento ${m}"><b>${MOMENTOS[m][0]}</b><span class="small">${MOMENTOS[m][1]}</span></div>` : '';
+    act = m || act; return cab + vBloque(b, cont, ro);
+  }).join('');
 }
 function vBloque(b, cont, ro) {
   if (b.tipo !== 'fuerza') {
@@ -689,7 +698,7 @@ function vSesion() {
   const como = S.obj ? `<div class="cerrada" style="margin-bottom:10px"><span class="pill gold">${S.sesion?.editar ? 'Editando' : 'Entrenando a'}</span><span class="small grow">${esc(S.obj.nombre)}${S.sesion?.editar ? ' · sesión del ' + esc(fCorta(S.sesion.fecha)) : ''}</span><button class="btn sm ghost" data-act="${S.sesion?.editar ? 'terminar' : 'salirComo'}" style="background:#fff">${S.sesion?.editar ? 'Listo' : 'Salir'}</button></div>` : '';
   if (S.sesion?.editar) return como + `<section class="stack"><span class="eyebrow">${esc(S.dia.nombre)}</span><h1>${esc(S.dia.foco || S.dia.nombre)}</h1>${cicloSesion()}
     <p class="note">Corrige kg, repeticiones o RIR: los cambios de una serie ya marcada se guardan solos al salir de la casilla. Para añadir una serie que no apuntó, rellénala y marca el check. Para borrarla, quita el check.</p></section>
-  <section class="section">${d.bloques_sesion.map(b => vBloque(b, cont)).join('')}
+  <section class="section">${vBloquesDia(d, cont)}
   <button class="btn full dark" data-act="terminar">Listo, ver sesión</button></section>`;
   return como + `<div class="crono" id="crono">${ini ? `<span class="crono-t num" id="crono-t">${fmtCrono(Date.now() - ini)}</span><span class="small">Entrenamiento en curso</span>` : `<button class="btn sm" data-act="empezarCrono">⏱ Empezar entrenamiento</button><span class="small muted">El cronómetro mide tu sesión completa</span>`}</div>
   <section class="stack"><button class="btn sm ghost" data-act="cerrarDia" style="align-self:flex-start">← Semana</button>
@@ -697,7 +706,7 @@ function vSesion() {
     ${cicloSesion()}
     <div class="card stack"><span class="eyebrow">Objetivo de hoy</span><div class="small">${esc(d.objetivo || '')}</div>
     <div class="kpis"><div class="kpi"><div class="l">Volumen</div><b>${esc(d.volumen || '—')}</b></div><div class="kpi"><div class="l">Intensidad</div><b>${esc(d.intensidad || '—')}</b></div><div class="kpi"><div class="l">Foco</div><b>${esc(d.foco || '—')}</b></div></div></div></section>
-  <section class="section">${d.bloques_sesion.map(b => vBloque(b, cont)).join('')}
+  <section class="section">${vBloquesDia(d, cont)}
   <button class="btn full dark" data-act="terminar">Terminar sesión</button></section>`;
 }
 
@@ -1219,7 +1228,7 @@ function formPartido(id, alumnoId) {
 /* Cuestionarios: diario (carga equipo + sesión LOF + fatiga), partido (antes/durante/después) y lunes (estado tras el fin de semana) */
 function formWellness(tipo, f, alumnoId) {
   f = f || hoyISO();
-  const D = alumnoId ? { wellness: S.c.wellness.filter(x => x.alumno_id === alumnoId), partidos: S.c.partidos.filter(x => x.alumno_id === alumnoId), sesiones: [] } : S.d;
+  const D = alumnoId ? { wellness: S.c.wellness.filter(x => x.alumno_id === alumnoId), partidos: S.c.partidos.filter(x => x.alumno_id === alumnoId), sesiones: [], servicio: S.c.servicios.find(x => x.alumno_id === alumnoId) } : S.d;
   const prev = wDe(D.wellness || [], f, tipo), d = prev?.datos || {};
   const sesLof = (D.sesiones || []).find(x => x.fecha === f), pt = (D.partidos || []).find(x => x.fecha === f);
   const q = (t, h) => `<div class="stack" style="gap:6px"><b class="small">${t}</b>${h}</div>`;
@@ -1228,7 +1237,9 @@ function formWellness(tipo, f, alumnoId) {
     ${q('¿Has entrenado hoy con el equipo?', `<div class="choice" role="group" id="w-eq">${[['si', 'Sí'], ['no', 'No']].map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${(d.eq_min ? 'si' : prev ? 'no' : '') === v}">${l}</button>`).join('')}</div>
       <div id="w-eq-x" class="stack" style="gap:6px" ${d.eq_min ? '' : 'hidden'}><label class="f">Minutos<input type="number" id="w-eq-min" inputmode="numeric" value="${d.eq_min || 90}"></label><span class="small">¿Cómo de duro ha sido?</span>${escala10('w-eq-rpe', d.eq_rpe, ['1 · Muy suave', '10 · Máximo'])}</div>`)}
     ${q(sesLof ? `Tu sesión de hoy con Jesús${sesLof.duracion_min ? ` (${sesLof.duracion_min} min)` : ''}: ¿cómo de dura?` : '¿Has hecho hoy tu sesión de Jesús? ¿Cómo de dura?', `${escala10('w-lof-rpe', d.lof_rpe, ['1 · Muy suave', '10 · Máximo'])}<label class="f">Minutos de la sesión<input type="number" id="w-lof-min" inputmode="numeric" value="${d.lof_min ?? sesLof?.duracion_min ?? ''}" placeholder="Déjalo vacío si hoy no tocaba"></label>`)}
-    ${q('Fatiga general ahora mismo', escala10('w-fat', d.fatiga, ['1 · Fresco', '10 · Destrozado']))}`;
+    ${q('Fatiga general ahora mismo', escala10('w-fat', d.fatiga, ['1 · Fresco', '10 · Destrozado']))}
+    ${q('¿Cómo has dormido esta noche?', `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Me acosté a las<input type="time" id="w-dormir" value="${esc(d.dormir || '')}"></label><label class="f">Me levanté a las<input type="time" id="w-levantar" value="${esc(d.levantar || '')}"></label></div><span class="small muted">Tu horario objetivo: acostarte a las ${esc(objSueno(D.servicio || S.d?.servicio).dormir)} y levantarte a las ${esc(objSueno(D.servicio || S.d?.servicio).levantar)}.</span>`)}
+    ${q('¿Cómo ha ido hoy la alimentación?', `<div class="choice" role="group" id="w-ali">${[['si', 'Cumplida'], ['parcial', 'A medias'], ['no', 'No cumplida']].map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${d.alimentacion === v}">${l}</button>`).join('')}</div>`)}`;
   if (tipo === 'partido') cuerpo = `
     ${pt ? `<p class="small muted">${esc(pt.rival ? 'Contra ' + pt.rival : 'Partido')} · ${esc(fCorta(pt.fecha))}</p>` : ''}
     <label class="f">Minutos jugados<input type="number" id="w-min" inputmode="numeric" value="${d.minutos ?? ''}" placeholder="0 si no jugaste" required></label>
@@ -1254,6 +1265,7 @@ function formWellness(tipo, f, alumnoId) {
   const F = $('#f-w');
   F.addEventListener('click', ev => {
     const z = ev.target.closest('[data-zona]'); if (z) z.setAttribute('aria-pressed', z.getAttribute('aria-pressed') !== 'true');
+    const al = ev.target.closest('#w-ali [data-v]'); if (al) F.querySelectorAll('#w-ali [data-v]').forEach(x => x.setAttribute('aria-pressed', x === al));
     const c = ev.target.closest('#w-eq [data-v]'); if (c) { F.querySelectorAll('#w-eq [data-v]').forEach(x => x.setAttribute('aria-pressed', x === c)); $('#w-eq-x').hidden = c.dataset.v !== 'si'; }
   });
   F.addEventListener('submit', async e => {
@@ -1265,6 +1277,8 @@ function formWellness(tipo, f, alumnoId) {
       if (eq === 'si') { datos.eq_min = numero($('#w-eq-min').value) || 0; datos.eq_rpe = valEscala('w-eq-rpe'); if (!datos.eq_rpe) return $('#w-err').textContent = 'Indica cómo de duro ha sido el entreno con el equipo.'; }
       datos.lof_rpe = valEscala('w-lof-rpe'); datos.lof_min = datos.lof_rpe ? (numero($('#w-lof-min').value) || 45) : 0;
       datos.fatiga = valEscala('w-fat'); if (!datos.fatiga) return $('#w-err').textContent = 'Indica tu fatiga general.';
+      datos.dormir = $('#w-dormir').value || null; datos.levantar = $('#w-levantar').value || null;
+      datos.alimentacion = F.querySelector('#w-ali [aria-pressed="true"]')?.dataset.v || null;
     }
     if (tipo === 'partido') {
       Object.assign(datos, { minutos: numero($('#w-min').value) ?? 0, antes: valEscala('w-antes'), durante: valEscala('w-durante'), despues: valEscala('w-despues'), rpe: valEscala('w-rpe'), partido_id: pt?.id || null, gps: d.gps || [] });
@@ -1297,6 +1311,34 @@ async function subirArchivosW(input, lista, prefijo, txt, msg) {
     }
     return true;
   } catch (err) { btn.disabled = false; btn.textContent = 'Enviar a Jesús'; fallo(err, /bucket|not found/i.test(err.message || '') ? 'Falta ejecutar el Bloque 22 en Supabase.' : msg); return false; }
+}
+/* ---- Sueño: horas y horario respecto al objetivo (±30 min) ---- */
+const objSueno = srv => ({ dormir: srv?.sueno_dormir || '23:00', levantar: srv?.sueno_levantar || '08:00' });
+const minDe = h => { const [a, b] = String(h || '').split(':').map(Number); return isNaN(a) ? null : a * 60 + (b || 0); };
+const horasSueno = (d, l) => { const a = minDe(d), b = minDe(l); if (a == null || b == null) return null; let x = b - a; if (x <= 0) x += 1440; return x / 60; };
+const difMin = (a, b) => { const x = Math.abs(minDe(a) - minDe(b)) % 1440; return Math.min(x, 1440 - x); };
+function resumenSueno(w, srv, ini, fin) {
+  const o = objSueno(srv), meta = horasSueno(o.dormir, o.levantar);
+  const dias = w.filter(x => x.tipo === 'diario' && x.fecha >= ini && x.fecha <= fin && x.datos?.dormir && x.datos?.levantar);
+  const por = {}; dias.forEach(x => { const h = horasSueno(x.datos.dormir, x.datos.levantar), enH = difMin(x.datos.dormir, o.dormir) <= 30 && difMin(x.datos.levantar, o.levantar) <= 30;
+    por[x.fecha] = { h, enH, cls: enH && h >= meta - .5 ? 'ok' : h >= meta - 1 ? 'part' : 'no' }; });
+  const hs = Object.values(por).map(x => x.h);
+  return { o, meta, por, media: hs.length ? hs.reduce((a, b) => a + b, 0) / hs.length : null, enHorario: Object.values(por).filter(x => x.enH).length, n: hs.length };
+}
+function resumenAliW(w, ini, fin) {
+  const l = w.filter(x => x.tipo === 'diario' && x.fecha >= ini && x.fecha <= fin && x.datos?.alimentacion);
+  const por = Object.fromEntries(l.map(x => [x.fecha, x.datos.alimentacion]));
+  return { por, pct: l.length ? Math.round(l.reduce((t, x) => t + (x.datos.alimentacion === 'si' ? 1 : x.datos.alimentacion === 'parcial' ? .5 : 0), 0) / l.length * 100) : null };
+}
+function vSemanaFutbol(ini, w, p) {
+  const fin = sumaDias(ini, 6), W = S.d.wellness || [], su = resumenSueno(W, S.d.servicio, ini, fin), al = resumenAliW(W, ini, fin);
+  const big = (v, col) => `<b class="num" style="font-family:var(--display);font-size:20px${col ? ';color:var(--' + col + ')' : ''}">${v}</b>`;
+  return `<section class="section"><div class="section-head"><h2>Últimos 7 días</h2><span class="small muted">${esc(fCorta(ini))} – ${esc(fCorta(fin))}</span></div><div class="card stack" style="gap:18px">
+    <div class="stack" style="gap:8px"><div class="row"><span class="grow small">Entrenamientos completados</span>${big(`${w.entrenos}${p?.dias_semana ? ' / ' + p.dias_semana : ''}`)}</div>${tira(ini, x => w.diasEntreno.has(x) ? 'ok' : '')}</div>
+    <div class="stack" style="gap:8px"><div class="row"><span class="grow small">Alimentación cumplida</span>${big(al.pct == null ? '—' : al.pct + ' %', al.pct == null ? '' : al.pct >= 85 ? 'ok' : al.pct >= 60 ? 'warn' : 'bad')}</div>${tira(ini, x => ({ si: 'ok', parcial: 'part', no: 'no' }[al.por[x]] || ''))}</div>
+    <div class="stack" style="gap:8px"><div class="row"><span class="grow small">Sueño (media · objetivo ${fmtNum(su.meta)} h)</span>${big(su.media == null ? '—' : fmtNum(su.media) + ' h', su.media == null ? '' : su.media >= su.meta - .5 ? 'ok' : 'warn')}</div>${tira(ini, x => su.por[x]?.cls || '')}
+      <div class="small muted">Acostarte ${esc(su.o.dormir)} · levantarte ${esc(su.o.levantar)} → ${su.n ? `en horario ${su.enHorario} de ${su.n} noches` : 'apúntalo en tu check diario'}</div></div>
+  </div></section>`;
 }
 /* ---- Lado del coach ---- */
 const futDe = aid => ({ w: (S.c.wellness || []).filter(x => x.alumno_id === aid), p: (S.c.partidos || []).filter(x => x.alumno_id === aid) });
@@ -1333,7 +1375,7 @@ function botonesArchivos(x) {
 }
 function resumenW(x) {
   const d = x.datos || {}, m = (d.molestias || []).length ? ` · molestia: ${d.molestias.join(', ')}` : '';
-  if (x.tipo === 'diario') return `Fatiga ${d.fatiga ?? '—'}/10 · equipo ${d.eq_min ? `${d.eq_min}′ esfuerzo ${d.eq_rpe}` : 'no'} · sesión ${d.lof_rpe ? `esfuerzo ${d.lof_rpe}` : 'no'}${m}`;
+  if (x.tipo === 'diario') return `Fatiga ${d.fatiga ?? '—'}/10${d.dormir && d.levantar ? ` · sueño ${d.dormir}–${d.levantar} (${fmtNum(horasSueno(d.dormir, d.levantar))} h)` : ''}${d.alimentacion ? ` · alimentación ${{ si: 'cumplida', parcial: 'a medias', no: 'no cumplida' }[d.alimentacion]}` : ''} · equipo ${d.eq_min ? `${d.eq_min}′ esfuerzo ${d.eq_rpe}` : 'no'} · sesión ${d.lof_rpe ? `esfuerzo ${d.lof_rpe}` : 'no'}${m}`;
   if (x.tipo === 'partido') return `${d.minutos ?? 0}′ jugados · antes ${d.antes ?? '—'} · durante ${d.durante ?? '—'} · después ${d.despues ?? '—'} · esfuerzo ${d.rpe ?? '—'}${m}`;
   if (x.tipo === 'semana') return `Planificación del equipo${d.texto ? ': ' + d.texto : ''}`;
   return `Fatiga ${d.fatiga ?? '—'}/10 · dolor ${d.dolor ?? '—'} · sueño ${d.sueno ?? '—'}${d.semana ? ' · semana: ' + d.semana : ''}${m}`;
@@ -1346,6 +1388,8 @@ function vFutbolFicha(a) {
       <div class="row"><span class="md-chip">${esc(M.md || '—')}</span><div class="grow"><b>${esc(M.txt)}</b>${M.prox ? `<div class="small muted">${esc(M.prox.rival || 'Partido')} · ${esc(fCorta(M.prox.fecha))}${M.prox.hora ? ' · ' + esc(M.prox.hora) : ''}${M.prox.nivel ? ' · rival ' + esc(M.prox.nivel.toLowerCase()) : ''}</div>` : ''}</div></div>
       <div class="kpis"><div class="kpi"><div class="l">Fatiga</div><b class="num" style="color:var(--${nivelFat(uf?.v) || 'fg'})">${uf ? uf.v + '/10' : '—'}</b></div><div class="kpi"><div class="l">Carga 7 días</div><b class="num">${fmtNum(C.aguda, 0)}</b></div><div class="kpi"><div class="l">ACWR</div><b class="num" style="color:var(--${na || 'fg'})">${C.acwr != null ? fmtNum(C.acwr) : '—'}</b><div class="small muted">${ta}</div></div></div>
       ${(() => { const sw = w.filter(x => x.tipo === 'semana' && x.fecha >= sumaDias(hoyISO(), -8)).sort((a, b) => b.fecha.localeCompare(a.fecha))[0]; return sw ? `<div class="aprox small"><b>Semana del equipo · del ${esc(fCorta(sumaDias(sw.fecha, 1)))} al ${esc(fCorta(sumaDias(sw.fecha, 7)))}</b>${sw.datos?.texto ? `<div class="pre" style="margin-top:4px">${esc(sw.datos.texto)}</div>` : ''}${sw.datos?.nota ? `<div class="muted">"${esc(sw.datos.nota)}"</div>` : ''}${botonesArchivos(sw)}</div>` : ((fecha(hoyISO()).getDay() + 6) % 7 <= 1 ? '<div class="small muted">Aún no ha compartido la planificación de su equipo para esta semana.</div>' : ''); })()}
+      ${(() => { const srv = S.c.servicios.find(x => x.alumno_id === a.id), i7 = sumaDias(hoyISO(), -6), su = resumenSueno(w, srv, i7, hoyISO()), al = resumenAliW(w, i7, hoyISO());
+        return `<div class="row small" style="gap:14px;flex-wrap:wrap"><span>Sueño 7 d: <b>${su.media == null ? '—' : fmtNum(su.media) + ' h'}</b> (objetivo ${fmtNum(su.meta)} h)</span><span>En horario: <b>${su.n ? su.enHorario + '/' + su.n : '—'}</b></span><span>Alimentación: <b>${al.pct == null ? '—' : al.pct + ' %'}</b></span></div>`; })()}
       <div class="chart">${graficaCarga(w)}</div>
       <div><span class="eyebrow">Últimas respuestas</span>${ult.map(x => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(x.fecha))}</span><div class="grow small"><b>${{ diario: 'Diario', partido: 'Partido', lunes: 'Lunes', semana: 'Domingo' }[x.tipo]}</b> · ${esc(resumenW(x))}${x.datos?.nota ? `<div class="muted">"${esc(x.datos.nota)}"</div>` : ''}${botonesArchivos(x)}</div></div>`).join('') || '<div class="empty">Aún no ha respondido ningún cuestionario.</div>'}</div>
       ${p.length ? `<details><summary class="small"><b>Partidos (${p.length})</b></summary>${p.slice().reverse().map(x => `<div class="line" data-act="partido" data-al="${a.id}" data-id="${x.id}" style="cursor:pointer"><span class="small num" style="width:64px">${esc(fCorta(x.fecha))}</span><span class="small grow">${esc(x.rival || 'Partido')}${x.competicion ? ' · ' + esc(x.competicion) : ''}${x.minutos != null ? ` · ${x.minutos}′` : ''}</span></div>`).join('')}</details>` : ''}
@@ -1635,7 +1679,7 @@ function vPlanDia() {
     <span class="eyebrow">${esc(a.nombre || '')} · ${esc(d.nombre)}</span><h1>${esc(d.foco || d.nombre)}</h1>
     <div class="card stack"><span class="eyebrow">Objetivo del día</span><div class="small">${esc(d.objetivo || '')}</div>
     <div class="kpis"><div class="kpi"><div class="l">Volumen</div><b>${esc(d.volumen || '—')}</b></div><div class="kpi"><div class="l">Intensidad</div><b>${esc(d.intensidad || '—')}</b></div><div class="kpi"><div class="l">Foco</div><b>${esc(d.foco || '—')}</b></div></div></div></section>
-  <section class="section">${d.bloques_sesion.map(b => vBloque(b, cont, { plan: true })).join('')}
+  <section class="section">${vBloquesDia(d, cont, { plan: true })}
   <button class="btn full ghost" data-act="cerrarPlan">Volver</button></section>`;
 }
 function vRevision(f) {
@@ -2022,6 +2066,7 @@ function formServicio() {
     <datalist id="sv-prods">${[...new Set(['Plan Integral 3 meses', 'Plan Integral 6 meses', 'Plan Integral 10 meses', 'Plan Entrenamiento 3 meses', 'Plan Entrenamiento 6 meses', 'Bono 10 sesiones presenciales', 'Bono 15 sesiones presenciales', 'Zero to Fit · Integral', 'Élite Player', ...S.c.servicios.map(x => x.producto).filter(Boolean)])].map(v => `<option value="${esc(v)}">`).join('')}</datalist>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Inicio<input type="date" id="sv-ini" value="${s.inicio || hoyISO()}"></label><label class="f">Duración (semanas)<input type="number" id="sv-dur" min="1" max="104" value="${s.duracion_semanas || ''}" placeholder="Ej. 26"></label></div>
     <label class="f">Objetivo de pasos diarios<input type="number" id="sv-pasos" min="0" step="500" value="${s.objetivo_pasos || ''}" placeholder="${PASOS_DEF}"></label>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Hora de acostarse objetivo<input type="time" id="sv-dormir" value="${esc(s.sueno_dormir || '')}" placeholder="23:00"></label><label class="f">Hora de levantarse objetivo<input type="time" id="sv-levantar" value="${esc(s.sueno_levantar || '')}" placeholder="08:00"></label></div>
     <label class="f">Sesiones presenciales incluidas (bono)<input type="number" id="sv-pres" min="0" max="200" value="${s.sesiones_incluidas || ''}" placeholder="Ej. 15"></label>
     <div class="stack" style="gap:8px">${[['entreno', 'Entrenamiento', s.modulo_entreno ?? true], ['nutricion', 'Nutrición', s.modulo_nutricion], ['presencial', 'Sesiones presenciales', s.modulo_presencial], ['futbol', 'Elite Player · seguimiento de futbolista (wellness, partidos y carga)', s.modulo_futbol]].map(([k, l, v]) => `<label class="row small"><input type="checkbox" id="sv-${k}" ${v ? 'checked' : ''} style="width:20px;height:20px"> ${l}</label>`).join('')}</div>
     <button class="btn full" type="submit">Guardar</button></form>`);
@@ -2030,10 +2075,13 @@ function formServicio() {
     const row = { alumno_id: S.ficha.id, producto: $('#sv-prod').value.trim() || 'Servicio', inicio: $('#sv-ini').value, duracion_semanas: numero($('#sv-dur').value), sesiones_incluidas: numero($('#sv-pres').value),
       modulo_entreno: $('#sv-entreno').checked, modulo_nutricion: $('#sv-nutricion').checked, modulo_presencial: $('#sv-presencial').checked, activo: true };
     if ($('#sv-futbol').checked || s.modulo_futbol) row.modulo_futbol = $('#sv-futbol').checked;
+    if ($('#sv-dormir').value || s.sueno_dormir) row.sueno_dormir = $('#sv-dormir').value || null;
+    if ($('#sv-levantar').value || s.sueno_levantar) row.sueno_levantar = $('#sv-levantar').value || null;
     const op = numero($('#sv-pasos').value); if (op) row.objetivo_pasos = op;
     const guardar = r => s.id ? sb.from('servicios').update(r).eq('id', s.id) : sb.from('servicios').insert(r);
     let { error } = await guardar(row);
     if (error && /modulo_futbol/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 21 en Supabase.');
+    if (error && /sueno_/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 24 en Supabase.');
     if (error && /objetivo_pasos/.test(error.message || '')) { delete row.objetivo_pasos; ({ error } = await guardar(row)); toast('Para guardar el objetivo de pasos falta ejecutar el Bloque 10'); }
     if (error) return fallo(error);
     cerrarSheet(); toast('Servicio guardado'); await cargarCoach(); if (S.ficha.id === S.user.id) await cargarAlumno(S.user.id); abrirFicha(S.ficha.id);
@@ -2830,6 +2878,7 @@ function formBloque(id, diaId) {
   abrirSheet(`<form class="stack" id="f-blq"><h2>${b ? 'Editar bloque' : 'Nuevo bloque'}</h2>
     <div style="display:grid;grid-template-columns:70px 1fr;gap:8px"><label class="f">Letra<input type="text" id="b-l" maxlength="2" value="${esc(b?.letra || sig)}"></label><label class="f">Nombre<input type="text" id="b-n" value="${esc(b?.nombre || '')}" placeholder="Ej. Tren inferior" required></label></div>
     <label class="f">Tipo<select id="b-t">${[['fuerza', 'Fuerza (ejercicios con series)'], ['cardio', 'Cardio'], ['movilidad', 'Movilidad']].map(([v, l]) => `<option value="${v}" ${b?.tipo === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    <label class="f">Momento (día de partido)<select id="b-mo">${[['', 'Normal'], ['pre', 'Antes del partido'], ['post', 'Después del partido']].map(([v, l]) => `<option value="${v}" ${(b?.momento || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
     <label class="f">Indicación del bloque (superserie, circuito…)<input type="text" id="b-ag" value="${esc(b?.agrupacion || '')}" placeholder="Ej. 1 y 2 juntos (superserie). Descanso 1 minuto."></label>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="f">Duración (cardio)<input type="text" id="b-du" value="${esc(b?.duracion || '')}" placeholder="30 min"></label><label class="f">Frecuencia cardiaca<input type="text" id="b-fc" value="${esc(b?.fc_objetivo || '')}" placeholder="135–140 ppm"></label></div>
     <label class="f">Máquina<input type="text" id="b-ma" value="${esc(b?.maquina || '')}"></label>
@@ -2842,6 +2891,7 @@ function formBloque(id, diaId) {
     e.preventDefault();
     const v = k => $(k).value.trim() || null;
     const row = { letra: v('#b-l') || sig, nombre: v('#b-n') || 'Bloque', tipo: $('#b-t').value, agrupacion: v('#b-ag'), duracion: v('#b-du'), fc_objetivo: v('#b-fc'), maquina: v('#b-ma'), detalle: v('#b-de'), video_url: v('#b-vi') };
+    if ($('#b-mo').value || b?.momento) row.momento = $('#b-mo').value || null;
     const file = $('#b-img').files[0];
     if (file) {
       toast('Subiendo imagen…');
@@ -2851,7 +2901,7 @@ function formBloque(id, diaId) {
       row.imagen_url = sb.storage.from('ejercicios').getPublicUrl(ruta).data.publicUrl;
     }
     const { error } = b ? await sb.from('bloques_sesion').update(row).eq('id', b.id) : await sb.from('bloques_sesion').insert({ ...row, dia_id: dia.id });
-    if (error) return fallo(error, /imagen_url/.test(error.message || '') ? 'Falta ejecutar el Bloque 7 en Supabase para guardar imágenes de bloque.' : undefined);
+    if (error) return fallo(error, /imagen_url/.test(error.message || '') ? 'Falta ejecutar el Bloque 7 en Supabase para guardar imágenes de bloque.' : /momento/.test(error.message || '') ? 'Falta ejecutar el Bloque 24 en Supabase.' : undefined);
     cerrarSheet(); toast('Bloque guardado'); refrescarEditor();
   });
   $('#b-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez: se borrará el bloque y sus ejercicios'; return; } const { error } = await sb.from('bloques_sesion').delete().eq('id', b.id); if (error) return fallo(error, 'No se puede borrar: ese bloque ya tiene series registradas.'); cerrarSheet(); toast('Bloque eliminado'); refrescarEditor(); });
