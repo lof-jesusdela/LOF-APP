@@ -39,7 +39,8 @@ const IC = {
   ejercicios: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 15l3-3 2 2 3-4M8 8h.01"/>',
   pasos: '<path d="M8 4c1.5 0 2.5 2 2.5 4.5S9.5 13 8 13s-2.5-2-2.5-4.5S6.5 4 8 4zM16 10c1.5 0 2.5 2 2.5 4.5S17.5 19 16 19s-2.5-2-2.5-4.5S14.5 10 16 10z"/>',
   tests: '<path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/><path d="M7.5 15h9"/>',
-  cal: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>'
+  cal: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+  plantillas: '<rect x="4" y="3" width="12" height="15" rx="2"/><path d="M8 21h10a2 2 0 0 0 2-2V7M7 8h6M7 12h6"/>'
 };
 const svg = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${IC[k]}</svg>`;
 const CHK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
@@ -208,7 +209,7 @@ function vLateral(actual) {
   if (!S.c?.perfiles) return '';
   const orden = { bad: 0, warn: 1, ok: 2 };
   const als = S.c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach').map(a => ({ a, e: estadoAlumno(a) })).sort((x, y) => orden[x.e.nivel] - orden[y.e.nivel] || (x.a.nombre || '').localeCompare(y.a.nombre || ''));
-  const nav = [['alumnos', 'Alumnos'], ['ejercicios', 'Ejercicios'], ['pagos', 'Pagos']];
+  const nav = [['alumnos', 'Alumnos'], ['plantillas', 'Plantillas'], ['ejercicios', 'Ejercicios'], ['pagos', 'Pagos']];
   return `<aside class="lateral" aria-label="Navegación del coach">
     <nav class="lat-nav">${nav.map(([k, l]) => `<button data-act="ctab" data-t="${k}" ${actual === k && !S.ficha && !S.reporte && !S.editor && !S.obj ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span></button>`).join('')}<button data-act="abrirReporte" ${S.reporte && !S.reporte.alumno ? 'aria-current="page"' : ''}>${svg('checkin')}<span>Reporting semanal</span></button></nav>
     <div class="eyebrow" style="margin:18px 12px 6px">Alumnos · ${als.length}</div>
@@ -217,10 +218,10 @@ function vLateral(actual) {
 }
 function render() {
   const coach = S.modo === 'coach';
-  const tabs = coach ? [['alumnos', 'Alumnos'], ['ejercicios', 'Ejercicios'], ['pagos', 'Pagos']] : tabsAlumno();
+  const tabs = coach ? [['alumnos', 'Alumnos'], ['plantillas', 'Plantillas'], ['ejercicios', 'Ejercicios'], ['pagos', 'Pagos']] : tabsAlumno();
   const actual = coach ? S.ctab : S.tab;
   const esCoach = S.perfil.rol === 'coach';
-  const vistas = { hoy: vHoy, entreno: vEntreno, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, tests: vTests, alumnos: vAlumnos, pagos: vPagos, ejercicios: vEjercicios };
+  const vistas = { hoy: vHoy, entreno: vEntreno, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, tests: vTests, alumnos: vAlumnos, pagos: vPagos, ejercicios: vEjercicios, plantillas: vPlantillas };
   $('#app').innerHTML = `<header class="top">
       <div class="badge"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : esc(S.perfil.metodologia || 'Tu proceso')}</strong></div></div>
       <div class="row" style="gap:8px">${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
@@ -984,6 +985,7 @@ async function cargarCoach() {
   S.c = { perfiles: per.data || [], servicios: srv.data || [], sesiones: ses.data || [], checkins: chk.data || [], diario: reg.data || [], pagos: pag.data || [], programas: prg.data || [], ejercicios: ejs.data || [] };
   S.c.servicios.forEach(x => x._bloques = bloquesDe((rut.data || []).filter(r => r.alumno_id === x.alumno_id)));
   const [fa, ap] = await Promise.all([sb.from('facturas').select('*').order('numero', { ascending: false }), sb.from('ajustes_privados').select('*')]);
+  await cargarPlantillas();
   S.c.facturas = fa.data || []; S.c.facturasError = !!fa.error; S.c.fiscal = Object.fromEntries((ap.data || []).map(x => [x.clave, x.valor]));
 }
 /* Datos de una semana (lunes a domingo) de un alumno */
@@ -1077,9 +1079,98 @@ function vBloqueActual(f, a) {
   const pr = f.progFull, P = proceso(f.srv), nom = (a.nombre || '').split(' ')[0];
   const cab = P && !P.antes && !P.fuera ? `${esc(nomCiclo(P.cc))} · semana ${P.semCiclo} de ${P.cc.sem}` : 'Programa activo';
   return `<section class="section"><div class="section-head"><h2>Bloque de entrenamiento actual</h2><button class="btn sm ghost" data-act="editarPrograma" data-id="${a.id}">${pr ? '✎ Editar' : 'Crear programa'}</button></div>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="asignarPlantilla" data-al="${a.id}">＋ Asignar plantilla</button>${pr ? `<button class="btn sm ghost" data-act="guardarPlantilla" data-id="${pr.id}">Guardar como plantilla</button>` : ''}</div>
     ${pr ? `<div class="card stack"><div><span class="eyebrow">${cab}</span><h3>${esc(pr.nombre)}</h3><div class="small muted">${pr.dias.length} ${pr.dias.length === 1 ? 'entrenamiento' : 'entrenamientos'}${pr.dias_semana ? ` · ${pr.dias_semana} días por semana` : ''}</div></div>
       <div>${pr.dias.map(d => `<div class="line" data-act="verPlan" data-p="${pr.id}" data-d="${d.id}" style="cursor:pointer"><span class="pill gold num">${d.numero}</span><div class="grow"><b class="small">${esc(d.nombre)}</b>${d.foco ? ` <span class="small muted">· ${esc(d.foco)}</span>` : ''}<div class="small muted">${d.bloques_sesion.filter(b => b.tipo === 'fuerza').reduce((t, b) => t + b.ejercicios_sesion.length, 0)} ejercicios${d.bloques_sesion.some(b => b.tipo !== 'fuerza') ? ' · ' + [...new Set(d.bloques_sesion.filter(b => b.tipo !== 'fuerza').map(b => b.tipo))].join(' y ') : ''}</div></div><span class="small" style="color:var(--blue-text)">Ver ›</span></div>`).join('')}</div>
       <p class="note">Toca un día para ver su entrenamiento tal como lo ve ${esc(nom)}, sin empezar la sesión.</p></div>` : '<div class="card empty">Aún no tiene programa activo.</div>'}</section>`;
+}
+/* ---------- Plantillas de programa por tipo de alumno (programas sin alumno asignado; los alumnos no las ven) ---------- */
+const CATEGORIAS = ['Futbolistas alto rendimiento', 'Recomposición hombres', 'Recomposición mujeres', 'Salud +55 · lesiones y enfermedades', 'Otras'];
+async function cargarPlantillas() {
+  const sel = c => () => sb.from('programas').select(c + 'id,nombre,dias_semana,dias(id,numero,nombre,foco,bloques_sesion(id,tipo,ejercicios_sesion(id)))').is('alumno_id', null).order('nombre');
+  const r = await conRespaldo(sel('categoria,descripcion,'), sel(''));
+  S.c.plantillas = r.data || []; S.c.plantillasErr = r.error ? r.error.message : null;
+  S.c.plantillas.forEach(p => (p.dias || []).sort((a, b) => a.numero - b.numero));
+}
+const nEjs = p => (p.dias || []).reduce((t, d) => t + d.bloques_sesion.reduce((u, b) => u + (b.tipo === 'fuerza' ? b.ejercicios_sesion.length : 0), 0), 0);
+function vPlantillas() {
+  const l = S.c.plantillas || [], porCat = c => l.filter(p => (p.categoria || 'Otras') === c || (c === 'Otras' && !CATEGORIAS.includes(p.categoria)));
+  return `<section class="stack"><span class="eyebrow">Tu método, listo para asignar</span><h1>Plantillas</h1><p class="small muted">Un programa base por tipo de alumno. Al asignarlo se crea una copia en su perfil que personalizas (pesos, ajustes de máquina, cambios de ejercicio) sin tocar la plantilla. Los alumnos no ven esta sección.</p>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" data-act="nuevaPlantilla">＋ Nueva plantilla</button></div></section>
+  ${CATEGORIAS.map(c => { const ps = porCat(c); if (!ps.length && c === 'Otras') return ''; return `<section class="section"><h2>${esc(c)}</h2>${ps.map(p => `<div class="card stack">
+      <div class="row"><div class="grow"><h3>${esc(p.nombre)}</h3><div class="small muted">${(p.dias || []).length} ${(p.dias || []).length === 1 ? 'día' : 'días'} · ${nEjs(p)} ejercicios${p.dias_semana ? ` · ${p.dias_semana} por semana` : ''}</div></div></div>
+      ${(p.dias || []).length ? `<div class="chips">${p.dias.map(d => `<span class="pill">${esc(d.nombre || 'Día ' + d.numero)}${d.foco ? ' · ' + esc(d.foco) : ''}</span>`).join('')}</div>` : '<p class="small muted">Vacía: entra en "Editar" para añadir sus días, o pásame tu Excel y la monto.</p>'}
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="asignarPlantilla" data-id="${p.id}">Asignar a un alumno</button><button class="btn sm ghost" data-act="editarPlantilla" data-id="${p.id}">✎ Editar</button><button class="btn sm ghost" data-act="duplicarPlantilla" data-id="${p.id}">Duplicar</button><button class="btn sm ghost" data-act="borrarPlantilla" data-id="${p.id}" style="color:var(--bad)">Eliminar</button></div>
+    </div>`).join('') || '<div class="card empty">Aún no hay plantillas de este tipo.</div>'}</section>`; }).join('')}
+  ${S.c.plantillasErr ? `<p class="note">Falta ejecutar el Bloque 20 en Supabase para guardar el tipo de alumno de cada plantilla.</p>` : ''}`;
+}
+const optsPlantillas = sel => CATEGORIAS.map(c => { const ps = (S.c.plantillas || []).filter(p => (p.categoria || 'Otras') === c || (c === 'Otras' && !CATEGORIAS.includes(p.categoria))); return ps.length ? `<optgroup label="${esc(c)}">${ps.map(p => `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${esc(p.nombre)} · ${(p.dias || []).length} días</option>`).join('')}</optgroup>` : ''; }).join('');
+async function copiarPrograma(arg) {
+  const { data, error } = await sb.rpc('copiar_programa', arg);
+  if (error) throw /copiar_programa|function/i.test(error.message || '') ? new Error('Falta ejecutar el Bloque 20 en Supabase.') : error;
+  return data;
+}
+function formNuevaPlantilla() {
+  abrirSheet(`<form class="stack" id="f-np"><h2>Nueva plantilla</h2>
+    <label class="f">Nombre<input type="text" id="np-n" placeholder="Ej. Futbolistas · pretemporada 4 días" required></label>
+    <label class="f">Tipo de alumno<select id="np-c">${CATEGORIAS.map(c => `<option>${esc(c)}</option>`).join('')}</select></label>
+    <label class="f">Entrenamientos por semana<input type="number" id="np-d" min="1" max="7" value="3"></label>
+    <p class="small muted">Se crea vacía y se abre el editor para añadir días, bloques y ejercicios. También puedes partir del programa de un alumno con "Guardar como plantilla" desde su ficha.</p>
+    <button class="btn full" type="submit">Crear y editar</button></form>`);
+  $('#f-np').addEventListener('submit', async e => {
+    e.preventDefault();
+    const row = { alumno_id: null, nombre: $('#np-n').value.trim() || 'Plantilla', dias_semana: numero($('#np-d').value) || 3, activo: true, categoria: $('#np-c').value };
+    let r = await sb.from('programas').insert(row).select().single();
+    if (r.error && /categoria/.test(r.error.message || '')) { delete row.categoria; r = await sb.from('programas').insert(row).select().single(); }
+    if (r.error) return fallo(r.error);
+    cerrarSheet(); toast('Plantilla creada'); await cargarPlantillas(); await abrirEditor(null, r.data.id);
+  });
+}
+function formAsignarPlantilla(alumnoId, plantillaId) {
+  const als = S.c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach');
+  if (!(S.c.plantillas || []).length) return toast('Aún no tienes plantillas');
+  const P = alumnoId ? proceso(S.c.servicios.find(x => x.alumno_id === alumnoId)) : null;
+  abrirSheet(`<form class="stack" id="f-ap2"><h2>Asignar plantilla</h2>
+    ${alumnoId ? `<p class="small">Para <b>${esc((S.c.perfiles.find(p => p.id === alumnoId) || {}).nombre || '')}</b></p>` : `<label class="f">Alumno<select id="as-al" required><option value="">Elige alumno…</option>${als.map(a => `<option value="${a.id}">${esc(a.nombre)}</option>`).join('')}</select></label>`}
+    <label class="f">Plantilla<select id="as-p" required>${optsPlantillas(plantillaId)}</select></label>
+    <label class="f">Nombre del programa para el alumno<input type="text" id="as-n" placeholder="Ej. Ciclo 1"></label>
+    ${P?.ciclos?.length ? `<label class="f">Bloque del proceso<select id="as-c">${P.ciclos.map(c => `<option value="${c.n}" ${c.n === P.ciclo ? 'selected' : ''}>${esc(nomCiclo(c))} · ${esc(fCorta(c.ini))} – ${esc(fCorta(c.fin))}</option>`).join('')}</select></label>` : ''}
+    <label class="row small" style="gap:8px"><input type="checkbox" id="as-act" checked style="width:auto"> Pasa a ser su programa activo (el anterior queda guardado con su historial)</label>
+    <p class="err" id="as-err"></p><button class="btn full" type="submit" id="as-b">Asignar y personalizar</button></form>`);
+  $('#f-ap2').addEventListener('submit', async e => {
+    e.preventDefault();
+    const aid = alumnoId || $('#as-al').value; if (!aid) return toast('Elige el alumno');
+    const pid = +$('#as-p').value, pl = S.c.plantillas.find(p => p.id === pid), btn = $('#as-b');
+    if (!(pl?.dias || []).length && !confirm('Esta plantilla está vacía (sin días). ¿Asignarla igualmente?')) return;
+    btn.disabled = true; btn.textContent = 'Copiando…';
+    try {
+      await copiarPrograma({ origen: pid, destino: aid, nombre_nuevo: $('#as-n').value.trim() || pl?.nombre || 'Programa', categoria_nueva: null, limpiar: false, activar: $('#as-act').checked, ciclo_nuevo: $('#as-c') ? +$('#as-c').value : null });
+      cerrarSheet(); toast('Plantilla asignada: personaliza pesos y ajustes'); await cargarCoach();
+      if (S.ficha?.id === aid) await cargarProgramasFicha(S.ficha);
+      await abrirEditor(aid);
+    } catch (err) { btn.disabled = false; btn.textContent = 'Asignar y personalizar'; $('#as-err').textContent = err.message || 'No se ha podido asignar.'; console.error(err); }
+  });
+}
+function formGuardarPlantilla(progId, duplicar = false) {
+  const pl = duplicar ? (S.c.plantillas || []).find(p => p.id === progId) : null, pr = !duplicar ? (S.ficha?.programas || []).find(p => p.id === progId) : null;
+  abrirSheet(`<form class="stack" id="f-gp"><h2>${duplicar ? 'Duplicar plantilla' : 'Guardar como plantilla'}</h2>
+    <label class="f">Nombre de la plantilla<input type="text" id="gp-n" value="${esc(duplicar ? (pl?.nombre || '') + ' (copia)' : '')}" placeholder="Ej. Recomposición mujeres · 3 días" required></label>
+    <label class="f">Tipo de alumno<select id="gp-c">${CATEGORIAS.map(c => `<option ${c === pl?.categoria ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
+    ${duplicar ? '' : `<label class="row small" style="gap:8px"><input type="checkbox" id="gp-l" checked style="width:auto"> Quitar los pesos y los ajustes de máquina (son de este alumno)</label><p class="small muted">Se copia <b>${esc(pr?.nombre || 'su programa')}</b> con sus días, bloques, métodos y series. El programa del alumno no cambia.</p>`}
+    <p class="err" id="gp-err"></p><button class="btn full" type="submit" id="gp-b">Guardar plantilla</button></form>`);
+  $('#f-gp').addEventListener('submit', async e => {
+    e.preventDefault(); const btn = $('#gp-b'); btn.disabled = true; btn.textContent = 'Copiando…';
+    try {
+      await copiarPrograma({ origen: progId, destino: null, nombre_nuevo: $('#gp-n').value.trim() || 'Plantilla', categoria_nueva: $('#gp-c').value, limpiar: !!$('#gp-l')?.checked, activar: true, ciclo_nuevo: null });
+      cerrarSheet(); toast('Plantilla guardada'); await cargarPlantillas(); render();
+    } catch (err) { btn.disabled = false; btn.textContent = 'Guardar plantilla'; $('#gp-err').textContent = err.message || 'No se ha podido guardar.'; console.error(err); }
+  });
+}
+async function borrarPlantilla(id) {
+  const p = (S.c.plantillas || []).find(x => x.id === id);
+  if (!confirm(`¿Eliminar la plantilla "${p?.nombre || ''}"? Los alumnos que ya la tienen asignada conservan su copia.`)) return;
+  const { error } = await sb.from('programas').delete().eq('id', id).is('alumno_id', null); if (error) return fallo(error);
+  toast('Plantilla eliminada'); await cargarPlantillas(); render();
 }
 /* ---------- Planificación completa del alumno (solo la ve el coach) ---------- */
 const APARTADOS = {
@@ -2302,25 +2393,26 @@ function formPrueba(id) {
 
 /* ---------- Editor de programas (coach) ---------- */
 const SEL_EDITOR = 'id,nombre,dias_semana,alumno_id,dias(id,numero,nombre,objetivo,volumen,intensidad,foco,bloques_sesion(*,ejercicios_sesion(id,orden,ejercicio_id,series,repeticiones,rir,peso_ref,descanso_seg,metodo_id,ajustes,aproximacion_631,grupo,pauta,ejercicios(nombre))))';
-async function abrirEditor(alumnoId) {
-  S.editor = { alumnoId, cargando: true }; render(); window.scrollTo(0, 0);
+async function abrirEditor(alumnoId, progId = null) {
+  S.editor = { alumnoId, progId, cargando: true }; render(); window.scrollTo(0, 0);
   const [prog, met] = await Promise.all([
-    sb.from('programas').select(SEL_EDITOR).eq('alumno_id', alumnoId).eq('activo', true).order('id', { ascending: false }).limit(1),
+    progId ? conRespaldo(() => sb.from('programas').select('categoria,' + SEL_EDITOR).eq('id', progId).limit(1), () => sb.from('programas').select(SEL_EDITOR).eq('id', progId).limit(1))
+      : sb.from('programas').select(SEL_EDITOR).eq('alumno_id', alumnoId).eq('activo', true).order('id', { ascending: false }).limit(1),
     sb.from('metodos').select('id,nombre').order('nombre')
   ]);
   const p = prog.data?.[0] || null;
   if (p) { (p.dias ||= []).sort((a, b) => a.numero - b.numero); p.dias.forEach(d => { d.bloques_sesion.sort((a, b) => a.letra.localeCompare(b.letra)); d.bloques_sesion.forEach(b => b.ejercicios_sesion.sort((a, b) => a.orden - b.orden)); }); }
-  S.editor = { alumnoId, prog: p, metodos: met.data || [] }; render();
+  S.editor = { alumnoId, progId, plantilla: !!progId && !alumnoId, prog: p, metodos: met.data || [] }; render();
 }
-async function refrescarEditor() { const id = S.editor.alumnoId; await abrirEditor(id); if (id === S.user.id) await cargarAlumno(S.user.id); }
+async function refrescarEditor() { const id = S.editor.alumnoId, pid = S.editor.progId; await abrirEditor(id, pid); if (id && id === S.user.id) await cargarAlumno(S.user.id); if (!id) await cargarPlantillas(); }
 function vEditor() {
   const E = S.editor, a = S.c.perfiles.find(x => x.id === E.alumnoId) || {};
   if (E.cargando) return '<div class="empty">Cargando programa…</div>';
   const p = E.prog;
   const resumen = e => { const g = gruposDe(e.pauta); return `${e.series} × ${esc(e.repeticiones)}${e.rir != null ? ' · RIR ' + e.rir : ''}${e.peso_ref ? ' · ' + esc(e.peso_ref) : ''} · desc. ${e.descanso_seg ? seg(e.descanso_seg) : 'no'}${g.some(x => x.tramos.length > 1) ? ' · tramos' : ''}`; };
-  return `<section class="stack"><button class="btn sm ghost" data-act="cerrarEditor" style="align-self:flex-start">← Volver</button><span class="eyebrow">Programa de ${esc(a.nombre || '')}</span><h1>${p ? esc(p.nombre) : 'Sin programa'}</h1>
-    <div class="row" style="gap:8px;flex-wrap:wrap">${p ? `<button class="btn sm ghost" data-act="nuevoPrograma">Cambiar nombre</button><button class="btn sm" data-act="edDia">Añadir día</button><button class="btn sm gold" data-act="nuevoCiclo">Nuevo ciclo (copiar)</button>` : `<button class="btn sm" data-act="nuevoPrograma">Crear programa</button>`}</div>
-    <p class="note">Toca cualquier elemento para editarlo. Los cambios los ve el alumno en cuanto vuelve a abrir la app.</p></section>
+  return `<section class="stack"><button class="btn sm ghost" data-act="cerrarEditor" style="align-self:flex-start">← Volver</button><span class="eyebrow">${E.plantilla ? 'Plantilla · ' + esc(p?.categoria || 'sin categoría') : 'Programa de ' + esc(a.nombre || '')}</span><h1>${p ? esc(p.nombre) : 'Sin programa'}</h1>
+    <div class="row" style="gap:8px;flex-wrap:wrap">${p ? `<button class="btn sm ghost" data-act="nuevoPrograma">Cambiar nombre</button><button class="btn sm" data-act="edDia">Añadir día</button>${E.plantilla ? '' : '<button class="btn sm gold" data-act="nuevoCiclo">Nuevo ciclo (copiar)</button>'}` : `<button class="btn sm" data-act="nuevoPrograma">Crear programa</button>`}</div>
+    <p class="note">${E.plantilla ? 'Toca cualquier elemento para editarlo. Los cambios solo afectan a la plantilla: los alumnos que ya la tienen asignada conservan su copia.' : 'Toca cualquier elemento para editarlo. Los cambios los ve el alumno en cuanto vuelve a abrir la app.'}</p></section>
   ${p ? p.dias.map(d => `<section class="section"><div class="card stack">
     <div class="row"><div class="grow"><span class="eyebrow">Día ${d.numero}</span><h2>${esc(d.nombre || '')}</h2><div class="small muted">${esc([d.foco, d.volumen && 'vol. ' + d.volumen, d.intensidad && 'int. ' + d.intensidad].filter(Boolean).join(' · '))}</div></div><button class="btn sm ghost" data-act="edDia" data-id="${d.id}">Editar día</button></div>
     ${d.bloques_sesion.map(b => `<div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:10px">
@@ -2336,10 +2428,12 @@ function formPrograma() {
   abrirSheet(`<form class="stack" id="f-prog"><h2>${p ? 'Programa' : 'Nuevo programa'}</h2>
     <label class="f">Nombre<input type="text" id="pg-n" value="${esc(p?.nombre || '')}" placeholder="Ej. Ciclo 2 · Noviembre-Diciembre" required></label>
     <label class="f">Entrenamientos por semana<input type="number" id="pg-d" min="1" max="7" value="${p?.dias_semana || 3}"></label>
+    ${S.editor.plantilla ? `<label class="f">Tipo de alumno<select id="pg-c">${CATEGORIAS.map(c => `<option ${c === p?.categoria ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>` : ''}
     <button class="btn full" type="submit">Guardar</button></form>`);
   $('#f-prog').addEventListener('submit', async e => {
     e.preventDefault();
     const row = { nombre: $('#pg-n').value.trim() || 'Programa', dias_semana: numero($('#pg-d').value) };
+    if ($('#pg-c')) row.categoria = $('#pg-c').value;
     const { error } = p ? await sb.from('programas').update(row).eq('id', p.id) : await sb.from('programas').insert({ ...row, alumno_id: S.editor.alumnoId, activo: true });
     if (error) return fallo(error);
     cerrarSheet(); toast('Programa guardado'); await cargarCoach(); refrescarEditor();
@@ -2669,6 +2763,12 @@ document.addEventListener('click', async e => {
     case 'cerrarFicha': S.ficha = null; S.verSes = null; S.verPlan = null; S.valEd = null; render(); break;
     case 'cerrarVerSesion': S.verSes = null; render(); window.scrollTo(0, 0); break;
     case 'verPlan': verPlan(+b.dataset.p, +b.dataset.d); break;
+    case 'editarPlantilla': await abrirEditor(null, +b.dataset.id); break;
+    case 'nuevaPlantilla': formNuevaPlantilla(); break;
+    case 'asignarPlantilla': formAsignarPlantilla(b.dataset.al || null, b.dataset.id ? +b.dataset.id : null); break;
+    case 'guardarPlantilla': formGuardarPlantilla(+b.dataset.id); break;
+    case 'duplicarPlantilla': formGuardarPlantilla(+b.dataset.id, true); break;
+    case 'borrarPlantilla': await borrarPlantilla(+b.dataset.id); break;
     case 'comentarEj': formComentarioEj(+b.dataset.es); break;
     case 'editarApartado': formApartado(b.dataset.sec, b.dataset.k); break;
     case 'nuevoApartado': formApartado(b.dataset.sec, null); break;
@@ -2689,7 +2789,8 @@ document.addEventListener('click', async e => {
     case 'verImagen': abrirSheet(`<div class="stack"><img src="${esc(b.dataset.src)}" alt="" style="width:100%;border-radius:12px;background:var(--surface-2)"><button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`); break;
     case 'importarImagenes': await importarImagenes(); break;
     case 'editarPrograma': await abrirEditor(b.dataset.id); break;
-    case 'cerrarEditor': S.editor = null; S.verPlan = null; if (S.ficha && !S.ficha.cargando) await cargarProgramasFicha(S.ficha); render(); window.scrollTo(0, 0); break;
+    case 'cerrarEditor': if (S.editor?.plantilla) { S.editor = null; S.ctab = 'plantillas'; await cargarPlantillas(); render(); window.scrollTo(0, 0); break; }
+      S.editor = null; S.verPlan = null; if (S.ficha && !S.ficha.cargando) await cargarProgramasFicha(S.ficha); render(); window.scrollTo(0, 0); break;
     case 'edDia': formDia(b.dataset.id ? +b.dataset.id : null); break;
     case 'edBloque': formBloque(b.dataset.id ? +b.dataset.id : null, b.dataset.dia ? +b.dataset.dia : null); break;
     case 'edEj': formEjSesion(b.dataset.id ? +b.dataset.id : null, b.dataset.bloque ? +b.dataset.bloque : null); break;
