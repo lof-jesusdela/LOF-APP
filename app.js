@@ -2724,23 +2724,20 @@ const etiquetaDia = d => `${d.nombre}${d.foco ? ' · ' + d.foco : ''}`;
 function formPres(id) {
   const p = id ? S.ficha.pres.find(x => x.id === id) : null;
   const sesDia = f => S.ficha.ses.filter(s => s.fecha === f);
-  const dias = S.ficha.prog?.dias || [], esOtro = !!p?.tipo && !dias.some(d => etiquetaDia(d) === p.tipo);
+  const dias = S.ficha.prog?.dias || [];
   abrirSheet(`<form class="stack" id="f-pres"><h2>${p ? 'Editar sesión presencial' : 'Sesión presencial'}</h2>
     <div style="display:grid;grid-template-columns:1fr 110px;gap:8px"><label class="f">Fecha<input type="date" id="pr-f" value="${p?.fecha || hoyISO()}"></label><label class="f">Hora<input type="time" id="pr-h" value="${hhmm(p?.hora)}"></label></div>
     <label class="f">Estado<select id="pr-e">${Object.entries(PRES_EST).map(([k, l]) => `<option value="${k}" ${(p?.estado || 'programada') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-    <label class="f">Tipo de entrenamiento<select id="pr-t"><option value="">— Sin definir —</option>${dias.map(d => `<option value="${esc(etiquetaDia(d))}" ${p?.tipo === etiquetaDia(d) ? 'selected' : ''}>${esc(etiquetaDia(d))}</option>`).join('')}<option value="__otro__" ${esOtro ? 'selected' : ''}>Otro (escribir)…</option></select></label>
-    <label class="f" id="pr-tx-w" style="${esOtro ? '' : 'display:none'}">Qué vais a trabajar<input type="text" id="pr-tx" value="${esc(esOtro ? p.tipo : '')}" placeholder="Ej. Complementario: core y movilidad de cadera"></label>
+    <label class="f">Título del entrenamiento<input type="text" id="pr-tt" list="pr-dl" value="${esc(p?.tipo || '')}" placeholder="Escríbelo tú, p. ej. Complementario: core y movilidad"><datalist id="pr-dl">${dias.map(d => `<option value="${esc(etiquetaDia(d))}"></option>`).join('')}</datalist></label>
     <label class="f">Sesión hecha ese día (opcional, para vincularla)<select id="pr-s"><option value="">— Ninguna —</option></select></label>
     <label class="f">Nota (la ve el alumno)<input type="text" id="pr-n" value="${esc(p?.nota || '')}" placeholder="Ej. Trabajo de técnica en sentadilla"></label>
     <p class="note">${REGLA_24H}</p>
     <button class="btn full" type="submit">Guardar</button>${p ? '<button class="btn ghost full" type="button" id="pr-del" style="color:var(--bad)">Eliminar</button>' : ''}</form>`);
   const llenar = () => { const f = $('#pr-f').value; $('#pr-s').innerHTML = '<option value="">— Ninguno —</option>' + sesDia(f).map(s => `<option value="${s.id}" ${p?.sesion_id === s.id ? 'selected' : ''}>${esc((s.dias?.nombre || '') + ' · ' + (s.dias?.foco || ''))}</option>`).join(''); };
   llenar(); $('#pr-f').addEventListener('change', llenar);
-  $('#pr-t').addEventListener('change', () => { $('#pr-tx-w').style.display = $('#pr-t').value === '__otro__' ? '' : 'none'; });
   $('#f-pres').addEventListener('submit', async e => {
     e.preventDefault();
-    const t = $('#pr-t').value;
-    const row = { fecha: $('#pr-f').value || hoyISO(), hora: $('#pr-h').value || null, estado: $('#pr-e').value, sesion_id: +$('#pr-s').value || null, nota: $('#pr-n').value.trim() || null, tipo: t === '__otro__' ? ($('#pr-tx').value.trim() || null) : (t || null) };
+    const row = { fecha: $('#pr-f').value || hoyISO(), hora: $('#pr-h').value || null, estado: $('#pr-e').value, sesion_id: +$('#pr-s').value || null, nota: $('#pr-n').value.trim() || null, tipo: $('#pr-tt').value.trim() || null };
     const guardar = r => p ? sb.from('presenciales').update(r).eq('id', p.id) : sb.from('presenciales').insert({ ...r, alumno_id: S.ficha.id });
     let { error } = await guardar(row), aviso = null;
     if (error && /tipo/.test(error.message || '') && row.tipo) { delete row.tipo; ({ error } = await guardar(row)); aviso = 'Guardado, pero el tipo no: ejecuta el Bloque 28 en Supabase'; }
