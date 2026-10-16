@@ -215,7 +215,7 @@ function vLateral(actual) {
   return `<aside class="lateral" aria-label="Navegación del coach">
     <nav class="lat-nav">${nav.map(([k, l]) => `<button data-act="ctab" data-t="${k}" ${actual === k && !S.ficha && !S.reporte && !S.editor && !S.obj ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span></button>`).join('')}<button data-act="abrirReporte" ${S.reporte && !S.reporte.alumno ? 'aria-current="page"' : ''}>${svg('checkin')}<span>Reporting semanal</span></button></nav>
     <div class="eyebrow" style="margin:18px 12px 6px">Alumnos · ${als.length}</div>
-    <div class="lat-al">${als.map(({ a, e }) => `<button data-act="ficha" data-id="${a.id}" ${S.ficha?.id === a.id ? 'aria-current="page"' : ''}><i style="background:var(--${e.nivel})"></i><span class="grow">${esc(a.nombre)}</span>${e.control ? '<b class="small" style="color:var(--gold-ink)">●</b>' : ''}</button>`).join('')}</div>
+    <div class="lat-al">${als.map(({ a, e }) => `<button data-act="ficha" data-id="${a.id}" ${S.ficha?.id === a.id ? 'aria-current="page"' : ''}><i class="al-dot" data-act="verAlertas" data-id="${a.id}" role="button" aria-label="Ver alertas de ${esc(a.nombre)}" style="background:var(--${e.nivel})"></i><span class="grow">${esc(a.nombre)}</span>${e.control ? '<b class="small" style="color:var(--gold-ink)">●</b>' : ''}</button>`).join('')}</div>
   </aside>`;
 }
 function render() {
@@ -359,9 +359,9 @@ function vDiasSinCheck(W) {
 }
 /* ---------- Zonas de frecuencia cardiaca (visual; el detalle se abre al tocar una zona) ---------- */
 const ZONAS_FC = [
-  { n: 1, nom: 'Zona 1 · aeróbica', corto: 'Quema grasas', desde: .65, hasta: .80, col: '#7DBE6B', desc: 'Es la zona de la base y los cimientos de tu capacidad cardiovascular. La demanda es sobre todo oxidativa: grasas y metabolismo aeróbico. La fatiga que genera es muy baja y puedes mantenerla mucho tiempo, aunque la intensidad tiene que ser baja.' },
-  { n: 2, nom: 'Zona 2 · umbral anaeróbico', corto: 'Quema hidratos', desde: .80, hasta: .90, col: '#E0B43A', desc: 'Empieza a predominar el metabolismo glucolítico, es decir, los hidratos de carbono. Se reduce la participación de las grasas y el oxidativo, y el ácido láctico y la fatiga empiezan a aparecer más rápido.' },
-  { n: 3, nom: 'Zona 3 · potencia aeróbica', corto: 'Potencia', desde: .90, hasta: 1, col: '#D9473B', desc: 'Zona de potencia: el cuerpo no puede mantenerla más que unos pocos segundos o minutos. El metabolismo es casi 100 % anaeróbico y depende de tu VO2max, la capacidad de transportar y absorber oxígeno. Es el motor de tu cuerpo, frente a la zona 1, que es el depósito.' }
+  { n: 1, nom: 'Zona 1 · predominio aeróbico', corto: 'Predominio aeróbico', desde: .65, hasta: .80, col: '#7DBE6B', desc: 'Es la zona de la base y los cimientos de tu capacidad cardiovascular. La demanda es sobre todo oxidativa: grasas y metabolismo aeróbico. La fatiga que genera es muy baja y puedes mantenerla mucho tiempo, aunque la intensidad tiene que ser baja.' },
+  { n: 2, nom: 'Zona 2 · umbral', corto: 'Umbral', desde: .80, hasta: .90, col: '#E0B43A', desc: 'Empieza a predominar el metabolismo glucolítico, es decir, los hidratos de carbono. Se reduce la participación de las grasas y el oxidativo, y el ácido láctico y la fatiga empiezan a aparecer más rápido.' },
+  { n: 3, nom: 'Zona 3 · predominio anaeróbico', corto: 'Predominio anaeróbico', desde: .90, hasta: 1, col: '#D9473B', desc: 'Zona de potencia: el cuerpo no puede mantenerla más que unos pocos segundos o minutos. El metabolismo es casi 100 % anaeróbico y depende de tu VO2max, la capacidad de transportar y absorber oxígeno. Es el motor de tu cuerpo, frente a la zona 1, que es el depósito.' }
 ];
 const fcMaxDe = () => {
   const pr = (S.d?.valoraciones || []).flatMap(v => v.pruebas || []).filter(p => p.tipo === 'fc');
@@ -372,6 +372,7 @@ function vZonasFC() {
   const mx = fcMaxDe(); if (!mx) return '';
   const ppm = x => Math.round(mx * x);
   return `<section class="section"><div class="card stack zonas-fc"><div class="row"><span class="eyebrow grow">Tus zonas de frecuencia cardiaca</span><span class="pill num">FC máx ${mx} ppm</span></div>
+    <img src="img/zonas-fc.jpg" alt="Gráfico de zonas: Z1 hasta el 80 %, Z2 del 80 al 87 %, Z3 del 87 al 100 % de la FC máxima" loading="lazy" style="width:100%;border-radius:12px;display:block">
     <div class="zonas-bar" role="group" aria-label="Zonas de frecuencia cardiaca">${ZONAS_FC.map(z => `<button type="button" data-act="zonaFC" data-z="${z.n}" style="background:${z.col}" aria-label="${esc(z.nom)}, de ${ppm(z.desde)} a ${ppm(z.hasta)} ppm"><b>${z.n}</b><span class="num">${ppm(z.desde)}–${ppm(z.hasta)}</span></button>`).join('')}</div>
     <div class="zonas-lab">${ZONAS_FC.map(z => `<span>${esc(z.corto)}</span>`).join('')}</div>
     <p class="small muted">Toca una zona para saber qué significa.</p></div></section>`;
@@ -397,6 +398,7 @@ function vHoy() {
     <div class="small muted">${esc(s.producto || 'Tu proceso')}${(() => { const P = proceso(s); return P && !P.antes && !P.fuera ? ` · Semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''; })()}</div>
     ${objetivoDe(S.d.ruta) ? `<div style="border-top:1px solid rgba(255,255,255,.14);padding-top:12px" class="stack"><span class="eyebrow">Tu objetivo</span><div class="small">${esc(objetivoDe(S.d.ruta))}</div></div>` : ''}
   </section>
+  ${S.perfil.rol !== 'coach' ? vChatCoach() : ''}
   ${tocaCheckin() ? `<section class="section"><div class="card aviso-chk stack"><div class="row"><div class="ico gold">${svg('checkin')}</div><div class="grow"><b>Toca rellenar tu check-in</b><div class="small muted">Es fin de semana: cuéntale a Jesús cómo ha ido tu semana.</div></div></div><button class="btn full" data-act="tab" data-t="checkin">Rellenar check-in</button>${'Notification' in window && Notification.permission === 'default' ? '<button class="btn ghost full" data-act="permisoAvisos">Activar avisos en el móvil</button>' : ''}</div></section>` : ''}
   ${s.modulo_futbol ? vFutbolHoy() : ''}
   ${vEventos(s, S.d.presenciales)}
@@ -409,7 +411,7 @@ function vHoy() {
     <div class="stack" style="gap:8px"><div class="row"><span class="grow small">Pasos (media · objetivo ${fmtNum(objPasos(s), 0)})</span><b class="num" style="font-family:var(--display);font-size:20px;color:${w.pasosMedia == null ? 'inherit' : w.pasosMedia >= objPasos(s) ? 'var(--ok)' : 'var(--warn)'}">${w.pasosMedia == null ? '—' : fmtNum(w.pasosMedia, 0)}</b></div>${tira(ini, x => w.diasPasos.has(x) ? 'ok' : '')}</div>
   </div></section>`}
   ${vPresenciales(S.d.servicio, S.d.presenciales, false)}
-  ${S.perfil.rol !== 'coach' ? `<section class="section"><div class="card coach"><img src="icons/coach.jpg" alt="Jesús de la Obra"><div class="grow"><span class="eyebrow">Tu coach</span><h3>Jesús de la Obra</h3><div class="small muted">Dudas y ajustes por WhatsApp</div></div></div></section>` : ''}`;
+  `;
 }
 
 async function guardarDiario(extra = {}) {
@@ -916,6 +918,10 @@ async function guardarSesion() {
 function vNutri() { return `<section class="stack"><span class="eyebrow">Tu plan de alimentación</span><h1>Nutrición</h1></section><div class="section card empty">Tu plan de alimentación aparecerá aquí muy pronto.</div>`; }
 
 /* ---------- Progreso ---------- */
+document.addEventListener('click', e => {
+  const h = e.target.closest && e.target.closest('.spark-hit'); if (!h) return;
+  const t = h.closest('.spark-w')?.querySelector('.spark-tip'); if (t) { t.textContent = h.dataset.tip; t.classList.add('on'); }
+});
 function spark(pts, { unit = '', dec = 1, color = 'var(--blue)' } = {}) {
   if (pts.length < 2) return '<p class="small muted">Hace falta al menos dos mediciones para ver la evolución.</p>';
   const vals = pts.map(p => p.v), W = 320, H = 120, pl = 8, pr = 50, pt = 14, pb = 24;
@@ -927,7 +933,8 @@ function spark(pts, { unit = '', dec = 1, color = 'var(--blue)' } = {}) {
   let ult = -99; const xl = x(pts.length - 1);
   const ver = pts.map((p, i) => { const ok = i === 0 || i === pts.length - 1 || (x(i) - ult >= 64 && xl - x(i) >= 64); if (ok) ult = x(i); return ok; });
   const lbl = pts.map((p, i) => ver[i] ? `<text x="${x(i)}" y="${H - 6}" fill="var(--muted)" font-size="10" text-anchor="${i === 0 ? 'start' : i === pts.length - 1 ? 'end' : 'middle'}">${esc(fecha(p.f).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric', year: '2-digit' }))}</text>` : '').join('');
-  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolución">${grid}<polygon points="${x(0)},${H - pb} ${line} ${x(pts.length - 1)},${H - pb}" fill="${color}" opacity=".1"/><polyline points="${line}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>${pts.map((p, i) => `<circle cx="${x(i)}" cy="${y(p.v)}" r="${i === pts.length - 1 ? 4.5 : 2.5}" fill="${color}" stroke="var(--surface)" stroke-width="1.5"/>`).join('')}${lbl}</svg>`;
+  const hit = pts.map((p, i) => `<circle class="spark-hit" cx="${x(i)}" cy="${y(p.v)}" r="14" fill="transparent" data-tip="${esc(fecha(p.f).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }) + ': ' + fmtNum(p.v, dec) + unit)}"/>`).join('');
+  return `<div class="spark-w"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolución">${grid}<polygon points="${x(0)},${H - pb} ${line} ${x(pts.length - 1)},${H - pb}" fill="${color}" opacity=".1"/><polyline points="${line}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>${pts.map((p, i) => `<circle cx="${x(i)}" cy="${y(p.v)}" r="${i === pts.length - 1 ? 4.5 : 2.5}" fill="${color}" stroke="var(--surface)" stroke-width="1.5"/>`).join('')}${lbl}${hit}</svg><div class="spark-tip small muted">Toca un punto para ver su dato</div></div>`;
 }
 function serie(med, campo) { return med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)).filter(m => m[campo] != null).map(m => ({ f: m.fecha, v: Number(m[campo]) })); }
 function delta(pts) { if (pts.length < 2) return null; return pts[pts.length - 1].v - pts[0].v; }
@@ -1117,6 +1124,13 @@ function estadoAlumno(a) {
   const control = revisionPendiente(srv, (c.revisiones || []).filter(r => r.alumno_id === a.id), c.revisionesErr) || (c.revisionesErr ? controlEnSemana(srv, lunes) : null);
   if (control?.atrasada) { sube('warn'); motivos.push(`Revisión mensual ${control.n} pendiente desde el ${fCorta(control.fecha)}`); }
   return { nivel, motivos, ult, ultSes: ses[0], dpw, semana, mes, control, ses7: semana };
+}
+function verAlertas(id) {
+  const a = S.c.perfiles.find(x => x.id === id); if (!a) return;
+  const e = estadoAlumno(a), lab = { ok: 'En camino', warn: 'Atención', bad: 'Revisar' };
+  abrirSheet(`<div class="stack"><span class="eyebrow">Alertas</span><h2>${esc(a.nombre)}</h2><span class="pill ${e.nivel}" style="align-self:flex-start">${lab[e.nivel]}</span>
+    ${e.motivos.length ? `<ul class="alertas-lista">${e.motivos.map(m => `<li>${esc(m)}</li>`).join('')}</ul>` : '<p class="small muted">Ahora mismo no tiene ninguna alerta.</p>'}
+    <button class="btn full" data-act="ficha" data-id="${a.id}">Abrir su ficha</button></div>`);
 }
 function vAntiguos() {
   const ant = S.c.perfiles.filter(p => p.activo === false && p.rol !== 'coach');
@@ -2002,6 +2016,14 @@ async function verSesionLista(id) {
 }
 /* El alumno online se mide él mismo una vez al mes */
 const MEDIDAS_ALUMNO = [['cuello', 'Cuello', 'incluida la nuez'], ['cintura', 'Cintura', 'bajo la última costilla'], ['abd_bajo', 'Abdomen bajo', 'a la altura del ombligo'], ['cadera', 'Cadera', 'parte más ancha del glúteo'], ['muslo_d', 'Muslo derecho', 'parte más ancha'], ['muslo_i', 'Muslo izquierdo', 'parte más ancha'], ['gemelo_d', 'Gemelo derecho', 'parte más ancha'], ['gemelo_i', 'Gemelo izquierdo', 'parte más ancha'], ['hombros', 'Anchura de hombros', 'medición más ancha'], ['brazo_d', 'Brazo contraído', 'parte más ancha']];
+/* Una medición por alumno y día: si ya existe ese día, se actualiza en vez de duplicarla */
+async function guardarMedicion(row) {
+  const { data: ya, error: e0 } = await sb.from('mediciones').select('id').eq('alumno_id', row.alumno_id).eq('fecha', row.fecha)
+    .or('es_objetivo.is.null,es_objetivo.eq.false').order('id').limit(1);
+  if (e0) return { error: e0 };
+  if (ya?.length) { const { alumno_id, fecha, ...resto } = row; return sb.from('mediciones').update(resto).eq('id', ya[0].id); }
+  return sb.from('mediciones').insert(row);
+}
 function formMisMedidas() {
   abrirSheet(`<form class="stack" id="f-mm"><h2>Mis medidas</h2><p class="small">Mídete con una cinta métrica, en cm, a primera hora y antes de comer. Deja vacío lo que no puedas medir.</p>
     <label class="f">Fecha<input type="date" id="mm-f" value="${hoyISO()}" max="${hoyISO()}"></label>
@@ -2013,13 +2035,14 @@ function formMisMedidas() {
   enganchaCalcGrasa($('#f-mm'), S.perfil);
   $('#f-mm').addEventListener('submit', async e => {
     e.preventDefault();
+    const bt = $('#f-mm [type=submit]'); if (bt.disabled) return; bt.disabled = true;
     const row = { alumno_id: S.user.id, fecha: $('#mm-f').value || hoyISO() };
     document.querySelectorAll('#f-mm [data-campo]').forEach(i => { const v = numero(i.value); if (v != null) row[i.dataset.campo] = v; });
-    if (Object.keys(row).length < 3) return toast('Escribe al menos una medida');
+    if (Object.keys(row).length < 3) { bt.disabled = false; return toast('Escribe al menos una medida'); }
     await guardarDatosPerfil($('#f-mm'), S.user.id, S.perfil);
     const fm = $('#f-mm'); if (fm.dataset.grasaPct) { row.grasa_pct = +fm.dataset.grasaPct; if (fm.dataset.grasaKg) row.grasa_kg = +fm.dataset.grasaKg; }
-    const { error } = await sb.from('mediciones').insert(row);
-    if (error) return fallo(error, /row-level|policy/.test(error.message || '') ? 'Falta ejecutar el Bloque 12 en Supabase.' : undefined);
+    const { error } = await guardarMedicion(row);
+    if (error) { bt.disabled = false; return fallo(error, /row-level|policy/.test(error.message || '') ? 'Falta ejecutar el Bloque 12 en Supabase.' : undefined); }
     cerrarSheet(); toast('Medidas guardadas. ¡Gracias!'); await cargarAlumno(S.user.id); render();
   });
 }
@@ -2037,12 +2060,13 @@ function formMedicion() {
   enganchaCalcGrasa(fm, per, (pct, peso) => { if (manual) return; fm.querySelector('#m-grasa_pct').value = pct != null ? String(pct).replace('.', ',') : ''; fm.querySelector('#m-grasa_kg').value = pct != null && peso ? String(Math.round(peso * pct) / 100).replace('.', ',') : ''; });
   fm.addEventListener('submit', async e => {
     e.preventDefault();
+    const bt = fm.querySelector('[type=submit]'); if (bt.disabled) return; bt.disabled = true;
     await guardarDatosPerfil(fm, S.ficha.id, per);
     const row = { alumno_id: S.ficha.id, fecha: $('#m-fecha').value };
     fm.querySelectorAll('[data-campo]').forEach(i => { const v = numero(i.value); if (v != null) row[i.dataset.campo] = v; });
     if (row.grasa_pct != null && row.grasa_kg == null && row.peso) row.grasa_kg = Math.round(row.peso * row.grasa_pct) / 100;
-    const { error } = await sb.from('mediciones').insert(row);
-    if (error) return fallo(error);
+    const { error } = await guardarMedicion(row);
+    if (error) { bt.disabled = false; return fallo(error); }
     cerrarSheet(); toast('Medición guardada'); await abrirFicha(S.ficha.id); abrirSub('composicion');
   });
 }
@@ -2436,6 +2460,7 @@ function formFactura(pagoId, facId) {
   $('#f-fac').addEventListener('submit', async e => {
     e.preventDefault();
     const total = numero($('#fa-t').value); if (!total) return toast('Indica el importe');
+    if (!fe) { const bt = $('#f-fac [type=submit]'); if (!bt.dataset.ok) { bt.dataset.ok = 1; bt.textContent = `¿Seguro? Pulsa otra vez para generar la factura ${$('#fa-n').value.trim()}`; return; } }
     const base = Math.round(total / 1.21 * 100) / 100, alumno = fe ? fe.alumno_id : p?.alumno_id || $('#fa-al')?.value || null;
     const row = { numero: $('#fa-n').value.trim(), fecha: $('#fa-f').value || hoyISO(), alumno_id: alumno, pago_id: fe ? fe.pago_id : p?.id || null, cliente_nombre: $('#fa-cn').value.trim(), cliente_nif: $('#fa-ci').value.trim() || null, concepto: $('#fa-co').value.trim(), base, iva_pct: 21, iva: Math.round((total - base) * 100) / 100, total, forma_pago: $('#fa-fo').value, fecha_pago: $('#fa-fp').value || null };
     const { data, error } = fe ? await sb.from('facturas').update(row).eq('id', fe.id).select().single() : await sb.from('facturas').insert(row).select().single();
@@ -2601,7 +2626,8 @@ const fNum = iso => { const d = fecha(iso); return `${d.getDate()}/${d.getMonth(
 const REGLA_24H = 'Si se avisa con menos de 24 horas de antelación y no está justificado, la sesión cuenta como hecha.';
 function datosPres(srv, lista) {
   const hechas = lista.filter(cuentaPres).sort(ordPres), total = srv?.sesiones_incluidas || 0;
-  return { total, hechas, quedan: Math.max(0, total - hechas.length), prox: lista.filter(p => p.estado === 'programada' && p.fecha >= hoyISO()).sort(ordPres) };
+  const prox = lista.filter(p => p.estado === 'programada' && p.fecha >= hoyISO()).sort(ordPres);
+  return { total, hechas, prox, quedan: Math.max(0, total - hechas.length - prox.length) }; // quedan = sin usar ni reservar
 }
 function vPresenciales(srv, lista, coach) {
   lista = lista || [];
@@ -2610,11 +2636,11 @@ function vPresenciales(srv, lista, coach) {
   const cajas = [...Array(n)].map((_, k) => { const p = ocup[k];
     if (p) return `<button class="caja ${p.estado}" data-act="verPres" data-id="${p.id}" aria-label="Sesión ${k + 1}, ${esc(fLarga(p.fecha))}"><b>${k + 1}</b><span>${fNum(p.fecha)}</span></button>`;
     return `<button class="caja libre" data-act="${coach ? 'nuevaPres' : 'reservarPres'}" aria-label="Sesión ${k + 1}: ${coach ? 'programar' : 'reservar'}"><b>${k + 1}</b><span>${coach ? '＋' : 'Reservar'}</span></button>`; }).join('');
-  const reservar = !coach && D.total && D.quedan > D.prox.length ? `<button class="btn full" data-act="reservarPres">Reservar entrenamiento con Jesús</button>` : '';
+  const reservar = !coach && D.total && D.quedan > 0 ? `<button class="btn full" data-act="reservarPres">Reservar entrenamiento con Jesús</button>` : '';
   return `<section class="section"><div class="section-head"><h2>${coach ? 'Entrenamientos presenciales' : 'Tus entrenamientos conmigo'}</h2>${coach ? '<button class="btn sm" data-act="nuevaPres">＋ Añadir</button>' : ''}</div><div class="card stack">
     ${D.total ? `<div class="row"><div class="grow"><b class="num" style="font-family:var(--display);font-size:26px">${D.hechas.length} de ${D.total}</b><div class="small muted">sesiones hechas</div></div><div style="text-align:right"><b class="num" style="font-family:var(--display);font-size:26px;color:var(--blue)">${D.quedan}</b><div class="small muted">${D.quedan === 1 ? 'queda' : 'quedan'}</div></div></div>` : `<p class="small muted">${coach ? 'Indica en "Servicio → Editar" cuántas sesiones presenciales incluye su bono.' : 'Jesús indicará aquí tu bono de sesiones.'}</p>`}
     ${n ? `<div class="cajas">${cajas}</div><div class="row small muted" style="gap:12px;flex-wrap:wrap"><span><i class="lp hecha"></i> Hecha</span><span><i class="lp tarde"></i> Aviso &lt; 24 h (cuenta)</span><span><i class="lp prog"></i> Reservada</span><span><i class="lp libre"></i> Por usar</span></div>` : ''}
-    <div class="stack" style="gap:6px"><span class="eyebrow">Próximos entrenamientos</span>${D.prox.map(p => `<div class="line" data-act="${coach ? 'editarPres' : 'verPres'}" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">${esc(fLarga(p.fecha))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</b>${p.nota ? `<div class="small muted">${esc(p.nota)}</div>` : ''}</div><span class="small" style="color:var(--blue-text)">${coach ? 'Editar' : 'Ver / cancelar'} ›</span></div>`).join('') || '<div class="small muted">No hay ninguno programado.</div>'}</div>
+    <div class="stack" style="gap:6px"><span class="eyebrow">Próximos entrenamientos</span>${D.prox.map(p => `<div class="line" data-act="${coach ? 'editarPres' : 'verPres'}" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">${esc(fLarga(p.fecha))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</b>${p.tipo ? `<div class="small"><b>${esc(p.tipo)}</b></div>` : ''}${p.nota ? `<div class="small muted">${esc(p.nota)}</div>` : ''}</div><span class="small" style="color:var(--blue-text)">${coach ? 'Editar' : 'Ver / cancelar'} ›</span></div>`).join('') || '<div class="small muted">No hay ninguno programado.</div>'}</div>
     ${D.hechas.length ? `<div class="stack" style="gap:6px"><span class="eyebrow">Ya canjeados</span>${D.hechas.slice().reverse().map(p => `<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><span class="caja mini ${p.estado}"><b>${ocup.indexOf(p) + 1}</b></span><div class="grow"><b class="small">${esc(fLarga(p.fecha))}</b><div class="small muted">${esc(qEntreno(p, coach) || (p.estado === 'tarde' ? 'Aviso con menos de 24 h' : p.nota || 'Sesión presencial'))}</div></div><span class="small muted">›</span></div>`).join('')}</div>` : ''}
     ${reservar}
     ${!coach && D.prox.length ? `<button class="btn ghost full" data-act="cancelarPresLista">Cancelar una sesión reservada</button>` : ''}
@@ -2644,6 +2670,9 @@ function verPres(id) {
 const momentoPres = p => new Date(`${p.fecha}T${hhmm(p.hora) || '00:00'}:00`);
 const faltanHoras = p => (momentoPres(p) - Date.now()) / 36e5;
 /* Acepta el número o el enlace de WhatsApp (wa.me, api.whatsapp.com o wa.link) */
+function vChatCoach() {
+  return `<section class="section"><a class="btn gold full chat-coach" href="${esc(waJesus('Hola Jesús, '))}" target="_blank" rel="noopener">💬 Escribir a Jesús por chat</a></section>`;
+}
 const waJesus = txt => {
   const v = String(S.whatsapp || '').trim();
   const m = v.match(/wa\.me\/\+?(\d{6,})/) || v.match(/phone=\+?(\d{6,})/) || (/^[\d\s+()-]+$/.test(v) ? [0, v.replace(/\D/g, '')] : null);
@@ -2687,28 +2716,36 @@ function vCalendarioPres() {
   const mes = fecha(ini).toLocaleDateString('es-ES', { month: 'long' }), mes2 = fecha(dias[27]).toLocaleDateString('es-ES', { month: 'long' });
   return `<section class="section"><div class="section-head"><h2>Tus sesiones con Jesús</h2><span class="small muted">${esc(mes === mes2 ? mes : mes + ' – ' + mes2)}</span></div><div class="card stack">
     <div class="cal">${['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(x => `<span class="cal-h">${x}</span>`).join('')}${dias.map(celda).join('')}</div>
-    ${l.length ? l.map(p => `<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">${esc(fLarga(p.fecha))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</b><div class="small muted">Entrenamiento presencial con Jesús</div></div><span class="small" style="color:var(--blue-text)">›</span></div>`).join('') : '<p class="small muted">No tienes sesiones reservadas.</p>'}
+    ${l.length ? l.map(p => `<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">${esc(fLarga(p.fecha))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</b><div class="small muted">${esc(p.tipo || 'Entrenamiento presencial con Jesús')}</div></div><span class="small" style="color:var(--blue-text)">›</span></div>`).join('') : '<p class="small muted">No tienes sesiones reservadas.</p>'}
     ${S.obj ? '' : '<button class="btn sm" data-act="reservarPres" style="align-self:flex-start">Reservar sesión</button>'}
   </div></section>`;
 }
+const etiquetaDia = d => `${d.nombre}${d.foco ? ' · ' + d.foco : ''}`;
 function formPres(id) {
   const p = id ? S.ficha.pres.find(x => x.id === id) : null;
   const sesDia = f => S.ficha.ses.filter(s => s.fecha === f);
+  const dias = S.ficha.prog?.dias || [], esOtro = !!p?.tipo && !dias.some(d => etiquetaDia(d) === p.tipo);
   abrirSheet(`<form class="stack" id="f-pres"><h2>${p ? 'Editar sesión presencial' : 'Sesión presencial'}</h2>
     <div style="display:grid;grid-template-columns:1fr 110px;gap:8px"><label class="f">Fecha<input type="date" id="pr-f" value="${p?.fecha || hoyISO()}"></label><label class="f">Hora<input type="time" id="pr-h" value="${hhmm(p?.hora)}"></label></div>
     <label class="f">Estado<select id="pr-e">${Object.entries(PRES_EST).map(([k, l]) => `<option value="${k}" ${(p?.estado || 'programada') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-    <label class="f">Entrenamiento de ese día<select id="pr-s"><option value="">— Ninguno —</option></select></label>
+    <label class="f">Tipo de entrenamiento<select id="pr-t"><option value="">— Sin definir —</option>${dias.map(d => `<option value="${esc(etiquetaDia(d))}" ${p?.tipo === etiquetaDia(d) ? 'selected' : ''}>${esc(etiquetaDia(d))}</option>`).join('')}<option value="__otro__" ${esOtro ? 'selected' : ''}>Otro (escribir)…</option></select></label>
+    <label class="f" id="pr-tx-w" style="${esOtro ? '' : 'display:none'}">Qué vais a trabajar<input type="text" id="pr-tx" value="${esc(esOtro ? p.tipo : '')}" placeholder="Ej. Complementario: core y movilidad de cadera"></label>
+    <label class="f">Sesión hecha ese día (opcional, para vincularla)<select id="pr-s"><option value="">— Ninguna —</option></select></label>
     <label class="f">Nota (la ve el alumno)<input type="text" id="pr-n" value="${esc(p?.nota || '')}" placeholder="Ej. Trabajo de técnica en sentadilla"></label>
     <p class="note">${REGLA_24H}</p>
     <button class="btn full" type="submit">Guardar</button>${p ? '<button class="btn ghost full" type="button" id="pr-del" style="color:var(--bad)">Eliminar</button>' : ''}</form>`);
   const llenar = () => { const f = $('#pr-f').value; $('#pr-s').innerHTML = '<option value="">— Ninguno —</option>' + sesDia(f).map(s => `<option value="${s.id}" ${p?.sesion_id === s.id ? 'selected' : ''}>${esc((s.dias?.nombre || '') + ' · ' + (s.dias?.foco || ''))}</option>`).join(''); };
   llenar(); $('#pr-f').addEventListener('change', llenar);
+  $('#pr-t').addEventListener('change', () => { $('#pr-tx-w').style.display = $('#pr-t').value === '__otro__' ? '' : 'none'; });
   $('#f-pres').addEventListener('submit', async e => {
     e.preventDefault();
-    const row = { fecha: $('#pr-f').value || hoyISO(), hora: $('#pr-h').value || null, estado: $('#pr-e').value, sesion_id: +$('#pr-s').value || null, nota: $('#pr-n').value.trim() || null };
-    const { error } = p ? await sb.from('presenciales').update(row).eq('id', p.id) : await sb.from('presenciales').insert({ ...row, alumno_id: S.ficha.id });
+    const t = $('#pr-t').value;
+    const row = { fecha: $('#pr-f').value || hoyISO(), hora: $('#pr-h').value || null, estado: $('#pr-e').value, sesion_id: +$('#pr-s').value || null, nota: $('#pr-n').value.trim() || null, tipo: t === '__otro__' ? ($('#pr-tx').value.trim() || null) : (t || null) };
+    const guardar = r => p ? sb.from('presenciales').update(r).eq('id', p.id) : sb.from('presenciales').insert({ ...r, alumno_id: S.ficha.id });
+    let { error } = await guardar(row), aviso = null;
+    if (error && /tipo/.test(error.message || '') && row.tipo) { delete row.tipo; ({ error } = await guardar(row)); aviso = 'Guardado, pero el tipo no: ejecuta el Bloque 28 en Supabase'; }
     if (error) return fallo(error, /presenciales/.test(error.message || '') ? 'Falta ejecutar el Bloque 8 en Supabase.' : undefined);
-    cerrarSheet(); toast('Guardado'); await cargarPres();
+    cerrarSheet(); toast(aviso || 'Guardado'); await cargarPres();
   });
   $('#pr-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para eliminarla'; return; } const { error } = await sb.from('presenciales').delete().eq('id', p.id); if (error) return fallo(error); cerrarSheet(); toast('Eliminada'); await cargarPres(); });
 }
@@ -2743,7 +2780,7 @@ function cargarCalendly() {
 }
 async function reservarPres() {
   const D = datosPres(S.d.servicio, S.d.presenciales || []);
-  if (D.total && D.quedan <= D.prox.length) return toast('Ya tienes reservadas todas las sesiones de tu bono');
+  if (D.total && D.quedan <= 0) return toast('Ya tienes reservadas todas las sesiones de tu bono');
   if (!S.calendly) return abrirSheet(`<div class="stack"><h2>Reservar entrenamiento</h2><p class="small">Escríbele a Jesús por WhatsApp para elegir día y hora. En cuanto la apunte, aparecerá aquí.</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`);
   try { await cargarCalendly(); } catch (e) { window.open(S.calendly, '_blank'); return; }
   S.esperaCal = true;
@@ -2771,7 +2808,7 @@ function formEntrenarCon(alumnoId) {
   const pres = S.ficha?.id === alumnoId ? (S.ficha.pres || []) : [], D = datosPres(srv, pres), conBono = srv?.modulo_presencial || D.total;
   abrirSheet(`<form class="stack" id="f-ec"><h2>Entrenar con ${esc((a.nombre || '').split(' ')[0])}</h2>
     <label class="f">Fecha del entrenamiento<input type="date" id="ec-f" value="${hoyISO()}"></label>
-    ${conBono ? `<label class="row small"><input type="checkbox" id="ec-p" checked style="width:20px;height:20px"> Canjea 1 sesión presencial${D.total ? ` (le quedan ${D.quedan} de ${D.total})` : ''}</label><p class="small muted" id="ec-info"></p>` : ''}
+    ${conBono ? `<label class="row small"><input type="checkbox" id="ec-p" checked style="width:20px;height:20px"> Canjea 1 sesión presencial${D.total ? ` (le quedan ${D.total - D.hechas.length} de ${D.total})` : ''}</label><p class="small muted" id="ec-info"></p>` : ''}
     <button class="btn full" type="submit">Empezar</button></form>`);
   const info = () => { const f = $('#ec-f').value, pg = pres.find(p => p.estado === 'programada' && p.fecha === f); if ($('#ec-info')) $('#ec-info').textContent = pg ? `Tiene una sesión programada ese día${pg.hora ? ' a las ' + hhmm(pg.hora) : ''}: se marcará como hecha.` : ''; };
   info(); $('#ec-f').addEventListener('change', info);
@@ -2828,7 +2865,7 @@ const PLANTILLAS = {
     protocolo: 'Para valorar tu fuerza máxima a 1 sola repetición hace falta una buena aproximación en cada máquina.\n\nAproximación:\n1º Unas 8 repeticiones con un peso medio (exigente pero sin fatiga).\n2º Subes a un peso más exigente para hacer 5-6 repeticiones a RIR 2-3.\n3º 2-3 repeticiones con un peso aún mayor; en la última, bajada muy lenta.\n\nEl 1RM:\nDescansas 30 segundos, eliges un peso con el que creas que solo puedes hacer 1 repetición y lo intentas. Vas subiendo el peso, administrando el descanso, hasta que ya no puedas levantarlo. Se anota el último peso que pudiste.' },
   descompensacion: { titulo: 'Test de descompensaciones (unilateral)', cols: 'di', datos: ['Empuje unilateral (brazo)', 'Tracción unilateral (brazo)', 'Empuje de pierna', 'Isquiotibiales', 'Cuádriceps'],
     protocolo: 'Sirve para saber con qué brazo eres más débil en empujes y tracciones, y con qué pierna.\n\nAproximación:\n1º Un peso exigente que no te fatigue: 8-10 repeticiones con ambas extremidades a RIR 2-3.\n2º Subes el peso para hacer 5-6 repeticiones a RIR 2-3.\n\nEl test:\nHaces 1 repetición con una extremidad y acto seguido con la otra (siempre solo 1). Si lo consigues, sigues subiendo el peso hasta que una de las dos no pueda; continúas con la otra hasta que tampoco pueda y anotamos la diferencia. Si no hay descompensación y las dos acaban con el mismo peso, también se anota.' },
-  fc: { titulo: 'Zonas de frecuencia cardiaca', cols: 'valor', datos: ['FC máxima', 'Zona 1 · aeróbica (65–80 %)', 'Zona 2 · umbral anaeróbico (80–90 %)', 'Zona 3 · potencia aeróbica (90–100 %)'],
+  fc: { titulo: 'Zonas de frecuencia cardiaca', cols: 'valor', datos: ['FC máxima', 'Zona 1 · predominio aeróbico (65–80 %)', 'Zona 2 · umbral (80–90 %)', 'Zona 3 · predominio anaeróbico (90–100 %)'],
     protocolo: 'Estimamos tu frecuencia cardiaca máxima con la fórmula de Tanaka: FC máx = 208,75 − (0,7 × edad).\n\nZona 1: base y cimientos de tu capacidad cardiovascular; predominio de las grasas y fatiga muy baja.\nZona 2: empieza a predominar el metabolismo de los hidratos; la fatiga aparece antes.\nZona 3: zona de potencia (VO2max); solo se mantiene segundos o pocos minutos.' },
   movilidad: { titulo: 'Movilidad articular', cols: 'valor', datos: ['Cadena lateral', 'Cadena posterior e isquiotibiales', 'Hombros', 'Rotación de cadera', 'Tobillos', 'Cadena anterior'], protocolo: '' },
   ritmos: { titulo: 'Test de carrera de 5 minutos · ritmos', cols: 'valor', datos: ['Distancia en 5 minutos', 'Ritmo medio (min/km)'],
@@ -2970,7 +3007,7 @@ function formPrueba(id) {
   $('#p-calc')?.addEventListener('click', () => {
     const e = numero($('#p-edad').value); if (!e) return toast('Indica la edad');
     const mx = Math.round(208.75 - 0.7 * e), z = (a, b) => `${Math.round(mx * a)}–${Math.round(mx * b)} ppm`;
-    cont.innerHTML = [{ nombre: 'FC máxima', valor: mx + ' ppm' }, { nombre: 'Zona 1 · aeróbica (65–80 %)', valor: z(.65, .8) }, { nombre: 'Zona 2 · umbral anaeróbico (80–90 %)', valor: z(.8, .9) }, { nombre: 'Zona 3 · potencia aeróbica (90–100 %)', valor: z(.9, 1) }].map(x => filaDato(x, false)).join('');
+    cont.innerHTML = [{ nombre: 'FC máxima', valor: mx + ' ppm' }, { nombre: 'Zona 1 · predominio aeróbico (65–80 %)', valor: z(.65, .8) }, { nombre: 'Zona 2 · umbral (80–90 %)', valor: z(.8, .9) }, { nombre: 'Zona 3 · predominio anaeróbico (90–100 %)', valor: z(.9, 1) }].map(x => filaDato(x, false)).join('');
   });
   $('#f-pr').addEventListener('submit', async ev => {
     ev.preventDefault();
@@ -3157,7 +3194,7 @@ function lineaPago(p) {
   const a = S.c.perfiles.find(x => x.id === p.alumno_id) || {};
   return `<div class="line"><div class="grow" data-act="editarPago" data-id="${p.id}" style="cursor:pointer"><h3>${esc(a.nombre || '')}</h3><div class="small muted">${esc(p.concepto)} · vence ${esc(fCorta(p.vence))}${p.pagado_at ? ` · pagado ${esc(fCorta(p.pagado_at))}` : ''}</div></div>
     <div class="stack" style="gap:6px;align-items:flex-end"><b class="num" style="font-family:var(--display);font-size:20px">${fmtNum(p.importe, 2)} €</b>
-    ${st === 'pagado' ? `<div class="row" style="gap:6px"><span class="pill ok">Pagado</span>${(() => { const fa = (S.c.facturas || []).find(x => x.pago_id === p.id); return fa ? `<button class="btn sm ghost" data-act="verFactura" data-id="${fa.id}">Factura ${esc(fa.numero)}</button>` : `<button class="btn sm" data-act="nuevaFactura" data-id="${p.id}">Factura</button>`; })()}</div>` : `<div class="row" style="gap:6px">${st === 'vencido' ? `<button class="btn sm ghost" data-act="recordar" data-id="${p.id}">Recordatorio</button>` : ''}<button class="btn sm${st === 'vencido' ? '' : ' ghost'}" data-act="pagar" data-id="${p.id}">Pagado</button></div>`}</div></div>`;
+    ${st === 'pagado' ? `<div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="pill ok">Pagado</span>${(() => { const fa = (S.c.facturas || []).find(x => x.pago_id === p.id); return fa ? `<button class="btn sm ghost" data-act="verFactura" data-id="${fa.id}">Factura ${esc(fa.numero)}</button>` : `<button class="btn sm" data-act="nuevaFactura" data-id="${p.id}">Factura</button><button class="btn sm ghost" data-act="deshacerPago" data-id="${p.id}">Deshacer pago</button>`; })()}</div>` : `<div class="row" style="gap:6px">${st === 'vencido' ? `<button class="btn sm ghost" data-act="recordar" data-id="${p.id}">Recordatorio</button>` : ''}<button class="btn sm${st === 'vencido' ? '' : ' ghost'}" data-act="pagar" data-id="${p.id}">Pagado</button></div>`}</div></div>`;
 }
 function vPagos() {
   const hoy = hoyISO(), P = S.c.pagos;
@@ -3179,6 +3216,7 @@ function formEditarPago(id) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Vence<input type="date" id="ep-vence" value="${p.vence}"></label><label class="f">Importe (€)<input type="text" inputmode="decimal" id="ep-imp" value="${fmtNum(p.importe, 2)}"></label></div>
     <label class="f">Fecha de pago (vacío = pendiente)<input type="date" id="ep-pag" value="${p.pagado_at || ''}"></label>
     <button class="btn full" type="submit">Guardar cambios</button>
+    ${p.pagado_at ? '<button class="btn ghost full" type="button" id="ep-undo">Deshacer pago (volver a pendiente)</button>' : ''}
     <button class="btn ghost full" type="button" id="ep-del" style="color:var(--bad)">Eliminar cuota</button></form>`);
   $('#f-ep').addEventListener('submit', async e => {
     e.preventDefault();
@@ -3187,6 +3225,11 @@ function formEditarPago(id) {
     const { data, error } = await sb.from('pagos').update(cambios).eq('id', id).select().single(); if (error) return fallo(error);
     S.c.pagos = S.c.pagos.map(x => x.id === id ? data : x).sort((a, b) => a.vence.localeCompare(b.vence)); cerrarSheet(); toast('Cuota actualizada'); render();
   });
+  $('#ep-undo')?.addEventListener('click', async ev => {
+    const x = ev.currentTarget, fa = (S.c.facturas || []).find(y => y.pago_id === id);
+    if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = fa ? `¿Borrar la factura ${fa.numero} y dejar pendiente?` : '¿Seguro? Pulsa otra vez'; return; }
+    cerrarSheet(); await quitarPago(id);
+  });
   $('#ep-del').addEventListener('click', async ev => {
     const b = ev.currentTarget;
     if (!b.dataset.ok) { b.dataset.ok = 1; b.textContent = 'Pulsa otra vez para eliminarla definitivamente'; return; }
@@ -3194,10 +3237,24 @@ function formEditarPago(id) {
     S.c.pagos = S.c.pagos.filter(x => x.id !== id); cerrarSheet(); toast('Cuota eliminada'); render();
   });
 }
-async function marcarPagado(id) {
+async function marcarPagado(id, btn) {
+  if (btn && !btn.dataset.ok) { btn.dataset.ok = 1; btn.textContent = '¿Confirmar pago?'; return; }
   const { data, error } = await sb.from('pagos').update({ pagado_at: hoyISO() }).eq('id', id).select().single();
   if (error) return fallo(error);
   S.c.pagos = S.c.pagos.map(p => p.id === id ? data : p); toast('Pago registrado'); render();
+}
+/* Vuelve la cuota a pendiente. En beta, si tiene factura de prueba, la borra antes. */
+async function quitarPago(id) {
+  const fa = (S.c.facturas || []).find(x => x.pago_id === id);
+  if (fa) { const { error: e1 } = await sb.from('facturas').delete().eq('id', fa.id); if (e1) return fallo(e1); S.c.facturas = S.c.facturas.filter(x => x.id !== fa.id); }
+  const { data, error } = await sb.from('pagos').update({ pagado_at: null }).eq('id', id).select().single();
+  if (error) return fallo(error);
+  S.c.pagos = S.c.pagos.map(x => x.id === id ? data : x); toast(fa ? 'Factura de prueba borrada y cuota pendiente' : 'Cuota marcada como pendiente'); render();
+}
+async function deshacerPago(id, btn) {
+  const fa = (S.c.facturas || []).find(x => x.pago_id === id);
+  if (!btn.dataset.ok) { btn.dataset.ok = 1; btn.textContent = fa ? `¿Borrar la factura ${fa.numero} y dejar pendiente?` : '¿Seguro? Pulsa otra vez'; return; }
+  await quitarPago(id);
 }
 async function copiarRecordatorio(id) {
   const p = S.c.pagos.find(x => x.id === id), a = S.c.perfiles.find(x => x.id === p.alumno_id) || {};
@@ -3353,7 +3410,8 @@ document.addEventListener('click', async e => {
     case 'ali': await guardarDiario({ alimentacion: b.dataset.v }); break;
     case 'chip': { const v = b.dataset.v; S.chips.has(v) ? S.chips.delete(v) : S.chips.add(v); b.setAttribute('aria-pressed', S.chips.has(v)); break; }
     case 'enviarCheckin': await enviarCheckin(); break;
-    case 'ficha': await abrirFicha(b.dataset.id); break;
+    case 'ficha': cerrarSheet(); await abrirFicha(b.dataset.id); break;
+    case 'verAlertas': verAlertas(b.dataset.id); break;
     case 'cerrarFicha': S.ficha = null; S.verSes = null; S.verPlan = null; S.valEd = null; render(); break;
     case 'cerrarVerSesion': S.verSes = null; render(); window.scrollTo(0, 0); break;
     case 'verPlan': verPlan(+b.dataset.p, +b.dataset.d); break;
@@ -3403,7 +3461,8 @@ document.addEventListener('click', async e => {
     case 'moverEj': await moverEj(+b.dataset.id, +b.dataset.dir); break;
     case 'nuevoPrograma': formPrograma(); break;
     case 'sinVideo': toast('Jesús todavía no ha subido el vídeo de este ejercicio'); break;
-    case 'pagar': await marcarPagado(+b.dataset.id); break;
+    case 'pagar': await marcarPagado(+b.dataset.id, b); break;
+    case 'deshacerPago': await deshacerPago(+b.dataset.id, b); break;
     case 'recordar': await copiarRecordatorio(+b.dataset.id); break;
     case 'cuenta': if (S.prueba) { await salirPrueba(); break; } vCuenta(); break;
     case 'cambiarClave': cerrarSheet(); vistaNuevaClave(); break;
