@@ -307,6 +307,79 @@ function proximoDia() {
 }
 function hechoHoy(diaId) { return S.d.sesiones.some(s => s.fecha === hoyISO() && s.dia_id === diaId); }
 
+/* ---------- Registro de los últimos 7 días (pasos y comidas), con fotos opcionales ---------- */
+const DIA3 = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+/* Días que se pueden rellenar: desde el lunes de esta semana hasta hoy (el domingo cierra la semana) */
+const ventanaRegistro = () => { const hoy = hoyISO(), l = lunesDe(hoy); return [...Array(7)].map((_, k) => sumaDias(l, k)).filter(d => d <= hoy); };
+const FOTOS = {};
+const fotoUrl = p => FOTOS[p] || null;
+async function pedirFotos(rutas) {
+  const faltan = [...new Set(rutas || [])].filter(r => r && !(r in FOTOS));
+  if (!faltan.length) return;
+  const r = await sb.storage.from('comidas').createSignedUrls(faltan, 6 * 3600);
+  faltan.forEach(p => { FOTOS[p] = null; });
+  (r.data || []).forEach(x => { if (x.signedUrl) FOTOS[x.path] = x.signedUrl; });
+  render();
+}
+const miniFotos = rutas => rutas.map(p => fotoUrl(p) ? `<button class="img" data-act="verImagen" data-src="${esc(fotoUrl(p))}" aria-label="Ver foto"><img src="${esc(fotoUrl(p))}" alt="" loading="lazy"></button>` : '').join('');
+function vRegistroDia(s) {
+  const hoy = hoyISO(), sel = ventanaRegistro().includes(S.regDia) ? S.regDia : hoy;
+  const r = S.d.diario.find(x => x.fecha === sel) || {}, esHoy = sel === hoy, rutas = r.fotos || [];
+  if (rutas.some(p => !(p in FOTOS))) pedirFotos(rutas);
+  return `<section class="section"><div class="section-head"><h2>Registro del día</h2><span class="small muted">${esHoy ? 'Hoy' : esc(fLarga(sel))}</span></div><div class="card stack">
+    <div class="stack" style="gap:6px"><span class="small muted">Puedes rellenar los días de esta semana, hasta el domingo.</span>
+      <div class="reg-dias" role="group" aria-label="Día a registrar">${ventanaRegistro().map(f => { const x = S.d.diario.find(y => y.fecha === f), hecho = !!x && (x.pasos != null || x.ingestas != null || !!x.alimentacion); return `<button type="button" data-act="regDia" data-f="${f}" aria-pressed="${f === sel}" class="${hecho ? 'hecho' : ''}"><small>${DIA3[fecha(f).getDay()]}</small><b class="num">${fecha(f).getDate()}</b></button>`; }).join('')}</div></div>
+    <div class="row"><div class="ico">${svg('pasos')}</div><label class="f grow">Pasos${objPasos(s) ? ` <span class="muted">(objetivo ${fmtNum(objPasos(s), 0)})</span>` : ''}<input id="r-pasos" type="number" inputmode="numeric" min="0" value="${r.pasos ?? ''}" placeholder="Ej. 8500"></label></div>
+    ${s.modulo_nutricion ? `<div class="stack" style="gap:6px"><span class="small">Comidas de tu plan cumplidas ${esHoy ? 'hoy' : 'ese día'} <span class="muted">(de ${comidasDia(s)})</span></span><div class="choice ing" role="group">${[...Array(comidasDia(s) + 1)].map((_, k) => `<button data-act="ingestas" data-v="${k}" aria-pressed="${r.ingestas === k}">${k}</button>`).join('')}</div></div>
+    <div class="stack" style="gap:8px"><label class="btn ghost full fotos-b"><input type="file" id="r-fotos" accept="image/*" multiple hidden>📷 Añadir fotos de lo que has comido (opcional)</label>${rutas.length ? `<div class="plan-imgs">${miniFotos(rutas)}</div>` : ''}</div>` : ''}
+    <label class="f">Observaciones${esHoy ? ' del día' : ' de ese día'}<textarea id="r-obs" rows="2" placeholder="Si no llegaste al objetivo, cuéntame por qué; o cualquier cosa del día que quieras que sepa">${esc(r.observacion || '')}</textarea></label>
+    <button class="btn" data-act="guardarDiario">Guardar registro ${esHoy ? 'de hoy' : 'de ese día'}</button>
+    <p class="note">Apúntalo al final del día, o antes del domingo si se te ha pasado. Tarda 10 segundos y es lo que permite a Jesús ver tu semana real.</p>
+  </div></section>`;
+}
+async function subirFotosComida(input) {
+  const files = [...(input?.files || [])]; if (!files.length) return;
+  const f = ventanaRegistro().includes(S.regDia) ? S.regDia : hoyISO(), prev = S.d.diario.find(x => x.fecha === f) || {};
+  const rutas = [...(prev.fotos || [])];
+  toast(`Subiendo ${files.length === 1 ? 'foto' : files.length + ' fotos'}…`);
+  try {
+    for (const fl of files) {
+      const blob = await reducirImagen(fl, 1280), ruta = `${S.user.id}/${f}/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}.jpg`;
+      const up = await sb.storage.from('comidas').upload(ruta, blob, { contentType: 'image/jpeg' }); if (up.error) throw up.error;
+      rutas.push(ruta);
+    }
+  } catch (err) { return fallo(err, /bucket|not found/i.test(err.message || '') ? 'Falta ejecutar el Bloque 26 en Supabase.' : 'No se han podido subir las fotos.'); }
+  input.value = '';
+  await guardarDiario({ fotos: rutas });
+}
+function vDiasSinCheck(W) {
+  const hoy = hoyISO(), f = ventanaRegistro().filter(d => d < hoy && !wDe(W, d, 'diario'));
+  if (!f.length) return '';
+  return `<div class="stack" style="gap:6px"><span class="small muted">Días sin check diario: rellénalos si se te pasaron</span><div class="chips">${f.map(d => `<button class="pill warn" data-act="wellness" data-t="diario" data-f="${d}">${DIA3[fecha(d).getDay()]} ${fecha(d).getDate()} · rellenar</button>`).join('')}</div></div>`;
+}
+/* ---------- Zonas de frecuencia cardiaca (visual; el detalle se abre al tocar una zona) ---------- */
+const ZONAS_FC = [
+  { n: 1, nom: 'Zona 1 · aeróbica', corto: 'Quema grasas', desde: .65, hasta: .80, col: '#7DBE6B', desc: 'Es la zona de la base y los cimientos de tu capacidad cardiovascular. La demanda es sobre todo oxidativa: grasas y metabolismo aeróbico. La fatiga que genera es muy baja y puedes mantenerla mucho tiempo, aunque la intensidad tiene que ser baja.' },
+  { n: 2, nom: 'Zona 2 · umbral anaeróbico', corto: 'Quema hidratos', desde: .80, hasta: .90, col: '#E0B43A', desc: 'Empieza a predominar el metabolismo glucolítico, es decir, los hidratos de carbono. Se reduce la participación de las grasas y el oxidativo, y el ácido láctico y la fatiga empiezan a aparecer más rápido.' },
+  { n: 3, nom: 'Zona 3 · potencia aeróbica', corto: 'Potencia', desde: .90, hasta: 1, col: '#D9473B', desc: 'Zona de potencia: el cuerpo no puede mantenerla más que unos pocos segundos o minutos. El metabolismo es casi 100 % anaeróbico y depende de tu VO2max, la capacidad de transportar y absorber oxígeno. Es el motor de tu cuerpo, frente a la zona 1, que es el depósito.' }
+];
+const fcMaxDe = () => {
+  const pr = (S.d?.valoraciones || []).flatMap(v => v.pruebas || []).filter(p => p.tipo === 'fc');
+  const medida = numDe(pr[0]?.datos?.[0]?.valor); if (medida) return Math.round(medida);
+  const e = edadDe(S.perfil?.fecha_nacimiento); return e ? Math.round(208.75 - 0.7 * e) : null;
+};
+function vZonasFC() {
+  const mx = fcMaxDe(); if (!mx) return '';
+  const ppm = x => Math.round(mx * x);
+  return `<section class="section"><div class="card stack zonas-fc"><div class="row"><span class="eyebrow grow">Tus zonas de frecuencia cardiaca</span><span class="pill num">FC máx ${mx} ppm</span></div>
+    <div class="zonas-bar" role="group" aria-label="Zonas de frecuencia cardiaca">${ZONAS_FC.map(z => `<button type="button" data-act="zonaFC" data-z="${z.n}" style="background:${z.col}" aria-label="${esc(z.nom)}, de ${ppm(z.desde)} a ${ppm(z.hasta)} ppm"><b>${z.n}</b><span class="num">${ppm(z.desde)}–${ppm(z.hasta)}</span></button>`).join('')}</div>
+    <div class="zonas-lab">${ZONAS_FC.map(z => `<span>${esc(z.corto)}</span>`).join('')}</div>
+    <p class="small muted">Toca una zona para saber qué significa.</p></div></section>`;
+}
+function zonaFC(n) {
+  const z = ZONAS_FC.find(x => x.n === n), mx = fcMaxDe(); if (!z || !mx) return;
+  abrirSheet(`<div class="stack"><span class="eyebrow">Zona ${n}</span><h2>${esc(z.nom)}</h2><div class="pill num" style="align-self:flex-start">${Math.round(mx * z.desde)}–${Math.round(mx * z.hasta)} ppm · ${Math.round(z.desde * 100)}–${Math.round(z.hasta * 100)} % de tu FC máxima</div><p class="small pre">${esc(z.desc)}</p><button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
+}
 function vHoy() {
   const s = S.d.servicio || {}, p = S.d.programa, hoy = hoyISO();
   const d = diaDeHoy(), prox = proximoDia();
@@ -329,13 +402,7 @@ function vHoy() {
   ${vEventos(s, S.d.presenciales)}
   ${vProcesoGlobal(s)}
   <section class="section"><h2>Lo que toca hoy</h2><div class="card">${toca}</div></section>
-  ${s.modulo_futbol ? vSemanaFutbol(ini, w, p) : `<section class="section"><h2>Registro de hoy</h2><div class="card stack">
-    <div class="row"><div class="ico">${svg('pasos')}</div><label class="f grow">Pasos de hoy${objPasos(s) ? ` <span class="muted">(objetivo ${fmtNum(objPasos(s), 0)})</span>` : ''}<input id="r-pasos" type="number" inputmode="numeric" min="0" value="${r.pasos ?? ''}" placeholder="Ej. 8500"></label></div>
-    ${s.modulo_nutricion ? `<div class="stack" style="gap:6px"><span class="small">Ingestas de tu plan cumplidas hoy <span class="muted">(de ${comidasDia(s)})</span></span><div class="choice ing" role="group">${[...Array(comidasDia(s) + 1)].map((_, k) => `<button data-act="ingestas" data-v="${k}" aria-pressed="${r.ingestas === k}">${k}</button>`).join('')}</div></div>` : ''}
-    <label class="f">Observaciones del día<textarea id="r-obs" rows="2" placeholder="Si no llegaste al objetivo, cuéntame por qué; o cualquier cosa del día que quieras que sepa">${esc(r.observacion || '')}</textarea></label>
-    <button class="btn" data-act="guardarDiario">Guardar registro de hoy</button>
-    <p class="note">Apúntalo al final del día. Tarda 10 segundos y es lo que permite a Jesús ver tu semana real.</p>
-  </div></section>
+  ${s.modulo_futbol ? vSemanaFutbol(ini, w, p) : `${vRegistroDia(s)}
   <section class="section"><div class="section-head"><h2>Últimos 7 días</h2><span class="small muted">${esc(fCorta(ini))} – ${esc(fCorta(hoy))}</span></div><div class="card stack" style="gap:18px">
     ${(s.modulo_entreno ?? true) ? `<div class="stack" style="gap:8px"><div class="row"><span class="grow small">Entrenamientos</span><b class="num" style="font-family:var(--display);font-size:20px">${w.entrenos}${p?.dias_semana ? ' / ' + p.dias_semana : ''}</b></div>${tira(ini, x => w.diasEntreno.has(x) ? 'ok' : '')}</div>` : ''}
     ${s.modulo_nutricion ? vBarraIngestas(S.d.diario, s) : ''}
@@ -346,10 +413,12 @@ function vHoy() {
 }
 
 async function guardarDiario(extra = {}) {
-  const prev = S.d.diario.find(x => x.fecha === hoyISO()) || {};
-  const row = { alumno_id: S.user.id, fecha: hoyISO(), pasos: numero($('#r-pasos')?.value), observacion: $('#r-obs')?.value.trim() || null, ...(prev.ingestas != null ? { ingestas: prev.ingestas } : {}), ...extra };
+  const f = ventanaRegistro().includes(S.regDia) ? S.regDia : hoyISO();
+  const prev = S.d.diario.find(x => x.fecha === f) || {};
+  const row = { alumno_id: S.user.id, fecha: f, pasos: numero($('#r-pasos')?.value), observacion: $('#r-obs')?.value.trim() || null, ...(prev.ingestas != null ? { ingestas: prev.ingestas } : {}), ...extra };
   let { data, error } = await sb.from('registro_diario').upsert(row, { onConflict: 'alumno_id,fecha' }).select().single();
   if (error && /ingestas/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 11 en Supabase.');
+  if (error && /fotos/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 26 en Supabase.');
   if (error && /observacion/.test(error.message || '')) { delete row.observacion; ({ data, error } = await sb.from('registro_diario').upsert(row, { onConflict: 'alumno_id,fecha' }).select().single()); }
   if (error) return fallo(error);
   S.d.diario = S.d.diario.filter(x => x.fecha !== row.fecha).concat(data);
@@ -366,7 +435,7 @@ function vEntreno() {
   const hechoSemana = id => S.d.sesiones.some(s => s.dia_id === id && s.fecha >= lunes);
   const P = proceso(S.d.servicio), Pn = P && !P.antes ? S.d.sesiones.filter(x => x.fecha >= P.cc.ini && x.fecha <= P.cc.fin).length : null;
   return como + `<section class="stack"><span class="eyebrow">${esc(p.nombre)}</span><h1>Entreno</h1>${P && !P.antes && !P.fuera ? `<div class="row" style="flex-wrap:wrap;gap:6px"><span class="pill blue">Ciclo ${P.ciclo}</span><span class="pill gold">Semana ${P.semCiclo} de ${P.cc.sem}</span><span class="pill">${Pn} ${p.dias_semana ? 'de ' + p.dias_semana * P.cc.sem + ' ' : ''}entrenos del ciclo</span></div>` : ''}</section>
-  <section class="section"><div class="card">${p.dias.map(d => `<div class="wk ${norm(d.nombre) === hoyN ? 'today' : ''}"><span class="d">${esc(d.nombre.slice(0, 3))}</span><div class="grow"><h3>${esc(d.foco || d.nombre)}</h3><div class="small muted">${esc(d.volumen || '')} volumen · ${esc(d.intensidad || '')} intensidad</div></div>${hechoSemana(d.id) ? '<span class="pill ok">Hecho</span>' : ''}<button class="btn sm ${norm(d.nombre) === hoyN ? '' : 'ghost'}" data-act="abrirDia" data-id="${d.id}">Abrir</button></div>`).join('')}</div></section>
+  ${vZonasFC()}<section class="section"><div class="card">${p.dias.map(d => `<div class="wk ${norm(d.nombre) === hoyN ? 'today' : ''}"><span class="d">${esc(d.nombre.slice(0, 3))}</span><div class="grow"><h3>${esc(d.foco || d.nombre)}</h3><div class="small muted">${esc(d.volumen || '')} volumen · ${esc(d.intensidad || '')} intensidad</div></div>${hechoSemana(d.id) ? '<span class="pill ok">Hecho</span>' : ''}<button class="btn sm ${norm(d.nombre) === hoyN ? '' : 'ghost'}" data-act="abrirDia" data-id="${d.id}">Abrir</button></div>`).join('')}</div></section>
   ${vLineaTiempo(S.d.servicio, 'Tus ciclos de entrenamiento', false, p)}
   ${vCalendarioPres()}`;
 }
@@ -383,7 +452,7 @@ function esSinPeso(e) {
   const ks = (e.pauta || []).map(t => t.kg).filter(Boolean);
   return (ks.length ? ks : [e.peso_ref]).every(k => SIN_PESO.test(String(k || '').trim()));
 }
-const kgDe = t => { const m = String(t?.kg || '').match(/(\d+[.,]?\d*)\s*kg/i); return m ? m[1] : ''; };
+const kgDe = t => { const s = String(t?.kg || '').trim(); const m = s.match(/(\d+(?:[.,]\d+)?)\s*kg/i) || s.match(/^(\d+(?:[.,]\d+)?)$/); return m ? m[1] : ''; };
 
 /* "A tu medida": solo ajustes de máquina y material (polea, silla, banco, agarre…); los consejos de ejecución van en el vídeo */
 const AJUSTE_RE = /(polea|silla|asiento|banco|inclinaci|respaldo|agarre|material|barra|mancuerna|kettlebell|m[aá]quina|almohadilla|rodillo|cuerda|disco|prono|supino|neutro|\btabla\b|\bpin\b|smith|el[aá]stic|goma|caj[oó]n|flecha|tobillera|plataforma|soporte)/i;
@@ -572,11 +641,14 @@ function enfocarFila(es, n) {
     document.querySelectorAll(`[data-row="${es}-${n}"]`).forEach(x => { x.classList.add('foco'); setTimeout(() => x.classList.remove('foco'), 2200); });
   }, 250);
 }
+/* Peso de referencia de la 6·3·1: el objetivo de la 1.ª serie (si no hay, el peso del ejercicio) */
+const kgRef = e => { const n = parseFloat(String(kgDe(gruposDe(pautaEfectiva(e))[0]?.tramos[0]) || kgDe({ kg: e.peso_ref })).replace(',', '.')); return n > 0 ? n : null; };
 function vAprox(e) {
-  const m = String(e.peso_ref || '').match(/(\d+[.,]?\d*)\s*kg/i), o = m ? m[1] + ' kg' : 'tu peso';
+  const ref = kgRef(e);
+  const filas = [[6, 0.7, 'Peso ligero'], [3, 1, 'Peso objetivo'], [1, 1.1, 'Por encima del objetivo']];
   return `<div class="aprox"><span class="eyebrow">Aproximación 6·3·1 · antes de empezar</span>
     <div class="small">Al terminar la repetición única, descansa 1 minuto y empieza tus series.</div>
-    ${[[6, 'Peso ligero', 'Ligero'], [3, 'Tu peso objetivo', o], [1, 'Por encima del objetivo', '+ ' + o]].map(([n, t, ph], j) => `<div class="ap-row"><span class="ap-n num">${n}</span><span class="small">${n === 1 ? '1 repetición' : n + ' repeticiones'}<br><span class="muted">${t}</span></span><input type="text" inputmode="decimal" placeholder="${esc(ph)}" aria-label="Peso aproximación ${n}"><button class="chk" data-act="aprox" data-j="${j}" aria-label="Hecha">${CHK}</button></div>`).join('')}
+    ${filas.map(([n, f, t], j) => `<div class="ap-row"><span class="ap-n num">${n}</span><span class="small">${n === 1 ? '1 repetición' : n + ' repeticiones'}<br><span class="muted">${t}</span></span><b class="ap-kg num">${ref ? Math.round(ref * f) + ' kg' : 'como 1.ª serie'}</b><button class="chk" data-act="aprox" data-j="${j}" aria-label="Hecha">${CHK}</button></div>`).join('')}
   </div>`;
 }
 /* El coach entra en el entreno de un alumno (en directo o para corregir una sesión) */
@@ -1046,6 +1118,18 @@ function estadoAlumno(a) {
   if (control?.atrasada) { sube('warn'); motivos.push(`Revisión mensual ${control.n} pendiente desde el ${fCorta(control.fecha)}`); }
   return { nivel, motivos, ult, ultSes: ses[0], dpw, semana, mes, control, ses7: semana };
 }
+function vAntiguos() {
+  const ant = S.c.perfiles.filter(p => p.activo === false && p.rol !== 'coach');
+  if (!ant.length) return '';
+  return `<section class="section"><details class="card antiguos"><summary><b>Antiguos alumnos · ${ant.length}</b> <span class="small muted">Sin avisos ni seguimiento. Sus datos siguen aquí.</span></summary>
+    <div class="card" style="margin-top:10px">${ant.map(a => `<div class="line"><div class="grow"><b>${esc(a.nombre)}</b><div class="small muted">${esc(a.email || '')}</div></div><button class="btn sm ghost" data-act="ficha" data-id="${a.id}">Ver</button><button class="btn sm ghost" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button></div>`).join('')}</div></details></section>`;
+}
+async function cambiarArchivo(id, activo) {
+  if (!activo && !confirm('¿Pasar a antiguos alumnos? Dejará de aparecer en tus avisos y listados. Sus datos se conservan y podrá seguir usando la app.')) return;
+  const { error } = await sb.from('perfiles').update({ activo }).eq('id', id); if (error) return fallo(error);
+  toast(activo ? 'Alumno reactivado' : 'Pasado a antiguos alumnos');
+  await cargarCoach(); render();
+}
 function vAlumnos() {
   const c = S.c, als = c.perfiles.filter(p => p.activo !== false);
   const est = als.map(a => ({ a, e: estadoAlumno(a) })), orden = { bad: 0, warn: 1, ok: 2 };
@@ -1057,6 +1141,7 @@ function vAlumnos() {
   <section class="section"><button class="card reporte-b" data-act="abrirReporte"><div class="ico gold">${svg('checkin')}</div><div class="grow" style="text-align:left"><b>Reporting semanal</b><div class="small muted">Semana del ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -7)))} al ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -1)))} · todos tus alumnos de un vistazo</div></div><span class="small" style="color:var(--blue-text)">Abrir ›</span></button></section>
   ${vFutbolCoach()}
   ${vResumenCoach(est)}
+  ${vAntiguos()}
   <section class="section"><h2>Alumnos</h2><div class="card">${est.map(({ a, e }) => `<div class="line" data-act="ficha" data-id="${a.id}" style="cursor:pointer"><span style="width:4px;align-self:stretch;border-radius:2px;background:var(--${e.nivel})"></span><div class="grow stack" style="gap:3px"><div class="row"><h3 class="grow">${esc(a.nombre)}</h3>${e.control ? '<span class="pill gold">Revisión mensual</span>' : ''}<span class="pill ${e.nivel}">${lab[e.nivel]}</span></div><div class="small muted">${esc((c.servicios.find(s => s.alumno_id === a.id) || {}).producto || 'Sin servicio')}${e.ult ? ` · motivación ${e.ult.motivacion}/10` : ''}</div>${e.dpw ? barra('Semana', e.semana, e.dpw) + barra('Últimas 4 semanas', e.mes, e.dpw * 4) : ''}${e.motivos.length ? `<div class="small">${esc(e.motivos.join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no hay alumnos.</div>'}</div>
   <p class="note">Para dar de alta a un alumno nuevo, créalo en Supabase → Authentication → Users. Su perfil aparecerá aquí solo.</p></section>`;
 }
@@ -1338,6 +1423,7 @@ function vSemanaFutbol(ini, w, p) {
     <div class="stack" style="gap:8px"><div class="row"><span class="grow small">Alimentación cumplida</span>${big(al.pct == null ? '—' : al.pct + ' %', al.pct == null ? '' : al.pct >= 85 ? 'ok' : al.pct >= 60 ? 'warn' : 'bad')}</div>${tira(ini, x => ({ si: 'ok', parcial: 'part', no: 'no' }[al.por[x]] || ''))}</div>
     <div class="stack" style="gap:8px"><div class="row"><span class="grow small">Sueño (media · objetivo ${fmtNum(su.meta)} h)</span>${big(su.media == null ? '—' : fmtNum(su.media) + ' h', su.media == null ? '' : su.media >= su.meta - .5 ? 'ok' : 'warn')}</div>${tira(ini, x => su.por[x]?.cls || '')}
       <div class="small muted">Acostarte ${esc(su.o.dormir)} · levantarte ${esc(su.o.levantar)} → ${su.n ? `en horario ${su.enHorario} de ${su.n} noches` : 'apúntalo en tu check diario'}</div></div>
+    ${vDiasSinCheck(W)}
   </div></section>`;
 }
 /* ---- Lado del coach ---- */
@@ -1352,7 +1438,7 @@ function alertasFutbol(aid) {
   return out;
 }
 function vFutbolCoach() {
-  const fut = S.c.perfiles.filter(p => S.c.servicios.some(x => x.alumno_id === p.id && x.modulo_futbol));
+  const fut = S.c.perfiles.filter(p => p.activo !== false && S.c.servicios.some(x => x.alumno_id === p.id && x.modulo_futbol));
   if (!fut.length) return '';
   const hoy = hoyISO();
   return `<section class="section"><div class="section-head"><h2>Futbolistas · hoy</h2></div><div class="card tbl" style="overflow-x:auto"><table class="fut-t"><thead><tr><th>Jugador</th><th>Partido</th><th>Fatiga</th><th>Carga 7 d</th><th>ACWR</th><th>Hoy</th></tr></thead><tbody>
@@ -1458,12 +1544,13 @@ async function probarPlantilla(id) {
   ]);
   const prog = pr.data?.[0]; if (!prog) return toast('No se ha podido cargar la plantilla');
   if (!(prog.dias || []).length) return toast('La plantilla está vacía: añádele días antes de probarla');
-  const hoy = hoyISO(), futbol = /futbol/.test(norm(pl.categoria)), u = UID_PRUEBA;
+  const hoy = hoyISO(), futbol = /futbol/.test(norm(pl.categoria)), u = UID_PRUEBA, val = valDePlantilla(pl);
   const seed = {
     perfiles: [{ id: u, nombre: 'Alumno de prueba', rol: 'alumno', consentimiento_at: hoy }],
     servicios: [{ id: 1, alumno_id: u, producto: pl.nombre || prog.nombre, inicio: sumaDias(lunesDe(hoy), -7), duracion_semanas: 8, modulo_entreno: true, modulo_nutricion: true, modulo_futbol: futbol, objetivo_pasos: 10000, activo: true }],
     programas: [{ ...prog, alumno_id: u, activo: true }],
     metodos: met.data || [],
+    valoraciones: val ? [{ id: 1, alumno_id: u, nombre: val.nombre || 'Test inicial', fecha: hoy, resumen: val.resumen || null, pruebas: val.pruebas.map((p, k) => ({ id: 100 + k, valoracion_id: 1, alumno_id: u, orden: k, tipo: p.tipo, titulo: p.titulo, protocolo: p.protocolo || null, datos: p.datos || [], valoracion: p.valoracion || null, foco: p.foco || null, video_url: p.video_url || null })) }] : [],
     partidos: futbol ? [{ id: 1, alumno_id: u, fecha: sumaDias(hoy, -2), hora: '18:00', rival: 'Rival de prueba', local: true, competicion: 'Liga' }, { id: 2, alumno_id: u, fecha: sumaDias(hoy, 3), hora: '17:00', rival: 'Próximo rival', local: false, competicion: 'Liga', nivel: 'Exigente' }] : []
   };
   stopTimer();
@@ -1494,7 +1581,7 @@ function vBannerPrueba() {
 const CATEGORIAS = ['Futbolistas alto rendimiento', 'Recomposición hombres', 'Recomposición mujeres', 'Salud +55 · lesiones y enfermedades', 'Otras'];
 async function cargarPlantillas() {
   const sel = c => () => sb.from('programas').select(c + 'id,nombre,dias_semana,dias(id,numero,nombre,foco,bloques_sesion(id,tipo,ejercicios_sesion(id)))').is('alumno_id', null).order('nombre');
-  const r = await conRespaldo(sel('categoria,descripcion,'), sel(''));
+  const r = await conRespaldo(sel('categoria,descripcion,valoracion,'), () => conRespaldo(sel('categoria,descripcion,'), sel('')));
   S.c.plantillas = r.data || []; S.c.plantillasErr = r.error ? r.error.message : null;
   S.c.plantillas.forEach(p => (p.dias || []).sort((a, b) => a.numero - b.numero));
 }
@@ -1504,9 +1591,9 @@ function vPlantillas() {
   return `<section class="stack"><span class="eyebrow">Tu método, listo para asignar</span><h1>Plantillas</h1><p class="small muted">Un programa base por tipo de alumno. Al asignarlo se crea una copia en su perfil que personalizas (pesos, ajustes de máquina, cambios de ejercicio) sin tocar la plantilla. Los alumnos no ven esta sección.</p>
     <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" data-act="nuevaPlantilla">＋ Nueva plantilla</button></div></section>
   ${CATEGORIAS.map(c => { const ps = porCat(c); if (!ps.length && c === 'Otras') return ''; return `<section class="section"><h2>${esc(c)}</h2>${ps.map(p => `<div class="card stack">
-      <div class="row"><div class="grow"><h3>${esc(p.nombre)}</h3><div class="small muted">${(p.dias || []).length} ${(p.dias || []).length === 1 ? 'día' : 'días'} · ${nEjs(p)} ejercicios${p.dias_semana ? ` · ${p.dias_semana} por semana` : ''}</div></div></div>
+      <div class="row"><div class="grow"><h3>${esc(p.nombre)}</h3><div class="small muted">${(p.dias || []).length} ${(p.dias || []).length === 1 ? 'día' : 'días'} · ${nEjs(p)} ejercicios${p.dias_semana ? ` · ${p.dias_semana} por semana` : ''} · ${resumenValPlantilla(p)}</div></div></div>
       ${(p.dias || []).length ? `<div class="chips">${p.dias.map(d => `<span class="pill">${esc(d.nombre || 'Día ' + d.numero)}${d.foco ? ' · ' + esc(d.foco) : ''}</span>`).join('')}</div>` : '<p class="small muted">Vacía: entra en "Editar" para añadir sus días, o pásame tu Excel y la monto.</p>'}
-      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm gold" data-act="probarPlantilla" data-id="${p.id}">👁 Ver como alumno de prueba</button><button class="btn sm" data-act="asignarPlantilla" data-id="${p.id}">Asignar a un alumno</button><button class="btn sm ghost" data-act="editarPlantilla" data-id="${p.id}">✎ Editar</button><button class="btn sm ghost" data-act="duplicarPlantilla" data-id="${p.id}">Duplicar</button><button class="btn sm ghost" data-act="borrarPlantilla" data-id="${p.id}" style="color:var(--bad)">Eliminar</button></div>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm gold" data-act="probarPlantilla" data-id="${p.id}">👁 Ver como alumno de prueba</button><button class="btn sm" data-act="asignarPlantilla" data-id="${p.id}">Asignar a un alumno</button><button class="btn sm ghost" data-act="valPlantilla" data-id="${p.id}">🩺 Valoración inicial</button><button class="btn sm ghost" data-act="editarPlantilla" data-id="${p.id}">✎ Editar</button><button class="btn sm ghost" data-act="duplicarPlantilla" data-id="${p.id}">Duplicar</button><button class="btn sm ghost" data-act="borrarPlantilla" data-id="${p.id}" style="color:var(--bad)">Eliminar</button></div>
     </div>`).join('') || '<div class="card empty">Aún no hay plantillas de este tipo.</div>'}</section>`; }).join('')}
   ${S.c.plantillasErr ? `<p class="note">Falta ejecutar el Bloque 20 en Supabase para guardar el tipo de alumno de cada plantilla.</p>` : ''}`;
 }
@@ -1541,6 +1628,7 @@ function formAsignarPlantilla(alumnoId, plantillaId) {
     <label class="f">Plantilla<select id="as-p" required>${optsPlantillas(plantillaId)}</select></label>
     <label class="f">Nombre del programa para el alumno<input type="text" id="as-n" placeholder="Ej. Ciclo 1"></label>
     ${P?.ciclos?.length ? `<label class="f">Bloque del proceso<select id="as-c">${P.ciclos.map(c => `<option value="${c.n}" ${c.n === P.ciclo ? 'selected' : ''}>${esc(nomCiclo(c))} · ${esc(fCorta(c.ini))} – ${esc(fCorta(c.fin))}</option>`).join('')}</select></label>` : ''}
+    <label class="row small" style="gap:8px"><input type="checkbox" id="as-val" checked style="width:auto"> Crear también su test inicial, si la plantilla lo tiene (los resultados los rellenas tú)</label>
     <label class="row small" style="gap:8px"><input type="checkbox" id="as-act" checked style="width:auto"> Pasa a ser su programa activo (el anterior queda guardado con su historial)</label>
     <p class="err" id="as-err"></p><button class="btn full" type="submit" id="as-b">Asignar y personalizar</button></form>`);
   $('#f-ap2').addEventListener('submit', async e => {
@@ -1551,10 +1639,91 @@ function formAsignarPlantilla(alumnoId, plantillaId) {
     btn.disabled = true; btn.textContent = 'Copiando…';
     try {
       await copiarPrograma({ origen: pid, destino: aid, nombre_nuevo: $('#as-n').value.trim() || pl?.nombre || 'Programa', categoria_nueva: null, limpiar: false, activar: $('#as-act').checked, ciclo_nuevo: $('#as-c') ? +$('#as-c').value : null });
+      const val = valDePlantilla(pl);
+      if (val && $('#as-val')?.checked) {
+        try { await crearValoracionDesdePlantilla(aid, val); }
+        catch (err2) { console.error(err2); toast('Programa asignado, pero no su test inicial: ' + (/valoraciones|pruebas/.test(err2.message || '') ? 'ejecuta el Bloque 7 y el 25 en Supabase' : 'revisa la conexión')); }
+      }
       cerrarSheet(); toast('Plantilla asignada: personaliza pesos y ajustes'); await cargarCoach();
-      if (S.ficha?.id === aid) await cargarProgramasFicha(S.ficha);
+      if (S.ficha?.id === aid) { await cargarProgramasFicha(S.ficha); await cargarValoraciones(); }
       await abrirEditor(aid);
     } catch (err) { btn.disabled = false; btn.textContent = 'Asignar y personalizar'; $('#as-err').textContent = err.message || 'No se ha podido asignar.'; console.error(err); }
+  });
+}
+/* ---------- Valoración inicial dentro de la plantilla (se copia como test del alumno al asignarla) ---------- */
+const valDePlantilla = p => { const v = p?.valoracion; return v && Array.isArray(v.pruebas) ? v : null; };
+const resumenValPlantilla = p => { const v = valDePlantilla(p); return v ? `test inicial con ${v.pruebas.length} ${v.pruebas.length === 1 ? 'prueba' : 'pruebas'}` : 'sin test inicial'; };
+const pruebaPlantilla = tipo => { const t = PLANTILLAS[tipo] || PLANTILLAS.otra; return { tipo, titulo: t.titulo, protocolo: t.protocolo || '', datos: t.datos.map(n => t.cols === 'di' ? { nombre: n, d: '', i: '' } : { nombre: n, valor: '' }), valoracion: '', foco: '', video_url: '' }; };
+async function crearValoracionDesdePlantilla(aid, val) {
+  const { data, error } = await sb.from('valoraciones').insert({ alumno_id: aid, nombre: val.nombre || 'Test inicial', fecha: hoyISO(), resumen: val.resumen || null }).select().single();
+  if (error) throw error;
+  if (val.pruebas.length) {
+    const { error: e2 } = await sb.from('pruebas').insert(val.pruebas.map((p, k) => ({ valoracion_id: data.id, alumno_id: aid, orden: k, tipo: p.tipo, titulo: p.titulo, protocolo: p.protocolo || null, datos: (p.datos || []).map(x => ({ ...x })), valoracion: p.valoracion || null, foco: p.foco || null, video_url: p.video_url || null })));
+    if (e2) throw e2;
+  }
+}
+const capturarValPlantilla = () => { const D = S.valPl; D.val.nombre = $('#vp-n')?.value.trim() || D.val.nombre || 'Test inicial'; D.val.resumen = $('#vp-r')?.value.trim() || null; };
+function formValPlantilla(progId) {
+  const pl = (S.c.plantillas || []).find(p => p.id === progId) || {};
+  const base = valDePlantilla(pl) || { nombre: 'Test inicial', resumen: '', pruebas: [] };
+  S.valPl = { id: progId, nombre: pl.nombre || '', val: JSON.parse(JSON.stringify(base)) };
+  pintarValPlantilla();
+}
+function pintarValPlantilla() {
+  const D = S.valPl, v = D.val;
+  abrirSheet(`<form class="stack" id="f-vp"><h2>Valoración inicial</h2>
+    <p class="small muted">De <b>${esc(D.nombre)}</b>. Al asignar la plantilla a un alumno, se crea su test inicial con estas pruebas y sus protocolos, con los resultados en blanco para que los rellenes tú.</p>
+    <label class="f">Nombre del test<input type="text" id="vp-n" value="${esc(v.nombre || '')}"></label>
+    <label class="f">Informe general (plantilla)<textarea id="vp-r" rows="5" placeholder="Qué se observa en la valoración y cómo se interpreta; luego lo editas para cada alumno">${esc(v.resumen || '')}</textarea></label>
+    <div class="stack" style="gap:8px"><span class="small"><b>Pruebas</b></span>
+      ${v.pruebas.map((p, k) => `<div class="row" style="gap:8px;align-items:center"><div class="grow"><div class="small"><b>${esc(p.titulo)}</b></div><div class="small muted">${(p.datos || []).length} ${(p.datos || []).length === 1 ? 'resultado' : 'resultados'}${p.protocolo ? ' · con protocolo' : ''}</div></div><button type="button" class="btn sm ghost" data-vp-edit="${k}">✎ Editar</button><button type="button" class="btn sm ghost" data-vp-quitar="${k}" style="color:var(--bad)" aria-label="Quitar">✕</button></div>`).join('') || '<p class="small muted">Aún no hay pruebas.</p>'}
+    </div>
+    <div class="stack" style="gap:6px"><span class="small muted">Añadir prueba</span><div class="chips" style="gap:6px">${Object.entries(PLANTILLAS).map(([k, t]) => `<button type="button" class="pill" data-vp-add="${k}">＋ ${esc(t.titulo)}</button>`).join('')}</div></div>
+    <p class="err" id="vp-err"></p>
+    <button class="btn full" type="submit" id="vp-b">Guardar valoración de la plantilla</button>
+    <button class="btn ghost full" type="button" data-act="cerrarSheet">Cancelar</button></form>`);
+  $('#f-vp').addEventListener('click', ev => {
+    const t = ev.target.closest('[data-vp-edit],[data-vp-quitar],[data-vp-add]'); if (!t) return;
+    if (t.dataset.vpQuitar != null && !confirm('¿Quitar esta prueba de la valoración de la plantilla?')) return;
+    capturarValPlantilla();
+    if (t.dataset.vpAdd) { D.val.pruebas.push(pruebaPlantilla(t.dataset.vpAdd)); formPruebaPlantilla(D.val.pruebas.length - 1); }
+    else if (t.dataset.vpEdit != null) formPruebaPlantilla(+t.dataset.vpEdit);
+    else { D.val.pruebas.splice(+t.dataset.vpQuitar, 1); pintarValPlantilla(); }
+  });
+  $('#f-vp').addEventListener('submit', async ev => {
+    ev.preventDefault(); capturarValPlantilla();
+    const btn = $('#vp-b'); btn.disabled = true;
+    const { error } = await sb.from('programas').update({ valoracion: D.val }).eq('id', D.id).is('alumno_id', null);
+    btn.disabled = false;
+    if (error) { console.error(error); $('#vp-err').textContent = /valoracion/.test(error.message || '') ? 'Falta ejecutar el Bloque 25 en Supabase para guardar la valoración en las plantillas.' : 'No se ha podido guardar. Revisa la conexión.'; return; }
+    cerrarSheet(); S.valPl = null; toast('Valoración de la plantilla guardada'); await cargarPlantillas(); render();
+  });
+}
+function formPruebaPlantilla(k) {
+  const D = S.valPl, p = D.val.pruebas[k]; if (!p) return;
+  const di = p.tipo === 'descompensacion';
+  abrirSheet(`<form class="stack" id="f-prp"><h2>Prueba de la plantilla</h2>
+    <label class="f">Título<input type="text" id="pp-t" value="${esc(p.titulo)}"></label>
+    <span class="small muted">Los resultados se dejan en blanco para rellenarlos en cada alumno. Si pones valores, aparecen como referencia.</span>
+    <div class="stack" id="pp-datos" style="gap:8px">${(p.datos || []).map(x => filaDato(x, di)).join('')}</div>
+    <button type="button" class="btn sm ghost" id="pp-add" style="align-self:flex-start">＋ Añadir resultado</button>
+    <label class="f">Valoración (texto de referencia)<textarea id="pp-v" rows="3">${esc(p.valoracion || '')}</textarea></label>
+    <label class="f">Foco de trabajo (texto de referencia)<textarea id="pp-f" rows="3">${esc(p.foco || '')}</textarea></label>
+    <label class="f">Cómo se hace la prueba<textarea id="pp-pr" rows="6">${esc(p.protocolo || '')}</textarea></label>
+    <label class="f">Vídeo (opcional)<input type="text" id="pp-vi" value="${esc(p.video_url || '')}" placeholder="https://…"></label>
+    <button class="btn full" type="submit">Guardar prueba</button>
+    <button class="btn ghost full" type="button" id="pp-volver">← Volver a la valoración</button></form>`);
+  const cont = $('#pp-datos');
+  cont.addEventListener('click', ev => { const q = ev.target.closest('[data-quitar]'); if (q) q.closest('[data-dato]').remove(); });
+  $('#pp-add').addEventListener('click', () => cont.insertAdjacentHTML('beforeend', filaDato({}, di)));
+  $('#pp-volver').addEventListener('click', () => pintarValPlantilla());
+  $('#f-prp').addEventListener('submit', ev => {
+    ev.preventDefault();
+    const v = id => $(id).value.trim();
+    p.titulo = v('#pp-t') || p.titulo;
+    p.datos = [...cont.querySelectorAll('[data-dato]')].map(r => Object.fromEntries([...r.querySelectorAll('[data-k]')].map(i => [i.dataset.k, i.value.trim()]))).filter(x => x.nombre);
+    p.valoracion = v('#pp-v'); p.foco = v('#pp-f'); p.protocolo = v('#pp-pr'); p.video_url = v('#pp-vi');
+    pintarValPlantilla();
   });
 }
 function formGuardarPlantilla(progId, duplicar = false) {
@@ -1691,6 +1860,12 @@ function vRevision(f) {
     ${l.filter(s => s.nota_revision || s.nota).map(s => `<div class="line" style="align-items:flex-start;cursor:pointer" data-act="verSesion" data-id="${s.id}"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(s.fecha))}</span><div class="grow stack" style="gap:3px">${s.nota_revision ? `<div class="small rev">${esc(s.nota_revision)}</div>` : ''}${s.nota ? `<div class="small muted">Sesión: "${esc(s.nota)}"</div>` : ''}</div></div>`).join('')}
   </div></section>`;
 }
+function vFotosComida(dl) {
+  const lim = sumaDias(hoyISO(), -13), con = dl.filter(r => r.fecha >= lim && (r.fotos || []).length).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  if (!con.length) return '';
+  pedirFotos(con.flatMap(r => r.fotos));
+  return `<section class="section"><h2>Fotos de comidas · 14 días</h2><div class="card stack" style="gap:12px">${con.map(r => `<div class="stack" style="gap:6px"><span class="small muted">${esc(fLarga(r.fecha))}</span><div class="plan-imgs">${miniFotos(r.fotos)}</div></div>`).join('')}</div></section>`;
+}
 function vFicha() {
   const f = S.ficha, a = S.c.perfiles.find(p => p.id === f.id) || {};
   if (f.cargando) return '<div class="empty">Cargando ficha…</div>';
@@ -1707,7 +1882,7 @@ function vFicha() {
   const fF = iso => fecha(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
   return `<section class="stack"><button class="btn sm ghost" data-act="cerrarFicha" style="align-self:flex-start">← Alumnos</button><span class="eyebrow">Ficha del alumno</span><h1>${esc(a.nombre)}</h1>
     <div class="small muted">${esc(a.email)} · alta ${esc(fCorta(a.fecha_alta))}${a.nombre_fiscal ? ' · ' + esc(a.nombre_fiscal) : ''}</div>
-    <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn sm gold" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm" data-act="abrirReporte" data-id="${a.id}">📋 Reporting semanal</button><button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button></div></section>
+    <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn sm gold" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm" data-act="abrirReporte" data-id="${a.id}">📋 Reporting semanal</button><button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}</div>${a.activo === false ? '<div class="aprox small" style="margin-top:10px">Antiguo alumno: no le llegan avisos de seguimiento al coach. Sus datos siguen guardados y puede seguir usando la app. Reactívalo si vuelve a empezar un proceso.</div>' : ''}</section>
   ${e.motivos.length ? `<section class="section"><div class="card stack"><span class="eyebrow">Para revisar</span><div class="small">${esc(e.motivos.join(' · '))}</div></div></section>` : ''}
   <section class="section"><div class="section-head"><h2>Plan</h2><button class="btn sm ghost" data-act="editarServicio">✎ Editar</button></div><div class="card stack">
     <button class="plan-b" data-act="fichaSub" data-s="plan"><div class="grow"><h3>${esc(srv?.producto || 'Sin plan asignado')} <span style="color:var(--blue-text)">›</span></h3><div class="small" style="color:var(--blue-text)">Ver toda su planificación: entrenamiento, alimentación y hábitos</div></div></button>
@@ -1766,7 +1941,7 @@ function vFichaSub(f, a) {
     <section class="section"><div class="section-head"><h2>Cumplimiento por ingestas</h2><button class="btn sm ghost" data-act="editarComidas">${n} ingestas/día · cambiar</button></div><div class="card">
       ${sems.map(l => { const I = ingestasSemana(dl, l, srv), ev = evalNutri(I.pct); return `<div class="line"><span class="small muted" style="width:96px;flex:none">${esc(fCorta(l))} – ${esc(fCorta(sumaDias(l, 6)))}</span><div class="grow small">${I.hechas} de ${I.total} ingestas${I.dias < 7 ? ` · ${I.dias} días registrados` : ''}</div>${ev ? `<span class="pill ${ev[0]}">${I.pct} % · ${ev[1]}</span>` : '<span class="small muted">sin datos</span>'}</div>`; }).join('')}
       <p class="note">Bien: 85 % o más de las ingestas de la semana. Regular: entre 60 y 85 %. Mal: por debajo del 60 %.</p></div></section>
-    <section class="section"><h2>Día a día</h2><div class="card tbl"><table><thead><tr><th>Día</th><th>Ingestas</th><th>Observación</th></tr></thead><tbody>${dl.slice(0, 21).map(r => `<tr><td>${esc(fCorta(r.fecha))}</td><td class="num">${r.ingestas == null ? '—' : `${r.ingestas}/${n}`}</td><td class="small">${esc(r.observacion || '')}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">Sin registros.</td></tr>'}</tbody></table></div></section>
+    ${vFotosComida(dl)}<section class="section"><h2>Día a día</h2><div class="card tbl"><table><thead><tr><th>Día</th><th>Ingestas</th><th>Observación</th></tr></thead><tbody>${dl.slice(0, 21).map(r => `<tr><td>${esc(fCorta(r.fecha))}</td><td class="num">${r.ingestas == null ? '—' : `${r.ingestas}/${n}`}</td><td class="small">${esc(r.observacion || '')}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">Sin registros.</td></tr>'}</tbody></table></div></section>
     ${chk.length ? `<section class="section"><h2>Lo que cuenta en sus check-ins</h2><div class="card">${chk.slice(0, 6).map(k => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(k.semana_inicio))}</span><div class="small grow">${esc(k.nota_alimentacion)}</div></div>`).join('')}</div></section>` : ''}`;
   }
   if (sub === 'habitos') {
@@ -2080,6 +2255,7 @@ function formServicio() {
     const op = numero($('#sv-pasos').value); if (op) row.objetivo_pasos = op;
     const guardar = r => s.id ? sb.from('servicios').update(r).eq('id', s.id) : sb.from('servicios').insert(r);
     let { error } = await guardar(row);
+    if (!error && !s.id) await sb.from('perfiles').update({ activo: true }).eq('id', S.ficha.id);
     if (error && /modulo_futbol/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 21 en Supabase.');
     if (error && /sueno_/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 24 en Supabase.');
     if (error && /objetivo_pasos/.test(error.message || '')) { delete row.objetivo_pasos; ({ error } = await guardar(row)); toast('Para guardar el objetivo de pasos falta ejecutar el Bloque 10'); }
@@ -3183,6 +3359,11 @@ document.addEventListener('click', async e => {
     case 'verPlan': verPlan(+b.dataset.p, +b.dataset.d); break;
     case 'editarPlantilla': await abrirEditor(null, +b.dataset.id); break;
     case 'nuevaPlantilla': formNuevaPlantilla(); break;
+    case 'valPlantilla': formValPlantilla(+b.dataset.id); break;
+    case 'regDia': S.regDia = b.dataset.f; render(); break;
+    case 'zonaFC': zonaFC(+b.dataset.z); break;
+    case 'archivarAlumno': await cambiarArchivo(b.dataset.id, false); break;
+    case 'reactivarAlumno': await cambiarArchivo(b.dataset.id, true); break;
     case 'asignarPlantilla': formAsignarPlantilla(b.dataset.al || null, b.dataset.id ? +b.dataset.id : null); break;
     case 'guardarPlantilla': formGuardarPlantilla(+b.dataset.id); break;
     case 'duplicarPlantilla': formGuardarPlantilla(+b.dataset.id, true); break;
@@ -3248,5 +3429,7 @@ document.addEventListener('input', e => {
   if (e.target.id === 'k-nut') $('#k-nut-v').textContent = e.target.value + ' %';
   if (e.target.id === 'k-imp') $('#k-imp-v').textContent = e.target.value + '/10';
 });
+
+document.addEventListener('change', e => { if (e.target.id === 'r-fotos') subirFotosComida(e.target); });
 
 arrancar().catch(err => { console.error(err); vistaMensaje('No se ha podido cargar', 'Revisa tu conexión y vuelve a abrir la app.', false); });

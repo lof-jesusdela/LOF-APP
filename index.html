@@ -133,6 +133,7 @@ header.top{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;ali
 .ap-row{display:grid;grid-template-columns:34px 1fr 92px 44px;gap:8px;align-items:center}
 .ap-n{font-family:var(--display);font-weight:800;font-size:24px;color:var(--gold-ink);text-align:center}
 .aprox input{padding:8px;text-align:center}
+.ap-kg{font-family:var(--display);font-weight:800;font-size:22px;text-align:center}
 .chart svg{display:block;width:100%;height:auto}
 .tbl{overflow-x:auto}
 .tbl table{width:100%;border-collapse:collapse;font-size:13px;min-width:340px}
@@ -287,6 +288,21 @@ details.plan-ap{border-top:1px solid var(--line);padding:10px 0}details.plan-ap:
 @media print{body{background:#fff!important}header.top,#tabs,.no-print,#toast,#timer{display:none!important}main{padding:0!important;max-width:none!important}.factura-doc{box-shadow:none;margin:0 auto;border-radius:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{size:A4;margin:0}}
 .track.gordo.ing i{transition:width .4s}
 .grasa-res{border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:4px}
+  .reg-dias{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+  .reg-dias button{border:1px solid rgba(127,127,127,.35);background:transparent;color:inherit;border-radius:12px;padding:6px 0;display:flex;flex-direction:column;align-items:center;cursor:pointer;font:inherit}
+  .reg-dias button small{font-size:11px;text-transform:uppercase;opacity:.75}
+  .reg-dias button b{font-family:var(--display);font-size:18px;line-height:1.1}
+  .reg-dias button[aria-pressed="true"]{background:var(--blue);border-color:var(--blue);color:#fff}
+  .reg-dias button.hecho::after{content:'';width:6px;height:6px;border-radius:50%;background:var(--ok);margin-top:3px}
+  .fotos-b{cursor:pointer}
+  .zonas-bar{display:flex;gap:4px;border-radius:14px;overflow:hidden}
+  .zonas-bar button{flex:1;min-height:76px;border:0;color:#111;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;font:inherit}
+  .zonas-bar button[data-z="3"]{color:#fff}
+  .zonas-bar b{font-family:var(--display);font-size:22px}
+  .zonas-bar span{font-size:13px;font-weight:600}
+  .zonas-lab{display:flex;gap:4px}
+  .zonas-lab span{flex:1;text-align:center;font-size:12px;color:var(--muted)}
+  .antiguos summary{cursor:pointer;list-style:none}
 </style>
 </head>
 <body>
