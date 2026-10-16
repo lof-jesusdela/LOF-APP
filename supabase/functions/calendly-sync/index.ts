@@ -22,6 +22,15 @@ function madrid(iso: string) {
   return { fecha: `${p.year}-${p.month}-${p.day}`, hora: `${p.hour}:${p.minute}` };
 }
 
+// Lee una respuesta de Calendly y avisa del error exacto si no es correcta
+async function leer(url: string, h: Record<string, string>): Promise<any> {
+  const r = await fetch(url, { headers: h });
+  const t = await r.text();
+  if (!r.ok) throw new Error(`Calendly ${r.status}: ${t.slice(0, 160) || "respuesta vacía"}`);
+  if (!t) throw new Error("Calendly devolvió una respuesta vacía");
+  return JSON.parse(t);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
@@ -34,7 +43,7 @@ Deno.serve(async (req) => {
     if (!token) return json({ error: "Falta el secreto CALENDLY_TOKEN" }, 500);
     const h = { Authorization: `Bearer ${token}` };
 
-    const me = await (await fetch(`${CAL}/users/me`, { headers: h })).json();
+    const me = await leer(`${CAL}/users/me`, h);
     const userUri = me.resource?.uri;
     if (!userUri) return json({ error: "Calendly no devuelve tu cuenta. Revisa el token." }, 500);
 
@@ -43,7 +52,7 @@ Deno.serve(async (req) => {
     let url: string | null = `${CAL}/scheduled_events?user=${encodeURIComponent(userUri)}&min_start_time=${encodeURIComponent(minStart)}&count=100&sort=start_time:asc`;
     const eventos: any[] = [];
     while (url && eventos.length < 300) {
-      const r: any = await (await fetch(url, { headers: h })).json();
+      const r: any = await leer(url, h);
       eventos.push(...(r.collection || []));
       url = r.pagination?.next_page || null;
     }
@@ -53,7 +62,7 @@ Deno.serve(async (req) => {
     for (const ev of eventos) {
       // ¿Es este alumno el invitado?
       const uuid = String(ev.uri).split("/").pop();
-      const inv: any = await (await fetch(`${CAL}/scheduled_events/${uuid}/invitees?count=20`, { headers: h })).json();
+      const inv: any = await leer(`${CAL}/scheduled_events/${uuid}/invitees?count=20`, h);
       const es = (inv.collection || []).some((i: any) => String(i.email || "").toLowerCase() === email);
       if (!es) continue;
 
@@ -74,6 +83,6 @@ Deno.serve(async (req) => {
     }
     return json({ nuevas, canceladas });
   } catch (e) {
-    return json({ error: String(e) }, 500);
+    return json({ error: String((e as any)?.message || e) }, 200);
   }
 });
