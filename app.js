@@ -2154,7 +2154,7 @@ function vEventos(srv, pres) {
   else if (cEsta) ev.push(`<div class="line evento"><div class="ico gold">${svg('progreso')}</div><div class="grow"><b class="small">Esta semana toca tu control mensual ${cEsta.n}</b><div class="small muted">Composición corporal, ajustes y mejoras: tienes pendiente la reunión de seguimiento mensual con Jesús.${srv?.modulo_presencial ? '' : ' Antes de la reunión, tómate tus medidas.'}</div>${srv?.modulo_presencial ? '' : '<button class="btn sm" data-act="misMedidas" style="margin-top:8px">Añadir mis medidas</button>'}</div></div>`);
   else if (cProx) ev.push(`<div class="line evento"><div class="ico">${svg('progreso')}</div><div class="grow"><b class="small">La semana que viene: control mensual ${cProx.n}</b><div class="small muted">Semana del ${esc(fCorta(cProx.lunes))}. Reunión de seguimiento, composición corporal y ajustes.</div></div></div>`);
   (pres || []).filter(p => p.estado === 'programada' && p.fecha >= hoy && p.fecha <= sumaDias(hoy, 13)).sort(ordPres).slice(0, 3)
-    .forEach(p => ev.push(`<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">Entrenamiento con Jesús</b><div class="small muted">${esc(fLarga(p.fecha))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</div></div><span class="small muted">›</span></div>`));
+    .forEach(p => ev.push(`<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">Entrenamiento con Jesús</b><div class="small muted">${esc(fLargaP(p))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</div></div><span class="small muted">›</span></div>`));
   return ev.length ? `<section class="section"><h2>Próximos eventos</h2><div class="card">${ev.join('')}</div></section>` : '';
 }
 
@@ -2620,13 +2620,16 @@ function formBloquesProceso() {
 /* ---------- Entrenamientos presenciales (bono de sesiones con Jesús) ---------- */
 const PRES_EST = { programada: 'Programada', dada: 'Hecha', tarde: 'Aviso con menos de 24 h · cuenta como hecha', cancelada: 'Cancelada a tiempo · no cuenta' };
 const cuentaPres = p => p.estado === 'dada' || p.estado === 'tarde';
-const ordPres = (a, b) => (a.fecha + (a.hora || '')).localeCompare(b.fecha + (b.hora || ''));
+const ordPres = (a, b) => ((a.fecha || '9999-12-31') + (a.hora || '')).localeCompare((b.fecha || '9999-12-31') + (b.hora || ''));
+/* Reservas de Calendly confirmadas sin fecha: la fecha está en el calendario de Jesús */
+const fLargaP = p => p.fecha ? fLarga(p.fecha) : 'Fecha en tu calendario de Calendly';
+const fNumP = p => p.fecha ? fNum(p.fecha) : 'Cal.';
 const hhmm = h => h ? String(h).slice(0, 5) : '';
 const fNum = iso => { const d = fecha(iso); return `${d.getDate()}/${d.getMonth() + 1}`; };
 const REGLA_24H = 'Si se avisa con menos de 24 horas de antelación y no está justificado, la sesión cuenta como hecha.';
 function datosPres(srv, lista) {
   const hechas = lista.filter(cuentaPres).sort(ordPres), total = srv?.sesiones_incluidas || 0;
-  const prox = lista.filter(p => p.estado === 'programada' && p.fecha >= hoyISO()).sort(ordPres);
+  const prox = lista.filter(p => p.estado === 'programada' && (!p.fecha || p.fecha >= hoyISO())).sort(ordPres);
   return { total, hechas, prox, quedan: Math.max(0, total - hechas.length - prox.length) }; // quedan = sin usar ni reservar
 }
 function vPresenciales(srv, lista, coach) {
@@ -2634,14 +2637,14 @@ function vPresenciales(srv, lista, coach) {
   if (!srv?.modulo_presencial && !srv?.sesiones_incluidas && !lista.length) return '';
   const D = datosPres(srv, lista), ocup = [...D.hechas, ...D.prox], n = Math.max(D.total, ocup.length);
   const cajas = [...Array(n)].map((_, k) => { const p = ocup[k];
-    if (p) return `<button class="caja ${p.estado}" data-act="verPres" data-id="${p.id}" aria-label="Sesión ${k + 1}, ${esc(fLarga(p.fecha))}"><b>${k + 1}</b><span>${fNum(p.fecha)}</span></button>`;
+    if (p) return `<button class="caja ${p.estado}" data-act="verPres" data-id="${p.id}" aria-label="Sesión ${k + 1}, ${esc(fLargaP(p))}"><b>${k + 1}</b><span>${fNumP(p)}</span></button>`;
     return `<button class="caja libre" data-act="${coach ? 'nuevaPres' : 'reservarPres'}" aria-label="Sesión ${k + 1}: ${coach ? 'programar' : 'reservar'}"><b>${k + 1}</b><span>${coach ? '＋' : 'Reservar'}</span></button>`; }).join('');
   const reservar = !coach && D.total && D.quedan > 0 ? `<button class="btn full" data-act="reservarPres">Reservar entrenamiento con Jesús</button>` : '';
   return `<section class="section"><div class="section-head"><h2>${coach ? 'Entrenamientos presenciales' : 'Tus entrenamientos conmigo'}</h2>${coach ? '<button class="btn sm" data-act="nuevaPres">＋ Añadir</button>' : ''}</div><div class="card stack">
     ${D.total ? `<div class="row"><div class="grow"><b class="num" style="font-family:var(--display);font-size:26px">${D.hechas.length} de ${D.total}</b><div class="small muted">sesiones hechas</div></div><div style="text-align:right"><b class="num" style="font-family:var(--display);font-size:26px;color:var(--blue)">${D.quedan}</b><div class="small muted">${D.quedan === 1 ? 'queda' : 'quedan'}</div></div></div>` : `<p class="small muted">${coach ? 'Indica en "Servicio → Editar" cuántas sesiones presenciales incluye su bono.' : 'Jesús indicará aquí tu bono de sesiones.'}</p>`}
     ${n ? `<div class="cajas">${cajas}</div><div class="row small muted" style="gap:12px;flex-wrap:wrap"><span><i class="lp hecha"></i> Hecha</span><span><i class="lp tarde"></i> Aviso &lt; 24 h (cuenta)</span><span><i class="lp prog"></i> Reservada</span><span><i class="lp libre"></i> Por usar</span></div>` : ''}
-    <div class="stack" style="gap:6px"><span class="eyebrow">Próximos entrenamientos</span>${D.prox.map(p => `<div class="line" data-act="${coach ? 'editarPres' : 'verPres'}" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">${esc(fLarga(p.fecha))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</b>${p.tipo ? `<div class="small"><b>${esc(p.tipo)}</b></div>` : ''}${p.nota ? `<div class="small muted">${esc(p.nota)}</div>` : ''}</div><span class="small" style="color:var(--blue-text)">${coach ? 'Editar' : 'Ver / cancelar'} ›</span></div>`).join('') || '<div class="small muted">No hay ninguno programado.</div>'}</div>
-    ${D.hechas.length ? `<div class="stack" style="gap:6px"><span class="eyebrow">Ya canjeados</span>${D.hechas.slice().reverse().map(p => `<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><span class="caja mini ${p.estado}"><b>${ocup.indexOf(p) + 1}</b></span><div class="grow"><b class="small">${esc(fLarga(p.fecha))}</b><div class="small muted">${esc(qEntreno(p, coach) || (p.estado === 'tarde' ? 'Aviso con menos de 24 h' : p.nota || 'Sesión presencial'))}</div></div><span class="small muted">›</span></div>`).join('')}</div>` : ''}
+    <div class="stack" style="gap:6px"><span class="eyebrow">Próximos entrenamientos</span>${D.prox.map(p => `<div class="line" data-act="${coach ? 'editarPres' : 'verPres'}" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">${esc(fLargaP(p))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</b>${p.tipo ? `<div class="small"><b>${esc(p.tipo)}</b></div>` : ''}${p.nota ? `<div class="small muted">${esc(p.nota)}</div>` : ''}</div><span class="small" style="color:var(--blue-text)">${coach ? 'Editar' : 'Ver / cancelar'} ›</span></div>`).join('') || '<div class="small muted">No hay ninguno programado.</div>'}</div>
+    ${D.hechas.length ? `<div class="stack" style="gap:6px"><span class="eyebrow">Ya canjeados</span>${D.hechas.slice().reverse().map(p => `<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><span class="caja mini ${p.estado}"><b>${ocup.indexOf(p) + 1}</b></span><div class="grow"><b class="small">${esc(fLargaP(p))}</b><div class="small muted">${esc(qEntreno(p, coach) || (p.estado === 'tarde' ? 'Aviso con menos de 24 h' : p.nota || 'Sesión presencial'))}</div></div><span class="small muted">›</span></div>`).join('')}</div>` : ''}
     ${reservar}
     ${!coach && D.prox.length ? `<button class="btn ghost full" data-act="cancelarPresLista">Cancelar una sesión reservada</button>` : ''}
     ${coach ? `<p class="small muted">Calendly y WhatsApp: ${S.calendly ? `<a href="${esc(S.calendly)}" target="_blank" rel="noopener">${esc(S.calendly.replace(/^https?:\/\//, ''))}</a>` : 'sin configurar'} · <button class="linkbtn" data-act="configCalendly">${S.calendly ? 'Cambiar' : 'Configurar'}</button></p>` : ''}
@@ -2658,7 +2661,7 @@ function verPres(id) {
   const ses = coach ? S.ficha.ses.find(s => s.id === p.sesion_id) : S.d.sesiones.find(s => s.id === p.sesion_id);
   const dia = ses && (ses.dias || (S.d?.programa?.dias || []).find(d => d.id === ses.dia_id));
   const D = datosPres(coach ? S.ficha.srv : S.d.servicio, lista), num = D.hechas.indexOf(p) + 1;
-  abrirSheet(`<div class="stack"><span class="eyebrow">Sesión presencial ${num || ''}</span><h2>${esc(fLarga(p.fecha))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</h2>
+  abrirSheet(`<div class="stack"><span class="eyebrow">Sesión presencial ${num || ''}</span><h2>${esc(fLargaP(p))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</h2>
     <span class="pill ${p.estado === 'tarde' ? 'bad' : p.estado === 'dada' ? 'ok' : ''}" style="align-self:flex-start">${esc(PRES_EST[p.estado] || p.estado)}</span>
     ${dia ? `<div class="card stack"><span class="eyebrow">Qué entrenamos</span><b>${esc(dia.nombre || '')} · ${esc(dia.foco || '')}</b>${ses.registros_series ? `<div class="small muted">${ses.registros_series.length} series registradas</div>` : ''}${ses.duracion_min ? `<div class="small muted">${ses.duracion_min} minutos</div>` : ''}</div>` : `<p class="small muted">${p.estado === 'tarde' ? 'No se entrenó: se avisó con menos de 24 horas.' : 'Sin entrenamiento registrado en la app.'}</p>`}
     ${p.nota ? `<div class="small"><span class="muted">Nota:</span> ${esc(p.nota)}</div>` : ''}
@@ -2682,11 +2685,11 @@ const waJesus = txt => {
 function cancelarPresLista() {
   const l = datosPres(S.d.servicio, S.d.presenciales || []).prox;
   if (l.length === 1) return cancelarPres(l[0].id);
-  abrirSheet(`<div class="stack"><h2>¿Qué sesión quieres cancelar?</h2>${l.map(p => `<button class="btn ghost full" data-act="cancelarPres" data-id="${p.id}" style="text-align:left">${esc(fLarga(p.fecha))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</button>`).join('')}<button class="btn ghost full" data-act="cerrarSheet">Volver</button></div>`);
+  abrirSheet(`<div class="stack"><h2>¿Qué sesión quieres cancelar?</h2>${l.map(p => `<button class="btn ghost full" data-act="cancelarPres" data-id="${p.id}" style="text-align:left">${esc(fLargaP(p))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</button>`).join('')}<button class="btn ghost full" data-act="cerrarSheet">Volver</button></div>`);
 }
 function cancelarPres(id) {
   const p = (S.d.presenciales || []).find(x => x.id === id); if (!p) return;
-  const cuando = `${fLarga(p.fecha)}${p.hora ? ' a las ' + hhmm(p.hora) : ''}`;
+  const cuando = `${fLargaP(p)}${p.hora ? ' a las ' + hhmm(p.hora) : ''}`;
   if (faltanHoras(p) < 24) {
     return abrirSheet(`<div class="stack"><h2>No se puede cancelar</h2>
       <p class="small">Tu sesión del <b>${esc(cuando)}</b> es dentro de menos de 24 horas, así que ya no se puede cancelar desde la app.</p>
@@ -2716,8 +2719,9 @@ function vCalendarioPres() {
   const mes = fecha(ini).toLocaleDateString('es-ES', { month: 'long' }), mes2 = fecha(dias[27]).toLocaleDateString('es-ES', { month: 'long' });
   return `<section class="section"><div class="section-head"><h2>Tus sesiones con Jesús</h2><span class="small muted">${esc(mes === mes2 ? mes : mes + ' – ' + mes2)}</span></div><div class="card stack">
     <div class="cal">${['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(x => `<span class="cal-h">${x}</span>`).join('')}${dias.map(celda).join('')}</div>
-    ${l.length ? l.map(p => `<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">${esc(fLarga(p.fecha))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</b><div class="small muted">${esc(p.tipo || 'Entrenamiento presencial con Jesús')}</div></div><span class="small" style="color:var(--blue-text)">›</span></div>`).join('') : '<p class="small muted">No tienes sesiones reservadas.</p>'}
+    ${l.length ? l.map(p => `<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">${esc(fLargaP(p))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</b><div class="small muted">${esc(p.tipo || 'Entrenamiento presencial con Jesús')}</div></div><span class="small" style="color:var(--blue-text)">›</span></div>`).join('') : '<p class="small muted">No tienes sesiones reservadas.</p>'}
     ${S.obj ? '' : '<button class="btn sm" data-act="reservarPres" style="align-self:flex-start">Reservar sesión</button>'}
+    ${coach ? '' : '<button class="btn sm ghost" data-act="sincCal" style="align-self:flex-start">↻ Actualizar mis reservas</button>'}
   </div></section>`;
 }
 const etiquetaDia = d => `${d.nombre}${d.foco ? ' · ' + d.foco : ''}`;
@@ -2786,18 +2790,20 @@ async function reservarPres() {
 window.addEventListener('message', e => {
   if (!S.esperaCal || !/calendly\.com$/.test(new URL(e.origin || 'http://x').hostname) || e.data?.event !== 'calendly.event_scheduled') return;
   S.esperaCal = false;
-  setTimeout(() => { try { window.Calendly?.closePopupWidget?.(); } catch (er) { } formConfirmarReserva(); }, 1200);
+  setTimeout(async () => { try { window.Calendly?.closePopupWidget?.(); } catch (er) { } const r = await sincronizarCalendly(false); if (!r?.nuevas) setTimeout(() => sincronizarCalendly(true), 4000); }, 1200);
 });
-function formConfirmarReserva() {
-  abrirSheet(`<form class="stack" id="f-rv"><h2>¡Reserva hecha!</h2><p class="small">Jesús ya tiene tu reserva en su calendario. Confirma aquí el día y la hora que has elegido para verla en tu bono.</p>
-    <div style="display:grid;grid-template-columns:1fr 110px;gap:8px"><label class="f">Día<input type="date" id="rv-f" min="${hoyISO()}" value="${hoyISO()}" required></label><label class="f">Hora<input type="time" id="rv-h" required></label></div>
-    <p class="note">${REGLA_24H}</p><button class="btn full" type="submit">Guardar en mi bono</button></form>`);
-  $('#f-rv').addEventListener('submit', async e => {
-    e.preventDefault();
-    const { error } = await sb.from('presenciales').insert({ alumno_id: S.user.id, fecha: $('#rv-f').value, hora: $('#rv-h').value || null, estado: 'programada', origen: 'calendly', nota: 'Reservada en Calendly' });
-    if (error) return fallo(error);
-    cerrarSheet(); toast('Reserva guardada'); await cargarAlumno(S.user.id); render();
-  });
+/* Reservas de Calendly: la función calendly-sync consulta la agenda de Jesús con el email del alumno y las guarda en su bono */
+async function sincronizarCalendly(manual) {
+  try {
+    const { data, error } = await sb.functions.invoke('rapid-action');
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    if (data?.nuevas || data?.canceladas) {
+      await cargarAlumno(S.user.id); render();
+      toast(data.nuevas ? 'Reserva descontada de tu bono' : 'Reserva cancelada');
+    } else if (manual) toast('No hay reservas nuevas');
+    return data;
+  } catch (err) { console.error(err); if (manual) toast('No se han podido actualizar las reservas'); return null; }
 }
 /* "Entrenar con…": pide la fecha y si canjea una sesión presencial */
 function formEntrenarCon(alumnoId) {
@@ -3385,6 +3391,7 @@ document.addEventListener('click', async e => {
     case 'entrenarAhora': formEntrenarCon(b.dataset.id); break;
     case 'verPres': verPres(+b.dataset.id); break;
     case 'reservarPres': await reservarPres(); break;
+    case 'sincCal': await sincronizarCalendly(true); break;
     case 'cancelarPresLista': cancelarPresLista(); break;
     case 'cancelarPres': cancelarPres(+b.dataset.id); break;
     case 'confirmarCancelPres': await confirmarCancelPres(+b.dataset.id); break;
