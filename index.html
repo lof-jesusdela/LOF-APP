@@ -307,6 +307,41 @@ details.plan-ap{border-top:1px solid var(--line);padding:10px 0}details.plan-ap:
 .alertas-lista{margin:0;padding-left:20px;display:grid;gap:8px}
 .spark-tip{margin-top:6px;min-height:20px;text-align:center}
 .spark-tip.on{color:var(--fg);font-weight:600}
+
+/* ---------- Perfil de temperamento (temperamento.js) ---------- */
+.tp-cab{display:flex;flex-direction:column;gap:10px;padding:2px 0 4px}
+.tp-paso{margin-top:18px}
+.tp-q{font-size:21px;font-weight:700;line-height:1.3;text-wrap:balance}
+.tp-ops{display:flex;flex-direction:column;gap:10px}
+.tp-op{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:13px 16px;border:1.5px solid var(--line);border-radius:14px;background:var(--surface);font-size:15px;font-weight:600;line-height:1.35;text-align:left;color:var(--fg)}
+.tp-op::before{content:'';flex:none;width:20px;height:20px;border-radius:50%;border:2px solid var(--line);background:var(--surface);box-sizing:border-box}
+.tp-op[aria-checked="true"]{border-color:var(--blue);background:var(--blue-soft);color:var(--blue-text)}
+.tp-op[aria-checked="true"]::before{border-color:var(--blue);background:var(--blue);box-shadow:inset 0 0 0 3px var(--surface)}
+.tp-op.chk::before{border-radius:6px}
+.tp-op.chk[aria-checked="true"]::before{box-shadow:none;background:var(--blue) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/14px no-repeat}
+.tp-escala{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+.tp-escala button{border:1.5px solid var(--line);background:var(--surface);border-radius:12px;padding:11px 0;font-weight:800;font-size:16px;color:var(--ink)}
+.tp-escala button[aria-pressed="true"]{background:var(--blue);border-color:var(--blue);color:#fff}
+.tp-horas{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tp-horas .t{grid-column:1/-1;font-size:13px;font-weight:700;margin-top:4px}
+input[type=time]{width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0;min-height:44px}
+.tp-n{font-family:var(--display);font-weight:800;font-size:22px;color:var(--gold-ink);width:22px;flex:none;text-align:center}
+.tp-pend{border:1.5px solid var(--gold);background:var(--gold-soft)}
+.tp-res{display:block;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer}
+.tp-mini{display:flex;gap:14px;align-items:center}
+.tp-mini .tp-svg{width:92px;height:92px;flex:none}
+.tp-thumb{width:40px;height:40px;flex:none;display:block}.tp-thumb .tp-svg{width:40px;height:40px;display:block}
+.tp-thumb.vacio{border:1.5px dashed var(--line);border-radius:10px}
+.tp-mapa .tp-svg{display:block;width:100%;max-width:380px;height:auto;margin:0 auto}
+.tp-svg .qn{font-family:var(--display);font-weight:800;font-size:15px;letter-spacing:.05em;text-transform:uppercase;fill:var(--fg)}
+.tp-svg .qn.on{fill:var(--blue-text)}
+.tp-svg .qc{font-size:11px;fill:var(--muted)}
+.tp-svg .pl{font-size:12px;font-weight:700;fill:var(--fg);paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round}
+.tp-hip{margin:0;padding-left:20px;display:grid;gap:10px}
+.tp-hip li::marker{font-family:var(--display);font-weight:800;color:var(--blue)}
+.tp-chips{gap:6px}
+.tp-cuida{border-color:rgba(210,59,50,.35)}
+.tp-dot{width:8px;height:8px;border-radius:50%;background:var(--bad);flex:none;margin-top:6px}
 </style>
 </head>
 <body>
@@ -326,6 +361,7 @@ details.plan-ap{border-top:1px solid var(--line);padding:10px 0}details.plan-ap:
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="config.js"></script>
+<script src="temperamento.js"></script>
 <script src="app.js"></script>
 <script>
 if ('serviceWorker' in navigator) { window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {})); }

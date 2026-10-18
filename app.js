@@ -189,7 +189,8 @@ async function cargarAlumno(uid) {
   };
   if (S.d.servicio) S.d.servicio._bloques = bloquesDe(S.d.ruta);
   if (S.d.servicio?.modulo_futbol) await cargarFutbol(uid, S.d);
-  { const r = await sb.from('revisiones').select('*').eq('alumno_id', uid).order('fecha', { ascending: false }); S.d.revisiones = r.data || []; S.d.revisionesErr = !!r.error; }
+  { const [r, tq] = await Promise.all([sb.from('revisiones').select('*').eq('alumno_id', uid).order('fecha', { ascending: false }), sb.from('temperamentos').select('*').eq('alumno_id', uid).order('fecha', { ascending: false }).order('id', { ascending: false })]);
+    S.d.revisiones = r.data || []; S.d.revisionesErr = !!r.error; S.d.temperamentos = tq.data || []; S.d.tempErr = !!tq.error; }
 }
 
 /* ---------- Render principal ---------- */
@@ -233,7 +234,7 @@ function render() {
       <div class="badge"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : esc(S.perfil.metodologia || 'Tu proceso')}</strong></div></div>
       <div class="row" style="gap:8px">${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
       <button class="avatar" data-act="cuenta" aria-label="Mi cuenta">${esCoach ? '<img src="icons/coach.jpg" alt="">' : esc((S.perfil.nombre || '?').slice(0, 2).toUpperCase())}</button></div>
-    </header>${S.prueba ? vBannerPrueba() : ''}${coach && ANCHO.matches ? vLateral(actual) : ''}<main id="main" class="${coach ? claseMain() : ''}">${(S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : seguro(vistas[actual])}</main>`;
+    </header>${S.prueba ? vBannerPrueba() : ''}${coach && ANCHO.matches ? vLateral(actual) : ''}<main id="main" class="${coach ? claseMain() : ''}">${(S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : (!coach && Temperamento.activo()) ? seguro(Temperamento.vista) : seguro(vistas[actual])}</main>`;
   document.body.classList.toggle('modo-coach', coach);
   $('#tabs').hidden = false;
   $('#tabs-in').innerHTML = tabs.map(([k, l]) => `<button data-act="${coach ? 'ctab' : 'tab'}" data-t="${k}" ${actual === k && !((S.ficha || S.editor || S.obj) && coach) ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${!coach && ((k === 'checkin' && tocaCheckin()) || (k === 'hoy' && pendientesFutbol().length)) ? '<i class="badge-dot"></i>' : ''}</button>`).join('');
@@ -405,6 +406,7 @@ function vHoy() {
   </section>
   ${S.perfil.rol !== 'coach' ? vChatCoach() : ''}
   ${tocaCheckin() ? `<section class="section"><div class="card aviso-chk stack"><div class="row"><div class="ico gold">${svg('checkin')}</div><div class="grow"><b>Toca rellenar tu check-in</b><div class="small muted">Es fin de semana: cuéntale a Jesús cómo ha ido tu semana.</div></div></div><button class="btn full" data-act="tab" data-t="checkin">Rellenar check-in</button>${'Notification' in window && Notification.permission === 'default' ? '<button class="btn ghost full" data-act="permisoAvisos">Activar avisos en el móvil</button>' : ''}</div></section>` : ''}
+  ${Temperamento.tarjetaHoy()}
   ${s.modulo_futbol ? vFutbolHoy() : ''}
   ${vEventos(s, S.d.presenciales)}
   ${vProcesoGlobal(s)}
@@ -1083,7 +1085,8 @@ async function cargarCoach() {
   const [fa, ap] = await Promise.all([sb.from('facturas').select('*').order('numero', { ascending: false }), sb.from('ajustes_privados').select('*')]);
   await cargarPlantillas();
   if (S.c.servicios.some(x => x.modulo_futbol)) await cargarFutbolCoach();
-  { const r = await sb.from('revisiones').select('*').order('fecha', { ascending: false }); S.c.revisiones = r.data || []; S.c.revisionesErr = !!r.error; }
+  { const [r, tq] = await Promise.all([sb.from('revisiones').select('*').order('fecha', { ascending: false }), sb.from('temperamentos').select('*').order('fecha', { ascending: false }).order('id', { ascending: false })]);
+    S.c.revisiones = r.data || []; S.c.revisionesErr = !!r.error; S.c.temperamentos = tq.data || []; S.c.tempErr = !!tq.error; }
   S.c.facturas = fa.data || []; S.c.facturasError = !!fa.error; S.c.fiscal = Object.fromEntries((ap.data || []).map(x => [x.clave, x.valor]));
 }
 /* Datos de una semana (lunes a domingo) de un alumno */
@@ -1159,6 +1162,7 @@ function vAlumnos() {
   <section class="section"><div class="kpis"><div class="kpi"><div class="v num">${als.length}</div><div class="l">perfiles activos</div></div><div class="kpi"><div class="v num" style="color:var(--bad)">${est.filter(x => x.e.nivel !== 'ok').length}</div><div class="l">necesitan atención</div></div><div class="kpi"><div class="v num" style="color:${venc.length ? 'var(--bad)' : 'var(--ok)'}">${venc.length}</div><div class="l">pagos vencidos</div></div></div></section>
   <section class="section"><button class="card reporte-b" data-act="abrirReporte"><div class="ico gold">${svg('checkin')}</div><div class="grow" style="text-align:left"><b>Reporting semanal</b><div class="small muted">Semana del ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -7)))} al ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -1)))} · todos tus alumnos de un vistazo</div></div><span class="small" style="color:var(--blue-text)">Abrir ›</span></button></section>
   ${vFutbolCoach()}
+  ${Temperamento.resumenCoach()}
   ${vResumenCoach(est)}
   ${vAntiguos()}
   <section class="section"><h2>Alumnos</h2><div class="card">${est.map(({ a, e }) => `<div class="line" data-act="ficha" data-id="${a.id}" style="cursor:pointer"><span style="width:4px;align-self:stretch;border-radius:2px;background:var(--${e.nivel})"></span><div class="grow stack" style="gap:3px"><div class="row"><h3 class="grow">${esc(a.nombre)}</h3>${e.control ? '<span class="pill gold">Revisión mensual</span>' : ''}<span class="pill ${e.nivel}">${lab[e.nivel]}</span></div><div class="small muted">${esc((c.servicios.find(s => s.alumno_id === a.id) || {}).producto || 'Sin servicio')}${e.ult ? ` · motivación ${e.ult.motivacion}/10` : ''}</div>${e.dpw ? barra('Semana', e.semana, e.dpw) + barra('Últimas 4 semanas', e.mes, e.dpw * 4) : ''}${e.motivos.length ? `<div class="small">${esc(e.motivos.join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no hay alumnos.</div>'}</div>
@@ -1915,6 +1919,7 @@ function vFicha() {
     ${srv?.modulo_nutricion ? tile('alimentacion', 'Alimentación', ing7.pct != null ? ing7.pct + ' %' : '—', ing7.dias ? `${ing7.hechas}/${ing7.total} ingestas` : 'sin registros', evN ? evN[1] + ' · 7 días' : '', evN?.[0] || '') : tile('alimentacion', 'Alimentación', '—', 'sin nutrición', 'contratada', '')}
     ${tile('habitos', 'Hábitos', pasos7 != null ? fmtNum(pasos7, 0) : '—', `pasos de media · 7 días`, `objetivo ${fmtNum(obj, 0)}`, pasos7 == null ? '' : pasos7 >= obj ? 'ok' : pasos7 >= obj * .7 ? 'warn' : 'bad')}
   </div></section>
+  ${Temperamento.bloqueFicha(f, a)}
   <section class="section"><div class="section-head"><h2>Composición corporal</h2><button class="btn sm ghost" data-act="nuevaMedicion">＋ Medición</button></div>
     ${vGraficaComp(f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), a) || '<div class="card empty">Sin mediciones todavía.</div>'}
     <button class="btn ghost full" data-act="fichaSub" data-s="composicion">Ver todas las medidas y tests ›</button></section>
@@ -1929,6 +1934,7 @@ function vFicha() {
 async function abrirSub(sub) {
   const f = S.ficha; S.fichaSub = sub; render(); window.scrollTo(0, 0);
   const tareas = [];
+  if (sub === 'temperamento') tareas.push(Temperamento.cargarSub(f));
   if (sub === 'entreno' && !f.programas) tareas.push(cargarProgramasFicha(f));
   if ((sub === 'habitos' || sub === 'alimentacion') && !f.diarioLargo) tareas.push(sb.from('registro_diario').select('*').eq('alumno_id', f.id).gte('fecha', sumaDias(hoyISO(), -55)).then(r => { f.diarioLargo = (r.data || []).sort((a, b) => b.fecha.localeCompare(a.fecha)); }));
   if (sub === 'plan' || sub === 'alimentacion') { tareas.push(cargarPlanificacion(f)); if (!f.programas) tareas.push(cargarProgramasFicha(f)); }
@@ -1951,6 +1957,7 @@ function vFichaSub(f, a) {
     ${vRevision(f)}
     <section class="section"><h2>Todos los entrenamientos</h2><div class="card">${f.ses.map(linea).join('') || '<div class="empty">Sin entrenamientos registrados.</div>'}</div></section>`;
   }
+  if (sub === 'temperamento') return cab('Perfil de temperamento') + Temperamento.vSub(f, a);
   if (sub === 'plan') return cab('Planificación') + vPlanificacion(f, a);
   if (sub === 'alimentacion') {
     const dl = f.diarioLargo || [], n = comidasDia(srv), sems = [0, 1, 2, 3].map(k => sumaDias(lunes, -7 * k)), pn = f.planNutri;
@@ -2933,11 +2940,11 @@ function vInforme(val, lista, coach) {
 }
 function vTests() {
   const l = S.d.valoraciones || [];
-  if (!l.length) return `<section class="stack"><span class="eyebrow">Control y evolución</span><h1>Tests</h1></section><div class="section card empty">Al empezar tu proceso Jesús te hará el test inicial. Aquí verás tu informe y el resultado de cada prueba.</div>`;
+  if (!l.length) return `<section class="stack"><span class="eyebrow">Control y evolución</span><h1>Tests</h1></section>${Temperamento.seccionTests()}<div class="section card empty">Al empezar tu proceso Jesús te hará el test inicial. Aquí verás tu informe y el resultado de cada prueba.</div>`;
   const sel = l.find(v => v.id === S.valSel) || l[0];
   return `<section class="stack"><span class="eyebrow">Control y evolución</span><h1>Tests</h1>
     ${l.length > 1 ? `<div class="chips" style="gap:6px">${l.map(v => `<button class="pill ${v.id === sel.id ? 'blue' : ''}" data-act="verValoracion" data-id="${v.id}">${esc(v.nombre)} · ${esc(fCorta(v.fecha))}</button>`).join('')}</div>` : ''}</section>
-  <section class="section">${vInforme(sel, l, false)}</section>`;
+  ${Temperamento.seccionTests()}<section class="section">${vInforme(sel, l, false)}</section>`;
 }
 
 /* Coach: tests en la ficha */
