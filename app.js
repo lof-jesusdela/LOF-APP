@@ -36,6 +36,7 @@ const IC = {
   nutri: '<path d="M12 21c-4 0-7-3-7-7 0-5 4-8 7-8s7 3 7 8c0 4-3 7-7 7z"/><path d="M12 6c0-2 1-3 3-3"/>',
   progreso: '<path d="M4 19h16M6 15l4-4 3 3 5-6"/>',
   checkin: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4h6v3H9zM9 13l2 2 4-4"/>',
+  coach: '<path d="M4 18.5V7a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H8.5z"/><path d="M8.5 9h7M8.5 12h4"/>',
   alumnos: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c.8-3.2 3.2-5 6-5s5.2 1.8 6 5"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.2c2.5.2 4.3 1.9 5 4.8"/>',
   pagos: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M7 15h3"/>',
   ejercicios: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 15l3-3 2 2 3-4M8 8h.01"/>',
@@ -295,7 +296,7 @@ async function cargarAlumno(uid) {
 /* ---------- Render principal ---------- */
 function tabsAlumno() {
   const s = S.d.servicio || {};
-  return [['hoy', 'Hoy'], (s.modulo_entreno ?? true) && ['entreno', 'Entreno'], s.modulo_nutricion && ['nutri', 'Nutrición'], ['habitos', 'Hábitos'], ['progreso', 'Progreso'], ['checkin', 'Check-in']].filter(Boolean);
+  return [['hoy', 'Hoy'], (s.modulo_entreno ?? true) && ['entreno', 'Entreno'], s.modulo_nutricion && ['nutri', 'Nutrición'], ['habitos', 'Hábitos'], ['progreso', 'Progreso'], ['coach', 'Tu coach']].filter(Boolean);
 }
 
 /* Escritorio (iPad / Mac): barra lateral con la lista de alumnos y fichas a dos columnas */
@@ -327,6 +328,7 @@ function seguro(fn) {
 function render() {
   const coach = S.modo === 'coach';
   if (S.tab === 'tests') S.tab = 'progreso';   // los tests viven ahora dentro de Progreso
+  if (S.tab === 'checkin') S.tab = 'hoy';       // el check-in vive ahora al final de Hoy
   const tabs = coach ? [['alumnos', 'Alumnos'], ['plantillas', 'Plantillas'], ['ejercicios', 'Ejercicios'], ['pagos', 'Pagos']] : tabsAlumno();
   const actual = coach ? S.ctab : S.tab;
   const esCoach = S.perfil.rol === 'coach';
@@ -339,7 +341,9 @@ function render() {
   document.body.classList.toggle('modo-coach', coach);
   if (coach) aplicarFiltroAl();
   $('#tabs').hidden = false;
-  $('#tabs-in').innerHTML = tabs.map(([k, l]) => `<button data-act="${coach ? 'ctab' : 'tab'}" data-t="${k}" ${actual === k && !((S.ficha || S.editor || S.obj) && coach) ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${!coach && ((k === 'checkin' && tocaCheckin()) || (k === 'hoy' && pendientesFutbol().length)) ? '<i class="badge-dot"></i>' : ''}</button>`).join('');
+  $('#tabs-in').innerHTML = tabs.map(([k, l]) => !coach && k === 'coach'
+    ? (waJesus('Hola Jesús, ') ? `<a class="tab-wa" href="${esc(waJesus('Hola Jesús, '))}" target="_blank" rel="noopener" aria-label="Habla con tu coach por WhatsApp">${svg('coach')}<span>${l}</span></a>` : `<button data-act="sinWhatsapp">${svg('coach')}<span>${l}</span></button>`)
+    : `<button data-act="${coach ? 'ctab' : 'tab'}" data-t="${k}" ${actual === k && !((S.ficha || S.editor || S.obj) && coach) ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${!coach && k === 'hoy' && (pendientesFutbol().length || tocaCheckin()) ? '<i class="badge-dot"></i>' : ''}</button>`).join('');
   if (S.dia && ((!coach && S.tab === 'entreno') || (coach && S.obj))) rellenarSesion();
 }
 
@@ -506,6 +510,7 @@ function zonaFC(n, fut, mx) {
   const z = zonasDe(fut).find(x => x.n === n); mx = mx || fcMaxDe(); if (!z || !mx) return;
   abrirSheet(`<div class="stack"><span class="eyebrow">Zona ${n}</span><h2>${esc(z.nom)}</h2><div class="pill num" style="align-self:flex-start">${Math.round(mx * z.desde)}–${Math.round(mx * z.hasta)} ppm · ${Math.round(z.desde * 100)}–${Math.round(z.hasta * 100)} % de la FC máxima</div><p class="small pre">${esc(z.desc)}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`);
 }
+const FRASE_DEF = 'Estar aquí y dar el paso ya es tu mayor logro. Ahora vamos juntos a hacerlo realidad.';
 function vHoy() {
   const s = S.d.servicio || {}, p = S.d.programa, hoy = hoyISO();
   const d = diaDeHoy(), prox = proximoDia();
@@ -519,11 +524,10 @@ function vHoy() {
   const dur = s.duracion_semanas, semN = s.inicio ? Math.floor((fecha(hoy) - fecha(s.inicio)) / 6048e5) + 1 : null;
   return `<section class="card hero stack">
     <span class="eyebrow">${esc(fLarga(hoy))}</span>
-    <h1>Hola, ${esc((S.perfil.nombre || '').split(' ')[0])}</h1>
-    <div class="small muted">${esc(s.producto || 'Tu proceso')}${(() => { const P = proceso(s); return P && !P.antes && !P.fuera ? ` · Semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''; })()}</div>
+    <div class="row" style="gap:14px;align-items:center"><div class="grow stack" style="gap:8px"><h1 style="margin:0">Hola, ${esc((S.perfil.nombre || '').split(' ')[0])}</h1>
+      <p class="frase-hoy">${esc(S.perfil.frase_motivacion || FRASE_DEF)}</p></div>${avatarDe(S.perfil, 72)}</div>
     ${objetivoDe(S.d.ruta) ? `<div style="border-top:1px solid rgba(255,255,255,.14);padding-top:12px" class="stack"><span class="eyebrow">Tu objetivo</span><div class="small">${esc(objetivoDe(S.d.ruta))}</div></div>` : ''}
   </section>
-  ${S.perfil.rol !== 'coach' ? vChatCoach() : ''}
   ${vProcesoGlobal(s)}
   ${vAvisoContexto()}
   <section class="section"><h2>Lo que toca hoy</h2><div class="card">${toca}</div></section>
@@ -533,6 +537,7 @@ function vHoy() {
   ${s.modulo_futbol ? '' : Habitos.tarjetaHoy(true)}
   ${vEventos(s, S.d.presenciales)}
   ${vPresenciales(S.d.servicio, S.d.presenciales, false)}
+  <section class="section chk-hoy" id="checkin">${vCheckin(true)}</section>
   `;
 }
 
@@ -1193,13 +1198,13 @@ function vProgreso() {
 }
 
 /* ---------- Check-in ---------- */
-function vCheckin() {
+function vCheckin(enHoy) {
   const lunes = lunesDe(hoyISO()), w = semana(lunes), c = S.d.checkins.find(x => x.semana_inicio === lunes);
   if (!S.chipsCargados && c) { S.chips = new Set(c.proxima_semana_etiquetas || []); S.chipsCargados = true; }
   const s = S.d.servicio || {}, p = S.d.programa;
   const mot = c?.motivacion ?? 7, imp = c?.implicacion ?? 7;
   const etiquetas = ['Viaje', 'Turnos de trabajo', 'Evento social', 'Enfermedad', 'Semana tranquila'];
-  return `<section class="stack"><span class="eyebrow">Semana del ${esc(fCorta(lunes))} al ${esc(fCorta(sumaDias(lunes, 6)))}</span><h1>Check-in</h1><p class="small muted">${c ? 'Ya lo enviaste esta semana. Puedes corregirlo si algo ha cambiado.' : 'Lo que registras cada día se rellena solo. Aquí solo te pregunto lo que falta.'}</p></section>
+  return `<section class="stack"><span class="eyebrow">Semana del ${esc(fCorta(lunes))} al ${esc(fCorta(sumaDias(lunes, 6)))}</span>${enHoy ? '<h2 style="margin:0">Check-in semanal · resumen de tu semana</h2>' : '<h1>Check-in</h1>'}<p class="small muted">${c ? 'Ya lo enviaste esta semana. Puedes corregirlo si algo ha cambiado.' : 'Lo que registras cada día se rellena solo. Aquí solo te pregunto lo que falta.'}</p></section>
   <section class="section"><div class="card stack"><span class="eyebrow">Tu semana en datos</span>
     ${(s.modulo_entreno ?? true) ? `<div class="row small"><span class="grow">Entrenamientos</span><span class="pill ${p && w.entrenos >= p.dias_semana ? 'ok' : 'warn'} num">${w.entrenos}${p ? ' de ' + p.dias_semana : ''}</span></div>` : ''}
 
@@ -2293,6 +2298,7 @@ function formDatosAlumno(id) {
   abrirSheet(`<form class="stack" id="f-da"><h2>Datos del alumno</h2>
     <label class="f">Nombre en la app<input type="text" data-k="nombre" value="${esc(a.nombre || '')}" placeholder="Ej. Carmen Sánchez" required></label>
     <p class="small muted">Es el nombre que verás en tus listas. Pon nombre y primer apellido para no confundir a dos alumnos con el mismo nombre.</p>
+ <label class="f">Frase motivadora (la ve en el saludo de Hoy)<textarea id="da-frase" rows="2" placeholder="${esc(FRASE_DEF)}">${esc(a.frase_motivacion || '')}</textarea><span class="small muted">Déjala vacía para que vea la frase general.</span></label>
     <label class="f">Nombre completo (para facturas)<input type="text" data-k="nombre_fiscal" value="${esc(a.nombre_fiscal || '')}" placeholder="Como aparece en su DNI"></label>
     <label class="f">NIF / NIE<input type="text" data-k="nif" value="${esc(a.nif || '')}"></label>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><label class="f">Sexo<select data-k="sexo"><option value="">—</option><option value="mujer" ${a.sexo === 'mujer' ? 'selected' : ''}>Mujer</option><option value="hombre" ${a.sexo === 'hombre' ? 'selected' : ''}>Hombre</option></select></label>
@@ -2306,6 +2312,8 @@ function formDatosAlumno(id) {
     let { error } = await sb.from('perfiles').update(upd).eq('id', id);
     if (error && /column/.test(error.message || '')) { ({ error } = await sb.from('perfiles').update({ nombre: upd.nombre }).eq('id', id)); if (!error) toast('Nombre guardado. Para el resto de datos ejecuta los Bloques 11 y 13'); }
     if (error) return fallo(error);
+    { const fr = $('#da-frase')?.value.trim() || null;
+      if (fr !== (a.frase_motivacion || null)) { const r2 = await sb.from('perfiles').update({ frase_motivacion: fr }).eq('id', id); if (r2.error) toast(/frase/.test(r2.error.message || '') ? 'Datos guardados. Para la frase falta ejecutar el Bloque 36 en Supabase' : 'No se ha podido guardar la frase'); else upd.frase_motivacion = fr; } }
     Object.assign(a, upd); if (id === S.user.id) Object.assign(S.perfil, upd);
     cerrarSheet(); toast('Datos guardados'); render();
   });
@@ -3683,7 +3691,9 @@ document.addEventListener('click', async e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
   const a = b.dataset.act;
   switch (a) {
-    case 'tab': S.tab = b.dataset.t; S.dia = null; S.chipsCargados = false; render(); window.scrollTo(0, 0); break;
+    case 'tab': if (b.dataset.t === 'checkin') { S.tab = 'hoy'; S.dia = null; render(); $('#checkin')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break; }
+      S.tab = b.dataset.t; S.dia = null; S.chipsCargados = false; render(); window.scrollTo(0, 0); break;
+    case 'sinWhatsapp': toast('Jesús aún no ha puesto su WhatsApp en la app'); break;
     case 'ctab': if (S.obj) await salirComo(); S.reporte = null; S.factura = null; S.ctab = b.dataset.t; S.ficha = null; S.editor = null; render(); window.scrollTo(0, 0); break;
     case 'modo': if (S.obj) await salirComo(); S.modo = b.dataset.v; S.ficha = null; if (S.modo === 'coach') await cargarCoach(); render(); window.scrollTo(0, 0); break;
     case 'abrirDia': await abrirDia(+b.dataset.id); break;
