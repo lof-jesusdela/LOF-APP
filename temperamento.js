@@ -20,7 +20,7 @@ const Temperamento = (() => {
     ['Tu ritmo diario es…', 'Rápido; me cuesta parar', 'Medio', 'Tranquilo; me cuesta arrancar'],
     ['Cuando algo te molesta…', 'Te enciendes rápido', 'Depende del día', 'Tardas mucho en enfadarte'],
     ['Ante una decisión importante…', 'Decides rápido, a veces por impulso', 'Te tomas un tiempo razonable', 'Le das muchas vueltas y te cuesta decidir'],
-    ['Las venas de tus brazos y manos…', 'Se ven mucho, incluso en reposo', 'Algo', 'Casi no se ven'],
+    ['Las venas de tus brazos y manos…', 'Se ven mucho, incluso en reposo', 'Se ven un poco', 'Casi no se ven'],
     ['Tu piel al tacto suele ser…', 'Suave, hidratada o grasa', 'Normal', 'Seca o áspera; se agrieta con facilidad'],
     ['Con el peso…', 'Gano grasa con facilidad, sobre todo bajo la piel', 'Me mantengo sin mucho esfuerzo', 'Me cuesta ganar peso'],
     ['Tu forma corporal es…', 'Redondeada, con articulaciones poco marcadas', 'Intermedia', 'Huesuda, con articulaciones y tendones marcados'],
@@ -28,9 +28,9 @@ const Temperamento = (() => {
     ['¿Retienes líquidos (anillos o calzado que aprietan, cara hinchada al despertar)?', 'A menudo', 'A veces', 'Casi nunca'],
     ['¿Cuántas horas necesitas dormir para estar bien?', 'Más de 8', 'Entre 7 y 8', 'Con menos de 7 me basta'],
     ['Tu sueño es…', 'Profundo; me cuesta despertar', 'Normal', 'Ligero; me despierto con facilidad'],
-    ['Durante el día, sobre todo después de comer…', 'A menudo me entra sueño o pesadez', 'A veces', 'Casi nunca'],
-    ['Mucosidad o congestión nasal…', 'Frecuentes, incluso sin catarro', 'Ocasionales', 'Raras; más bien nariz u ojos secos'],
-    ['Tu tránsito intestinal…', 'Heces blandas o frecuentes', 'Regular', 'Tendencia al estreñimiento o heces secas']
+    ['¿Te entra sueño o pesadez durante el día, sobre todo después de comer?', 'A menudo', 'A veces', 'Casi nunca'],
+    ['¿Tienes mucosidad o congestión nasal?', 'A menudo, incluso sin catarro', 'De vez en cuando', 'Casi nunca; más bien tengo la nariz o los ojos secos'],
+    ['¿Cómo es tu tránsito intestinal?', 'Heces blandas o frecuentes', 'Regular', 'Con tendencia al estreñimiento o heces secas']
   ];
 
   /* ---------- Parte B · los seis factores (no puntúan: dicen por dónde empezar el plan) ---------- */
@@ -305,6 +305,12 @@ const Temperamento = (() => {
   }
 
   /* ---------- Informe (lo ve el alumno y, desde su ficha, el coach) ---------- */
+  /* Con menos de 8 semanas entre dos cuestionarios, la diferencia suele venir de las respuestas, no del cuerpo */
+  function notaAnterior(t, ant) {
+    const dd = Math.max(0, Math.round((Date.parse(t.fecha) - Date.parse(ant.fecha)) / 864e5));
+    const cuando = dd === 0 ? 'hecho el mismo día' : `hecho ${dd} ${dd === 1 ? 'día' : 'días'} antes`;
+    return ` El punto hueco es tu cuestionario anterior, ${cuando}.` + (dd < 56 ? ' Con menos de 8 semanas entre uno y otro, la diferencia suele venir de cómo has respondido, no de un cambio en tu cuerpo.' : '');
+  }
   function vInforme(t, o = {}) {
     const nom = (o.nombre || '').split(' ')[0], ef = efectivo(t), pl = PLANT[ef.dom], sx = o.sexo, senales = t.senales || [];
     const delicado = senales.includes('animo'), cr = CRONO(t.rmeq), su = sueno(t.respuestas?.b?.horarios);
@@ -320,7 +326,7 @@ const Temperamento = (() => {
     const sec = (titulo, cuerpo) => `<section class="section"><h2>${titulo}</h2><div class="card stack">${cuerpo}</div></section>`;
     return `<section class="card hero stack tp-hero"><span class="eyebrow">Tu perfil de temperamento · ${esc(fCorta(t.fecha))} ${fecha(t.fecha).getFullYear()}</span><h1>${ef.dom ? esc(NOM[ef.dom]) : 'Perfil templado'}</h1>
       <div class="small muted">${ef.dom ? `${CUAL[ef.dom][0].toUpperCase() + CUAL[ef.dom].slice(1)}${ef.sec ? ` · con rasgos de ${NOM[ef.sec].toLowerCase()}` : ''}${ef.reetiq ? ' · ajustado con tus datos' : ` · confianza ${conf}`}` : 'Sin un temperamento claro: tus datos marcarán el rumbo'}</div></section>
-    <section class="section"><div class="card stack tp-mapa">${mapa(pts, { res: ef.dom })}<p class="small muted">Tu punto en el mapa de los cuatro temperamentos: a la izquierda el frío, a la derecha el calor; arriba lo seco, abajo lo húmedo. La franja clara del centro es la zona templada.${o.anterior ? ' El punto hueco es tu cuestionario anterior.' : ''}${ef.reetiq ? ' El punto es donde te colocaron tus respuestas; el cuadrante marcado es tu perfil ajustado con tus datos.' : ''}</p></div></section>
+    <section class="section"><div class="card stack tp-mapa">${mapa(pts, { res: ef.dom })}<p class="small muted">Tu punto en el mapa de los cuatro temperamentos: a la izquierda el frío, a la derecha el calor; arriba lo seco, abajo lo húmedo. La franja clara del centro es la zona templada.${o.anterior ? notaAnterior(t, o.anterior) : ''}${ef.reetiq ? ' El punto es donde te colocaron tus respuestas; el cuadrante marcado es tu perfil ajustado con tus datos.' : ''}</p></div></section>
     <section class="section"><div class="card stack"><p>${cabecera}</p>${ef.reetiq ? `<p class="note">Jesús ha ajustado tu perfil con tus datos de estas semanas: manda lo que dice tu cuerpo.</p>` : ''}</div></section>
     ${pl ? sec('Tus puntos fuertes', `<p>${esc(delicado && pl.fuertesSuave || pl.fuertes)}</p>`) + sec('Lo que vigilaremos', `<p>${esc(delicado && pl.vigilarSuave || pl.vigilar)}</p>`)
       + sec('Tus hipótesis para estas 8 semanas', `<ol class="tp-hip">${hip.map(h => `<li>${esc(h)}</li>`).join('')}</ol>${delicado && hip.length < pl.hip.length ? '<p class="small muted">Lo relacionado con la comida y la cintura lo vemos juntos, con calma.</p>' : ''}<p class="note">Cada 15 días miramos tus datos para ver si se cumplen. Si no, ajustamos.</p>`)
