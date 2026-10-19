@@ -64,9 +64,11 @@ const PDF = (() => {
         capa.style.cssText = 'position:fixed;inset:0;z-index:9999;overflow:hidden;background:rgba(6,36,65,.92)';
         capa.innerHTML = `<div style="position:absolute;left:0;top:0;width:794px">${contenido}</div><div style="position:absolute;left:0;right:0;bottom:40%;text-align:center;color:#fff;font:600 16px system-ui">Generando PDF…</div>`;
         document.body.appendChild(capa); root = capa.firstElementChild.firstElementChild; doc = true;
-        await Promise.all([...capa.querySelectorAll('img')].map(i => i.complete ? null : new Promise(r => { i.onload = i.onerror = r; })));
-        if (document.fonts?.ready) await document.fonts.ready;
-        await svgAImagen(root);
+        const espera = ms => new Promise(r => setTimeout(r, ms));   // nunca esperar para siempre a una imagen o una fuente
+        capa.querySelectorAll('img').forEach(i => { i.loading = 'eager'; });
+        await Promise.race([Promise.all([...capa.querySelectorAll('img')].map(i => i.complete ? null : new Promise(r => { i.onload = i.onerror = r; }))), espera(3000)]);
+        if (document.fonts?.ready) await Promise.race([document.fonts.ready, espera(2000)]);
+        await Promise.race([svgAImagen(root), espera(3000)]);
       }
       const { jsPDF } = window.jspdf, pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
       const W = 210, H = 297, fondo = doc ? '#EEF2F7' : '#FFFFFF', rr = root.getBoundingClientRect();
