@@ -3149,11 +3149,27 @@ function vResultados(p, ant) {
     return `<div class="stack" style="gap:4px"><div class="row small"><span class="grow">${esc(x.nombre)}</span><b class="num">${esc(x.valor || '—')}</b>${dv ? `<span class="pill ${dv > 0 ? 'ok' : 'bad'} num">${dv > 0 ? '+' : ''}${fmtNum(dv)}</span>` : ''}</div>${barras && nums[k] != null ? `<div class="track"><i style="width:${nums[k] / mx * 100}%;background:var(--blue)"></i></div>` : ''}</div>`;
   }).join('')}</div>`;
 }
+/* Resultados que el alumno ha ido añadiendo de esta prueba después de este informe (más reciente primero) */
+function registrosDe(lista, val, p) {
+  return (lista || []).filter(v => v.origen === 'alumno' && v.id !== val.id && v.fecha >= val.fecha)
+    .flatMap(v => (v.pruebas || []).filter(x => x.tipo === p.tipo && x.titulo === p.titulo).map(x => ({ v, x })))
+    .sort((a, b) => b.v.fecha.localeCompare(a.v.fecha) || b.v.id - a.v.id);
+}
+const txtDatos = ds => (ds || []).filter(x => x.nombre && (x.valor || x.d || x.i)).map(x => `${x.nombre}: ${x.valor || `${x.d || '—'} / ${x.i || '—'}`}`).join(' · ');
+function vRegistros(regs, p, coach) {
+  if (!regs.length) return '';
+  const base = (p.datos || []), num = (x, n) => numDe((x.datos || []).find(y => y.nombre === n)?.valor);
+  return `<div class="stack" style="gap:6px"><span class="eyebrow">${coach ? 'Resultados que ha añadido' : 'Tus resultados'}</span>${regs.map(({ v, x }, i) => {
+    const prev = regs[i + 1]?.x || p, mejoras = p.tipo === '1rm' ? (x.datos || []).map(d => { const a = numDe(d.valor), b = num(prev, d.nombre); return a != null && b != null && a !== b ? `${d.nombre} ${a > b ? '+' : ''}${fmtNum(a - b)}` : null; }).filter(Boolean) : [];
+    return `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(v.fecha))}</span><div class="grow small">${esc(txtDatos(x.datos))}${mejoras.length ? `<div class="small" style="color:var(--ok);font-weight:700">${esc(mejoras.join(' · '))}</div>` : ''}</div>${coach ? `<button class="btn sm ghost" data-act="abrirValoracion" data-id="${v.id}">Ver</button>` : ''}</div>`;
+  }).join('')}</div>`;
+}
 function vPrueba(p, lista, val, coach) {
-  const ant = anteriorDe(lista, val, p);
-  return `<details class="card prueba" ${coach ? 'open' : ''}><summary><div class="row"><div class="grow"><h3>${esc(p.titulo)}</h3><div class="small muted">${esc(resumenPrueba(p))}</div></div><span class="mas">＋</span></div></summary>
+  const ant = anteriorDe(lista.filter(v => v.origen !== 'alumno'), val, p), regs = val.origen === 'alumno' ? [] : registrosDe(lista, val, p);
+  return `<details class="card prueba" ${coach || S.pruebaAbierta === p.id ? 'open' : ''}><summary><div class="row"><div class="grow"><h3>${esc(p.titulo)}</h3><div class="small muted">${esc(resumenPrueba(p))}${regs.length ? ` · último resultado ${esc(fCorta(regs[0].v.fecha))}` : ''}</div></div><span class="mas">＋</span></div></summary>
     <div class="stack" style="margin-top:12px">
     ${vResultados(p, ant)}
+    ${vRegistros(regs, p, coach)}
     ${ant ? `<p class="small muted">Comparado con ${esc(fCorta(lista.find(v => (v.pruebas || []).includes(ant)).fecha))}.</p>` : ''}
     ${p.valoracion ? `<div class="stack" style="gap:4px"><span class="eyebrow">Valoración del coach</span><div class="small pre">${esc(p.valoracion)}</div></div>` : ''}
     ${p.foco ? `<div class="aprox stack" style="gap:4px"><span class="eyebrow">Foco de trabajo</span><div class="small pre">${esc(p.foco)}</div></div>` : ''}
@@ -3191,17 +3207,17 @@ function formResultado(pid) {
       const { data: val, error } = await sb.from('valoraciones').insert({ alumno_id: S.user.id, nombre: p.titulo, fecha: $('#rs-f').value || hoyISO(), resumen: null, origen: 'alumno' }).select().single(); if (error) throw error;
       const { error: e2 } = await sb.from('pruebas').insert({ valoracion_id: val.id, alumno_id: S.user.id, orden: 0, tipo: p.tipo, titulo: p.titulo, protocolo: p.protocolo || null, video_url: p.video_url || null, datos }); if (e2) throw e2;
       const r = await sb.from('valoraciones').select('*,pruebas(*)').eq('alumno_id', S.user.id).order('fecha', { ascending: false });
-      S.d.valoraciones = ordenarValoraciones(r.data || []); S.valSel = val.id;
-      cerrarSheet(); toast('Resultado guardado'); render();
+      S.d.valoraciones = ordenarValoraciones(r.data || []);
+      cerrarSheet(); toast('Resultado guardado: lo verás en el historial de la prueba'); S.pruebaAbierta = pid; render();
     } catch (err) { bt.disabled = false; bt.textContent = 'Guardar resultado'; fallo(err, /origen|policy|row-level/i.test(err.message || '') ? 'Falta ejecutar el Bloque 35 en Supabase.' : 'No se ha podido guardar.'); }
   });
 }
 function vTests() {
   const l = S.d.valoraciones || [];
   if (!l.length) return `<section class="stack"><span class="eyebrow">Control y evolución</span><h1>Tests</h1></section>${Temperamento.seccionTests()}<div class="section card empty">Al empezar tu proceso Jesús te hará el test inicial. Aquí verás tu informe y el resultado de cada prueba.</div>`;
-  const sel = l.find(v => v.id === S.valSel) || l.find(v => v.origen !== 'alumno') || l[0];
+  const inf = l.filter(v => v.origen !== 'alumno').length ? l.filter(v => v.origen !== 'alumno') : l, sel = inf.find(v => v.id === S.valSel) || inf[0];
   return `<section class="stack"><span class="eyebrow">Control y evolución</span><h1>Tests</h1>
-    ${l.length > 1 ? `<div class="chips" style="gap:6px">${l.map(v => `<button class="pill ${v.id === sel.id ? 'blue' : ''}" data-act="verValoracion" data-id="${v.id}">${esc(v.nombre)} · ${esc(fCorta(v.fecha))}</button>`).join('')}</div>` : ''}</section>
+    ${inf.length > 1 ? `<div class="chips" style="gap:6px">${inf.map(v => `<button class="pill ${v.id === sel.id ? 'blue' : ''}" data-act="verValoracion" data-id="${v.id}">${esc(v.nombre)} · ${esc(fCorta(v.fecha))}</button>`).join('')}</div>` : ''}</section>
   ${Temperamento.seccionTests()}<section class="section">${vInforme(sel, l, false)}</section>`;
 }
 
@@ -3209,8 +3225,8 @@ function vTests() {
 function vTestsProgreso() {
   const l = S.d.valoraciones || [];
   if (!l.length) return `<section class="section"><h2>Tests</h2><div class="card empty">Al empezar tu proceso Jesús te hará el test inicial. Aquí verás tu informe y el resultado de cada prueba.</div></section>`;
-  const sel = l.find(v => v.id === S.valSel) || l.find(v => v.origen !== 'alumno') || l[0];
-  return `<section class="section"><div class="section-head"><h2>Tests</h2></div>${l.length > 1 ? `<div class="chips" style="gap:6px;margin-bottom:10px">${l.map(v => `<button class="pill ${v.id === sel.id ? 'blue' : ''}" data-act="verValoracion" data-id="${v.id}">${esc(v.nombre)} · ${esc(fCorta(v.fecha))}</button>`).join('')}</div>` : ''}${vInforme(sel, l, false)}</section>`;
+  const inf = l.filter(v => v.origen !== 'alumno').length ? l.filter(v => v.origen !== 'alumno') : l, sel = inf.find(v => v.id === S.valSel) || inf[0];
+  return `<section class="section"><div class="section-head"><h2>Tests</h2></div>${inf.length > 1 ? `<div class="chips" style="gap:6px;margin-bottom:10px">${inf.map(v => `<button class="pill ${v.id === sel.id ? 'blue' : ''}" data-act="verValoracion" data-id="${v.id}">${esc(v.nombre)} · ${esc(fCorta(v.fecha))}</button>`).join('')}</div>` : ''}${vInforme(sel, l, false)}</section>`;
 }
 
 /* Coach: tests en la ficha */
