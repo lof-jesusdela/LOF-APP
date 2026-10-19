@@ -338,7 +338,7 @@ function render() {
       <div class="badge"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : esc(S.perfil.metodologia || 'Tu proceso')}</strong></div></div>
       <div class="row" style="gap:8px">${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
       <button class="avatar" data-act="cuenta" aria-label="Mi cuenta">${esCoach ? '<img src="icons/coach.jpg" alt="">' : S.perfil.foto_url ? `<img src="${esc(S.perfil.foto_url)}" alt="">` : esc((S.perfil.nombre || '?').slice(0, 2).toUpperCase())}</button></div>
-    </header>${S.prueba ? vBannerPrueba() : S.vista ? vBannerVista() : ''}${coach && ANCHO.matches ? vLateral(actual) : ''}<main id="main" class="${coach ? claseMain() : ''}">${(S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : (!coach && Temperamento.activo()) ? seguro(Temperamento.vista) : seguro(vistas[actual])}</main>`;
+    </header>${S.prueba ? vBannerPrueba() : S.vista ? vBannerVista() : vBarraYo()}${coach && ANCHO.matches ? vLateral(actual) : ''}<main id="main" class="${coach ? claseMain() : ''}">${(S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : (!coach && Temperamento.activo()) ? seguro(Temperamento.vista) : seguro(vistas[actual])}</main>`;
   document.body.classList.toggle('modo-coach', coach);
   if (coach) aplicarFiltroAl();
   $('#tabs').hidden = false;
@@ -1874,6 +1874,20 @@ async function salirVista() {
 function vBannerVista() {
   const V = S.vista, nom = esc((V.nombre || '').split(' ')[0]);
   return `<div class="prueba-b vista-b"><div class="row" style="gap:10px;align-items:flex-start"><div class="grow"><b>👁 Vista como ${esc(V.nombre || '')}</b><div class="small">${V.escribe ? `<b style="color:var(--bad)">Guardado activado:</b> lo que hagas se guarda en la cuenta de ${nom}.` : `Así ve ${nom} su app, con sus datos reales. Es solo lectura: nada se guarda.`}</div></div><div class="stack" style="gap:6px;align-items:flex-end"><button class="btn sm" data-act="salirVista">← Volver a la ficha</button><button class="btn sm ghost" data-act="vistaGuardar">${V.escribe ? 'Solo lectura' : 'Permitir guardar'}</button></div></div></div>`;
+}
+/* ---------- Modo «Yo» del coach: su propia app con acceso directo a editarla ---------- */
+const EDITA_YO = { hoy: 'mi ficha', entreno: 'mi entrenamiento', nutri: 'mi alimentación', habitos: 'mis hábitos', progreso: 'mi composición y tests', checkin: 'mi ficha' };
+function vBarraYo() {
+  if (S.modo !== 'alumno' || S.perfil?.rol !== 'coach' || S.prueba || S.vista || S.sesion || S.dia) return '';
+  const t = EDITA_YO[S.tab] || 'mi ficha';
+  return `<div class="yo-b"><span class="small grow">Tu app de alumno (beta)</span><button class="btn sm" data-act="editarYo">✎ Editar ${t}</button><button class="btn sm ghost" data-act="datosAlumno" data-id="${S.user.id}">Mis datos</button></div>`;
+}
+async function editarYo() {
+  const id = S.user.id, tab = S.tab, sub = { nutri: 'alimentacion', habitos: 'habitos', progreso: 'composicion' }[tab];
+  S.modo = 'coach'; S.ctab = 'alumnos'; if (!S.c) await cargarCoach();
+  if (!S.c.perfiles.some(x => x.id === id)) { S.modo = 'alumno'; render(); return toast('No encuentro tu perfil: cierra sesión y vuelve a entrar'); }
+  if (tab === 'entreno') { await abrirFicha(id); return abrirEditor(id); }
+  await abrirFicha(id); if (sub) await abrirSub(sub);
 }
 /* ---------- Plantillas de programa por tipo de alumno (programas sin alumno asignado; los alumnos no las ven) ---------- */
 const CATEGORIAS = ['Futbolistas alto rendimiento', 'Recomposición hombres', 'Recomposición mujeres', 'Salud +55 · lesiones y enfermedades', 'Otras'];
@@ -3883,7 +3897,7 @@ document.addEventListener('click', async e => {
       S.tab = b.dataset.t; S.dia = null; S.chipsCargados = false; render(); window.scrollTo(0, 0); break;
     case 'sinWhatsapp': toast('Jesús aún no ha puesto su WhatsApp en la app'); break;
     case 'ctab': if (S.obj) await salirComo(); S.reporte = null; S.factura = null; S.ctab = b.dataset.t; S.ficha = null; S.editor = null; render(); window.scrollTo(0, 0); break;
-    case 'modo': if (S.obj) await salirComo(); S.modo = b.dataset.v; S.ficha = null; if (S.modo === 'coach') await cargarCoach(); render(); window.scrollTo(0, 0); break;
+    case 'modo': if (S.obj) await salirComo(); S.modo = b.dataset.v; S.ficha = null; S.editor = null; S.fichaSub = null; if (S.modo === 'coach') await cargarCoach(); else if (S.perfil?.rol === 'coach' && !S.prueba && !S.vista) await cargarAlumno(S.user.id); render(); window.scrollTo(0, 0); break;
     case 'abrirDia': await abrirDia(+b.dataset.id); break;
     case 'cerrarDia': S.dia = null; S.sesion = null; render(); break;
     case 'salirComo': await salirComo(); break;
@@ -4004,6 +4018,7 @@ document.addEventListener('click', async e => {
     case 'recordar': await copiarRecordatorio(+b.dataset.id); break;
     case 'cuenta': if (S.prueba) { await salirPrueba(); break; } if (S.vista) { await salirVista(); break; } vCuenta(); break;
     case 'miFicha': cerrarSheet(); if (S.vista) await salirVista(); S.modo = 'coach'; if (!S.c) await cargarCoach(); if (!S.c.perfiles.some(x => x.id === S.user.id)) return toast('No encuentro tu perfil: cierra sesión y vuelve a entrar'); S.ctab = 'alumnos'; await abrirFicha(S.user.id); break;
+    case 'editarYo': await editarYo(); break;
     case 'verComoAlumno': await entrarVista(b.dataset.id); break;
     case 'salirVista': await salirVista(); break;
     case 'vistaGuardar': await conmutarGuardado(); break;
