@@ -497,7 +497,7 @@ const Temperamento = (() => {
   /* Revisión quincenal: datos del periodo + si se cumple cada hipótesis; a las 8 semanas, la decisión */
   function datosPeriodo(t, k) {
     const f = S.ficha, a = S.c.perfiles.find(p => p.id === t.alumno_id) || {}, ini = sumaDias(t.fecha, (k - 2) * 7), fin = sumaDias(t.fecha, k * 7 - 1);
-    const ses = new Set((f.todas || []).filter(x => x.fecha >= ini && x.fecha <= fin).map(x => x.fecha + x.dia_id)).size, dpw = f.prog?.dias_semana;
+    const ses = new Set((f.todas || []).filter(x => x.fecha >= ini && x.fecha <= fin).map(x => x.fecha + x.dia_id)).size, dpw = typeof dpwEn === 'function' ? dpwEn(t.alumno_id, lunesDe(ini), f.prog?.dias_semana) + dpwEn(t.alumno_id, lunesDe(sumaDias(ini, 7)), f.prog?.dias_semana) : (f.prog?.dias_semana || 0) * 2;
     const reg = (f.tDiario || S.c.diario.filter(r => r.alumno_id === t.alumno_id)).filter(r => r.fecha >= ini && r.fecha <= fin);
     const pasos = reg.filter(r => r.pasos != null).map(r => r.pasos), pm = pasos.length ? Math.round(pasos.reduce((x, y) => x + y, 0) / pasos.length) : null;
     const conIng = reg.filter(r => r.ingestas != null), ing = f.srv?.modulo_nutricion && conIng.length ? Math.round(conIng.reduce((x, r) => x + r.ingestas, 0) / (14 * comidasDia(f.srv)) * 100) : null;
@@ -505,7 +505,7 @@ const Temperamento = (() => {
     const cambio = (m, k2, u) => !m.ini ? 'sin medir' : !m.fin ? `${fmtNum(m.ini[k2])} ${u} (solo la de partida)` : `${fmtNum(m.ini[k2])} → ${fmtNum(m.fin[k2])} ${u} (${m.fin[k2] - m.ini[k2] > 0 ? '+' : ''}${fmtNum(m.fin[k2] - m.ini[k2])})`;
     const r1 = ict((mc.fin || mc.ini)?.cintura, a.estatura_cm);
     return `<span class="eyebrow">Sus datos del ${esc(fCorta(ini))} al ${esc(fCorta(fin))}</span>
-      <div class="row small"><span class="grow">Entrenamientos</span><b class="num">${ses}${dpw ? ' de ' + dpw * 2 : ''}</b></div>
+      <div class="row small"><span class="grow">Entrenamientos</span><b class="num">${ses}${dpw ? ' de ' + dpw : ''}</b></div>
       <div class="row small"><span class="grow">Pasos (media)</span><b class="num">${pm == null ? 'sin registros' : fmtNum(pm, 0)}</b></div>
       ${f.srv?.modulo_nutricion ? `<div class="row small"><span class="grow">Ingestas cumplidas</span><b class="num">${ing == null ? 'sin registros' : ing + ' %'}</b></div>` : ''}
       <div class="row small"><span class="grow">Cintura</span><b class="num">${cambio(mc, 'cintura', 'cm')}</b></div>

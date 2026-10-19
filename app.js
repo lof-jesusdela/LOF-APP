@@ -163,9 +163,100 @@ async function conRespaldo(a, b) { const r = await a(); if (r.error) { console.w
 const SIN_NUEVAS = sel => sel.replace(',imagen_url,musculo_img_url', '').replace(',musculo_img_url', '');
 const SEL_PROGRAMA = 'id,nombre,dias_semana,dias(*,bloques_sesion(*,ejercicios_sesion(id,orden,series,repeticiones,rir,peso_ref,descanso_seg,ajustes,aproximacion_631,grupo,pauta,ejercicios(nombre,video_url,imagen_url,musculo_img_url,musculo,descripcion),metodos(nombre,explicacion))))';
 
+/* ---------- Contextos temporales de entrenamiento ----------
+   Un contexto es un programa paralelo para unas semanas concretas (vacaciones, viaje, lesión…): durante esas semanas el
+   alumno entrena sus sesiones y todo se mide contra sus días (2 de 2 = 100 %). Al terminar vuelve solo a su programa.
+   Se guarda como un programa del alumno no activo con contexto_desde (lunes), contexto_hasta (domingo) y contexto_nombre. */
+const CTX_COLS = 'contexto_desde,contexto_hasta,contexto_nombre,';
+const esContexto = p => !!p?.contexto_desde;
+function contextosDe(aid) {
+  if (S.d?.uid === aid && S.d.contextos) return S.d.contextos;
+  if (S.ficha?.id === aid && S.ficha.contextos) return S.ficha.contextos;
+  return (S.c?.contextos || []).filter(x => x.alumno_id === aid);
+}
+const ctxEnSemana = (lista, lunes) => (lista || []).find(x => x.contexto_desde <= lunes && x.contexto_hasta >= lunes) || null;
+const ctxDe = (aid, f = hoyISO()) => ctxEnSemana(contextosDe(aid), lunesDe(f));
+/* Entrenos que tocan en una semana: los del contexto si lo hay; si no, los de su programa */
+const dpwEn = (aid, lunes, base) => { const c = ctxEnSemana(contextosDe(aid), lunes); return c ? c.dias_semana || 0 : base || 0; };
+/* Previstos del ciclo: se suma semana a semana, así el ciclo se adapta a los contextos */
+function previstosCiclo(cc, aid, base) {
+  let t = 0; for (let l = lunesDe(cc.ini), k = 0; k < cc.sem; k++, l = sumaDias(l, 7)) t += dpwEn(aid, l, base);
+  return t || null;
+}
+const fCtx = c => `${fCorta(c.contexto_desde)} – ${fCorta(c.contexto_hasta)}`;
+const semanasCtx = c => Math.round((fecha(c.contexto_hasta) - fecha(c.contexto_desde)) / 6048e5 + 1 / 7);
+function vAvisoContexto() {
+  const c = S.d?.contexto; if (!c) return '';
+  return `<section class="section"><div class="card ctx-aviso"><span class="pill gold">Semana adaptada</span><div class="grow"><b>${esc(c.contexto_nombre || 'Contexto especial')}</b><div class="small muted">${c.dias_semana} ${c.dias_semana === 1 ? 'entreno' : 'entrenos'} por semana · ${esc(fCtx(c))}. Tu progreso se mide con este plan: cumplirlo es el 100 %.</div></div></div></section>`;
+}
+
+function vContextos(f, a) {
+  const l = (f.contextos || contextosDe(a.id)).slice().sort((x, y) => y.contexto_desde.localeCompare(x.contexto_desde)), hoy = hoyISO(), lunes = lunesDe(hoy);
+  const est = c => c.contexto_hasta < hoy ? ['', 'Terminado'] : c.contexto_desde <= lunes ? ['gold', 'Activo esta semana'] : ['blue', 'Programado'];
+  return `<section class="section"><div class="section-head"><h2>Contextos temporales</h2><button class="btn sm" data-act="nuevoContexto">＋ Nuevo contexto</button></div>
+    <div class="card">${l.map(c => `<div class="line" style="flex-wrap:wrap"><div class="grow" style="min-width:180px"><b>${esc(c.contexto_nombre || 'Contexto')}</b><div class="small muted">${esc(fCtx(c))} · ${semanasCtx(c)} ${semanasCtx(c) === 1 ? 'semana' : 'semanas'} · ${c.dias_semana} ${c.dias_semana === 1 ? 'entreno' : 'entrenos'}/semana${c.dias ? ` · ${c.dias.length} ${c.dias.length === 1 ? 'sesión' : 'sesiones'}` : ''}</div></div><span class="pill ${est(c)[0]}">${est(c)[1]}</span><div class="row" style="gap:6px"><button class="btn sm ghost" data-act="sesionesContexto" data-id="${c.id}">✎ Sesiones</button><button class="btn sm ghost" data-act="editarContexto" data-id="${c.id}">Datos</button></div></div>`).join('') || '<div class="empty small">Sin contextos. Úsalos cuando sepas que unas semanas no podrá seguir su plan (vacaciones, viaje, lesión…): le preparas un plan para esas semanas y se mide contra él.</div>'}</div>
+    <p class="note">Durante esas semanas entrena las sesiones del contexto y su cumplimiento se calcula con ellas (por ejemplo, 2 de 2 = 100 %). El ciclo se adapta y al terminar vuelve solo a su programa.</p></section>`;
+}
+function formContexto(id) {
+  const f = S.ficha, a = S.c.perfiles.find(p => p.id === f.id) || {}, c = id ? (f.contextos || []).find(x => x.id === id) : null, base = f.progFull, hoy = hoyISO();
+  const lunesSig = sumaDias(lunesDe(hoy), 7);
+  abrirSheet(`<form class="stack" id="f-ctx"><h2>${c ? 'Editar contexto' : 'Nuevo contexto temporal'}</h2>
+    <label class="f">Nombre (lo ve ${esc((a.nombre || 'el alumno').split(' ')[0])})<input type="text" id="cx-n" value="${esc(c?.contexto_nombre || '')}" placeholder="Ej. Vacaciones en la playa, Viaje de trabajo, Rodilla" required></label>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><label class="f">Semana que empieza<input type="date" id="cx-d" value="${c?.contexto_desde || lunesSig}" required></label><label class="f">Semanas<input type="number" id="cx-s" min="1" max="12" value="${c ? semanasCtx(c) : 1}" required></label><label class="f">Entrenos/semana<input type="number" id="cx-e" min="1" max="7" value="${c?.dias_semana || 2}" required></label></div>
+    <p class="small muted" id="cx-r"></p>
+    ${c ? '' : base?.dias?.length ? `<div class="stack" style="gap:6px"><span class="small"><b>Sesiones de partida</b> · se copian de su programa y luego puedes recortarlas o añadir nuevas</span>${base.dias.map(d => `<label class="row small"><input type="checkbox" data-cxd="${d.id}" style="width:20px;height:20px"> ${esc(nomDia(d))}${d.foco && d.foco !== nomDia(d) ? ` <span class="muted">· ${esc(d.foco)}</span>` : ''}</label>`).join('')}<span class="small muted">Sin marcar ninguna empiezas con el contexto vacío y creas las sesiones desde cero.</span></div>` : '<p class="small muted">Empezarás con el contexto vacío y crearás las sesiones en el editor.</p>'}
+    <p class="small" id="cx-err" style="color:var(--bad)"></p>
+    <button class="btn full" type="submit">${c ? 'Guardar' : 'Crear y preparar sesiones'}</button>${c ? '<button class="btn ghost full" type="button" id="cx-del" style="color:var(--bad)">Eliminar contexto</button>' : ''}</form>`);
+  const rango = () => { const d = $('#cx-d').value; if (!d) return null; const ini = lunesDe(d), n = Math.max(1, Math.min(12, +$('#cx-s').value || 1)); return { ini, fin: sumaDias(ini, n * 7 - 1) }; };
+  const pinta = () => { const r = rango(); $('#cx-r').textContent = r ? `De lunes ${fCorta(r.ini)} a domingo ${fCorta(r.fin)} (semanas completas).` : ''; };
+  pinta(); $('#cx-d').addEventListener('change', pinta); $('#cx-s').addEventListener('input', pinta);
+  $('#f-ctx').addEventListener('submit', async e => {
+    e.preventDefault();
+    const bt = $('#f-ctx [type=submit]'); if (bt.disabled) return;
+    const r = rango(), nombre = $('#cx-n').value.trim(), n = Math.max(1, Math.min(7, +$('#cx-e').value || 1));
+    if (!r || !nombre) return;
+    const cruce = (f.contextos || []).find(x => x.id !== c?.id && x.contexto_desde <= r.fin && x.contexto_hasta >= r.ini);
+    if (cruce) return $('#cx-err').textContent = `Se cruza con "${cruce.contexto_nombre}" (${fCtx(cruce)}). Cambia las fechas.`;
+    bt.disabled = true; bt.textContent = 'Guardando…';
+    const row = { nombre: `Contexto · ${nombre}`, dias_semana: n, contexto_desde: r.ini, contexto_hasta: r.fin, contexto_nombre: nombre };
+    try {
+      if (c) {
+        const { error } = await sb.from('programas').update(row).eq('id', c.id); if (error) throw error;
+        cerrarSheet(); toast('Contexto guardado'); await cargarProgramasFicha(f); await recargarContextosCoach(); render(); return;
+      }
+      const { data: np, error } = await sb.from('programas').insert({ ...row, alumno_id: f.id, activo: false }).select().single(); if (error) throw error;
+      const elegidos = [...document.querySelectorAll('#f-ctx [data-cxd]:checked')].map(x => +x.dataset.cxd);
+      if (elegidos.length && base) {
+        const { data: full, error: e0 } = await sb.from('programas').select(SEL_EDITOR).eq('id', base.id).single(); if (e0) throw e0;
+        let num = 0;
+        for (const d of (full.dias || []).sort((x, y) => x.numero - y.numero).filter(x => elegidos.includes(x.id))) {
+          const { id: _i, bloques_sesion, programa_id, ...dd } = d;
+          const { data: nd, error: e1 } = await sb.from('dias').insert({ ...dd, numero: ++num, programa_id: np.id }).select().single(); if (e1) throw e1;
+          for (const b of bloques_sesion || []) {
+            const { id: _b, ejercicios_sesion, dia_id, ...bb } = b;
+            const { data: nb, error: e2 } = await sb.from('bloques_sesion').insert({ ...bb, dia_id: nd.id }).select().single(); if (e2) throw e2;
+            if ((ejercicios_sesion || []).length) { const { error: e3 } = await sb.from('ejercicios_sesion').insert(ejercicios_sesion.map(({ id: _e, ejercicios, bloque_id, ...x }) => ({ ...x, bloque_id: nb.id }))); if (e3) throw e3; }
+          }
+        }
+      }
+      cerrarSheet(); toast('Contexto creado: ajusta sus sesiones'); await recargarContextosCoach(); await cargarProgramasFicha(f);
+      await abrirEditor(f.id, np.id);
+    } catch (err) { bt.disabled = false; bt.textContent = c ? 'Guardar' : 'Crear y preparar sesiones'; fallo(err, /contexto/.test(err.message || '') ? 'Falta ejecutar el Bloque 34 en Supabase.' : 'No se ha podido guardar el contexto.'); }
+  });
+  $('#cx-del')?.addEventListener('click', async ev => {
+    const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez: se borra el contexto y sus sesiones (lo ya entrenado se conserva)'; return; }
+    const { error } = await sb.from('programas').delete().eq('id', c.id).eq('alumno_id', f.id); if (error) return fallo(error);
+    cerrarSheet(); toast('Contexto eliminado'); await cargarProgramasFicha(f); await recargarContextosCoach(); render();
+  });
+}
+async function recargarContextosCoach() {
+  const cx = await sb.from('programas').select('id,alumno_id,nombre,dias_semana,' + CTX_COLS.slice(0, -1)).gte('contexto_hasta', sumaDias(hoyISO(), -70)).order('contexto_desde');
+  if (S.c) S.c.contextos = cx.error ? (S.c.contextos || []) : (cx.data || []).filter(esContexto);
+}
+
 async function cargarAlumno(uid) {
   const desde = sumaDias(hoyISO(), -60);
-  const [srv, prog, med, reg, ses, chk, ruta, met, val, pres] = await Promise.all([
+  const [srv, prog, med, reg, ses, chk, ruta, met, val, pres, ctxR] = await Promise.all([
     sb.from('servicios').select('*').eq('alumno_id', uid).eq('activo', true).order('id', { ascending: false }).limit(1),
     conRespaldo(() => sb.from('programas').select(SEL_PROGRAMA).eq('alumno_id', uid).eq('activo', true).order('id', { ascending: false }).limit(1),
       () => sb.from('programas').select(SIN_NUEVAS(SEL_PROGRAMA)).eq('alumno_id', uid).eq('activo', true).order('id', { ascending: false }).limit(1)),
@@ -176,9 +267,12 @@ async function cargarAlumno(uid) {
     sb.from('hoja_ruta').select('*').eq('alumno_id', uid).order('orden'),
     sb.from('metodos').select('nombre,explicacion'),
     sb.from('valoraciones').select('*,pruebas(*)').eq('alumno_id', uid).order('fecha', { ascending: false }),
-    sb.from('presenciales').select('*').eq('alumno_id', uid).order('fecha')
+    sb.from('presenciales').select('*').eq('alumno_id', uid).order('fecha'),
+    sb.from('programas').select(CTX_COLS + SEL_PROGRAMA).eq('alumno_id', uid).gte('contexto_hasta', sumaDias(hoyISO(), -120)).order('contexto_desde')
   ]);
   const p = prog.data?.[0] || null;
+  const ctxs = ctxR.error ? [] : (ctxR.data || []).filter(esContexto);
+  ctxs.forEach(c => { (c.dias ||= []).sort((a, b) => a.numero - b.numero); c.dias.forEach(ordenarDia); });
   if (p) {
     (p.dias ||= []).sort((a, b) => a.numero - b.numero);
     p.dias.forEach(d => { d.bloques_sesion.sort((a, b) => a.letra.localeCompare(b.letra)); d.bloques_sesion.forEach(b => b.ejercicios_sesion.sort((a, b) => a.orden - b.orden)); });
@@ -188,8 +282,9 @@ async function cargarAlumno(uid) {
     sesiones: ses.data || [], checkins: chk.data || [], ruta: ruta.data || [],
     metodos: Object.fromEntries((met.data || []).map(m => [m.nombre, m.explicacion])),
     valoraciones: ordenarValoraciones(val.data || []),
-    presenciales: pres.data || []
+    presenciales: pres.data || [], uid, contextos: ctxs, programaBase: p
   };
+  { const cA = ctxEnSemana(ctxs, lunesDe(hoyISO())); if (cA) { S.d.programa = cA; S.d.contexto = cA; } }
   if (S.d.servicio) S.d.servicio._bloques = bloquesDe(S.d.ruta);
   if (S.d.servicio?.modulo_futbol) await cargarFutbol(uid, S.d);
   { const [r, tq] = await Promise.all([sb.from('revisiones').select('*').eq('alumno_id', uid).order('fecha', { ascending: false }), sb.from('temperamentos').select('*').eq('alumno_id', uid).order('fecha', { ascending: false }).order('id', { ascending: false })]);
@@ -424,7 +519,7 @@ function vHoy() {
     <div class="small muted">${esc(s.producto || 'Tu proceso')}${(() => { const P = proceso(s); return P && !P.antes && !P.fuera ? ` · Semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''; })()}</div>
     ${objetivoDe(S.d.ruta) ? `<div style="border-top:1px solid rgba(255,255,255,.14);padding-top:12px" class="stack"><span class="eyebrow">Tu objetivo</span><div class="small">${esc(objetivoDe(S.d.ruta))}</div></div>` : ''}
   </section>
-  ${S.perfil.rol !== 'coach' ? vChatCoach() : ''}
+  ${S.perfil.rol !== 'coach' ? vChatCoach() : ''}${vAvisoContexto()}
   ${tocaCheckin() ? `<section class="section"><div class="card aviso-chk stack"><div class="row"><div class="ico gold">${svg('checkin')}</div><div class="grow"><b>Toca rellenar tu check-in</b><div class="small muted">Es fin de semana: cuéntale a Jesús cómo ha ido tu semana.</div></div></div><button class="btn full" data-act="tab" data-t="checkin">Rellenar check-in</button>${'Notification' in window && Notification.permission === 'default' ? '<button class="btn ghost full" data-act="permisoAvisos">Activar avisos en el móvil</button>' : ''}</div></section>` : ''}
   ${Temperamento.tarjetaHoy()}
   ${Habitos.tarjetaHoy()}
@@ -464,8 +559,8 @@ function vEntreno() {
   const lunes = lunesDe(hoyISO()), hoyN = norm(DIAS[new Date().getDay()]);
   const hechoSemana = id => S.d.sesiones.some(s => s.dia_id === id && s.fecha >= lunes);
   const P = proceso(S.d.servicio), Pn = P && !P.antes ? S.d.sesiones.filter(x => x.fecha >= P.cc.ini && x.fecha <= P.cc.fin).length : null;
-  return como + `<section class="stack"><span class="eyebrow">${esc(p.nombre)}</span><h1>Entreno</h1>${P && !P.antes && !P.fuera ? `<div class="row" style="flex-wrap:wrap;gap:6px"><span class="pill blue">Ciclo ${P.ciclo}</span><span class="pill gold">Semana ${P.semCiclo} de ${P.cc.sem}</span><span class="pill">${Pn} ${p.dias_semana ? 'de ' + p.dias_semana * P.cc.sem + ' ' : ''}entrenos del ciclo</span></div>` : ''}</section>
-  ${vZonasFC()}<section class="section"><div class="card">${p.dias.map(d => `<div class="wk ${norm(d.nombre) === hoyN ? 'today' : ''}"><span class="d">${esc(d.nombre.slice(0, 3))}</span><div class="grow"><h3>${esc(d.titulo || d.foco || d.nombre)}</h3><div class="small muted">${esc(d.volumen || '')} volumen · ${esc(d.intensidad || '')} intensidad</div></div>${hechoSemana(d.id) ? '<span class="pill ok">Hecho</span>' : ''}<button class="btn sm ${norm(d.nombre) === hoyN ? '' : 'ghost'}" data-act="abrirDia" data-id="${d.id}">Abrir</button></div>`).join('')}</div></section>
+  return como + `<section class="stack"><span class="eyebrow">${esc(p.nombre)}</span><h1>Entreno</h1>${P && !P.antes && !P.fuera ? `<div class="row" style="flex-wrap:wrap;gap:6px"><span class="pill blue">Ciclo ${P.ciclo}</span><span class="pill gold">Semana ${P.semCiclo} de ${P.cc.sem}</span><span class="pill">${Pn} ${(S.d.programaBase || p).dias_semana ? 'de ' + previstosCiclo(P.cc, S.d.uid, (S.d.programaBase || p).dias_semana) + ' ' : ''}entrenos del ciclo</span></div>` : ''}</section>
+  ${vAvisoContexto()}${vZonasFC()}<section class="section"><div class="card">${p.dias.map(d => `<div class="wk ${norm(d.nombre) === hoyN ? 'today' : ''}"><span class="d">${esc(d.nombre.slice(0, 3))}</span><div class="grow"><h3>${esc(d.titulo || d.foco || d.nombre)}</h3><div class="small muted">${esc(d.volumen || '')} volumen · ${esc(d.intensidad || '')} intensidad</div></div>${hechoSemana(d.id) ? '<span class="pill ok">Hecho</span>' : ''}<button class="btn sm ${norm(d.nombre) === hoyN ? '' : 'ghost'}" data-act="abrirDia" data-id="${d.id}">Abrir</button></div>`).join('')}</div></section>
   ${vLineaTiempo(S.d.servicio, 'Tus ciclos de entrenamiento', false, p)}
   ${vCalendarioPres()}`;
 }
@@ -745,7 +840,7 @@ function vSesionCerrada() {
   return `<div class="cerrada"><span class="pill ok">Sesión cerrada</span><span class="small grow">${esc(fLarga(v.ses.fecha))}${v.ses.duracion_min ? ` · ${v.ses.duracion_min} min` : ''} · ${hechas} de ${total} series</span><button class="btn sm" data-act="editarSesion">✎ Editar</button></div>
   <section class="stack" style="margin-top:12px"><button class="btn sm ghost" data-act="cerrarVerSesion" style="align-self:flex-start">← Ficha de ${esc((a.nombre || '').split(' ')[0])}</button>
     <span class="eyebrow">${esc(a.nombre || '')} · ${esc(d.nombre)}</span><h1>${esc(d.foco || d.nombre)}</h1>
-    ${(() => { const x = numEntreno(S.ficha.todas, S.ficha.srv, v.ses.fecha, v.ses.id, S.ficha.prog?.dias_semana); return x && !x.fuera ? `<div class="row" style="flex-wrap:wrap;gap:6px"><span class="pill blue">Ciclo ${x.ciclo}</span><span class="pill gold">Semana ${x.semCiclo} de ${x.cc.sem}</span><span class="pill">Entreno ${x.n}${x.previstos ? ' de ' + x.previstos : ''} del ciclo</span></div>` : ''; })()}
+    ${(() => { const x = numEntreno(S.ficha.todas, S.ficha.srv, v.ses.fecha, v.ses.id, S.ficha.prog?.dias_semana, S.ficha.id); return x && !x.fuera ? `<div class="row" style="flex-wrap:wrap;gap:6px"><span class="pill blue">Ciclo ${x.ciclo}</span><span class="pill gold">Semana ${x.semCiclo} de ${x.cc.sem}</span><span class="pill">Entreno ${x.n}${x.previstos ? ' de ' + x.previstos : ''} del ciclo</span></div>` : ''; })()}
     ${vValoracionSesion(v.ses)}
     <div class="card stack"><span class="eyebrow">Objetivo del día</span><div class="small">${esc(d.objetivo || '')}</div>
     <div class="kpis"><div class="kpi"><div class="l">Volumen</div><b>${esc(d.volumen || '—')}</b></div><div class="kpi"><div class="l">Intensidad</div><b>${esc(d.intensidad || '—')}</b></div><div class="kpi"><div class="l">Foco</div><b>${esc(d.foco || '—')}</b></div></div></div>
@@ -790,7 +885,7 @@ function vBloque(b, cont, ro) {
   }).join('')}</div>`;
 }
 function cicloSesion() {
-  const x = numEntreno(S.d.sesiones, S.d.servicio, S.sesion?.fecha || hoyISO(), S.sesion?.id, S.d.programa?.dias_semana);
+  const x = numEntreno(S.d.sesiones, S.d.servicio, S.sesion?.fecha || hoyISO(), S.sesion?.id, (S.d.programaBase || S.d.programa)?.dias_semana, S.d.uid);
   return x && !x.fuera ? `<div class="row" style="flex-wrap:wrap;gap:6px"><span class="pill blue">Ciclo ${x.ciclo}</span><span class="pill gold">Semana ${x.semCiclo} de ${x.cc.sem}</span><span class="pill">Entreno ${x.n}${x.previstos ? ' de ' + x.previstos : ''} del ciclo</span></div>` : '';
 }
 function vSesion() {
@@ -1080,12 +1175,13 @@ function vProgreso() {
   const campos = [['peso', 'Peso', ' kg', 'var(--blue)'], ['grasa_pct', '% de grasa', ' %', 'var(--gold)'], ['cintura', 'Cintura', ' cm', 'var(--ink)'], ['cadera', 'Cadera', ' cm', 'var(--blue)'], ['abd_bajo', 'Abdomen bajo', ' cm', 'var(--ink)']];
   const k = c => { const p = serie(med, c), dl = delta(p); return dl == null ? '—' : (dl > 0 ? '+' : '') + fmtNum(dl); };
   const semanas = [...Array(8)].map((_, i) => lunesDe(sumaDias(hoyISO(), -7 * (7 - i))));
-  const porSem = semanas.map(l => semana(l).entrenos), maxS = Math.max(S.d.programa?.dias_semana || 1, ...porSem);
+  const dpwS = l => dpwEn(S.d.uid, l, (S.d.programaBase || S.d.programa)?.dias_semana);
+  const porSem = semanas.map(l => semana(l).entrenos), maxS = Math.max(1, ...semanas.map(dpwS), ...porSem);
   return `<section class="stack"><span class="eyebrow">Tu evolución</span><h1>Progreso</h1><button class="btn" data-act="misMedidas" style="align-self:flex-start">＋ Añadir mis medidas</button></section>
   ${objetivoDe(S.d.ruta) ? `<section class="section"><div class="card stack"><span class="eyebrow">Tu objetivo</span><div class="small">${esc(objetivoDe(S.d.ruta))}</div></div></section>` : ''}
   ${med.length ? `<section class="section"><div class="kpis"><div class="kpi"><div class="v num">${k('peso')}</div><div class="l">kg de peso</div></div><div class="kpi"><div class="v num">${k('grasa_pct')}</div><div class="l">% de grasa</div></div><div class="kpi"><div class="v num">${k('cintura')}</div><div class="l">cm de cintura</div></div></div><p class="small muted">Cambio desde tu primera medición (${esc(fCorta(med[0].fecha))} ${fecha(med[0].fecha).getFullYear()}).</p></section>` : ''}
   <section class="section">${vGraficaComp(med, S.perfil, S.d.medObj) || '<div class="card empty">Aún no hay mediciones. Jesús las añadirá en tu próximo control mensual.</div>'}${vObjetivoComp(S.d.medObj, med, false)}
-  <div class="card stack chart"><h3>Entrenamientos por semana</h3><svg viewBox="0 0 320 110" role="img" aria-label="Entrenamientos por semana">${porSem.map((v, i) => { const bw = 304 / 8, h = v / maxS * 76; return `<rect x="${8 + i * bw + 6}" y="${86 - h}" width="${bw - 12}" height="${Math.max(h, 1)}" rx="4" fill="${v >= (S.d.programa?.dias_semana || 99) ? 'var(--ok)' : v ? 'var(--blue)' : 'var(--line)'}"/><text x="${8 + i * bw + bw / 2}" y="${82 - h}" fill="var(--fg)" font-size="11" text-anchor="middle">${v || ''}</text><text x="${8 + i * bw + bw / 2}" y="104" fill="var(--muted)" font-size="10" text-anchor="middle">${esc(fecha(semanas[i]).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric' }))}</text>`; }).join('')}</svg></div></section>
+  <div class="card stack chart"><h3>Entrenamientos por semana</h3><svg viewBox="0 0 320 110" role="img" aria-label="Entrenamientos por semana">${porSem.map((v, i) => { const bw = 304 / 8, h = v / maxS * 76; return `<rect x="${8 + i * bw + 6}" y="${86 - h}" width="${bw - 12}" height="${Math.max(h, 1)}" rx="4" fill="${v >= (dpwS(semanas[i]) || 99) ? 'var(--ok)' : v ? 'var(--blue)' : 'var(--line)'}"/><text x="${8 + i * bw + bw / 2}" y="${82 - h}" fill="var(--fg)" font-size="11" text-anchor="middle">${v || ''}</text><text x="${8 + i * bw + bw / 2}" y="104" fill="var(--muted)" font-size="10" text-anchor="middle">${esc(fecha(semanas[i]).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric' }))}</text>`; }).join('')}</svg></div></section>
   ${med.length ? `<section class="section"><h2>Mediciones</h2><div class="card tbl"><table><thead><tr><th>Fecha</th><th>Peso</th><th>% grasa</th><th>Cintura</th><th>Cadera</th></tr></thead><tbody>${med.slice().reverse().map(m => `<tr><td>${esc(fCorta(m.fecha))} ${String(fecha(m.fecha).getFullYear()).slice(2)}</td><td class="num">${fmtNum(m.peso)}</td><td class="num">${fmtNum(m.grasa_pct)}</td><td class="num">${fmtNum(m.cintura)}</td><td class="num">${fmtNum(m.cadera)}</td></tr>`).join('')}</tbody></table></div></section>` : ''}
   ${vTestsProgreso()}`;
 }
@@ -1150,6 +1246,8 @@ async function cargarCoach() {
   { const [r, tq] = await Promise.all([sb.from('revisiones').select('*').order('fecha', { ascending: false }), sb.from('temperamentos').select('*').order('fecha', { ascending: false }).order('id', { ascending: false })]);
     S.c.revisiones = r.data || []; S.c.revisionesErr = !!r.error; S.c.temperamentos = tq.data || []; S.c.tempErr = !!tq.error; }
   await Habitos.cargarCoach(S.c);
+  { const cx = await sb.from('programas').select('id,alumno_id,nombre,dias_semana,' + CTX_COLS.slice(0, -1)).gte('contexto_hasta', sumaDias(hoyISO(), -70)).order('contexto_desde');
+    S.c.contextos = cx.error ? [] : (cx.data || []).filter(esContexto); }
   S.c.facturas = fa.data || []; S.c.facturasError = !!fa.error; S.c.fiscal = Object.fromEntries((ap.data || []).map(x => [x.clave, x.valor]));
 }
 /* Datos de una semana (lunes a domingo) de un alumno */
@@ -1166,7 +1264,8 @@ function semanaDatos(aid, lunes, src) {
 /* Alertas: semana anterior incumplida, o semana en curso por debajo del 50 % a partir del sábado */
 function estadoAlumno(a) {
   const c = S.c, hoy = hoyISO(), lunes = lunesDe(hoy), dow = (fecha(hoy).getDay() + 6) % 7; // 0 = lunes … 6 = domingo
-  const srv = c.servicios.find(x => x.alumno_id === a.id), dpw = (c.programas.find(p => p.alumno_id === a.id) || {}).dias_semana || 0, obj = objPasos(srv);
+  const srv = c.servicios.find(x => x.alumno_id === a.id), dpwBase = (c.programas.find(p => p.alumno_id === a.id) || {}).dias_semana || 0, obj = objPasos(srv);
+  const dpwPre = dpwEn(a.id, sumaDias(lunes, -7), dpwBase), dpw = dpwEn(a.id, lunes, dpwBase), dpw4 = [0, 1, 2, 3].reduce((t, k) => t + dpwEn(a.id, sumaDias(lunes, -7 * k), dpwBase), 0);
   const ses = c.sesiones.filter(s => s.alumno_id === a.id);
   const chks = c.checkins.filter(k => k.alumno_id === a.id), ult = chks[0], ant = chks[1];
   const motivos = []; let nivel = 'ok';
@@ -1176,7 +1275,7 @@ function estadoAlumno(a) {
   const enProceso = !srv?.inicio || srv.inicio <= sumaDias(lunes, -7);
   const pre = semanaDatos(a.id, sumaDias(lunes, -7), c);
   if (enProceso) {
-    if (dpw && pre.entrenos < dpw) { sube(pre.entrenos <= dpw / 2 ? 'bad' : 'warn'); motivos.push(`Semana pasada: ${pre.entrenos} de ${dpw} entrenos`); }
+    if (dpwPre && pre.entrenos < dpwPre) { sube(pre.entrenos <= dpwPre / 2 ? 'bad' : 'warn'); motivos.push(`Semana pasada: ${pre.entrenos} de ${dpwPre} entrenos`); }
     if (pre.pasosMedia == null) { sube('warn'); motivos.push('Semana pasada: sin registro de pasos'); }
     else if (pre.pasosMedia < obj) { sube('warn'); motivos.push(`Semana pasada: ${fmtNum(pre.pasosMedia, 0)} pasos de media (objetivo ${fmtNum(obj, 0)})`); }
     if (srv?.modulo_nutricion && pre.nutri != null && pre.nutri < 85) { sube(pre.nutri < 60 ? 'bad' : 'warn'); motivos.push(`Semana pasada: alimentación ${evalNutri(pre.nutri)[1].toLowerCase()} (${pre.nutri} % de ingestas)`); }
@@ -1194,7 +1293,7 @@ function estadoAlumno(a) {
   const mes = new Set(ses.filter(s => s.fecha >= sumaDias(hoy, -27)).map(s => s.fecha + s.dia_id)).size;
   const control = revisionPendiente(srv, (c.revisiones || []).filter(r => r.alumno_id === a.id), c.revisionesErr) || (c.revisionesErr ? controlEnSemana(srv, lunes) : null);
   if (control?.atrasada) { sube('warn'); motivos.push(`Revisión mensual ${control.n} pendiente desde el ${fCorta(control.fecha)}`); }
-  return { nivel, motivos, ult, ultSes: ses[0], dpw, semana, mes, control, ses7: semana };
+  return { nivel, motivos, ult, ultSes: ses[0], dpw, dpw4, ctx: ctxDe(a.id), semana, mes, control, ses7: semana };
 }
 function verAlertas(id) {
   const a = S.c.perfiles.find(x => x.id === id); if (!a) return;
@@ -1261,7 +1360,7 @@ function vAlumnos() {
       <select id="al-prog" aria-label="Programa"><option value="">Todos los programas</option>${progs.map(x => `<option ${S.alF.p === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
       <select id="al-mod" aria-label="Modalidad"><option value="">Todas las modalidades</option>${MODALIDADES.map(x => `<option ${S.alF.m === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
     ${S.alF.k ? `<div class="row" style="gap:8px;margin:8px 0"><span class="pill ${S.alF.k === 'todos' ? 'blue' : 'bad'}">Mostrando: ${{ todos: 'todos los perfiles activos', alerta: 'necesitan atención', vencidos: 'con pagos vencidos' }[S.alF.k]}</span><button class="linkbtn small" data-act="alFiltro" data-k="">Quitar filtro</button></div>` : ''}
-    <div class="card">${est.map(({ a, e }) => `<div class="line al-fila" data-act="ficha" data-id="${a.id}" data-n="${esc(normaliza(a.nombre))}" data-p="${esc(prodDe(a.id))}" data-m="${esc(modalidadDe(a.id))}" data-al="${e.nivel !== 'ok' ? 1 : 0}" data-v="${vencIds.has(a.id) ? 1 : 0}" style="cursor:pointer"${visibleAl(a, e) ? '' : ' hidden'}><span style="width:4px;align-self:stretch;border-radius:2px;background:var(--${e.nivel})"></span>${avatarDe(a, 40)}<div class="grow stack" style="gap:3px"><div class="row"><h3 class="grow">${esc(a.nombre)}</h3>${e.control ? '<span class="pill gold">Revisión mensual</span>' : ''}<span class="pill ${e.nivel}">${lab[e.nivel]}</span></div><div class="small muted">${esc((c.servicios.find(s => s.alumno_id === a.id) || {}).producto || 'Sin servicio')}${e.ult ? ` · motivación ${e.ult.motivacion}/10` : ''}</div>${e.dpw ? barra('Semana', e.semana, e.dpw) + barra('Últimas 4 semanas', e.mes, e.dpw * 4) : ''}${e.motivos.length ? `<div class="small">${esc(e.motivos.join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no hay alumnos.</div>'}<div class="empty" id="al-nada" hidden>Ningún alumno coincide con la búsqueda.</div></div>
+    <div class="card">${est.map(({ a, e }) => `<div class="line al-fila" data-act="ficha" data-id="${a.id}" data-n="${esc(normaliza(a.nombre))}" data-p="${esc(prodDe(a.id))}" data-m="${esc(modalidadDe(a.id))}" data-al="${e.nivel !== 'ok' ? 1 : 0}" data-v="${vencIds.has(a.id) ? 1 : 0}" style="cursor:pointer"${visibleAl(a, e) ? '' : ' hidden'}><span style="width:4px;align-self:stretch;border-radius:2px;background:var(--${e.nivel})"></span>${avatarDe(a, 40)}<div class="grow stack" style="gap:3px"><div class="row"><h3 class="grow">${esc(a.nombre)}</h3>${e.ctx ? `<span class="pill gold" title="Semana adaptada">${esc(e.ctx.contexto_nombre || 'Contexto')}</span>` : ''}${e.control ? '<span class="pill gold">Revisión mensual</span>' : ''}<span class="pill ${e.nivel}">${lab[e.nivel]}</span></div><div class="small muted">${esc((c.servicios.find(s => s.alumno_id === a.id) || {}).producto || 'Sin servicio')}${e.ult ? ` · motivación ${e.ult.motivacion}/10` : ''}</div>${e.dpw ? barra('Semana', e.semana, e.dpw) + barra('Últimas 4 semanas', e.mes, e.dpw4 || e.dpw * 4) : ''}${e.motivos.length ? `<div class="small">${esc(e.motivos.join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no hay alumnos.</div>'}<div class="empty" id="al-nada" hidden>Ningún alumno coincide con la búsqueda.</div></div>
   <p class="note">Para dar de alta a un alumno nuevo, créalo en Supabase → Authentication → Users. Su perfil aparecerá aquí solo.</p></section>`;
 }
 
@@ -1286,10 +1385,11 @@ async function abrirFicha(id) {
 /* Todos los programas del alumno (con días y ejercicios); el activo es su bloque actual */
 async function cargarProgramasFicha(f) {
   const q = sel => () => sb.from('programas').select(sel).eq('alumno_id', f.id).order('id');
-  const r = await conRespaldo(q('activo,ciclo,' + SEL_PROGRAMA), () => conRespaldo(q('activo,' + SEL_PROGRAMA), q('activo,' + SIN_NUEVAS(SEL_PROGRAMA))));
+  const r = await conRespaldo(q('activo,ciclo,' + CTX_COLS + SEL_PROGRAMA), () => conRespaldo(q('activo,ciclo,' + SEL_PROGRAMA), () => conRespaldo(q('activo,' + SEL_PROGRAMA), q('activo,' + SIN_NUEVAS(SEL_PROGRAMA)))));
   const l = r.data || [];
   l.forEach(p => { (p.dias ||= []).sort((a, b) => a.numero - b.numero); p.dias.forEach(ordenarDia); });
-  f.programas = l; f.progFull = l.filter(p => p.activo !== false).pop() || null;
+  f.contextos = l.filter(esContexto).sort((a, b) => a.contexto_desde.localeCompare(b.contexto_desde));
+  f.programas = l.filter(p => !esContexto(p)); f.progFull = f.programas.filter(p => p.activo !== false).pop() || null;
 }
 /* Programa de cada bloque del proceso: el marcado con ese nº de ciclo o, en el bloque en curso, el activo */
 const progDeCiclo = (f, P) => c => {
@@ -1954,7 +2054,7 @@ function formApartado(sec, clave) {
 }
 /* Vista de solo lectura de un día del programa (lo planificado, sin registrar nada) */
 function verPlan(pid, did) {
-  const pr = (S.ficha.programas || []).find(p => p.id === pid), dia = pr?.dias.find(d => d.id === did);
+  const pr = [...(S.ficha.programas || []), ...(S.ficha.contextos || [])].find(p => p.id === pid), dia = pr?.dias.find(d => d.id === did);
   if (!dia) return toast('No se encuentra ese entrenamiento');
   S.verPlan = { pr, dia }; render(); window.scrollTo(0, 0);
 }
@@ -1991,12 +2091,12 @@ function vFicha() {
   if (S.fichaSub) return vFichaSub(f, a);
   const e = estadoAlumno(a), chks = S.c.checkins.filter(k => k.alumno_id === a.id).slice(0, 4);
   const pagos = S.c.pagos.filter(p => p.alumno_id === a.id);
-  const srv = f.srv, P = proceso(srv), dpw = f.prog?.dias_semana || 0, hoy = hoyISO(), lunes = lunesDe(hoy), nom = (a.nombre || '').split(' ')[0];
+  const srv = f.srv, P = proceso(srv), hoy = hoyISO(), lunes = lunesDe(hoy), nom = (a.nombre || '').split(' ')[0], dpw = dpwEn(a.id, lunes, f.prog?.dias_semana || 0), dpwPre = dpwEn(a.id, sumaDias(lunes, -7), f.prog?.dias_semana || 0);
   const src = { sesiones: f.todas.map(x => ({ ...x, alumno_id: a.id })), diario: S.c.diario, checkins: S.c.checkins };
   const cur = semanaDatos(a.id, lunes, src), pre = semanaDatos(a.id, sumaDias(lunes, -7), src);
   const ult7 = sumaDias(hoy, -6), d7 = S.c.diario.filter(r => r.alumno_id === a.id && r.fecha >= ult7 && r.pasos != null), pasos7 = d7.length ? Math.round(d7.reduce((t, r) => t + r.pasos, 0) / d7.length) : null;
   const ing7 = ingestasSemana(S.c.diario.filter(r => r.alumno_id === a.id), ult7, srv), evN = evalNutri(ing7.pct), obj = objPasos(srv);
-  const nivelE = dpw ? (cur.entrenos >= dpw ? 'ok' : pre.entrenos >= dpw ? '' : pre.entrenos >= dpw / 2 ? 'warn' : 'bad') : '';
+  const nivelE = dpw ? (cur.entrenos >= dpw ? 'ok' : pre.entrenos >= dpwPre ? '' : pre.entrenos >= dpwPre / 2 ? 'warn' : 'bad') : '';
   const tile = (sub, t, v, l1, l2, niv) => `<button class="kpi rep tile ${niv}" data-act="fichaSub" data-s="${sub}"><div class="l">${t} ›</div><b class="num">${v}</b><div class="small muted">${l1}</div>${l2 ? `<div class="small muted">${l2}</div>` : ''}</button>`;
   const fF = iso => fecha(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
   return `<section class="stack"><button class="btn sm ghost" data-act="cerrarFicha" style="align-self:flex-start">← Alumnos</button><span class="eyebrow">Ficha del alumno</span><div class="row" style="gap:14px;align-items:center">${avatarDe(a, 64)}<h1 class="grow" style="margin:0">${esc(a.nombre)}</h1></div>
@@ -2043,15 +2143,15 @@ function vFichaSub(f, a) {
   const sub = S.fichaSub, srv = f.srv, nom = (a.nombre || '').split(' ')[0], hoy = hoyISO(), lunes = lunesDe(hoy);
   const cab = t => `<section class="stack"><button class="btn sm ghost" data-act="cerrarSub" style="align-self:flex-start">← Ficha de ${esc(nom)}</button><span class="eyebrow">${esc(a.nombre)}</span><h1>${t}</h1></section>`;
   if (sub === 'entreno') {
-    const dpw = f.prog?.dias_semana || 0, P = proceso(srv), linea = s2 => `<div class="line" data-act="verSesion" data-id="${s2.id}" style="cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(s2.fecha))}</span><div class="grow"><div class="small"><b>${esc(nomDia(s2.dias))}</b> · ${esc(s2.dias?.foco || '')} · ${(s2.registros_series || []).length} series${s2.duracion_min ? ` · ${s2.duracion_min} min` : ''}${s2.cansancio ? ` · cansancio ${s2.cansancio}/5` : ''}${(s2.omitidos || []).length ? ` · ${s2.omitidos.length} no realizado${s2.omitidos.length > 1 ? 's' : ''}` : ''}</div>${s2.nota ? `<div class="small muted">"${esc(s2.nota)}"</div>` : ''}</div><span class="small" style="color:var(--blue-text)">›</span></div>`;
+    const dpwB = f.prog?.dias_semana || 0, dpw = dpwEn(a.id, lunes, dpwB), dpw4 = [0, 1, 2, 3].reduce((t, k) => t + dpwEn(a.id, sumaDias(lunes, -7 * k), dpwB), 0), P = proceso(srv), linea = s2 => `<div class="line" data-act="verSesion" data-id="${s2.id}" style="cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(s2.fecha))}</span><div class="grow"><div class="small"><b>${esc(nomDia(s2.dias))}</b> · ${esc(s2.dias?.foco || '')} · ${(s2.registros_series || []).length} series${s2.duracion_min ? ` · ${s2.duracion_min} min` : ''}${s2.cansancio ? ` · cansancio ${s2.cansancio}/5` : ''}${(s2.omitidos || []).length ? ` · ${s2.omitidos.length} no realizado${s2.omitidos.length > 1 ? 's' : ''}` : ''}</div>${s2.nota ? `<div class="small muted">"${esc(s2.nota)}"</div>` : ''}</div><span class="small" style="color:var(--blue-text)">›</span></div>`;
     const semana = f.ses.filter(x => x.fecha >= lunes), bloque = P && !P.antes ? f.ses.filter(x => x.fecha >= P.cc.ini && x.fecha <= P.cc.fin && x.fecha < lunes) : [];
     const unicas = l => new Set(l.map(x => x.fecha + x.dia_id)).size, mes = unicas(f.todas.filter(x => x.fecha >= sumaDias(hoy, -27)));
-    return cab('Entrenamiento') + vZonasFC({ vals: f.val, perfil: a, futbol: !!srv?.modulo_futbol, coach: true }) + `
+    return cab('Entrenamiento') + vZonasFC({ vals: f.val, perfil: a, futbol: !!srv?.modulo_futbol, coach: true }) + vContextos(f, a) + `
     <section class="section"><div class="section-head"><h2>Programa</h2><button class="btn sm" data-act="editarPrograma" data-id="${a.id}">${f.prog ? '✎ Editar programa' : 'Crear programa'}</button></div><div class="card small">${f.prog ? `<b>${esc(f.prog.nombre)}</b> · ${dpw || '—'} días por semana` : 'Aún no tiene programa.'}</div></section>
-    <section class="section"><h2>Esta semana</h2><div class="card">${dpw ? barra('Entrenos de la semana', unicas(semana), dpw, '') + barra('Últimas 4 semanas', mes, dpw * 4, '') : ''}${semana.map(linea).join('') || '<div class="empty">Aún no ha entrenado esta semana.</div>'}</div></section>
+    <section class="section"><h2>Esta semana</h2><div class="card">${dpw ? barra('Entrenos de la semana', unicas(semana), dpw, '') + barra('Últimas 4 semanas', mes, dpw4, '') : ''}${semana.map(linea).join('') || '<div class="empty">Aún no ha entrenado esta semana.</div>'}</div></section>
     ${P && !P.antes ? `<section class="section"><h2>Resto del bloque · ${esc(nomCiclo(P.cc))}</h2><div class="card">${bloque.map(linea).join('') || '<div class="empty">Sin entrenamientos anteriores en este bloque.</div>'}</div></section>` : ''}
     ${vLineaTiempo(srv, 'Ciclos de entrenamiento', true, progDeCiclo(f, P))}
-    <section class="section"><div class="card stack chart"><h3>Entrenamientos por semana</h3>${barrasSemanas(f.todas, dpw)}</div></section>
+    <section class="section"><div class="card stack chart"><h3>Entrenamientos por semana</h3>${barrasSemanas(f.todas, l => dpwEn(f.id, l, f.prog?.dias_semana || 0))}</div></section>
     ${vRevision(f)}
     <section class="section"><h2>Todos los entrenamientos</h2><div class="card">${f.ses.map(linea).join('') || '<div class="empty">Sin entrenamientos registrados.</div>'}</div></section>`;
   }
@@ -2099,7 +2199,7 @@ async function verSesion(id) {
       () => sb.from('programas').select(SIN_NUEVAS(SEL_PROGRAMA)).eq('alumno_id', S.ficha.id));
     S.ficha.programas = data || [];
   }
-  const dia = S.ficha.programas.flatMap(p => p.dias || []).find(d => d.id === ses.dia_id);
+  const dia = [...S.ficha.programas, ...(S.ficha.contextos || [])].flatMap(p => p.dias || []).find(d => d.id === ses.dia_id);
   if (!dia) return verSesionLista(id);
   ordenarDia(dia);
   const ant = S.ficha.ses.filter(x => x.dia_id === ses.dia_id && x.fecha < ses.fecha && x.registros_series.length).sort((x, y) => y.fecha.localeCompare(x.fecha))[0];
@@ -2299,14 +2399,14 @@ function proceso(srv, f = hoyISO()) {
   return { semana, total, ciclos, ciclo, semCiclo, cc, pctCiclo, pctTotal, antes, fuera, sinFin: !srv.duracion_semanas && !bl.length };
 }
 /* Nº de entreno dentro del ciclo (contando la sesión de esa fecha) */
-function numEntreno(sesiones, srv, f, sesId, dpw) {
+function numEntreno(sesiones, srv, f, sesId, dpw, aid) {
   const P = proceso(srv, f); if (!P || P.antes) return null;
   const enCiclo = sesiones.filter(x => x.fecha >= P.cc.ini && x.fecha <= P.cc.fin);
   let n = enCiclo.filter(x => x.fecha < f).length;
   const mismoDia = enCiclo.filter(x => x.fecha === f).sort((a, b) => (a.id || 0) - (b.id || 0));
   const i = sesId ? mismoDia.findIndex(x => x.id === sesId) : -1;
   n += i >= 0 ? i + 1 : mismoDia.length + 1;
-  return { ...P, n, previstos: dpw ? dpw * P.cc.sem : null };
+  return { ...P, n, previstos: dpw ? (aid ? previstosCiclo(P.cc, aid, dpw) : dpw * P.cc.sem) : null };
 }
 const nomCiclo = c => c.nombre || `Ciclo ${c.n}`;
 const txtCiclo = x => x ? `${nomCiclo(x.cc)} · Semana ${x.semCiclo} de ${x.cc.sem}${x.n ? ` · Entreno ${x.n}${x.previstos ? ' de ' + x.previstos : ''}` : ''}` : '';
@@ -2336,14 +2436,15 @@ function barra(lbl, v, max, nota) {
   const pct = max ? Math.min(100, Math.round(v / max * 100)) : 0, col = pct >= 90 ? 'var(--ok)' : pct >= 60 ? 'var(--warn)' : 'var(--bad)';
   return `<div class="stack" style="gap:5px;margin-top:6px"><div class="row small"><span class="grow">${esc(lbl)}</span><b class="num">${v} / ${max}${nota ? ' ' + esc(nota) : ''} · ${pct} %</b></div><div class="track"><i style="width:${pct}%;background:${col}"></i></div></div>`;
 }
-function barrasSemanas(sesiones, dpw) {
+function barrasSemanas(sesiones, dpwArg) {
   const semanas = [...Array(8)].map((_, i) => lunesDe(sumaDias(hoyISO(), -7 * (7 - i))));
+  const dpwDe = l => typeof dpwArg === 'function' ? dpwArg(l) : dpwArg, dpw = Math.max(0, ...semanas.map(dpwDe));
   const cuenta = semanas.map(l => new Set(sesiones.filter(s => s.fecha >= l && s.fecha <= sumaDias(l, 6)).map(s => s.fecha + s.dia_id)).size);
   const max = Math.max(dpw || 1, ...cuenta), bw = 304 / 8;
-  return `<svg viewBox="0 0 320 110" role="img" aria-label="Entrenamientos por semana">${cuenta.map((v, i) => { const h = v / max * 76; return `<rect x="${8 + i * bw + 6}" y="${86 - h}" width="${bw - 12}" height="${Math.max(h, 1)}" rx="4" fill="${dpw && v >= dpw ? 'var(--ok)' : v ? 'var(--blue)' : 'var(--line)'}"/><text x="${8 + i * bw + bw / 2}" y="${82 - h}" fill="var(--fg)" font-size="11" text-anchor="middle">${v || ''}</text><text x="${8 + i * bw + bw / 2}" y="104" fill="var(--muted)" font-size="10" text-anchor="middle">${esc(fecha(semanas[i]).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric' }))}</text>`; }).join('')}</svg>`;
+  return `<svg viewBox="0 0 320 110" role="img" aria-label="Entrenamientos por semana">${cuenta.map((v, i) => { const h = v / max * 76; return `<rect x="${8 + i * bw + 6}" y="${86 - h}" width="${bw - 12}" height="${Math.max(h, 1)}" rx="4" fill="${dpwDe(semanas[i]) && v >= dpwDe(semanas[i]) ? 'var(--ok)' : v ? 'var(--blue)' : 'var(--line)'}"/><text x="${8 + i * bw + bw / 2}" y="${82 - h}" fill="var(--fg)" font-size="11" text-anchor="middle">${v || ''}</text><text x="${8 + i * bw + bw / 2}" y="104" fill="var(--muted)" font-size="10" text-anchor="middle">${esc(fecha(semanas[i]).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric' }))}</text>`; }).join('')}</svg>`;
 }
 function vEstadisticas(f) {
-  const hoy = hoyISO(), dpw = f.prog?.dias_semana || 0, srv = f.srv;
+  const hoy = hoyISO(), dpw = dpwEn(f.id, lunesDe(hoy), f.prog?.dias_semana || 0), srv = f.srv;
   const unicas = l => new Set(l.map(s => s.fecha + s.dia_id)).size;
   const semana = unicas(f.todas.filter(s => s.fecha >= lunesDe(hoy)));
   const mes = unicas(f.todas.filter(s => s.fecha >= sumaDias(hoy, -27)));
@@ -2362,11 +2463,11 @@ function vEstadisticas(f) {
   return `<section class="section"><div class="section-head"><h2>Servicio</h2><button class="btn sm ghost" data-act="editarServicio">Editar</button></div>
     <div class="card small">${srv ? `<b>${esc(srv.producto)}</b> · inicio ${srv.inicio ? esc(fCorta(srv.inicio)) + ' ' + fecha(srv.inicio).getFullYear() : '—'} · ${srv.duracion_semanas ? srv.duracion_semanas + ' semanas' : 'sin duración'} · ${[srv.modulo_entreno && 'entreno', srv.modulo_nutricion && 'nutrición', srv.modulo_presencial && 'presencial'].filter(Boolean).join(', ') || 'sin módulos'}` : 'Sin servicio asignado.'}</div></section>
   <section class="section"><h2>Cumplimiento</h2><div class="card">
-    ${dpw ? barra('Esta semana', semana, dpw, 'entrenos') + barra('Últimas 4 semanas', mes, dpw * 4, 'entrenos') : '<p class="small muted">Sin programa activo.</p>'}${proceso}
+    ${dpw ? barra('Esta semana', semana, dpw, 'entrenos') + barra('Últimas 4 semanas', mes, [0, 1, 2, 3].reduce((t, k) => t + dpwEn(f.id, sumaDias(lunesDe(hoy), -7 * k), f.prog?.dias_semana || 0), 0), 'entrenos') : '<p class="small muted">Sin programa activo.</p>'}${proceso}
     <div class="row small" style="margin-top:12px;flex-wrap:wrap;gap:8px"><span class="pill">Pasos medios (14 días): ${pasos.length ? fmtNum(Math.round(pasos.reduce((t, r) => t + r.pasos, 0) / pasos.length), 0) : '—'}</span><span class="pill">Duración media: ${durMedia ? durMedia + ' min' : '—'}</span></div>
     ${!srv?.duracion_semanas ? '<p class="note" style="margin-top:10px">Añade la fecha de inicio y la duración en "Servicio" para ver el avance del proceso completo.</p>' : ''}
   </div>
-  <div class="card stack chart"><h3>Entrenamientos por semana</h3>${barrasSemanas(f.todas, dpw)}</div></section>
+  <div class="card stack chart"><h3>Entrenamientos por semana</h3>${barrasSemanas(f.todas, l => dpwEn(f.id, l, f.prog?.dias_semana || 0))}</div></section>
   ${graf ? `<section class="section"><h2>Composición corporal</h2>${vGraficaComp(med)}</section>` : ''}`;
 }
 function formServicio() {
@@ -2458,15 +2559,15 @@ function vResumenCoach(est) {
   const hoy = hoyISO(), c = S.c;
   const semanas = [...Array(8)].map((_, i) => lunesDe(sumaDias(hoy, -7 * (7 - i))));
   const totalSem = semanas.map(l => new Set(c.sesiones.filter(s => s.fecha >= l && s.fecha <= sumaDias(l, 6)).map(s => s.alumno_id + s.fecha + s.dia_id)).size);
-  const previsto = c.programas.reduce((t, p) => t + (p.dias_semana || 0), 0);
+  const previsto = c.programas.reduce((t, p) => t + dpwEn(p.alumno_id, lunesDe(hoy), p.dias_semana), 0);
   const conPlan = est.filter(x => x.e.dpw);
   const pctSem = conPlan.length ? Math.round(conPlan.reduce((t, x) => t + Math.min(1, x.e.semana / x.e.dpw), 0) / conPlan.length * 100) : 0;
-  const pctMes = conPlan.length ? Math.round(conPlan.reduce((t, x) => t + Math.min(1, x.e.mes / (x.e.dpw * 4)), 0) / conPlan.length * 100) : 0;
+  const pctMes = conPlan.length ? Math.round(conPlan.reduce((t, x) => t + Math.min(1, x.e.mes / (x.e.dpw4 || x.e.dpw * 4)), 0) / conPlan.length * 100) : 0;
   const motiv = c.checkins.filter(k => k.semana_inicio >= lunesDe(sumaDias(hoy, -7)));
   const motMedia = motiv.length ? (motiv.reduce((t, k) => t + k.motivacion, 0) / motiv.length) : null;
   const W = 320, H = 130, bw = 304 / 8, max = Math.max(previsto, ...totalSem, 1), y = v => 96 - v / max * 80;
   const barras = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Entrenamientos de todos tus alumnos por semana">${previsto ? `<line x1="8" x2="312" y1="${y(previsto)}" y2="${y(previsto)}" stroke="var(--ink)" stroke-dasharray="4 4"/><text x="312" y="${y(previsto) - 4}" fill="var(--fg)" font-size="10" text-anchor="end">Previsto: ${previsto}</text>` : ''}${totalSem.map((v, i) => `<rect x="${8 + i * bw + 6}" y="${y(v)}" width="${bw - 12}" height="${Math.max(96 - y(v), 1)}" rx="4" fill="${previsto && v >= previsto ? 'var(--ok)' : 'var(--blue)'}"/><text x="${8 + i * bw + bw / 2}" y="${y(v) - 4}" fill="var(--fg)" font-size="11" text-anchor="middle">${v || ''}</text><text x="${8 + i * bw + bw / 2}" y="114" fill="var(--muted)" font-size="10" text-anchor="middle">${esc(fecha(semanas[i]).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric' }))}</text>`).join('')}</svg>`;
-  const filas = conPlan.map(x => { const p = Math.min(100, Math.round(x.e.mes / (x.e.dpw * 4) * 100)); return { n: x.a.nombre, p }; }).sort((a, b) => a.p - b.p);
+  const filas = conPlan.map(x => { const p = Math.min(100, Math.round(x.e.mes / (x.e.dpw4 || x.e.dpw * 4) * 100)); return { n: x.a.nombre, p }; }).sort((a, b) => a.p - b.p);
   const horiz = filas.length ? `<svg viewBox="0 0 320 ${filas.length * 30 + 6}" role="img" aria-label="Cumplimiento por alumno">${filas.map((f, i) => { const col = f.p >= 90 ? 'var(--ok)' : f.p >= 60 ? 'var(--warn)' : 'var(--bad)'; return `<text x="0" y="${i * 30 + 19}" fill="var(--fg)" font-size="12">${esc(f.n.length > 14 ? f.n.slice(0, 13) + '…' : f.n)}</text><rect x="110" y="${i * 30 + 6}" width="170" height="16" rx="5" fill="var(--surface-2)"/><rect x="110" y="${i * 30 + 6}" width="${Math.max(2, f.p * 1.7)}" height="16" rx="5" fill="${col}"/><text x="318" y="${i * 30 + 19}" fill="var(--fg)" font-size="12" text-anchor="end">${f.p} %</text>`; }).join('')}</svg>` : '<p class="small muted">Asigna programas para ver el cumplimiento.</p>';
   const anillo = (pct, lbl) => { const R = 30, C = 2 * Math.PI * R, col = pct >= 90 ? 'var(--ok)' : pct >= 60 ? 'var(--warn)' : 'var(--bad)'; return `<div class="kpi" style="display:flex;flex-direction:column;align-items:center;gap:4px"><svg viewBox="0 0 80 80" width="72" height="72" role="img" aria-label="${lbl} ${pct} %"><circle cx="40" cy="40" r="${R}" fill="none" stroke="var(--surface-2)" stroke-width="9"/><circle cx="40" cy="40" r="${R}" fill="none" stroke="${col}" stroke-width="9" stroke-linecap="round" stroke-dasharray="${C * pct / 100} ${C}" transform="rotate(-90 40 40)"/><text x="40" y="45" text-anchor="middle" font-size="16" font-weight="800" fill="var(--fg)">${pct}%</text></svg><div class="l" style="text-align:center">${lbl}</div></div>`; };
   return `<section class="section"><h2>Resumen</h2><div class="kpis">${anillo(pctSem, 'Cumplimiento esta semana')}${anillo(pctMes, 'Cumplimiento 4 semanas')}<div class="kpi" style="display:flex;flex-direction:column;justify-content:center;align-items:center"><div class="v num">${motMedia == null ? '—' : fmtNum(motMedia)}</div><div class="l" style="text-align:center">Motivación media (/10)</div></div></div>
@@ -2638,7 +2739,7 @@ async function abrirReporte(alumno = null, lunes = null) {
   render();
 }
 function datosReporte(a, R) {
-  const srv = S.c.servicios.find(x => x.alumno_id === a.id), dpw = (S.c.programas.find(p => p.alumno_id === a.id) || {}).dias_semana || 0, obj = objPasos(srv);
+  const srv = S.c.servicios.find(x => x.alumno_id === a.id), dpw = dpwEn(a.id, R.lunes, (S.c.programas.find(p => p.alumno_id === a.id) || {}).dias_semana || 0), obj = objPasos(srv);
   const w = semanaDatos(a.id, R.lunes, R.src), P = proceso(srv, R.fin || sumaDias(R.lunes, 6));
   const pctE = dpw ? Math.round(w.entrenos / dpw * 100) : null, pctP = w.pasosMedia != null ? Math.round(w.pasosMedia / obj * 100) : null;
   const nivel = x => x == null ? '' : x >= 90 ? 'ok' : x >= 60 ? 'warn' : 'bad';
@@ -3153,7 +3254,7 @@ async function abrirEditor(alumnoId, progId = null) {
   ]);
   const p = prog.data?.[0] || null;
   if (p) { (p.dias ||= []).sort((a, b) => a.numero - b.numero); p.dias.forEach(d => { d.bloques_sesion.sort((a, b) => a.letra.localeCompare(b.letra)); d.bloques_sesion.forEach(b => b.ejercicios_sesion.sort((a, b) => a.orden - b.orden)); }); }
-  S.editor = { alumnoId, progId, plantilla: !!progId && !alumnoId, prog: p, metodos: met.data || [] }; render();
+  S.editor = { alumnoId, progId, plantilla: !!progId && !alumnoId, prog: p, metodos: met.data || [], ctx: p ? [...(S.ficha?.contextos || []), ...(S.c?.contextos || [])].find(x => x.id === p.id) || null : null }; render();
 }
 async function refrescarEditor() { const id = S.editor.alumnoId, pid = S.editor.progId; await abrirEditor(id, pid); if (id && id === S.user.id) await cargarAlumno(S.user.id); if (!id) await cargarPlantillas(); }
 function vEditor() {
@@ -3161,8 +3262,8 @@ function vEditor() {
   if (E.cargando) return '<div class="empty">Cargando programa…</div>';
   const p = E.prog;
   const resumen = e => { const g = gruposDe(e.pauta); return `${e.series} × ${esc(e.repeticiones)}${e.rir != null ? ' · RIR ' + e.rir : ''}${e.peso_ref ? ' · ' + esc(e.peso_ref) : ''} · desc. ${e.descanso_seg ? seg(e.descanso_seg) : 'no'}${g.some(x => x.tramos.length > 1) ? ' · tramos' : ''}`; };
-  return `<section class="stack"><button class="btn sm ghost" data-act="cerrarEditor" style="align-self:flex-start">← Volver</button><span class="eyebrow">${E.plantilla ? 'Plantilla · ' + esc(p?.categoria || 'sin categoría') : 'Programa de ' + esc(a.nombre || '')}</span><h1>${p ? esc(p.nombre) : 'Sin programa'}</h1>
-    <div class="row" style="gap:8px;flex-wrap:wrap">${p ? `<button class="btn sm ghost" data-act="nuevoPrograma">Cambiar nombre</button><button class="btn sm" data-act="edDia">Añadir día</button>${E.plantilla ? `<button class="btn sm gold" data-act="probarPlantilla" data-id="${p.id}">👁 Ver como alumno de prueba</button>` : '<button class="btn sm gold" data-act="nuevoCiclo">Nuevo ciclo (copiar)</button>'}` : `<button class="btn sm" data-act="nuevoPrograma">Crear programa</button>`}</div>
+  return `<section class="stack"><button class="btn sm ghost" data-act="cerrarEditor" style="align-self:flex-start">← Volver</button><span class="eyebrow">${E.plantilla ? 'Plantilla · ' + esc(p?.categoria || 'sin categoría') : E.ctx ? `Contexto temporal de ${esc(a.nombre || '')} · ${esc(fCtx(E.ctx))} · ${E.ctx.dias_semana} entrenos/semana` : 'Programa de ' + esc(a.nombre || '')}</span><h1>${p ? esc(p.nombre) : 'Sin programa'}</h1>
+    <div class="row" style="gap:8px;flex-wrap:wrap">${p ? `<button class="btn sm ghost" data-act="nuevoPrograma">Cambiar nombre</button><button class="btn sm" data-act="edDia">Añadir día</button>${E.plantilla ? `<button class="btn sm gold" data-act="probarPlantilla" data-id="${p.id}">👁 Ver como alumno de prueba</button>` : E.ctx ? '' : '<button class="btn sm gold" data-act="nuevoCiclo">Nuevo ciclo (copiar)</button>'}` : `<button class="btn sm" data-act="nuevoPrograma">Crear programa</button>`}</div>
     <p class="note">${E.plantilla ? 'Toca cualquier elemento para editarlo. Los cambios solo afectan a la plantilla: los alumnos que ya la tienen asignada conservan su copia.' : 'Toca cualquier elemento para editarlo. Los cambios los ve el alumno en cuanto vuelve a abrir la app.'}</p></section>
   ${p ? p.dias.map(d => `<section class="section"><div class="card stack">
     <div class="row"><div class="grow"><span class="eyebrow">Día ${d.numero}${d.titulo ? ' · ' + esc(d.nombre) : ''}</span><h2>${esc(nomDia(d))}</h2><div class="small muted">${esc([d.foco, d.volumen && 'vol. ' + d.volumen, d.intensidad && 'int. ' + d.intensidad].filter(Boolean).join(' · '))}</div></div><button class="btn sm ghost" data-act="edDia" data-id="${d.id}">Editar día</button></div>
@@ -3614,6 +3715,9 @@ document.addEventListener('click', async e => {
     case 'cerrarEditor': if (S.editor?.plantilla) { S.editor = null; S.ctab = 'plantillas'; await cargarPlantillas(); render(); window.scrollTo(0, 0); break; }
       S.editor = null; S.verPlan = null; if (S.ficha && !S.ficha.cargando) await cargarProgramasFicha(S.ficha); render(); window.scrollTo(0, 0); break;
     case 'edDia': formDia(b.dataset.id ? +b.dataset.id : null); break;
+    case 'nuevoContexto': formContexto(null); break;
+    case 'editarContexto': formContexto(+b.dataset.id); break;
+    case 'sesionesContexto': await abrirEditor(S.ficha.id, +b.dataset.id); break;
     case 'edBloque': formBloque(b.dataset.id ? +b.dataset.id : null, b.dataset.dia ? +b.dataset.dia : null); break;
     case 'edEj': formEjSesion(b.dataset.id ? +b.dataset.id : null, b.dataset.bloque ? +b.dataset.bloque : null); break;
     case 'moverEj': await moverEj(+b.dataset.id, +b.dataset.dir); break;
