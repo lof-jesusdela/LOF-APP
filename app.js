@@ -507,6 +507,22 @@ function vZonasFC(o = {}) {
     <div class="zonas-lab">${Z.map(z => `<span>${esc(z.corto)}</span>`).join('')}</div>
     <p class="small muted">${fut ? '5 zonas para futbolista. ' : ''}Toca una zona para saber qué significa.</p></div></section>`;
 }
+/* Cardio: máquinas con foto propia (se guarda en la biblioteca como «Cardio · Cinta»…) y FC por zonas */
+const MAQUINAS = ['Cinta', 'Stepper', 'Bicicleta', 'Elíptica', 'Remo'];
+const fotoMaquina = m => m && (S.c?.ejercicios || []).find(x => normaliza(x.nombre) === normaliza('Cardio · ' + m))?.imagen_url || null;
+/* «Zona 2» → «Zona 2 · 141–159 ppm» con la FC máxima de la persona (si se conoce) */
+function fcTexto(t, o = {}) {
+  const m = /^\s*zona\s*(\d)\s*$/i.exec(t || ''); if (!m) return t || '';
+  const fut = o.fut ?? !!S.d?.servicio?.modulo_futbol, z = zonasDe(fut).find(x => x.n === +m[1]), mx = 'mx' in o ? o.mx : fcMaxDe(o.vals, o.perfil);
+  return !z ? `Zona ${m[1]}` : mx ? `Zona ${z.n} · ${Math.round(mx * z.desde)}–${Math.round(mx * z.hasta)} ppm` : `Zona ${z.n} · ${Math.round(z.desde * 100)}–${Math.round(z.hasta * 100)} % FC máx.`;
+}
+/* Datos de FC de la persona del editor (si se abrió desde su ficha) */
+function fcEditor() {
+  const E = S.editor || {}, fut = editorEsFutbol();
+  if (!E.alumnoId) return { fut, mx: null };
+  const f = S.ficha?.id === E.alumnoId ? S.ficha : null, perfil = (S.c?.perfiles || []).find(x => x.id === E.alumnoId);
+  return { fut, mx: fcMaxDe(f?.val || [], perfil || {}) };
+}
 function zonaFC(n, fut, mx) {
   const z = zonasDe(fut).find(x => x.n === n); mx = mx || fcMaxDe(); if (!z || !mx) return;
   abrirSheet(`<div class="stack"><span class="eyebrow">Zona ${n}</span><h2>${esc(z.nom)}</h2><div class="pill num" style="align-self:flex-start">${Math.round(mx * z.desde)}–${Math.round(mx * z.hasta)} ppm · ${Math.round(z.desde * 100)}–${Math.round(z.hasta * 100)} % de la FC máxima</div><p class="small pre">${esc(z.desc)}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`);
@@ -877,7 +893,7 @@ function vBloque(b, cont, ro) {
   if (b.tipo !== 'fuerza') {
     return `<div class="card stack"><div class="row"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}</h3></div>
       ${imgBloque(b)}
-      ${b.tipo === 'cardio' ? `<div class="kpis" style="grid-template-columns:1fr 1fr"><div class="kpi"><div class="l">Duración</div><b>${esc(b.duracion || '—')}</b></div><div class="kpi"><div class="l">Frecuencia cardiaca</div><b style="color:var(--bad)">${esc(b.fc_objetivo || '—')}</b></div></div><div class="small muted">${esc([b.maquina, b.objetivo].filter(Boolean).join(' · '))}</div>` : ''}
+      ${b.tipo === 'cardio' ? `<div class="kpis" style="grid-template-columns:1fr 1fr"><div class="kpi"><div class="l">Duración</div><b>${esc(b.duracion || '—')}</b></div><div class="kpi"><div class="l">Frecuencia cardiaca</div><b style="color:var(--bad)">${esc(fcTexto(b.fc_objetivo) || '—')}</b></div></div><div class="small muted">${esc([b.maquina, b.objetivo].filter(Boolean).join(' · '))}</div>` : ''}
       ${b.detalle ? `<p class="note">${esc(b.detalle)}</p>` : ''}
       ${b.video_url ? `<a class="btn sm ghost" style="align-self:flex-start" href="${esc(b.video_url)}" target="_blank" rel="noopener">Ver vídeo</a>` : ''}</div>`;
   }
@@ -3373,7 +3389,7 @@ function vEditor() {
       <div class="row" style="flex-wrap:wrap"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}</h3>${(() => { const k = d.bloques_sesion.indexOf(b), pr = d.bloques_sesion[k - 1]; return b.tipo === 'fuerza' && pr?.tipo === 'fuerza' ? `<button class="btn sm ghost" data-act="unirBloque" data-id="${b.id}" title="Pasa sus ejercicios al bloque ${esc(pr.letra)}">⤒ Unir con ${esc(pr.letra)}</button>` : ''; })()}<button class="btn sm ghost" data-act="edBloque" data-id="${b.id}">✎ Editar bloque</button></div>
       ${b.agrupacion ? `<div class="small muted">${esc(b.agrupacion)}</div>` : ''}
       ${b.tipo === 'fuerza' ? `${b.ejercicios_sesion.map((e, i) => `<div class="ed-ej">${(() => { const u = (S.c.ejercicios || []).find(x => x.id === e.ejercicio_id)?.imagen_url; return u ? `<img class="ed-mini" src="${esc(u)}" alt="" loading="lazy" data-act="edEj" data-id="${e.id}">` : `<span class="ed-mini ed-sin" data-act="edEj" data-id="${e.id}" title="Sin foto: toca para añadirla">📷</span>`; })()}<div class="grow" data-act="edEj" data-id="${e.id}" style="cursor:pointer;min-width:0"><b class="small">${i + 1}. ${esc(e.ejercicios?.nombre || '')}</b><div class="small muted">${resumen(e)}</div></div>${i > 0 ? `<button class="mini" data-act="separarEj" data-id="${e.id}" aria-label="Separar en un bloque nuevo desde este ejercicio" title="Separar en un bloque nuevo desde aquí">✂</button>` : ''}<button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="-1" aria-label="Subir" ${i === 0 ? 'disabled' : ''}>↑</button><button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="1" aria-label="Bajar" ${i === b.ejercicios_sesion.length - 1 ? 'disabled' : ''}>↓</button></div>`).join('')}
-        <button class="btn sm ghost" data-act="edEj" data-bloque="${b.id}" style="align-self:flex-start">+ Añadir ejercicio</button>` : `<div class="small muted">${esc(b.tipo === 'cardio' ? [b.duracion, b.fc_objetivo, b.maquina].filter(Boolean).join(' · ') : 'Movilidad')}</div>`}
+        <button class="btn sm ghost" data-act="edEj" data-bloque="${b.id}" style="align-self:flex-start">+ Añadir ejercicio</button>` : `<div class="small muted">${esc(b.tipo === 'cardio' ? [b.duracion, fcTexto(b.fc_objetivo, fcEditor()), b.maquina].filter(Boolean).join(' · ') : 'Movilidad')}</div>`}
     </div>`).join('')}
     <button class="btn sm ghost" data-act="edBloque" data-dia="${d.id}" style="align-self:flex-start">+ Añadir bloque</button>
   </div></section>`).join('') : '<div class="section card empty">Crea el programa para empezar a añadir días.</div>'}`;
@@ -3424,28 +3440,54 @@ function editorEsFutbol() {
 function formBloque(id, diaId) {
   const p = S.editor.prog, dia = p.dias.find(d => d.id === diaId) || p.dias.find(d => d.bloques_sesion.some(b => b.id === id)), b = id ? dia.bloques_sesion.find(x => x.id === id) : null;
   const sig = String.fromCharCode(65 + (dia?.bloques_sesion.length || 0));
+  const FC = fcEditor(), zonas = zonasDe(FC.fut), fcZ = /^\s*zona\s*(\d)\s*$/i.exec(b?.fc_objetivo || '')?.[1] || '', fcOtra = !fcZ && !!b?.fc_objetivo;
+  const maqL = MAQUINAS.find(m => normaliza(m) === normaliza(b?.maquina || '')) || '', maqOtra = !maqL && !!b?.maquina;
   abrirSheet(`<form class="stack" id="f-blq"><h2>${b ? 'Editar bloque' : 'Nuevo bloque'}</h2>
     <div style="display:grid;grid-template-columns:70px 1fr;gap:8px"><label class="f">Letra<input type="text" id="b-l" maxlength="2" value="${esc(b?.letra || sig)}"></label><label class="f">Nombre<input type="text" id="b-n" value="${esc(b?.nombre || '')}" placeholder="Ej. Tren inferior" required></label></div>
     <label class="f">Tipo<select id="b-t">${[['fuerza', 'Fuerza (ejercicios con series)'], ['cardio', 'Cardio'], ['movilidad', 'Movilidad']].map(([v, l]) => `<option value="${v}" ${b?.tipo === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
 ${editorEsFutbol() || b?.momento ? `    <label class="f">Momento (día de partido)<select id="b-mo">${[['', 'Normal'], ['pre', 'Antes del partido'], ['post', 'Después del partido']].map(([v, l]) => `<option value="${v}" ${(b?.momento || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>` : ''}
     <label class="f">Indicación del bloque (superserie, circuito…)<input type="text" id="b-ag" value="${esc(b?.agrupacion || '')}" placeholder="Ej. 1 y 2 juntos (superserie). Descanso 1 minuto."></label>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="f">Duración (cardio)<input type="text" id="b-du" value="${esc(b?.duracion || '')}" placeholder="30 min"></label><label class="f">Frecuencia cardiaca<input type="text" id="b-fc" value="${esc(b?.fc_objetivo || '')}" placeholder="135–140 ppm"></label></div>
-    <label class="f">Máquina<input type="text" id="b-ma" value="${esc(b?.maquina || '')}"></label>
+    <div class="stack" id="b-cardio" style="gap:12px" ${(b?.tipo || 'fuerza') === 'cardio' ? '' : 'hidden'}>
+      <label class="f">Máquina<select id="b-mq"><option value="">Sin indicar</option>${MAQUINAS.map(m => `<option ${m === maqL ? 'selected' : ''}>${m}</option>`).join('')}<option value="otra" ${maqOtra ? 'selected' : ''}>Otra…</option></select></label>
+      <input type="text" id="b-ma" value="${esc(maqOtra ? b.maquina : '')}" placeholder="Escribe la máquina o actividad" ${maqOtra ? '' : 'hidden'}>
+      <div id="b-mqf"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="f">Duración<input type="text" id="b-du" value="${esc(b?.duracion || '')}" placeholder="30 min"></label>
+        <label class="f">Frecuencia cardiaca<select id="b-fz"><option value="">Sin indicar</option>${zonas.map(z => `<option value="${z.n}" ${String(z.n) === fcZ ? 'selected' : ''}>Zona ${z.n} · ${esc(z.corto)}</option>`).join('')}<option value="otra" ${fcOtra ? 'selected' : ''}>Otra…</option></select></label></div>
+      <input type="text" id="b-fc" value="${esc(fcOtra ? b.fc_objetivo : '')}" placeholder="Ej. 135–145 ppm" ${fcOtra ? '' : 'hidden'}>
+      <div class="small" id="b-fzt" style="color:var(--bad);font-weight:700"></div></div>
     <label class="f">Detalle<textarea id="b-de">${esc(b?.detalle || '')}</textarea></label>
     <label class="f">Vídeo (movilidad)<input type="text" id="b-vi" value="${esc(b?.video_url || '')}" placeholder="https://youtu.be/…"></label>
     ${b?.imagen_url ? `<img src="${esc(b.imagen_url)}" alt="" style="width:100%;max-height:180px;object-fit:contain;border-radius:12px;background:var(--surface-2)">` : ''}
     <label class="f">Imagen ilustrativa (cardio y movilidad)<input type="file" id="b-img" accept="image/*"></label>
+    <label class="row small" id="b-mqg" hidden style="gap:8px"><input type="checkbox" id="b-mqs" checked style="width:20px;height:20px"> <span>Usar esta foto siempre para <b id="b-mqn"></b></span></label>
     <p class="err" id="b-err"></p><button class="btn full" type="submit" id="b-btn">Guardar</button>${b ? '<button class="btn ghost full" type="button" id="b-del" style="color:var(--bad)">Eliminar bloque</button>' : ''}</form>`);
+  const maqSel = () => { const v = $('#b-mq').value; return v === 'otra' ? ($('#b-ma').value.trim() || null) : v || null; };
+  const pintarCardio = () => {
+    $('#b-cardio').hidden = $('#b-t').value !== 'cardio';
+    $('#b-ma').hidden = $('#b-mq').value !== 'otra'; $('#b-fc').hidden = $('#b-fz').value !== 'otra';
+    const zv = $('#b-fz').value; $('#b-fzt').textContent = zv && zv !== 'otra' ? fcTexto('Zona ' + zv, FC) + (FC.mx ? '' : ' (pon su FC máxima o su fecha de nacimiento para ver las pulsaciones)') : '';
+    const m = $('#b-mq').value !== 'otra' ? $('#b-mq').value : '', u = fotoMaquina(m), cardio = $('#b-t').value === 'cardio';
+    $('#b-mqf').innerHTML = cardio && m ? (u ? `<div class="es-prev"><img src="${esc(u)}" alt="${esc(m)}"><span class="small muted grow">Foto de ${esc(m)}: se pone sola en el bloque${b?.imagen_url && b.imagen_url !== u ? ' (sustituye a la actual)' : ''}.</span></div>` : `<p class="small muted" style="margin:0">Aún no tienes foto de ${esc(m)}: súbela abajo y se usará siempre para esta máquina.</p>`) : '';
+    $('#b-mqg').hidden = !(cardio && m && $('#b-img').files[0]); $('#b-mqn').textContent = m;
+  };
+  ['#b-t', '#b-mq', '#b-fz', '#b-img'].forEach(k => $(k).addEventListener('change', pintarCardio)); pintarCardio();
   $('#f-blq').addEventListener('submit', async e => {
     e.preventDefault(); const btn = $('#b-btn'); btn.disabled = true; btn.textContent = 'Guardando…';
     const mal = t => { btn.disabled = false; btn.textContent = 'Guardar'; $('#b-err').textContent = t; };
     const v = k => $(k).value.trim() || null;
-    const row = { letra: v('#b-l') || sig, nombre: v('#b-n') || 'Bloque', tipo: $('#b-t').value, agrupacion: v('#b-ag'), duracion: v('#b-du'), fc_objetivo: v('#b-fc'), maquina: v('#b-ma'), detalle: v('#b-de'), video_url: v('#b-vi') };
+    const fz = $('#b-fz').value, maq = maqSel(), mStd = MAQUINAS.includes($('#b-mq').value) ? $('#b-mq').value : null;
+    const row = { letra: v('#b-l') || sig, nombre: v('#b-n') || 'Bloque', tipo: $('#b-t').value, agrupacion: v('#b-ag'), duracion: v('#b-du'), fc_objetivo: fz === 'otra' ? v('#b-fc') : fz ? 'Zona ' + fz : null, maquina: maq, detalle: v('#b-de'), video_url: v('#b-vi') };
+    if (row.tipo === 'cardio' && mStd && fotoMaquina(mStd) && !$('#b-img').files[0]) row.imagen_url = fotoMaquina(mStd);
     if ($('#b-mo')?.value || b?.momento) row.momento = $('#b-mo')?.value || null;
     const file = $('#b-img').files[0];
     if (file) {
       btn.textContent = 'Subiendo imagen…';
       try { row.imagen_url = await subirImagenEj(file, 'bloque'); } catch (err) { console.error(err); return mal(motivoImg(err)); }
+      if (row.tipo === 'cardio' && mStd && $('#b-mqs').checked) {
+        const nom = 'Cardio · ' + mStd, ya = (S.c.ejercicios || []).find(x => normaliza(x.nombre) === normaliza(nom));
+        const r = ya ? await sb.from('ejercicios').update({ imagen_url: row.imagen_url }).eq('id', ya.id).select().single() : await sb.from('ejercicios').insert({ nombre: nom, imagen_url: row.imagen_url, musculo: 'Cardio' }).select().single();
+        if (!r.error && r.data) { if (ya) Object.assign(ya, r.data); else S.c.ejercicios.push(r.data); }
+      }
     }
     const { error } = b ? await sb.from('bloques_sesion').update(row).eq('id', b.id) : await sb.from('bloques_sesion').insert({ ...row, dia_id: dia.id });
     if (error) { console.error(error); return mal(/imagen_url/.test(error.message || '') ? 'Falta ejecutar el Bloque 38 en Supabase para guardar imágenes de bloque.' : /momento/.test(error.message || '') ? 'Falta ejecutar el Bloque 24 en Supabase.' : 'No se ha podido guardar: ' + (error.message || 'revisa la conexión')); }
