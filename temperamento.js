@@ -145,16 +145,15 @@ const Temperamento = (() => {
     return { calor: c.suma, humedad: h.suma, confianza, tendencia, dominante: etiqueta ? tendencia : null, secundario: etiqueta ? secundario : null, flojo, desempate: { calor: c.por, humedad: h.por }, signos: { calor: c.s, humedad: h.s } };
   }
   const banda = (v, e) => v >= 3 ? (e === 'c' ? 'caliente' : 'húmedo') : v <= -3 ? (e === 'c' ? 'frío' : 'seco') : (e === 'c' ? 'templado' : 'equilibrado');
-  /* ---------- Mezcla en porcentajes y criterio para mujeres (Jesús, oct 2026) ----------
+  /* ---------- Mezcla en porcentajes ----------
      Parte caliente = (calor + 10) / 20 y parte húmeda = (humedad + 10) / 20. Cada temperamento es el producto de sus dos
      cualidades (colérico = caliente × seco…), así que los cuatro suman 100 %. Dominante y subdominante: los dos primeros
      de la mezcla; en los empates manda el cuadrante de los signos (con los desempates de siempre) y, para el subdominante,
-     el que conserva el calor del dominante (se cambia la humedad). En hombres da lo mismo que la regla anterior.
-     Mujeres: sin colérico ni de dominante ni de subdominante; su parte se reparte entre los otros tres en proporción.
-     La tendencia guardada sigue siendo la de las respuestas, para contrastar el criterio con los datos del piloto. */
+     el que conserva el calor del dominante (se cambia la humedad). Da lo mismo que la regla de signos de siempre.
+     Igual para hombres y mujeres: el cuestionario ya recoge las diferencias medias entre sexos (sudor, venas, grasa…). */
   const ORDEN = ['colerico', 'sanguineo', 'melancolico', 'flematico'];
   const caliente = k => k === 'colerico' || k === 'sanguineo';
-  const permitidos = sx => sx === 'mujer' ? ORDEN.filter(k => k !== 'colerico') : ORDEN;
+  const permitidos = () => ORDEN;
   function redondear(w) {   // enteros que suman 100 (método del mayor resto)
     const tot = ORDEN.reduce((x, k) => x + (w[k] || 0), 0), ks = ORDEN.filter(k => k in w);
     const ex = ks.map(k => [k, (w[k] || 0) / tot * 100]), r = Object.fromEntries(ex.map(([k, v]) => [k, Math.floor(v)]));
@@ -166,7 +165,6 @@ const Temperamento = (() => {
     const pc = (calor + 10) / 20, ph = (humedad + 10) / 20;
     const crudo = { colerico: pc * (1 - ph), sanguineo: pc * ph, melancolico: (1 - pc) * (1 - ph), flematico: (1 - pc) * ph };
     const w = Object.fromEntries(permitidos(sx).map(k => [k, crudo[k]]));
-    if (!Object.values(w).some(x => x > 1e-12)) { w.sanguineo = .5; w.melancolico = .5; }   // mujer con +10 y −10: a medias entre sus vecinos
     return { w, pct: redondear(w), crudo: redondear(crudo) };
   }
   function perfilDe(t, sx) {
@@ -261,7 +259,7 @@ const Temperamento = (() => {
     if (S.d?.tempErr) return '';
     const l = misFilas(), t = l[0], coach = S.perfil?.rol === 'coach', ped = pendiente();
     if (!t && !ped && !coach) return '';
-    if (!t) return `<section class="section"><div class="card tp-pend stack"><span class="eyebrow">Perfil de temperamento</span><p class="small">${ped ? 'Jesús te ha pedido este cuestionario: unas 30 preguntas rápidas sobre tu cuerpo, tus hábitos y tu ritmo del día. Al terminar verás tu informe aquí.' : 'Prueba el cuestionario como lo verán tus alumnos. Se guarda como tuyo.'}</p><button class="btn full" data-act="tpEmpezar">${leerB()?.paso ? 'Continuar donde lo dejaste' : ped ? 'Empezar' : 'Probar el cuestionario'}</button></div></section>`;
+    if (!t) return `<section class="section"><div class="card tp-pend stack"><span class="eyebrow">Perfil de temperamento</span><p class="small">${ped ? 'Jesús te ha pedido este cuestionario: unas 30 preguntas rápidas sobre tu cuerpo, tus hábitos y tu ritmo del día. Al terminar verás tu informe aquí y podrás generar tu plan de hábitos.' : 'Prueba el cuestionario como lo verán tus alumnos. Se guarda como tuyo.'}</p><button class="btn full" data-act="tpEmpezar">${leerB()?.paso ? 'Continuar donde lo dejaste' : ped ? 'Empezar' : 'Probar el cuestionario'}</button></div></section>`;
     const ef = efectivo(t);
     return `<section class="section"><div class="section-head"><h2>Tu perfil</h2><span class="small muted">${esc(fCorta(t.fecha))}</span></div>
       <button class="card tp-res" data-act="tpInforme" data-id="${t.id}"><div class="tp-mini">${mapa([{ c: t.calor, h: t.humedad }], { mini: true, res: ef.dom })}<div class="grow stack" style="gap:4px;text-align:left"><span class="eyebrow">Perfil de temperamento</span><h3>${ef.dom ? esc(NOM[ef.dom]) : 'Perfil templado'}</h3><div class="small muted">${ef.dom ? (ef.sec ? `${ef.pct[ef.dom]} % · con rasgos de ${esc(NOM[ef.sec].toLowerCase())}${pctTxt(ef, ef.sec)}` : CUAL[ef.dom][0].toUpperCase() + CUAL[ef.dom].slice(1)) : 'Tus datos marcarán el rumbo'}</div><span class="small" style="color:var(--blue-text);font-weight:700">Ver tu informe ›</span></div></div></button>
@@ -275,8 +273,8 @@ const Temperamento = (() => {
     if (S.tq) return vFlujo();
     const t = misFilas().find(x => x.id === S.tinf);
     if (!t) { S.tinf = null; return seguro(vTests); }
-    const borrarMio = S.perfil?.rol === 'coach' ? `<section class="section"><h2>Tus cuestionarios</h2><div class="card">${misFilas().map(x => { const e = efectivo(x); return `<div class="line"><div class="grow small"><b>${esc(fCorta(x.fecha))}</b> · ${e.dom ? esc(NOM[e.dom]) : 'Perfil templado'}${x.id === t.id ? ' · <span class="muted">el que estás viendo</span>' : ''}</div><button class="btn ghost sm" data-act="tpBorrar" data-id="${x.id}" style="color:var(--bad)">Borrar</button></div>`; }).join('')}</div><p class="small muted">Solo lo ves tú, como coach: sirve para quitar una prueba o un cuestionario que rellenó otra persona desde tu cuenta.</p><p class="small">Tu perfil se calcula con el sexo de tu ficha: <b>${esc(S.perfil.sexo || 'sin indicar')}</b>. Si no es correcto, cámbialo en Coach → Alumnos → tu ficha.</p></section>` : '';
-    return `<section class="stack"><button class="btn sm ghost" data-act="tpCerrarInforme" style="align-self:flex-start">← Tests</button></section>${vInforme(t, { nombre: S.perfil.nombre, sexo: S.perfil.sexo, anterior: misFilas().find(x => x.fecha < t.fecha || (x.fecha === t.fecha && x.id < t.id)) })}${borrarMio}`;
+    const borrarMio = S.perfil?.rol === 'coach' ? `<section class="section"><h2>Tus cuestionarios</h2><div class="card">${misFilas().map(x => { const e = efectivo(x); return `<div class="line"><div class="grow small"><b>${esc(fCorta(x.fecha))}</b> · ${e.dom ? esc(NOM[e.dom]) : 'Perfil templado'}${x.id === t.id ? ' · <span class="muted">el que estás viendo</span>' : ''}</div><button class="btn ghost sm" data-act="tpBorrar" data-id="${x.id}" style="color:var(--bad)">Borrar</button></div>`; }).join('')}</div><p class="small muted">Solo lo ves tú, como coach: sirve para quitar una prueba o un cuestionario que rellenó otra persona desde tu cuenta.</p></section>` : '';
+    return `<section class="stack"><button class="btn sm ghost" data-act="tpCerrarInforme" style="align-self:flex-start">← Hábitos</button></section>${vInforme(t, { nombre: S.perfil.nombre, sexo: S.perfil.sexo, cta: true, anterior: misFilas().find(x => x.fecha < t.fecha || (x.fecha === t.fecha && x.id < t.id)) })}${borrarMio}`;
   }
 
   function vFlujo() {
@@ -338,7 +336,7 @@ const Temperamento = (() => {
     terminar.ocupado = false;
     if (error) { if (btn) btn.disabled = false; return fallo(error, /temperamentos|schema cache|relation/.test(error.message || '') ? (S.perfil.rol === 'coach' ? AVISO : 'Aún no se puede guardar: avisa a Jesús. Tus respuestas siguen guardadas en este móvil.') : undefined); }
     borrarB(); S.tq = null;
-    S.d.temperamentos = [data || row, ...misFilas()]; S.tinf = (data || row).id; S.tab = 'tests';
+    S.d.temperamentos = [data || row, ...misFilas()]; S.tinf = (data || row).id; S.tab = 'habitos';
     render(); window.scrollTo(0, 0); toast(S.perfil.rol === 'coach' ? 'Informe listo' : 'Informe listo. Jesús ya puede verlo');
   }
 
@@ -391,7 +389,7 @@ const Temperamento = (() => {
     const sec = (titulo, cuerpo) => `<section class="section"><h2>${titulo}</h2><div class="card stack">${cuerpo}</div></section>`;
     return `<section class="card hero stack tp-hero"><span class="eyebrow">Tu perfil de temperamento · ${esc(fCorta(t.fecha))} ${fecha(t.fecha).getFullYear()}</span><h1>${ef.dom ? esc(NOM[ef.dom]) : 'Perfil templado'}</h1>
       <div class="small muted">${ef.dom ? `${ef.reetiq ? '' : ef.pct[ef.dom] + ' % · '}${ef.reetiq ? CUAL[ef.dom][0].toUpperCase() + CUAL[ef.dom].slice(1) : CUAL[ef.dom]}${ef.sec ? ` · con rasgos de ${NOM[ef.sec].toLowerCase()}${pctTxt(ef, ef.sec)}` : ''}${ef.reetiq ? ' · ajustado con tus datos' : ` · confianza ${conf}`}` : 'Sin un temperamento claro: tus datos marcarán el rumbo'}</div></section>
-    <section class="section"><div class="card stack tp-mapa">${mapa(pts, { res: ef.dom })}<p class="small muted">Tu punto en el mapa de los cuatro temperamentos: a la izquierda el frío, a la derecha el calor; arriba lo seco, abajo lo húmedo. La franja clara del centro es la zona templada.${o.anterior ? notaAnterior(t, o.anterior) : ''}${ef.reetiq ? ' El punto es donde te colocaron tus respuestas; el cuadrante marcado es tu perfil ajustado con tus datos.' : ef.mujer && ef.tend === 'colerico' ? ' Tu punto cae en la zona caliente y seca. En la mujer no usamos el perfil colérico: tu perfil es el vecino que más pesa en tu mezcla, el que está marcado.' : ''}</p></div></section>
+    <section class="section"><div class="card stack tp-mapa">${mapa(pts, { res: ef.dom })}<p class="small muted">Tu punto en el mapa de los cuatro temperamentos: a la izquierda el frío, a la derecha el calor; arriba lo seco, abajo lo húmedo. La franja clara del centro es la zona templada.${o.anterior ? notaAnterior(t, o.anterior) : ''}${ef.reetiq ? ' El punto es donde te colocaron tus respuestas; el cuadrante marcado es tu perfil ajustado con tus datos.' : ''}</p></div></section>
     <section class="section"><div class="card stack"><p>${cabecera}</p>${ef.reetiq ? `<p class="note">Jesús ha ajustado tu perfil con tus datos de estas semanas: manda lo que dice tu cuerpo.</p>` : ''}</div></section>
     ${vMezcla(ef)}${vDesglose(t)}
     ${pl ? sec('Tus puntos fuertes', `<p>${esc(delicado && pl.fuertesSuave || pl.fuertes)}</p>`) + sec('Lo que vigilaremos', `<p>${esc(delicado && pl.vigilarSuave || pl.vigilar)}</p>`)
@@ -400,6 +398,7 @@ const Temperamento = (() => {
     ${sec('Qué mediremos', `<div class="chips tp-chips">${medir.map(m => `<span class="pill blue">${esc(m)}</span>`).join('')}</div>${pl?.nota && !delicado ? `<p class="small">${esc(pl.nota)}</p>` : ''}${delicado ? '<p class="small muted">El resto de medidas las decidimos juntos.</p>' : ''}`)}
     ${cr ? sec('Tu ritmo del día', `<div class="row"><div class="ico gold">${svg('cal')}</div><div class="grow"><b>${esc(cr.l)}</b><div class="small muted">Tu cronotipo: cuándo rinde mejor tu cuerpo</div></div></div><p class="small">${CRONO_TXT[cr.k]}</p>${su && notaSueno(su) ? `<p class="small">${esc(notaSueno(su))}</p>` : ''}`) : ''}
     ${senales.length ? `<section class="section"><h2>Para cuidarte</h2><div class="card stack tp-cuida"><p class="small">Has marcado algo que conviene consultar con un profesional sanitario antes de apretar el plan. Jesús lo verá en tu ficha y lo hablaréis.</p>${senales.map(k => senal(k)).filter(Boolean).map(x => `<div class="line" style="align-items:flex-start"><span class="tp-dot"></span><div class="small grow">${esc(x.al)}</div></div>`).join('')}</div></section>` : ''}
+    ${o.cta && typeof Habitos !== 'undefined' ? Habitos.ctaInforme() : ''}
     <section class="section"><div class="card stack"><p class="small">Si algo de esto no encaja contigo, dínoslo: el perfil se adapta a ti, no al revés.</p><p class="note">Es una herramienta de entrenamiento y hábitos basada en la tradición de la medicina unani, no un diagnóstico médico. No sustituye a tu médico ni cambia ningún tratamiento.</p></div></section>`;
   }
 
@@ -449,14 +448,12 @@ const Temperamento = (() => {
     const t = l.find(x => x.id === S.tSel) || l[0], ant = l.find(x => x.fecha < t.fecha || (x.fecha === t.fecha && x.id < t.id));
     const nom = (a.nombre || '').split(' ')[0];
     if (S.tVer) return `<section class="stack"><button class="btn sm ghost" data-act="tpVer" style="align-self:flex-start">← Perfil de ${esc(nom)}</button><span class="eyebrow">Así lo ve ${esc(nom)} en su pestaña Tests</span></section>${vInforme(t, { nombre: a.nombre, sexo: a.sexo, anterior: ant })}`;
-    const ef = efectivo(t, a.sexo), pf = perfilDe(t, a.sexo), sinCriterio = a.sexo === 'mujer' ? perfilDe(t, null) : null, P = puntuar(t.respuestas?.a || []), ped = pendienteDe(a.temperamento_pedido, l), b = t.respuestas?.b || {}, cr = CRONO(t.rmeq), su = sueno(b.horarios);
+    const ef = efectivo(t, a.sexo), pf = perfilDe(t, a.sexo), P = puntuar(t.respuestas?.a || []), ped = pendienteDe(a.temperamento_pedido, l), b = t.respuestas?.b || {}, cr = CRONO(t.rmeq), su = sueno(b.horarios);
     const m = medidas(f.med, t.fecha, hoyISO(), 'cintura'), base = m.ini, r0 = ict(base?.cintura, a.estatura_cm), b0 = bandaICT(r0);
     const des = (e, nq) => { const d = P.desempate[e], ej = e === 'calor' ? 'del calor' : 'de la humedad'; if (d == null) return ''; if (d === 'ninguna') return ` Todas sus respuestas ${ej} son B: ese eje no tiene datos.`; return d === nq ? ` La suma ${ej} da 0: decide la pregunta ${nq}.` : ` La suma ${ej} da 0 y la pregunta ${nq} también es B: decide la ${d}, la primera distinta de B.`; };
     const explica = !pf.dom
       ? 'Un eje no tiene datos (todas sus respuestas son B), así que no se puede calcular la mezcla. Mandan la observación y las medidas: a las 4 semanas, asígnale el perfil que encaje.'
-      : `Dominante ${nm(pf.dom)} (${pf.pct[pf.dom]} %) y subdominante ${nm(pf.sec)} (${pf.pct[pf.sec]} %): los dos primeros de la mezcla. Confianza ${t.confianza}: ${t.confianza === 'alta' ? 'los dos ejes llegan a ±3' : t.confianza === 'media' ? 'solo un eje llega a ±3' : 'ningún eje llega a ±3 y la mezcla está muy repartida; confírmalo con sus datos a las 4 semanas'}.`
-        + (sinCriterio?.dom && (sinCriterio.dom !== pf.dom || sinCriterio.sec !== pf.sec) ? ` Sin tu criterio para mujeres saldría ${nm(sinCriterio.dom)} con rasgos de ${nm(sinCriterio.sec)}: el colérico se lleva el ${pf.crudo.colerico} % de sus respuestas y esa parte se reparte entre los otros tres.` : '')
-        + ` Sexo en su ficha: <b>${a.sexo || 'sin indicar'}</b>${a.sexo === 'mujer' ? ', así que se aplica tu criterio para mujeres' : !a.sexo ? ', así que se calcula sin el criterio para mujeres' : ''}.`;
+      : `Dominante ${nm(pf.dom)} (${pf.pct[pf.dom]} %) y subdominante ${nm(pf.sec)} (${pf.pct[pf.sec]} %): los dos primeros de la mezcla. Confianza ${t.confianza}: ${t.confianza === 'alta' ? 'los dos ejes llegan a ±3' : t.confianza === 'media' ? 'solo un eje llega a ±3' : 'ningún eje llega a ±3 y la mezcla está muy repartida; confírmalo con sus datos a las 4 semanas'}.`;
     const cs = cortes(t), dec = t.seguimiento?.decision;
     const resumenRev = rv => { if (!rv) return ''; const n = v => (rv.hip || []).filter(x => x === v).length; return [n('si') && `${n('si')} se cumple${n('si') > 1 ? 'n' : ''}`, n('no') && `${n('no')} no`, n('sin') && `${n('sin')} sin datos`, rv.sueno != null && `sueño ${fmtNum(rv.sueno)} h`, rv.estres != null && `estrés ${rv.estres}/10`, rv.energia != null && `energía ${rv.energia}/10`].filter(Boolean).join(' · '); };
     const filaHab = (l1, v) => v ? `<tr><td class="muted">${l1}</td><td>${v}</td></tr>` : '';
@@ -568,7 +565,7 @@ const Temperamento = (() => {
     if (error) return fallo(error);
     if (S.c) S.c.temperamentos = (S.c.temperamentos || []).filter(x => x.id !== id);
     if (S.d?.temperamentos) S.d.temperamentos = S.d.temperamentos.filter(x => x.id !== id);
-    if (S.tinf === id) { S.tinf = (S.d?.temperamentos || [])[0]?.id || null; if (!S.tinf) S.tab = 'tests'; }
+    if (S.tinf === id) { S.tinf = (S.d?.temperamentos || [])[0]?.id || null; if (!S.tinf) S.tab = 'habitos'; }
     S.tSel = null; toast('Cuestionario borrado'); render(); window.scrollTo(0, 0);
   }
 
@@ -634,7 +631,7 @@ const Temperamento = (() => {
       case 'tpNinguna': { if (!z) break; z.ninguna = !z.ninguna; if (z.ninguna) z.s = []; guardarB(); render(); break; }
       case 'tpTerminar': await terminar(b); break;
       case 'tpInforme': S.tinf = +b.dataset.id; render(); window.scrollTo(0, 0); break;
-      case 'tpCerrarInforme': S.tinf = null; S.tab = 'tests'; render(); window.scrollTo(0, 0); break;
+      case 'tpCerrarInforme': S.tinf = null; S.tab = 'habitos'; render(); window.scrollTo(0, 0); break;
       case 'tpPedir': await pedir(b.dataset.id); break;
       case 'tpVer': S.tVer = !S.tVer; render(); window.scrollTo(0, 0); break;
       case 'tpSel': S.tSel = +b.dataset.id; S.tVer = null; render(); break;

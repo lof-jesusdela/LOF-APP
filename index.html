@@ -308,6 +308,32 @@ details.plan-ap{border-top:1px solid var(--line);padding:10px 0}details.plan-ap:
 .spark-tip{margin-top:6px;min-height:20px;text-align:center}
 .spark-tip.on{color:var(--fg);font-weight:600}
 
+/* ---------- Hábitos (habitos.js) ---------- */
+.hb-hoy{display:grid;gap:9px;padding:14px 0;border-top:1px solid var(--line)}.hb-hoy:first-of-type{border-top:0;padding-top:2px}
+.hb-3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.hb-3 button{min-height:46px;border:1.5px solid var(--line);background:var(--surface);border-radius:12px;padding:8px 6px;font-weight:700;font-size:14px;color:var(--fg)}
+.hb-3 button.hecho[aria-pressed="true"]{background:var(--ok);border-color:var(--ok);color:#fff}
+.hb-3 button.minimo[aria-pressed="true"]{background:var(--gold);border-color:var(--gold);color:var(--ink)}
+.hb-3 button.no[aria-pressed="true"]{background:var(--bad);border-color:var(--bad);color:#fff}
+.hb-mot{gap:6px}
+.hb-calw{display:grid;gap:4px;max-width:300px}
+.hb-cal,.hb-cal-l{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.hb-cal-l{font-size:11px;color:var(--muted);text-align:center;font-weight:700}
+.hb-cal span{aspect-ratio:1;border-radius:6px;background:var(--surface-2)}
+.hb-cal span.h{background:var(--ok)}.hb-cal span.m{background:var(--gold)}.hb-cal span.n{background:var(--bad);opacity:.75}
+.hb-cal span.x{background:transparent;box-shadow:inset 0 0 0 1.5px var(--line)}.hb-cal span.p{background:var(--surface-2)}
+.hb-cal span.a,.hb-cal span.f{background:transparent;box-shadow:inset 0 0 0 1px var(--line);opacity:.45}
+.hb-cal span.hoy{outline:2px solid var(--blue);outline-offset:1px}
+.hb-ley{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted)}.hb-ley i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.hb-sig{border:1.5px solid var(--gold);background:var(--gold-soft)}
+.hb-n{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--surface-2);font-family:var(--display);font-weight:800;font-size:14px;color:var(--ink)}
+.hb-bl{display:grid;grid-template-columns:repeat(8,1fr);gap:4px}.hb-bl i{height:8px;border-radius:4px;background:var(--surface-2)}.hb-bl i.ok{background:var(--blue);opacity:.45}.hb-bl i.now{background:var(--gold)}
+.hb-si{padding:12px 14px;border-radius:12px;background:var(--surface-2);font-weight:600;font-size:15px;line-height:1.4}
+.hb-animo{padding:10px 12px;border-radius:12px;background:var(--gold-soft);margin-top:8px}
+.hb-k .kpi .v{font-size:24px}
+.hb-op{align-items:flex-start}.hb-op::before{margin-top:2px}
+.tp-escala.hb7{grid-template-columns:repeat(7,1fr)}
+
 /* ---------- Perfil de temperamento (temperamento.js) ---------- */
 .tp-mez{display:grid;gap:10px}
 .tp-mz{display:grid;grid-template-columns:96px 1fr 46px;gap:10px;align-items:center;font-size:14px;color:var(--muted)}
@@ -376,6 +402,7 @@ input[type=time]{width:100%;background:var(--surface-2);border:1px solid var(--l
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="config.js"></script>
 <script src="temperamento.js"></script>
+<script src="habitos.js"></script>
 <script src="app.js"></script>
 <script>
 if ('serviceWorker' in navigator) { window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {})); }
