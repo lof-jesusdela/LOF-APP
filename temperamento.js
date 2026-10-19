@@ -586,7 +586,7 @@ const Temperamento = (() => {
       const pc = t && proxCorte(t), urg = senalesPend(t) ? 0 : pc && pc.estado === 'atrasada' ? 1 : pc && pc.estado === 'toca' ? 2 : ped ? 3 : 4;
       const ef = t && efectivo(t);
       const txt = [t ? (ef.dom ? NOM[ef.dom] : 'Sin etiqueta') : null, t && (t.senales || []).length ? (senalesPend(t) ? `<b style="color:var(--bad)">${t.senales.length} ${t.senales.length === 1 ? 'señal' : 'señales'} para derivar</b>` : `señales vistas el ${esc(fCorta(t.seguimiento.senales_vistas))}`) : null, pc && pc.estado !== 'futura' ? `<b style="color:var(--gold-ink)">revisión semana ${pc.k}${pc.estado === 'atrasada' ? ' atrasada' : ''}</b>` : null, ped ? `pedido el ${esc(fCorta(a.temperamento_pedido))}, sin hacer` : null].filter(Boolean).join(' · ');
-      return { urg, html: `<div class="line" data-act="tpFicha" data-id="${a.id}" style="cursor:pointer">${t ? `<span class="tp-thumb">${mapa([{ c: t.calor, h: t.humedad }], { mini: true, res: ef.dom })}</span>` : '<span class="tp-thumb vacio"></span>'}<div class="grow"><h3 style="font-size:16px">${esc(a.nombre)}</h3><div class="small muted">${txt}</div></div><span class="small" style="color:var(--blue-text)">›</span></div>` };
+      return { urg, html: `<div class="line" data-act="tpFicha" data-id="${a.id}" style="cursor:pointer">${avatarDe(a, 40)}<div class="grow"><h3 style="font-size:16px">${esc(a.nombre)}</h3><div class="small muted">${txt}</div></div><span class="small" style="color:var(--blue-text)">›</span></div>` };
     }).sort((x, y) => x.urg - y.urg);
     const totalHip = cuenta.si + cuenta.no + cuenta.sin;
     return `<section class="section"><h2>Perfiles de temperamento</h2>

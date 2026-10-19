@@ -2,12 +2,18 @@
    Lo usan las facturas, el informe de valoración inicial y el perfil de temperamento. */
 const PDF = (() => {
   let carga = null;
-  const FUENTES = ['https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js', 'https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js'];
+  /* html2canvas (cada bloque a imagen) + jsPDF (páginas). Se cargan solo al pedir un PDF; si un CDN falla, se prueba el otro */
+  const LIBS = [
+    ['html2canvas', () => window.html2canvas, ['https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js']],
+    ['jspdf', () => window.jspdf?.jsPDF, ['https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js']]
+  ];
   const script = src => new Promise((ok, ko) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => { s.remove(); ko(); }; document.head.appendChild(s); });
   const cargar = () => carga ||= (async () => {
-    if (window.html2pdf) return;
-    for (const src of FUENTES) { try { await script(src); if (window.html2pdf) return; } catch (e) { /* prueba la siguiente */ } }
-    carga = null; throw new Error('No se ha podido cargar el generador de PDF. Revisa la conexión.');
+    for (const [, hay, fuentes] of LIBS) {
+      if (hay()) continue;
+      for (const src of fuentes) { try { await script(src); if (hay()) break; } catch (e) { /* prueba la siguiente */ } }
+      if (!hay()) { carga = null; throw new Error('No se ha podido cargar el generador de PDF. Revisa la conexión.'); }
+    }
   })();
   const tactil = () => /iP(hone|ad|od)|Android/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform || ''));
   const limpio = t => String(t || 'documento').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_') + '.pdf';
@@ -17,42 +23,90 @@ const PDF = (() => {
     const url = URL.createObjectURL(blob), file = new File([blob], nombre, { type: 'application/pdf' });
     if (!tactil()) { const a = document.createElement('a'); a.href = url; a.download = nombre; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000); toast('PDF descargado'); return; }
     const compartir = navigator.canShare && navigator.canShare({ files: [file] });
-    abrirSheet(`<div class="stack"><span class="eyebrow">PDF listo</span><h2>${esc(nombre)}</h2><p class="small muted">Guárdalo en Archivos o envíalo por WhatsApp o email.</p>
+    abrirSheet(`<div class="stack"><h2>Tu PDF está listo</h2><p class="small muted" style="word-break:break-all">${esc(nombre)}</p><p class="small">Guárdalo en Archivos o envíalo por WhatsApp o email.</p>
       ${compartir ? '<button class="btn full" id="pdf-sh">Compartir o guardar</button>' : ''}<a class="btn ${compartir ? 'ghost ' : ''}full" href="${url}" target="_blank" rel="noopener" download="${esc(nombre)}">Abrir el PDF</a>
       <button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
     $('#pdf-sh')?.addEventListener('click', async () => { try { await navigator.share({ files: [file], title: nombre }); } catch (e) { if (e?.name !== 'AbortError') toast('No se ha podido compartir. Usa "Abrir el PDF".'); } });
   }
 
-  /* Convierte un elemento (o HTML) en PDF A4. pie: añade "LOF · Construyendo tu prime" y "Página X de N" */
+  /* Bloques que se pintan por separado (así ninguna imagen es gigante: en iPhone/iPad el navegador no admite lienzos enormes) */
+  function bloquesDe(root) {
+    const out = [];
+    [...root.children].forEach(el => { if (el.classList.contains('pd-cuerpo')) [...el.children].forEach(x => out.push(x)); else out.push(el); });
+    return out.filter(el => el.getBoundingClientRect().height > 0);
+  }
+  const respira = () => new Promise(r => setTimeout(r, 0));
+  /* Los SVG de la app (mapa de temperamento, iconos) toman colores de la hoja de estilos; html2canvas los pierde.
+     Se convierten en imágenes autónomas con los estilos ya resueltos y su tamaño real */
+  const PROPS = ['fill', 'stroke', 'stroke-width', 'stroke-dasharray', 'stroke-linejoin', 'stroke-linecap', 'opacity', 'fill-opacity', 'font-family', 'font-size', 'font-weight', 'letter-spacing', 'paint-order'];
+  async function svgAImagen(root) {
+    const svgs = [...root.querySelectorAll('svg')].filter(v => v.getBoundingClientRect().width > 0);
+    await Promise.all(svgs.map(v => new Promise(ok => {
+      const r = v.getBoundingClientRect(), cl = v.cloneNode(true), orig = [v, ...v.querySelectorAll('*')], cop = [cl, ...cl.querySelectorAll('*')];
+      orig.forEach((el, i) => { const cs = getComputedStyle(el), d = cop[i]; PROPS.forEach(p => { const val = cs.getPropertyValue(p); if (val) d.style.setProperty(p, val); });
+        if (el.tagName.toLowerCase() === 'text' && cs.textTransform === 'uppercase') d.textContent = el.textContent.toUpperCase(); });
+      cl.setAttribute('xmlns', 'http://www.w3.org/2000/svg'); cl.setAttribute('width', r.width); cl.setAttribute('height', r.height); cl.removeAttribute('class');
+      const img = new Image(); img.width = r.width; img.height = r.height; img.style.cssText = `display:block;width:${r.width}px;height:${r.height}px;margin:${getComputedStyle(v).margin}`;
+      img.onload = img.onerror = ok; img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(cl));
+      v.replaceWith(img);
+    })));
+  }
+
+  /* Convierte un elemento (o HTML) en PDF A4. pie: "LOF · Construyendo tu prime" y "Página X de N" */
   async function generar(contenido, nombre, { pie = true, btn } = {}) {
     const txt = btn?.textContent; if (btn) { btn.disabled = true; btn.textContent = 'Generando PDF…'; }
-    let caja = null;
+    let capa = null;
     try {
       await cargar();
-      let el = contenido;
-      if (typeof contenido === 'string') {
-        caja = document.createElement('div'); caja.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;z-index:-1';
-        caja.innerHTML = contenido; document.body.appendChild(caja); el = caja.firstElementChild;
-        caja.querySelectorAll('img').forEach(i => { i.loading = 'eager'; i.decoding = 'sync'; });
-        const espera = ms => new Promise(r => setTimeout(r, ms));   // nunca esperar para siempre a una imagen o una fuente
-        await Promise.race([Promise.all([...caja.querySelectorAll('img')].map(i => i.complete ? null : new Promise(r => { i.onload = i.onerror = r; }))), espera(3000)]);
-        if (document.fonts?.ready) await Promise.race([document.fonts.ready, espera(2000)]);
+      let root = contenido, doc = false;
+      if (typeof contenido === 'string') {   // documento de la app: se monta en una capa temporal a 794 px (A4)
+        capa = document.createElement('div');
+        capa.style.cssText = 'position:fixed;inset:0;z-index:9999;overflow:hidden;background:rgba(6,36,65,.92)';
+        capa.innerHTML = `<div style="position:absolute;left:0;top:0;width:794px">${contenido}</div><div style="position:absolute;left:0;right:0;bottom:40%;text-align:center;color:#fff;font:600 16px system-ui">Generando PDF…</div>`;
+        document.body.appendChild(capa); root = capa.firstElementChild.firstElementChild; doc = true;
+        await Promise.all([...capa.querySelectorAll('img')].map(i => i.complete ? null : new Promise(r => { i.onload = i.onerror = r; })));
+        if (document.fonts?.ready) await document.fonts.ready;
+        await svgAImagen(root);
       }
-      /* iPhone/iPad no pintan lienzos de más de ~16,7 millones de píxeles: con informes largos se baja la resolución */
-      const alto = Math.max(1, el.scrollHeight || el.offsetHeight || 1123), ancho = Math.max(1, el.scrollWidth || 794);
-      const escala = Math.max(1, Math.min(2, Math.sqrt(11e6 / (ancho * alto))));
-      const opt = { margin: pie ? [6, 0, 12, 0] : [8, 8, 8, 8], filename: nombre, image: { type: 'jpeg', quality: 0.95 },
-        html2canvas: { scale: escala, useCORS: true, backgroundColor: '#ffffff', windowWidth: 794 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        pagebreak: { mode: ['css', 'legacy'], avoid: ['.pd-keep', '.pd-card', 'tr'] } };
-      let w = window.html2pdf().set(opt).from(el).toPdf();
-      if (pie) w = w.get('pdf').then(pdf => {
+      const { jsPDF } = window.jspdf, pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
+      const W = 210, H = 297, fondo = doc ? '#EEF2F7' : '#FFFFFF', rr = root.getBoundingClientRect();
+      const mx = doc ? 0 : 8, k = (W - 2 * mx) / rr.width, abajo = H - (pie ? 14 : 8), arribaSig = doc ? 8 : 10;
+      const pintaFondo = () => { if (doc) { pdf.setFillColor(238, 242, 247); pdf.rect(0, 0, W, H, 'F'); } };
+      pintaFondo();
+      const bloques = bloquesDe(root);
+      let y = doc && bloques[0]?.classList.contains('pd-head') ? 0 : 8, prevBottom = null, pag = 1;
+      for (const [i, el] of bloques.entries()) {
+        const r = el.getBoundingClientRect(), x = mx + (r.left - rr.left) * k, w = r.width * k, h = r.height * k;
+        let gap = prevBottom == null ? 0 : Math.max(0, r.top - prevBottom) * k;
+        // Un título de sección nunca se queda solo al final de la página: va con lo que le sigue
+        const sig = el.classList.contains('pd-sec') && bloques[i + 1], sr = sig && sig.getBoundingClientRect(), extra = sig ? Math.min((sr.bottom - r.bottom) * k, 60) : 0;
+        if (y + gap + h + extra > abajo && y > arribaSig + 1 && h + extra <= abajo - arribaSig) { pdf.addPage(); pag++; pintaFondo(); y = arribaSig; gap = 0; }
+        y += gap;
+        const esc2 = Math.min(2, Math.sqrt(6e6 / Math.max(1, r.width * r.height)));   // lienzo como mucho de ~6 Mpx
+        const cv = await window.html2canvas(el, { scale: esc2, backgroundColor: fondo, useCORS: true, logging: false, windowWidth: doc ? 794 : undefined });
+        // Si el bloque no cabe en una página, se corta en trozos de página
+        let hecho = 0; const pxPorMm = cv.height / h;
+        while (hecho < h - 0.01) {
+          const cabe = Math.min(h - hecho, abajo - y);
+          if (cabe < 5 && hecho < h) { pdf.addPage(); pag++; pintaFondo(); y = arribaSig; continue; }
+          const t = document.createElement('canvas'); t.width = cv.width; t.height = Math.max(1, Math.round(cabe * pxPorMm));
+          t.getContext('2d').drawImage(cv, 0, Math.round(hecho * pxPorMm), cv.width, t.height, 0, 0, cv.width, t.height);
+          pdf.addImage(t.toDataURL('image/jpeg', 0.92), 'JPEG', x, y, w, cabe);
+          hecho += cabe; y += cabe;
+          if (hecho < h - 0.01) { pdf.addPage(); pag++; pintaFondo(); y = arribaSig; }
+        }
+        prevBottom = r.bottom;
+        await respira();   // deja respirar a la pantalla entre bloques (no se bloquea)
+      }
+      if (pie) {
         const n = pdf.internal.getNumberOfPages();
         for (let i = 1; i <= n; i++) { pdf.setPage(i); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(8); pdf.setTextColor(11, 32, 64); pdf.text('LOF · Construyendo tu prime', 10, 291); pdf.text(`PÁGINA ${i} DE ${n}`, 200, 291, { align: 'right' }); }
-      });
-      const blob = await Promise.race([w.outputPdf('blob'), new Promise((_, ko) => setTimeout(() => ko(new Error('No se ha podido generar el PDF: ha tardado demasiado. Inténtalo de nuevo.')), 45000))]);
+      }
+      const blob = pdf.output('blob');
+      capa?.remove(); capa = null;
       entregar(blob, nombre);
-    } catch (err) { fallo(err, err?.message?.startsWith('No se ha podido') ? err.message : 'No se ha podido generar el PDF.'); }
-    finally { caja?.remove(); if (btn) { btn.disabled = false; btn.textContent = txt; } }
+    } catch (err) { console.error(err); fallo(err, err?.message?.startsWith('No se ha podido') ? err.message : 'No se ha podido generar el PDF.'); }
+    finally { capa?.remove(); if (btn) { btn.disabled = false; btn.textContent = txt; } }
   }
 
   /* Cabecera con la marca (como el informe de Jorge López) */

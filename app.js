@@ -239,7 +239,7 @@ function render() {
   $('#app').innerHTML = `<header class="top">
       <div class="badge"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : esc(S.perfil.metodologia || 'Tu proceso')}</strong></div></div>
       <div class="row" style="gap:8px">${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
-      <button class="avatar" data-act="cuenta" aria-label="Mi cuenta">${esCoach ? '<img src="icons/coach.jpg" alt="">' : esc((S.perfil.nombre || '?').slice(0, 2).toUpperCase())}</button></div>
+      <button class="avatar" data-act="cuenta" aria-label="Mi cuenta">${esCoach ? '<img src="icons/coach.jpg" alt="">' : S.perfil.foto_url ? `<img src="${esc(S.perfil.foto_url)}" alt="">` : esc((S.perfil.nombre || '?').slice(0, 2).toUpperCase())}</button></div>
     </header>${S.prueba ? vBannerPrueba() : ''}${coach && ANCHO.matches ? vLateral(actual) : ''}<main id="main" class="${coach ? claseMain() : ''}">${(S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : (!coach && Temperamento.activo()) ? seguro(Temperamento.vista) : seguro(vistas[actual])}</main>`;
   document.body.classList.toggle('modo-coach', coach);
   if (coach) aplicarFiltroAl();
@@ -1261,7 +1261,7 @@ function vAlumnos() {
       <select id="al-prog" aria-label="Programa"><option value="">Todos los programas</option>${progs.map(x => `<option ${S.alF.p === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
       <select id="al-mod" aria-label="Modalidad"><option value="">Todas las modalidades</option>${MODALIDADES.map(x => `<option ${S.alF.m === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
     ${S.alF.k ? `<div class="row" style="gap:8px;margin:8px 0"><span class="pill ${S.alF.k === 'todos' ? 'blue' : 'bad'}">Mostrando: ${{ todos: 'todos los perfiles activos', alerta: 'necesitan atención', vencidos: 'con pagos vencidos' }[S.alF.k]}</span><button class="linkbtn small" data-act="alFiltro" data-k="">Quitar filtro</button></div>` : ''}
-    <div class="card">${est.map(({ a, e }) => `<div class="line al-fila" data-act="ficha" data-id="${a.id}" data-n="${esc(normaliza(a.nombre))}" data-p="${esc(prodDe(a.id))}" data-m="${esc(modalidadDe(a.id))}" data-al="${e.nivel !== 'ok' ? 1 : 0}" data-v="${vencIds.has(a.id) ? 1 : 0}" style="cursor:pointer"${visibleAl(a, e) ? '' : ' hidden'}><span style="width:4px;align-self:stretch;border-radius:2px;background:var(--${e.nivel})"></span><div class="grow stack" style="gap:3px"><div class="row"><h3 class="grow">${esc(a.nombre)}</h3>${e.control ? '<span class="pill gold">Revisión mensual</span>' : ''}<span class="pill ${e.nivel}">${lab[e.nivel]}</span></div><div class="small muted">${esc((c.servicios.find(s => s.alumno_id === a.id) || {}).producto || 'Sin servicio')}${e.ult ? ` · motivación ${e.ult.motivacion}/10` : ''}</div>${e.dpw ? barra('Semana', e.semana, e.dpw) + barra('Últimas 4 semanas', e.mes, e.dpw * 4) : ''}${e.motivos.length ? `<div class="small">${esc(e.motivos.join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no hay alumnos.</div>'}<div class="empty" id="al-nada" hidden>Ningún alumno coincide con la búsqueda.</div></div>
+    <div class="card">${est.map(({ a, e }) => `<div class="line al-fila" data-act="ficha" data-id="${a.id}" data-n="${esc(normaliza(a.nombre))}" data-p="${esc(prodDe(a.id))}" data-m="${esc(modalidadDe(a.id))}" data-al="${e.nivel !== 'ok' ? 1 : 0}" data-v="${vencIds.has(a.id) ? 1 : 0}" style="cursor:pointer"${visibleAl(a, e) ? '' : ' hidden'}><span style="width:4px;align-self:stretch;border-radius:2px;background:var(--${e.nivel})"></span>${avatarDe(a, 40)}<div class="grow stack" style="gap:3px"><div class="row"><h3 class="grow">${esc(a.nombre)}</h3>${e.control ? '<span class="pill gold">Revisión mensual</span>' : ''}<span class="pill ${e.nivel}">${lab[e.nivel]}</span></div><div class="small muted">${esc((c.servicios.find(s => s.alumno_id === a.id) || {}).producto || 'Sin servicio')}${e.ult ? ` · motivación ${e.ult.motivacion}/10` : ''}</div>${e.dpw ? barra('Semana', e.semana, e.dpw) + barra('Últimas 4 semanas', e.mes, e.dpw * 4) : ''}${e.motivos.length ? `<div class="small">${esc(e.motivos.join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no hay alumnos.</div>'}<div class="empty" id="al-nada" hidden>Ningún alumno coincide con la búsqueda.</div></div>
   <p class="note">Para dar de alta a un alumno nuevo, créalo en Supabase → Authentication → Users. Su perfil aparecerá aquí solo.</p></section>`;
 }
 
@@ -1999,9 +1999,9 @@ function vFicha() {
   const nivelE = dpw ? (cur.entrenos >= dpw ? 'ok' : pre.entrenos >= dpw ? '' : pre.entrenos >= dpw / 2 ? 'warn' : 'bad') : '';
   const tile = (sub, t, v, l1, l2, niv) => `<button class="kpi rep tile ${niv}" data-act="fichaSub" data-s="${sub}"><div class="l">${t} ›</div><b class="num">${v}</b><div class="small muted">${l1}</div>${l2 ? `<div class="small muted">${l2}</div>` : ''}</button>`;
   const fF = iso => fecha(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
-  return `<section class="stack"><button class="btn sm ghost" data-act="cerrarFicha" style="align-self:flex-start">← Alumnos</button><span class="eyebrow">Ficha del alumno</span><h1>${esc(a.nombre)}</h1>
+  return `<section class="stack"><button class="btn sm ghost" data-act="cerrarFicha" style="align-self:flex-start">← Alumnos</button><span class="eyebrow">Ficha del alumno</span><div class="row" style="gap:14px;align-items:center">${avatarDe(a, 64)}<h1 class="grow" style="margin:0">${esc(a.nombre)}</h1></div>
     <div class="small muted">${esc(a.email)} · alta ${esc(fCorta(a.fecha_alta))}${a.nombre_fiscal ? ' · ' + esc(a.nombre_fiscal) : ''}</div>
-    <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn sm gold" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm" data-act="abrirReporte" data-id="${a.id}">📋 Reporting semanal</button><button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}</div>${a.activo === false ? '<div class="aprox small" style="margin-top:10px">Antiguo alumno: no le llegan avisos de seguimiento al coach. Sus datos siguen guardados y puede seguir usando la app. Reactívalo si vuelve a empezar un proceso.</div>' : ''}</section>
+    <div class="row" style="flex-wrap:wrap;gap:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm gold" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm" data-act="abrirReporte" data-id="${a.id}">📋 Reporting semanal</button><button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}</div>${a.activo === false ? '<div class="aprox small" style="margin-top:10px">Antiguo alumno: no le llegan avisos de seguimiento al coach. Sus datos siguen guardados y puede seguir usando la app. Reactívalo si vuelve a empezar un proceso.</div>' : ''}</section>
   ${e.motivos.length ? `<section class="section"><div class="card stack"><span class="eyebrow">Para revisar</span><div class="small">${esc(e.motivos.join(' · '))}</div></div></section>` : ''}
   <section class="section"><div class="section-head"><h2>Plan</h2><button class="btn sm ghost" data-act="editarServicio">✎ Editar</button></div><div class="card stack">
     <button class="plan-b" data-act="fichaSub" data-s="plan"><div class="grow"><h3>${esc(srv?.producto || 'Sin plan asignado')} <span style="color:var(--blue-text)">›</span></h3><div class="small" style="color:var(--blue-text)">Ver toda su planificación: entrenamiento, alimentación y hábitos</div></div></button>
@@ -3396,8 +3396,29 @@ async function copiarRecordatorio(id) {
 }
 
 /* ---------- Cuenta ---------- */
+/* Foto de perfil: la del alumno o, si no tiene, el icono de perfil */
+const ICO_PERFIL = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="4"/><path d="M4 21c1.3-4 4.4-6 8-6s6.7 2 8 6"/></svg>';
+function avatarDe(p, tam = 40) {
+  return p?.foto_url ? `<img class="av" src="${esc(p.foto_url)}" alt="" loading="lazy" style="width:${tam}px;height:${tam}px">` : `<span class="av av-ico" style="width:${tam}px;height:${tam}px" aria-hidden="true">${ICO_PERFIL}</span>`;
+}
+const botonFoto = (id, tiene) => `<label class="btn sm ghost" style="cursor:pointer">📷 ${tiene ? 'Cambiar foto' : 'Poner foto'}<input type="file" accept="image/*" data-foto="${id}" hidden></label>`;
+async function subirFoto(input) {
+  const id = input.dataset.foto, file = input.files?.[0]; if (!file) return;
+  toast('Subiendo foto…');
+  try {
+    const blob = await reducirImagen(file, 512), ruta = `${id}/foto-${Date.now().toString(36)}.jpg`;
+    const up = await sb.storage.from('avatares').upload(ruta, blob, { contentType: 'image/jpeg' }); if (up.error) throw up.error;
+    const url = sb.storage.from('avatares').getPublicUrl(ruta).data.publicUrl;
+    const r = S.perfil?.rol === 'coach' ? await sb.from('perfiles').update({ foto_url: url }).eq('id', id) : await sb.rpc('poner_mi_foto', { url });
+    if (r.error) throw r.error;
+    [S.perfil, ...(S.c?.perfiles || [])].forEach(p => { if (p && p.id === id) p.foto_url = url; });
+    toast('Foto guardada'); if (!$('#sheet').hidden) cerrarSheet(); render();
+  } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
+  input.value = '';
+}
 function vCuenta() {
-  abrirSheet(`<div class="stack"><h2>${esc(S.perfil.nombre)}</h2><p class="small muted">${esc(S.perfil.email)}</p>
+  abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
+    ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
     <button class="btn ghost full" data-act="cambiarClave">Cambiar contraseña</button>
     <button class="btn ghost full" data-act="salir">Cerrar sesión</button>
     <p class="note">Para instalarla como app: en iPhone, Safari → Compartir → "Añadir a pantalla de inicio". En Android, Chrome → menú ⋮ → "Instalar aplicación".</p></div>`);
@@ -3628,6 +3649,6 @@ document.addEventListener('input', e => {
   if (e.target.id === 'k-imp') $('#k-imp-v').textContent = e.target.value + '/10';
 });
 
-document.addEventListener('change', e => { if (e.target.id === 'r-fotos') subirFotosComida(e.target); });
+document.addEventListener('change', e => { if (e.target.id === 'r-fotos') subirFotosComida(e.target); if (e.target.dataset?.foto) subirFoto(e.target); });
 
 arrancar().catch(err => { console.error(err); vistaMensaje('No se ha podido cargar', 'Revisa tu conexión y vuelve a abrir la app.', false); });
