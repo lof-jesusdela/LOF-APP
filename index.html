@@ -384,6 +384,33 @@ input[type=time]{width:100%;background:var(--surface-2);border:1px solid var(--l
 .tp-dot{width:8px;height:8px;border-radius:50%;background:var(--bad);flex:none;margin-top:6px}
 
 /* Documentos PDF (pdf.js): maqueta A4 de 794 px, siempre en claro */
+.nu-docs{display:grid;gap:10px}
+@media(min-width:700px){.nu-docs{grid-template-columns:1fr 1fr}}
+.nu-doc{display:flex;align-items:center;gap:12px;text-align:left;width:100%;cursor:pointer;color:inherit;font:inherit}
+.nu-doc b{display:block;font-size:15px;line-height:1.25}.nu-doc small{display:block;color:var(--muted);font-size:12.5px;margin-top:3px;line-height:1.3}
+.nu-ic{width:44px;height:44px;border-radius:12px;background:var(--gold-soft);display:grid;place-items:center;font-size:21px;flex:none}
+.nu-fl{color:var(--muted);font-size:22px;flex:none}
+.nu-hoy{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold-soft)}
+.nu-hoy .pill{padding:7px 12px;font-size:13px;cursor:pointer}
+.nu-macros{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.nu-macros>div{background:var(--surface-2);border-radius:12px;padding:10px 4px;text-align:center;min-width:0}
+.nu-macros b{display:block;font-size:17px;line-height:1.15}.nu-macros small{display:block;font-size:10.5px;color:var(--muted);line-height:1.25;margin-top:2px}
+.nu-macros>div.k{background:var(--blue);color:#fff}.nu-macros>div.k small{color:rgba(255,255,255,.85)}
+.nu-texto{font-size:14.5px;line-height:1.55}.nu-texto p{margin:0 0 10px}.nu-texto h3{margin:16px 0 6px;font-size:15px;color:var(--gold-ink)}.nu-texto h3:first-child{margin-top:0}.nu-texto ul{margin:0 0 10px;padding-left:20px}.nu-texto li{margin-bottom:4px}
+.nu-imgs{display:grid;gap:10px}.nu-imgs .img{display:block;width:100%;padding:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}.nu-imgs img{display:block;width:100%;height:auto}
+.nu-tab{width:100%;border-collapse:collapse}.nu-tab th,.nu-tab td{padding:8px 6px;text-align:left;font-size:13px;border-top:1px solid var(--line);vertical-align:top}.nu-tab th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-top:0}.nu-tab .num{text-align:right;white-space:nowrap}
+.nu-com{cursor:pointer;align-items:center;gap:10px}
+.nu-mini{width:46px;height:46px;border-radius:10px;object-fit:cover;flex:none;padding:0;border:0;overflow:hidden;background:var(--surface-2)}.nu-mini img{width:100%;height:100%;object-fit:cover;display:block}
+.nu-ph{display:grid;place-items:center;font-size:20px}
+.nu-foto img{display:block;width:100%;max-height:220px;object-fit:cover;border-radius:12px}
+.nu-gr summary{cursor:pointer;padding:6px 0;list-style-position:inside}.nu-gr .chips{padding:4px 0 8px}.nu-gr .pill{cursor:pointer;padding:6px 11px}
+.nu-it{display:flex;gap:8px;align-items:center}.nu-it b{flex:1;font-size:13px;min-width:0}.nu-it input{width:120px;flex:none;padding:7px 9px}
+.nu-x{border:0;background:var(--surface-2);border-radius:8px;width:30px;height:30px;flex:none;color:var(--muted)}
+.nu-comp{gap:10px;align-items:flex-start}
+.nu-crea+.nu-crea{border-top:1px solid var(--line);padding-top:12px}
+.ctx-fila{display:grid;gap:6px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.ctx-num{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.ctx-num label{font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:3px}.ctx-num input{padding:7px 6px}
+.plan-pdf{display:grid;place-items:center;height:90px;border-radius:10px;background:var(--surface-2);font-weight:700;font-size:13px}
 .pd-doc{width:794px;background:#EEF2F7;color:#0C1A2E;font-family:"DM Sans",Arial,Helvetica,sans-serif;font-size:12.5px;line-height:1.45;padding:0 26px 18px;box-sizing:border-box;
   --bg:#EEF2F7;--surface:#FFFFFF;--surface-2:#EEF2F8;--line:#E1E6EF;--fg:#0C0D10;--muted:#5D6574;--gold:#D4AF37;--gold-ink:#8C6D12;--gold-soft:rgba(212,175,55,.16);--blue:#0066FF;--blue-text:#0057D9;--blue-soft:rgba(0,102,255,.09);--ok:#1E9A5E;--warn:#B9740A;--bad:#D23B32;--ink:#0B0B0C;--on-ink:#FFFFFF;--on-ink-muted:#B9BEC9}
 .pd-doc *{box-sizing:border-box}
@@ -457,6 +484,7 @@ nav.tabs a.tab-wa{flex:1;padding:10px 2px 12px;display:flex;flex-direction:colum
 <script src="config.js"></script>
 <script src="temperamento.js"></script>
 <script src="habitos.js"></script>
+<script src="nutricion.js"></script>
 <script src="pdf.js"></script>
 <script src="app.js"></script>
 <script>

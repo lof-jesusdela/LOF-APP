@@ -180,11 +180,20 @@ const PDF = (() => {
     return generar(html, limpio(`${nombre || 'Alumno'} - perfil de temperamento`), { btn });
   }
 
+  /* ---------- Tabla de contextos de alimentación (para imprimir) ---------- */
+  function contextos(nombre, l, ing, btn) {
+    const g = v => v != null && v !== '' ? fmtNum(+v, 0) + ' g' : '—', pc = v => ing > 1 && v ? `<br><span style="color:#5D6574;font-size:11px">≈ ${fmtNum(v / ing, 0)} g por comida</span>` : '';
+    const filas = l.map(c => `<tr><td><b>${esc(c.n)}</b>${c.d ? `<br><span style="color:#5D6574">${esc(c.d)}</span>` : ''}</td><td><b style="font-size:15px">${c.kcal ? fmtNum(+c.kcal, 0) : '—'}</b></td><td>${g(c.p)}${pc(+c.p)}</td><td>${g(c.c)}${pc(+c.c)}</td><td>${g(c.g)}${pc(+c.g)}</td></tr>`).join('');
+    const html = `<div class="pd-doc">${cabecera('Tus contextos', nombre || '', 'Cuánto comer según el tipo de día')}${seccion(1, 'Tu tabla de contextos')}<div class="pd-card"><table class="pd-tab"><tr><th>Tipo de día</th><th>kcal</th><th>Proteína</th><th>Hidratos</th><th>Grasas</th></tr>${filas}</table></div>`
+      + `<div class="pd-card"><p style="margin:0">${ing > 1 ? `Reparte cada cantidad entre tus ${ing} comidas del día. ` : ''}Mismos alimentos, cantidades distintas: elige cada mañana tu tipo de día y usa tus equivalencias visuales para servir sin báscula.</p></div></div>`;
+    return generar(html, limpio(`${nombre || 'Alumno'} - contextos`), { btn });
+  }
+
   /* ---------- Factura: se exporta el documento tal cual se ve ---------- */
   function factura(f, btn) {
     const el = document.querySelector('.factura-doc'); if (!el) return toast('Abre la factura para descargarla');
     return generar(el, limpio(`Factura ${f?.numero || ''} ${f?.cliente_nombre || ''}`), { pie: false, btn });
   }
 
-  return { generar, valoracion, temperamento, factura, htmlValoracion, ctxValoracion };
+  return { generar, valoracion, temperamento, factura, contextos, htmlValoracion, ctxValoracion };
 })();

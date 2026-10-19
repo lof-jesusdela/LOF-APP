@@ -291,6 +291,7 @@ async function cargarAlumno(uid) {
   { const [r, tq] = await Promise.all([sb.from('revisiones').select('*').eq('alumno_id', uid).order('fecha', { ascending: false }), sb.from('temperamentos').select('*').eq('alumno_id', uid).order('fecha', { ascending: false }).order('id', { ascending: false })]);
     S.d.revisiones = r.data || []; S.d.revisionesErr = !!r.error; S.d.temperamentos = tq.data || []; S.d.tempErr = !!tq.error; }
   await Habitos.cargar(uid, S.d);
+  await Nutricion.cargar(uid, S.d);
 }
 
 /* ---------- Render principal ---------- */
@@ -447,7 +448,7 @@ function vRegistroDia(s) {
       return `<div class="row"><div class="ico">${svg('entreno')}</div><div class="grow"><span class="small"><b>Entrenamiento</b></span><div class="small ${l.length ? '' : 'muted'}">${l.length ? `<span style="color:var(--ok);font-weight:700">✓ Completado</span> · ${esc([...new Set(l.map(nom))].join(' · '))}` : dd ? `Hoy toca ${esc(nomDia(dd))}: empiézalo en «Lo que toca hoy»` : esHoy ? 'Hoy no toca entrenar' : 'Sin entreno registrado ese día'}</div></div></div>`; })()}
     <div class="row"><div class="ico">${svg('pasos')}</div><label class="f grow">Pasos${objPasos(s) ? ` <span class="muted">(objetivo ${fmtNum(objPasos(s), 0)})</span>` : ''}<input id="r-pasos" type="number" inputmode="numeric" min="0" value="${r.pasos ?? ''}" placeholder="Ej. 8500"></label></div>
     ${s.modulo_nutricion ? `<div class="stack" style="gap:6px"><span class="small">Comidas de tu plan cumplidas ${esHoy ? 'hoy' : 'ese día'} <span class="muted">(de ${comidasDia(s)})</span></span><div class="choice ing" role="group">${[...Array(comidasDia(s) + 1)].map((_, k) => `<button data-act="ingestas" data-v="${k}" aria-pressed="${r.ingestas === k}">${k}</button>`).join('')}</div></div>
-    <div class="stack" style="gap:8px"><label class="btn ghost full fotos-b"><input type="file" id="r-fotos" accept="image/*" multiple hidden>📷 Añadir fotos de lo que has comido (opcional)</label>${rutas.length ? `<div class="plan-imgs">${miniFotos(rutas)}</div>` : ''}</div>` : ''}
+    <div class="stack" style="gap:8px">${(() => { const nc = (S.d.nutri?.comidas || []).filter(x => x.fecha === sel).length; return `<button class="btn ghost full" data-act="nuIrDiario" data-f="${sel}">🍽 ${nc ? `${nc} ${nc === 1 ? 'comida apuntada' : 'comidas apuntadas'} · ver tu diario` : 'Apuntar lo que has comido (opcional)'}</button>`; })()}${rutas.length ? `<div class="plan-imgs">${miniFotos(rutas)}</div>` : ''}</div>` : ''}
     ${Habitos.enRegistro(sel)}
     <label class="f">Observaciones${esHoy ? ' del día' : ' de ese día'}<textarea id="r-obs" rows="2" placeholder="Si no llegaste al objetivo, cuéntame por qué; o cualquier cosa del día que quieras que sepa">${esc(r.observacion || '')}</textarea></label>
     <button class="btn" data-act="guardarDiario">Guardar registro ${esHoy ? 'de hoy' : 'de ese día'}</button>
@@ -1042,7 +1043,7 @@ async function guardarSesion() {
 }
 
 /* ---------- Nutrición (pendiente de cargar planes) ---------- */
-function vNutri() { return `<section class="stack"><span class="eyebrow">Tu plan de alimentación</span><h1>Nutrición</h1></section><div class="section card empty">Tu plan de alimentación aparecerá aquí muy pronto.</div>`; }
+function vNutri() { return Nutricion.vista(); }
 
 /* ---------- Progreso ---------- */
 document.addEventListener('click', e => {
@@ -1257,6 +1258,7 @@ async function cargarCoach() {
   { const [r, tq] = await Promise.all([sb.from('revisiones').select('*').order('fecha', { ascending: false }), sb.from('temperamentos').select('*').order('fecha', { ascending: false }).order('id', { ascending: false })]);
     S.c.revisiones = r.data || []; S.c.revisionesErr = !!r.error; S.c.temperamentos = tq.data || []; S.c.tempErr = !!tq.error; }
   await Habitos.cargarCoach(S.c);
+  try { await Nutricion.cargarCoach(S.c); } catch (err) { S.c.creacionesNuevas = []; }
   { const cx = await sb.from('programas').select('id,alumno_id,nombre,dias_semana,' + CTX_COLS.slice(0, -1)).gte('contexto_hasta', sumaDias(hoyISO(), -70)).order('contexto_desde');
     S.c.contextos = cx.error ? [] : (cx.data || []).filter(esContexto); }
   S.c.facturas = fa.data || []; S.c.facturasError = !!fa.error; S.c.fiscal = Object.fromEntries((ap.data || []).map(x => [x.clave, x.valor]));
@@ -1977,10 +1979,10 @@ async function borrarPlantilla(id) {
   const { error } = await sb.from('programas').delete().eq('id', id).is('alumno_id', null); if (error) return fallo(error);
   toast('Plantilla eliminada'); await cargarPlantillas(); render();
 }
-/* ---------- Planificación completa del alumno (solo la ve el coach) ---------- */
+/* ---------- Planificación completa del alumno: entreno y hábitos solo los ve el coach; lo visible de alimentación sale en su pestaña Nutrición ---------- */
 const APARTADOS = {
   entreno: [['enfoque', 'Enfoque y notas del entrenamiento']],
-  alimentacion: [['contexto', 'Informe de su contexto'], ['equivalencias', 'Equivalencias visuales'], ['contextos', 'Contextos metabólicos'], ['menus', 'Menús contextualizados'], ['suplementacion', 'Suplementación'], ['analitica', 'Conclusiones de su analítica']],
+  alimentacion: [['contexto', 'Informe de su contexto, feedback y plan de acción'], ['registro7', 'Análisis del registro de 7 días y estilo de vida'], ['analitica', 'Conclusiones de su analítica'], ['contextos', 'Contextos metabólicos'], ['equivalencias', 'Equivalencias visuales'], ['menus', 'Menús contextualizados'], ['platos', 'Cómo construir tus platos'], ['suplementacion', 'Suplementación']],
   habitos: [['principales', 'Hábitos principales'], ['pasos', 'Pasos'], ['actividad', 'Calorías mínimas diarias de actividad'], ['sueno', 'Sueño']]
 };
 async function cargarPlanificacion(f) {
@@ -2001,10 +2003,13 @@ function apartadosDe(f, sec) {
   return [...base, ...l.filter(x => !APARTADOS[sec].some(([k]) => k === x.clave))];
 }
 function vApartado(f, x, abierto, extra = '') {
-  const imgs = (x.imagenes || []).map(r => f.planImg?.[r]).filter(Boolean);
-  const vacio = !x.contenido && !imgs.length && !extra;
-  return `<details class="plan-ap" ${abierto ? 'open' : ''}><summary><b class="grow">${esc(x.titulo)}</b>${vacio ? '<span class="pill">Sin rellenar</span>' : imgs.length ? `<span class="small muted">${imgs.length} ${imgs.length === 1 ? 'imagen' : 'imágenes'}</span>` : ''}</summary>
-    <div class="stack" style="gap:10px;padding-top:8px">${extra}${x.contenido ? `<div class="small pre">${esc(x.contenido)}</div>` : ''}
+  const imgs = (x.imagenes || []).filter(r => !Nutricion.esPdf(r)).map(r => f.planImg?.[r]).filter(Boolean), pdfs = (x.imagenes || []).filter(Nutricion.esPdf).map(r => f.planImg?.[r]).filter(Boolean);
+  const ctx = (x.datos?.ctx || []).filter(c => c.n), ali = x.seccion === 'alimentacion';
+  const vacio = !x.contenido && !imgs.length && !pdfs.length && !ctx.length && !extra;
+  const cuenta = [imgs.length && `${imgs.length} ${imgs.length === 1 ? 'imagen' : 'imágenes'}`, pdfs.length && `${pdfs.length} PDF`, ctx.length && `${ctx.length} contextos`].filter(Boolean).join(' · ');
+  return `<details class="plan-ap" ${abierto ? 'open' : ''}><summary><b class="grow">${esc(x.titulo)}</b>${vacio ? '<span class="pill">Sin rellenar</span>' : `${cuenta ? `<span class="small muted">${cuenta}</span>` : ''}${ali ? (x.visible === false ? ' <span class="pill warn">Oculto</span>' : ' <span class="pill ok">Lo ve</span>') : ''}`}</summary>
+    <div class="stack" style="gap:10px;padding-top:8px">${extra}${ctx.length ? `<div class="tbl" style="overflow-x:auto"><table class="nu-tab"><thead><tr><th>Contexto</th><th class="num">kcal</th><th class="num">P</th><th class="num">C</th><th class="num">G</th></tr></thead><tbody>${ctx.map(c => `<tr><td><b>${esc(c.n)}</b>${c.d ? `<div class="small muted">${esc(c.d)}</div>` : ''}</td><td class="num">${esc(c.kcal ?? '')}</td><td class="num">${esc(c.p ?? '')}</td><td class="num">${esc(c.c ?? '')}</td><td class="num">${esc(c.g ?? '')}</td></tr>`).join('')}</tbody></table></div>` : ''}${x.contenido ? `<div class="small pre">${esc(x.contenido)}</div>` : ''}
+    ${pdfs.length ? `<div class="row" style="gap:6px;flex-wrap:wrap">${pdfs.map((u, i) => `<a class="btn sm ghost" href="${esc(u)}" target="_blank" rel="noopener">📄 PDF${pdfs.length > 1 ? ' ' + (i + 1) : ''}</a>`).join('')}</div>` : ''}
     ${imgs.length ? `<div class="plan-imgs">${imgs.map(u => `<button class="img" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver imagen"><img src="${esc(u)}" alt="" loading="lazy"></button>`).join('')}</div>` : ''}
     ${vacio ? '<p class="small muted">Aún no has escrito nada aquí.</p>' : ''}
     <button class="btn sm ghost" data-act="editarApartado" data-sec="${x.seccion}" data-k="${esc(x.clave)}" style="align-self:flex-start">✎ ${vacio ? 'Rellenar' : 'Editar'}</button></div></details>`;
@@ -2017,24 +2022,27 @@ function vPlanificacion(f, a) {
   return `${f.planErr ? `<div class="aprox small">${esc(f.planErr)}</div>` : ''}
   <section class="section span"><div class="card stack"><span class="eyebrow">Plan de acompañamiento</span><h3>${esc(srv?.producto || 'Sin plan asignado')}</h3>
     <div class="small muted">${[srv?.inicio && 'Inicio ' + fF(srv.inicio), P && !P.sinFin && 'final ' + fF(P.ciclos[P.ciclos.length - 1].fin), srv?.modulo_nutricion && 'con nutrición', srv?.sesiones_incluidas && srv.sesiones_incluidas + ' presenciales'].filter(Boolean).join(' · ')}</div>
-    <p class="note">Solo tú ves esta planificación. ${esc((a.nombre || '').split(' ')[0])} no tiene acceso a nada de esta pantalla.</p></div></section>
+    <p class="note">El entrenamiento y los hábitos de esta pantalla solo los ves tú. Lo que marques como visible en Alimentación, ${esc((a.nombre || '').split(' ')[0])} lo ve en su pestaña Nutrición.</p></div></section>
   <section class="section plan-grupo">${sec('entreno', 'Entrenamiento', 'entreno', `<div class="aprox small"><b>Objetivo del proceso:</b> ${og ? esc(og) : 'sin definir (ponlo en "Editar bloques")'}</div>${apartadosDe(f, 'entreno').map(x => vApartado(f, x, false)).join('')}<button class="linkbtn small" data-act="nuevoApartado" data-sec="entreno">＋ Añadir apartado</button>`)}
   ${vLineaTiempo(srv, 'Bloques de entrenamiento', true, progDeCiclo(f, P))}</section>
-  ${sec('alimentacion', 'Alimentación', 'nutri', `${srv?.modulo_nutricion ? '' : '<p class="small muted">Su plan no incluye nutrición, pero puedes guardar aquí lo que quieras.</p>'}${apartadosDe(f, 'alimentacion').map((x, i) => vApartado(f, x, i === 0 && !!x.contenido)).join('')}<button class="linkbtn small" data-act="nuevoApartado" data-sec="alimentacion">＋ Añadir apartado</button>`)}
+  ${sec('alimentacion', 'Alimentación', 'nutri', `${srv?.modulo_nutricion ? '' : '<p class="small muted">Su plan no incluye nutrición, pero puedes guardar aquí lo que quieras.</p>'}${apartadosDe(f, 'alimentacion').map((x, i) => vApartado(f, x, i === 0 && !!x.contenido)).join('')}<div class="row" style="gap:12px;flex-wrap:wrap"><button class="linkbtn small" data-act="nuevoApartado" data-sec="alimentacion">＋ Añadir apartado</button><button class="linkbtn small" data-act="nuPrev">👁 Ver su pestaña Nutrición</button></div>`)}
   ${sec('habitos', 'Hábitos', 'pasos', `${apartadosDe(f, 'habitos').map((x, i) => vApartado(f, x, i === 0 && !!x.contenido, extras[x.clave] || '')).join('')}<button class="linkbtn small" data-act="nuevoApartado" data-sec="habitos">＋ Añadir apartado</button>`)}`;
 }
 function formApartado(sec, clave) {
   const f = S.ficha, nuevo = !clave, x = nuevo ? { seccion: sec, clave: 'extra-' + Date.now(), titulo: '', imagenes: [], orden: 50 } : apartadosDe(f, sec).find(z => z.clave === clave);
   if (!x) return;
-  const fijo = APARTADOS[sec].some(([k]) => k === x.clave);
+  const fijo = APARTADOS[sec].some(([k]) => k === x.clave), ali = sec === 'alimentacion', esCtx = x.clave === 'contextos';
+  const filaCtx = (c = {}) => `<div class="ctx-fila"><input type="text" data-c="n" value="${esc(c.n || '')}" placeholder="Tipo de día (ej. Entrenas y trabajas)"><input type="text" data-c="d" value="${esc(c.d || '')}" placeholder="Cuándo (ej. Lunes, miércoles y viernes)"><div class="ctx-num"><label>kcal<input type="number" inputmode="numeric" data-c="kcal" value="${esc(c.kcal ?? '')}"></label><label>Prot. g<input type="number" inputmode="numeric" data-c="p" value="${esc(c.p ?? '')}"></label><label>Hidr. g<input type="number" inputmode="numeric" data-c="c" value="${esc(c.c ?? '')}"></label><label>Grasa g<input type="number" inputmode="numeric" data-c="g" value="${esc(c.g ?? '')}"></label></div></div>`;
   abrirSheet(`<form class="stack" id="f-ap"><h2>${nuevo ? 'Nuevo apartado' : esc(x.titulo)}</h2>
     ${fijo ? '' : `<label class="f">Título<input type="text" id="ap-t" value="${esc(x.titulo)}" placeholder="Ej. Pautas para comer fuera" required></label>`}
-    <label class="f">Contenido<textarea id="ap-c" rows="10" placeholder="Escribe o pega aquí el texto">${esc(x.contenido || '')}</textarea></label>
-    ${(x.imagenes || []).length ? `<div class="stack" style="gap:6px"><span class="small"><b>Imágenes</b> · marca las que quieras quitar</span><div class="plan-imgs">${x.imagenes.map((r, i) => `<label class="plan-q"><img src="${esc(f.planImg?.[r] || '')}" alt=""><span><input type="checkbox" data-quitar="${i}"> Quitar</span></label>`).join('')}</div></div>` : ''}
-    <label class="f">Añadir imágenes (menús, equivalencias, tablas…)<input type="file" id="ap-f" accept="image/*" multiple></label>
-    <p class="small muted">Las imágenes se guardan en un espacio privado: solo tú puedes verlas.</p>
+    ${esCtx ? `<div class="stack" style="gap:8px"><span class="small"><b>Tabla de contextos</b> · el alumno la ve como guía del día («¿Qué tipo de día tienes hoy?») y la puede imprimir</span><div id="ctx-filas" class="stack" style="gap:10px">${((x.datos?.ctx || []).length ? x.datos.ctx : [{}, {}]).map(filaCtx).join('')}</div><button class="linkbtn small" type="button" id="ctx-mas" style="align-self:flex-start">＋ Añadir contexto</button></div>` : ''}
+    <label class="f">${esCtx ? 'Explicación (opcional)' : 'Contenido'}<textarea id="ap-c" rows="${esCtx ? 5 : 10}" placeholder="Escribe o pega aquí el texto. Usa «- » al principio de línea para hacer listas y una línea en MAYÚSCULAS para un título.">${esc(x.contenido || '')}</textarea></label>
+    ${(x.imagenes || []).length ? `<div class="stack" style="gap:6px"><span class="small"><b>Archivos</b> · marca los que quieras quitar</span><div class="plan-imgs">${x.imagenes.map((r, i) => `<label class="plan-q">${Nutricion.esPdf(r) ? '<span class="plan-pdf">📄 PDF</span>' : `<img src="${esc(f.planImg?.[r] || '')}" alt="">`}<span><input type="checkbox" data-quitar="${i}"> Quitar</span></label>`).join('')}</div></div>` : ''}
+    <label class="f">Añadir imágenes o PDF (menús, equivalencias, tablas, informes…)<input type="file" id="ap-f" accept="image/*,application/pdf" multiple></label>
+    ${ali ? `<label class="row" style="gap:10px;align-items:flex-start"><input type="checkbox" id="ap-v" ${x.visible === false ? '' : 'checked'}><span class="small"><b>Lo ve en su pestaña Nutrición</b><br><span class="muted">Desmárcalo para guardarlo solo para ti</span></span></label>` : '<p class="small muted">Se guarda en un espacio privado: solo tú puedes verlo.</p>'}
     <p class="err" id="ap-err"></p><button class="btn full" type="submit" id="ap-b">Guardar</button>
     ${!nuevo && !fijo ? '<button class="btn ghost full" type="button" id="ap-del" style="color:var(--bad)">Eliminar apartado</button>' : ''}</form>`);
+  $('#ctx-mas')?.addEventListener('click', () => $('#ctx-filas').insertAdjacentHTML('beforeend', filaCtx()));
   $('#ap-del')?.addEventListener('click', async () => {
     if (!confirm('¿Eliminar este apartado y sus imágenes?')) return;
     if ((x.imagenes || []).length) await sb.storage.from('planificacion').remove(x.imagenes);
@@ -2047,16 +2055,21 @@ function formApartado(sec, clave) {
       const quitar = [...document.querySelectorAll('#f-ap [data-quitar]:checked')].map(c => x.imagenes[+c.dataset.quitar]);
       let imagenes = (x.imagenes || []).filter(r => !quitar.includes(r));
       for (const file of $('#ap-f').files) {
-        const blob = await reducirImagen(file, 1600), ruta = `${f.id}/${sec}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.jpg`;
-        const up = await sb.storage.from('planificacion').upload(ruta, blob, { contentType: 'image/jpeg' });
+        const pdf = /pdf/i.test(file.type) || /\.pdf$/i.test(file.name), blob = pdf ? file : await reducirImagen(file, 1600), ruta = `${f.id}/${sec}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${pdf ? 'pdf' : 'jpg'}`;
+        const up = await sb.storage.from('planificacion').upload(ruta, blob, { contentType: pdf ? 'application/pdf' : 'image/jpeg' });
         if (up.error) throw up.error;
         imagenes.push(ruta);
       }
       if (quitar.length) await sb.storage.from('planificacion').remove(quitar);
-      const fila = { alumno_id: f.id, seccion: sec, clave: x.clave, titulo: fijo ? x.titulo : ($('#ap-t').value.trim() || 'Apartado'), contenido: $('#ap-c').value.trim() || null, imagenes, orden: x.orden ?? 50, actualizado_at: new Date().toISOString() };
-      const r = x.id ? await sb.from('planificacion').update(fila).eq('id', x.id) : await sb.from('planificacion').insert(fila);
+      const fila = { alumno_id: f.id, seccion: sec, clave: x.clave, titulo: fijo ? x.titulo : ($('#ap-t').value.trim() || 'Apartado'), contenido: $('#ap-c').value.trim() || null, imagenes, orden: fijo ? APARTADOS[sec].findIndex(([k]) => k === x.clave) : (x.orden ?? 50), actualizado_at: new Date().toISOString() };
+      const nuevas = {};
+      if (ali) nuevas.visible = $('#ap-v').checked;
+      if (esCtx) nuevas.datos = { ctx: [...document.querySelectorAll('#ctx-filas .ctx-fila')].map(el => { const o = {}; el.querySelectorAll('[data-c]').forEach(i => { const v = i.value.trim(); if (v !== '') o[i.dataset.c] = i.type === 'number' ? numero(v) : v; }); return o; }).filter(o => o.n) };
+      const guarda = fl => x.id ? sb.from('planificacion').update(fl).eq('id', x.id) : sb.from('planificacion').insert(fl);
+      let r = await guarda({ ...fila, ...nuevas }), sinBloque = false;
+      if (r.error && Object.keys(nuevas).length && /visible|datos|column/i.test(r.error.message || '')) { sinBloque = true; r = await guarda(fila); }
       if (r.error) throw r.error;
-      cerrarSheet(); toast('Guardado'); await cargarPlanificacion(f); render();
+      cerrarSheet(); toast(sinBloque ? 'Guardado, pero falta el Bloque 37 en Supabase para que lo vea el alumno' : 'Guardado'); await cargarPlanificacion(f); render();
     } catch (err) {
       btn.disabled = false; btn.textContent = 'Guardar';
       $('#ap-err').textContent = /planificacion|bucket|not found/i.test(err.message || '') ? 'Falta ejecutar el Bloque 17 en Supabase.' : 'No se ha podido guardar. Revisa la conexión e inténtalo de nuevo.'; console.error(err);
@@ -2123,7 +2136,7 @@ function vFicha() {
   ${srv?.modulo_futbol ? vFutbolFicha(a) : ''}
   <section class="section"><h2>Cumplimiento</h2><div class="kpis">
     ${tile('entreno', 'Entrenamiento', dpw ? `${cur.entrenos}/${dpw}` : cur.entrenos, 'esta semana', dpw ? `semana pasada ${pre.entrenos}/${dpw}` : '', nivelE)}
-    ${srv?.modulo_nutricion ? tile('alimentacion', 'Alimentación', ing7.pct != null ? ing7.pct + ' %' : '—', ing7.dias ? `${ing7.hechas}/${ing7.total} ingestas` : 'sin registros', evN ? evN[1] + ' · 7 días' : '', evN?.[0] || '') : tile('alimentacion', 'Alimentación', '—', 'sin nutrición', 'contratada', '')}
+    ${srv?.modulo_nutricion ? tile('alimentacion', 'Alimentación', ing7.pct != null ? ing7.pct + ' %' : '—', ing7.dias ? `${ing7.hechas}/${ing7.total} ingestas` : 'sin registros', Nutricion.nuevasDe(a.id) ? `🍽 ${Nutricion.nuevasDe(a.id)} creación${Nutricion.nuevasDe(a.id) > 1 ? 'es' : ''} nueva${Nutricion.nuevasDe(a.id) > 1 ? 's' : ''}` : evN ? evN[1] + ' · 7 días' : '', evN?.[0] || '') : tile('alimentacion', 'Alimentación', '—', 'sin nutrición', 'contratada', '')}
     ${tile('habitos', 'Hábitos', pasos7 != null ? fmtNum(pasos7, 0) : '—', `pasos de media · 7 días`, `objetivo ${fmtNum(obj, 0)}`, pasos7 == null ? '' : pasos7 >= obj ? 'ok' : pasos7 >= obj * .7 ? 'warn' : 'bad')}
   </div></section>
   ${Temperamento.bloqueFicha(f, a)}
@@ -2146,7 +2159,8 @@ async function abrirSub(sub) {
   if (sub === 'habitos') tareas.push(Habitos.cargarFicha(f));
   if (sub === 'entreno' && !f.programas) tareas.push(cargarProgramasFicha(f));
   if ((sub === 'habitos' || sub === 'alimentacion') && !f.diarioLargo) tareas.push(sb.from('registro_diario').select('*').eq('alumno_id', f.id).gte('fecha', sumaDias(hoyISO(), -55)).then(r => { f.diarioLargo = (r.data || []).sort((a, b) => b.fecha.localeCompare(a.fecha)); }));
-  if (sub === 'plan' || sub === 'alimentacion') { tareas.push(cargarPlanificacion(f)); if (!f.programas) tareas.push(cargarProgramasFicha(f)); }
+  if (sub === 'plan' || sub === 'alimentacion' || sub === 'nutriPrev') { tareas.push(cargarPlanificacion(f)); if (!f.programas) tareas.push(cargarProgramasFicha(f)); }
+  if (sub === 'alimentacion') tareas.push(Nutricion.cargarFicha(f));
   if (sub === 'alimentacion' && f.planNutri === undefined) tareas.push(sb.from('planes_nutricion').select('*').eq('alumno_id', f.id).limit(1).then(r => { f.planNutri = r.data?.[0] || null; }));
   if (tareas.length) { await Promise.all(tareas); if (S.fichaSub === sub) render(); }
 }
@@ -2168,11 +2182,14 @@ function vFichaSub(f, a) {
   }
   if (sub === 'temperamento') return cab('Perfil de temperamento') + Temperamento.vSub(f, a);
   if (sub === 'plan') return cab('Planificación') + vPlanificacion(f, a);
+  if (sub === 'nutriPrev') return cab('Su pestaña Nutrición') + `<p class="note section">Así ve ${esc(nom)} su pestaña (su diario de comidas lo tienes en Alimentación). Para cambiar algo, edítalo en «Su plan de alimentación».</p>` + (f.plan ? Nutricion.vista(Nutricion.datosPrevia(f), true) : '<div class="empty">Cargando…</div>');
   if (sub === 'alimentacion') {
     const dl = f.diarioLargo || [], n = comidasDia(srv), sems = [0, 1, 2, 3].map(k => sumaDias(lunes, -7 * k)), pn = f.planNutri;
     const chk = S.c.checkins.filter(k => k.alumno_id === a.id && k.nota_alimentacion);
     return cab('Alimentación') + `
-    <section class="section"><button class="card reporte-b" data-act="fichaSub" data-s="plan"><div class="ico gold">${svg('checkin')}</div><div class="grow" style="text-align:left"><b>Su plan de alimentación</b><div class="small muted">Informe de su contexto, equivalencias, contextos metabólicos, menús y suplementación</div></div><span class="small" style="color:var(--blue-text)">Abrir ›</span></button></section>
+    <section class="section"><button class="card reporte-b" data-act="fichaSub" data-s="plan"><div class="ico gold">${svg('checkin')}</div><div class="grow" style="text-align:left"><b>Su plan de alimentación</b><div class="small muted">Contexto y feedback, registro de 7 días, analítica, contextos, equivalencias, menús, platos y suplementación</div></div><span class="small" style="color:var(--blue-text)">Editar ›</span></button>
+      <button class="linkbtn small" data-act="nuPrev" style="margin-top:8px">👁 Ver su pestaña Nutrición tal como la ve ${esc(nom)}</button></section>
+    ${Nutricion.vCoach(f, a)}
     <section class="section"><div class="section-head"><h2>Cumplimiento por ingestas</h2><button class="btn sm ghost" data-act="editarComidas">${n} ingestas/día · cambiar</button></div><div class="card">
       ${sems.map(l => { const I = ingestasSemana(dl, l, srv), ev = evalNutri(I.pct); return `<div class="line"><span class="small muted" style="width:96px;flex:none">${esc(fCorta(l))} – ${esc(fCorta(sumaDias(l, 6)))}</span><div class="grow small">${I.hechas} de ${I.total} ingestas${I.dias < 7 ? ` · ${I.dias} días registrados` : ''}</div>${ev ? `<span class="pill ${ev[0]}">${I.pct} % · ${ev[1]}</span>` : '<span class="small muted">sin datos</span>'}</div>`; }).join('')}
       <p class="note">Bien: 85 % o más de las ingestas de la semana. Regular: entre 60 y 85 %. Mal: por debajo del 60 %.</p></div></section>
@@ -3795,7 +3812,7 @@ document.addEventListener('click', async e => {
     case 'editarServicio': formServicio(); break;
     case 'editarEjercicio': formEjercicio(+b.dataset.id); break;
     case 'empezarCrono': empezarCrono(); break;
-    case 'verImagen': abrirSheet(`<div class="stack"><img src="${esc(b.dataset.src)}" alt="" style="width:100%;border-radius:12px;background:var(--surface-2)"><button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`); break;
+    case 'verImagen': abrirSheet(`<div class="stack"><img src="${esc(b.dataset.src)}" alt="" style="width:100%;border-radius:12px;background:var(--surface-2)"><a class="btn ghost full" href="${esc(b.dataset.src)}" target="_blank" rel="noopener">Abrir para guardar o imprimir</a><button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`); break;
     case 'importarImagenes': await importarImagenes(); break;
     case 'editarPrograma': await abrirEditor(b.dataset.id); break;
     case 'cerrarEditor': if (S.editor?.plantilla) { S.editor = null; S.ctab = 'plantillas'; await cargarPlantillas(); render(); window.scrollTo(0, 0); break; }
