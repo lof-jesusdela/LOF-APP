@@ -33,18 +33,23 @@ const PDF = (() => {
       if (typeof contenido === 'string') {
         caja = document.createElement('div'); caja.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;z-index:-1';
         caja.innerHTML = contenido; document.body.appendChild(caja); el = caja.firstElementChild;
-        await Promise.all([...caja.querySelectorAll('img')].map(i => i.complete ? null : new Promise(r => { i.onload = i.onerror = r; })));
-        if (document.fonts?.ready) await document.fonts.ready;
+        caja.querySelectorAll('img').forEach(i => { i.loading = 'eager'; i.decoding = 'sync'; });
+        const espera = ms => new Promise(r => setTimeout(r, ms));   // nunca esperar para siempre a una imagen o una fuente
+        await Promise.race([Promise.all([...caja.querySelectorAll('img')].map(i => i.complete ? null : new Promise(r => { i.onload = i.onerror = r; }))), espera(3000)]);
+        if (document.fonts?.ready) await Promise.race([document.fonts.ready, espera(2000)]);
       }
+      /* iPhone/iPad no pintan lienzos de más de ~16,7 millones de píxeles: con informes largos se baja la resolución */
+      const alto = Math.max(1, el.scrollHeight || el.offsetHeight || 1123), ancho = Math.max(1, el.scrollWidth || 794);
+      const escala = Math.max(1, Math.min(2, Math.sqrt(11e6 / (ancho * alto))));
       const opt = { margin: pie ? [6, 0, 12, 0] : [8, 8, 8, 8], filename: nombre, image: { type: 'jpeg', quality: 0.95 },
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', windowWidth: 794 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        html2canvas: { scale: escala, useCORS: true, backgroundColor: '#ffffff', windowWidth: 794 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
         pagebreak: { mode: ['css', 'legacy'], avoid: ['.pd-keep', '.pd-card', 'tr'] } };
       let w = window.html2pdf().set(opt).from(el).toPdf();
       if (pie) w = w.get('pdf').then(pdf => {
         const n = pdf.internal.getNumberOfPages();
         for (let i = 1; i <= n; i++) { pdf.setPage(i); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(8); pdf.setTextColor(11, 32, 64); pdf.text('LOF · Construyendo tu prime', 10, 291); pdf.text(`PÁGINA ${i} DE ${n}`, 200, 291, { align: 'right' }); }
       });
-      const blob = await w.outputPdf('blob');
+      const blob = await Promise.race([w.outputPdf('blob'), new Promise((_, ko) => setTimeout(() => ko(new Error('No se ha podido generar el PDF: ha tardado demasiado. Inténtalo de nuevo.')), 45000))]);
       entregar(blob, nombre);
     } catch (err) { fallo(err, err?.message?.startsWith('No se ha podido') ? err.message : 'No se ha podido generar el PDF.'); }
     finally { caja?.remove(); if (btn) { btn.disabled = false; btn.textContent = txt; } }
