@@ -436,14 +436,18 @@ function vRegistroDia(s) {
   const r = S.d.diario.find(x => x.fecha === sel) || {}, esHoy = sel === hoy, rutas = r.fotos || [];
   if (rutas.some(p => !(p in FOTOS))) pedirFotos(rutas);
   return `<section class="section"><div class="section-head"><h2>Registro del día</h2><span class="small muted">${esHoy ? 'Hoy' : esc(fLarga(sel))}</span></div><div class="card stack">
-    <div class="stack" style="gap:6px"><span class="small muted">Puedes rellenar los días de esta semana, hasta el domingo.</span>
+    <div class="stack" style="gap:6px"><span class="small muted">Puedes rellenar los días de esta semana; los lunes, también los de la semana anterior.</span>
       <div class="reg-dias" role="group" aria-label="Día a registrar" style="--n:${Math.max(7, ventanaRegistro().length)}">${ventanaRegistro().map(f => { const x = S.d.diario.find(y => y.fecha === f), hecho = !!x && (x.pasos != null || x.ingestas != null || !!x.alimentacion); return `<button type="button" data-act="regDia" data-f="${f}" aria-pressed="${f === sel}" class="${hecho ? 'hecho' : ''}"><small>${DIA3[fecha(f).getDay()]}</small><b class="num">${fecha(f).getDate()}</b></button>`; }).join('')}</div></div>
+    ${(() => { const l = S.d.sesiones.filter(x => x.fecha === sel), todos = [S.d.programaBase, S.d.programa, ...(S.d.contextos || [])].filter(Boolean).flatMap(p => p.dias || []), dd = esHoy ? diaDeHoy() : null;
+      const nom = x => nomDia(todos.find(d => d.id === x.dia_id)) || 'Entreno';
+      return `<div class="row"><div class="ico">${svg('entreno')}</div><div class="grow"><span class="small"><b>Entrenamiento</b></span><div class="small ${l.length ? '' : 'muted'}">${l.length ? `<span style="color:var(--ok);font-weight:700">✓ Completado</span> · ${esc([...new Set(l.map(nom))].join(' · '))}` : dd ? `Hoy toca ${esc(nomDia(dd))}: empiézalo en «Lo que toca hoy»` : esHoy ? 'Hoy no toca entrenar' : 'Sin entreno registrado ese día'}</div></div></div>`; })()}
     <div class="row"><div class="ico">${svg('pasos')}</div><label class="f grow">Pasos${objPasos(s) ? ` <span class="muted">(objetivo ${fmtNum(objPasos(s), 0)})</span>` : ''}<input id="r-pasos" type="number" inputmode="numeric" min="0" value="${r.pasos ?? ''}" placeholder="Ej. 8500"></label></div>
     ${s.modulo_nutricion ? `<div class="stack" style="gap:6px"><span class="small">Comidas de tu plan cumplidas ${esHoy ? 'hoy' : 'ese día'} <span class="muted">(de ${comidasDia(s)})</span></span><div class="choice ing" role="group">${[...Array(comidasDia(s) + 1)].map((_, k) => `<button data-act="ingestas" data-v="${k}" aria-pressed="${r.ingestas === k}">${k}</button>`).join('')}</div></div>
     <div class="stack" style="gap:8px"><label class="btn ghost full fotos-b"><input type="file" id="r-fotos" accept="image/*" multiple hidden>📷 Añadir fotos de lo que has comido (opcional)</label>${rutas.length ? `<div class="plan-imgs">${miniFotos(rutas)}</div>` : ''}</div>` : ''}
+    ${Habitos.enRegistro(sel)}
     <label class="f">Observaciones${esHoy ? ' del día' : ' de ese día'}<textarea id="r-obs" rows="2" placeholder="Si no llegaste al objetivo, cuéntame por qué; o cualquier cosa del día que quieras que sepa">${esc(r.observacion || '')}</textarea></label>
     <button class="btn" data-act="guardarDiario">Guardar registro ${esHoy ? 'de hoy' : 'de ese día'}</button>
-    <p class="note">Apúntalo al final del día, o antes del domingo si se te ha pasado. Tarda 10 segundos y es lo que permite a Jesús ver tu semana real.</p>
+    <p class="note">Apúntalo al final del día o, si se te ha pasado, como tarde el lunes siguiente. Tarda 10 segundos y es lo que permite a Jesús ver tu semana real.</p>
   </div></section>`;
 }
 async function subirFotosComida(input) {
@@ -519,16 +523,15 @@ function vHoy() {
     <div class="small muted">${esc(s.producto || 'Tu proceso')}${(() => { const P = proceso(s); return P && !P.antes && !P.fuera ? ` · Semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''; })()}</div>
     ${objetivoDe(S.d.ruta) ? `<div style="border-top:1px solid rgba(255,255,255,.14);padding-top:12px" class="stack"><span class="eyebrow">Tu objetivo</span><div class="small">${esc(objetivoDe(S.d.ruta))}</div></div>` : ''}
   </section>
-  ${S.perfil.rol !== 'coach' ? vChatCoach() : ''}${vAvisoContexto()}
+  ${S.perfil.rol !== 'coach' ? vChatCoach() : ''}
+  ${vProcesoGlobal(s)}
+  ${vAvisoContexto()}
+  <section class="section"><h2>Lo que toca hoy</h2><div class="card">${toca}</div></section>
+  ${s.modulo_futbol ? vFutbolHoy() + vSemanaFutbol(ini, w, p) + Habitos.tarjetaHoy(false) : vRegistroDia(s)}
   ${tocaCheckin() ? `<section class="section"><div class="card aviso-chk stack"><div class="row"><div class="ico gold">${svg('checkin')}</div><div class="grow"><b>Toca rellenar tu check-in</b><div class="small muted">Es fin de semana: cuéntale a Jesús cómo ha ido tu semana.</div></div></div><button class="btn full" data-act="tab" data-t="checkin">Rellenar check-in</button>${'Notification' in window && Notification.permission === 'default' ? '<button class="btn ghost full" data-act="permisoAvisos">Activar avisos en el móvil</button>' : ''}</div></section>` : ''}
   ${Temperamento.tarjetaHoy()}
-  ${Habitos.tarjetaHoy()}
-  ${s.modulo_futbol ? vFutbolHoy() : ''}
+  ${s.modulo_futbol ? '' : Habitos.tarjetaHoy(true)}
   ${vEventos(s, S.d.presenciales)}
-  ${vProcesoGlobal(s)}
-  <section class="section"><h2>Lo que toca hoy</h2><div class="card">${toca}</div></section>
-  ${s.modulo_futbol ? vSemanaFutbol(ini, w, p) : `${vRegistroDia(s)}
-  `}
   ${vPresenciales(S.d.servicio, S.d.presenciales, false)}
   `;
 }
@@ -3086,12 +3089,37 @@ const PLANTILLAS = {
   fc: { titulo: 'Zonas de frecuencia cardiaca', cols: 'valor', datos: ['FC máxima', 'Zona 1 · predominio aeróbico (65–80 %)', 'Zona 2 · umbral (80–90 %)', 'Zona 3 · predominio anaeróbico (90–100 %)'],
     protocolo: 'Estimamos tu frecuencia cardiaca máxima con la fórmula de Tanaka: FC máx = 208,75 − (0,7 × edad).\n\nZona 1: base y cimientos de tu capacidad cardiovascular; predominio de las grasas y fatiga muy baja.\nZona 2: empieza a predominar el metabolismo de los hidratos; la fatiga aparece antes.\nZona 3: zona de potencia (VO2max); solo se mantiene segundos o pocos minutos.' },
   movilidad: { titulo: 'Movilidad articular', cols: 'valor', datos: ['Cadena lateral', 'Cadena posterior e isquiotibiales', 'Hombros', 'Rotación de cadera', 'Tobillos', 'Cadena anterior'], protocolo: '' },
-  ritmos: { titulo: 'Test de carrera de 5 minutos · ritmos', cols: 'valor', datos: ['Distancia en 5 minutos', 'Ritmo medio (min/km)'],
+  ritmos: { titulo: 'Test de carrera de 5 minutos · ritmos', cols: 'valor', datos: ['Distancia en 5 minutos', 'Ritmo medio (min/km)', 'Velocidad aeróbica máxima (VAM)'],
     protocolo: 'Calentamiento: en pista o zona con distancia conocida, 10 minutos a ritmo bajo y 5 minutos subiendo el ritmo de forma progresiva. Después, unos 200 m de cambios de ritmo casi máximos (20-30 m) con 20-30 m de recuperación.\n\nParte principal: 5 minutos recorriendo la mayor distancia posible.' },
   carrera: { titulo: 'Análisis de carrera', cols: 'valor', datos: ['Caminata a 6 km/h', 'Carrera a 12 km/h'], protocolo: 'Grabamos de lado, de espaldas y de frente caminando y corriendo en cinta.' },
   otra: { titulo: 'Otra prueba', cols: 'valor', datos: [], protocolo: '' }
 };
 const ordenarValoraciones = l => { l.forEach(v => (v.pruebas || []).sort((a, b) => (a.orden || 0) - (b.orden || 0))); return l.sort((a, b) => b.fecha.localeCompare(a.fecha)); };
+/* Test de carrera de 5 minutos: con la distancia se calcula el ritmo (min/km) y la VAM (km/h).
+   Ritmo = 300 s / km recorridos (1400 m → 214 s/km → 3:34). VAM = km × 12 (1,4 km → 16,8 km/h) */
+const metrosDe = v => { const n = numDe(v); return n == null || n <= 0 ? null : n < 30 ? n * 1000 : n; };   // "1400", "1.400 m" o "1,4 km"
+function ritmo5min(dist) {
+  const m = metrosDe(dist); if (!m) return null;
+  const t = Math.round(300 / (m / 1000)), mm = Math.floor(t / 60), ss = t % 60;
+  return { ritmo: `${mm}:${String(ss).padStart(2, '0')} min/km`, vam: `${fmtNum(Math.round(m / 1000 * 12 * 10) / 10)} km/h` };
+}
+function completarRitmos(tipo, datos) {
+  if (tipo !== 'ritmos') return datos;
+  const di = datos.find(x => /distancia/i.test(x.nombre || '')), r = di && ritmo5min(di.valor); if (!r) return datos;
+  let rt = datos.find(x => /ritmo/i.test(x.nombre || '')); if (!rt) datos.push(rt = { nombre: 'Ritmo medio (min/km)' }); rt.valor = r.ritmo;
+  let va = datos.find(x => /vam|velocidad/i.test(x.nombre || '')); if (!va) datos.push(va = { nombre: 'Velocidad aeróbica máxima (VAM)' }); va.valor = r.vam;
+  return datos;
+}
+/* En los formularios: al escribir la distancia se rellenan solos el ritmo y la VAM */
+function ritmosEnVivo(form, filas) {
+  const busca = re => filas().find(f => re.test(f.nombre)), pinta = () => {
+    const d = busca(/distancia/i), r = d && ritmo5min(d.input.value);
+    const rt = busca(/ritmo/i), va = busca(/vam|velocidad/i);
+    if (rt) { rt.input.value = r ? r.ritmo : ''; rt.input.readOnly = true; rt.input.placeholder = 'Se calcula con la distancia'; }
+    if (va) { va.input.value = r ? r.vam : ''; va.input.readOnly = true; va.input.placeholder = 'Se calcula con la distancia'; }
+  };
+  form.addEventListener('input', pinta); pinta();
+}
 const numDe = v => { const m = String(v ?? '').replace(',', '.').match(/-?\d+(\.\d+)?/); return m ? +m[0] : null; };
 const difPct = (d, i) => { const a = numDe(d), b = numDe(i); if (a == null || b == null || !Math.max(a, b)) return null; return Math.round(Math.abs(a - b) / Math.max(a, b) * 100); };
 const resumenPrueba = p => {
@@ -3151,11 +3179,12 @@ function formResultado(pid) {
       : `<label class="f">${esc(x.nombre)}${x.valor ? ` <span class="muted">(antes ${esc(x.valor)})</span>` : ''}<input type="text" data-rv="${k}" placeholder="Déjalo vacío si no lo has hecho"></label>`).join('')}
     <p class="small" id="rs-err" style="color:var(--bad)"></p>
     <button class="btn full" type="submit">Guardar resultado</button></form>`);
+  if (p.tipo === 'ritmos') ritmosEnVivo($('#f-res'), () => ds.map((x, k) => ({ nombre: x.nombre, input: document.querySelector(`[data-rv="${k}"]`) })).filter(x => x.input));
   $('#f-res').addEventListener('submit', async e => {
     e.preventDefault();
     const bt = $('#f-res [type=submit]'); if (bt.disabled) return;
     const v = sel => (document.querySelector(sel)?.value || '').trim();
-    const datos = ds.map((x, k) => di ? { nombre: x.nombre, d: v(`[data-rd="${k}"]`), i: v(`[data-ri="${k}"]`) } : { nombre: x.nombre, valor: v(`[data-rv="${k}"]`) }).filter(x => x.valor || x.d || x.i);
+    const datos = completarRitmos(p.tipo, ds.map((x, k) => di ? { nombre: x.nombre, d: v(`[data-rd="${k}"]`), i: v(`[data-ri="${k}"]`) } : { nombre: x.nombre, valor: v(`[data-rv="${k}"]`) }).filter(x => x.valor || x.d || x.i));
     if (!datos.some(x => x.valor || x.d || x.i)) return $('#rs-err').textContent = 'Apunta al menos un resultado.';
     bt.disabled = true; bt.textContent = 'Guardando…';
     try {
@@ -3256,6 +3285,7 @@ function formPrueba(id) {
   const cont = $('#p-datos');
   cont.addEventListener('click', ev => { const q = ev.target.closest('[data-quitar]'); if (q) q.closest('[data-dato]').remove(); });
   $('#p-add').addEventListener('click', () => cont.insertAdjacentHTML('beforeend', filaDato({}, di)));
+  if (p.tipo === 'ritmos') ritmosEnVivo(cont, () => [...cont.querySelectorAll('[data-dato]')].map(r => ({ nombre: r.querySelector('[data-k="nombre"]')?.value || '', input: r.querySelector('[data-k="valor"]') })).filter(x => x.input));
   $('#p-calc')?.addEventListener('click', () => {
     const e = numero($('#p-edad').value); if (!e) return toast('Indica la edad');
     const mx = Math.round(208.75 - 0.7 * e), z = (a, b) => `${Math.round(mx * a)}–${Math.round(mx * b)} ppm`;
@@ -3263,7 +3293,7 @@ function formPrueba(id) {
   });
   $('#f-pr').addEventListener('submit', async ev => {
     ev.preventDefault();
-    const datos = [...cont.querySelectorAll('[data-dato]')].map(r => Object.fromEntries([...r.querySelectorAll('[data-k]')].map(i => [i.dataset.k, i.value.trim()]))).filter(x => x.nombre);
+    const datos = completarRitmos(p.tipo, [...cont.querySelectorAll('[data-dato]')].map(r => Object.fromEntries([...r.querySelectorAll('[data-k]')].map(i => [i.dataset.k, i.value.trim()]))).filter(x => x.nombre));
     const v = k => $(k).value.trim() || null;
     const { error } = await sb.from('pruebas').update({ titulo: v('#p-t') || p.titulo, datos, valoracion: v('#p-v'), foco: v('#p-f'), protocolo: v('#p-pr'), video_url: v('#p-vi') }).eq('id', p.id);
     if (error) return fallo(error);

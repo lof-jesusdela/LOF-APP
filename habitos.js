@@ -223,9 +223,18 @@ const Habitos = (() => {
     return `<section class="section"><div class="section-head"><h2>${titulo}</h2>${conEnlace ? '<button class="btn sm ghost" data-act="tab" data-t="habitos">Ver tu plan ›</button>' : ''}</div><div class="card stack" style="gap:0">${sel}${act.map(h => filaMarca(h, regs, dia)).join('')}</div>
       ${alerta ? `<p class="small hb-animo">Un día suelto no estropea nada. Hoy, aunque sea, la versión mínima: <b>${esc(alerta[0].minimo || alerta[0].titulo)}</b>.</p>` : ''}</section>`;
   }
-  function tarjetaHoy() {
+  /* Dentro del «Registro del día»: el hábito que está instalando, para el día elegido (también días anteriores de la semana) */
+  function enRegistro(dia) {
     if (S.d?.habErr) return '';
-    if (mios().length) return bloqueHoy('Tus hábitos de hoy', true);
+    const act = mios().filter(h => h.estado === 'instalacion' && h.inicio && h.inicio <= dia), regs = misReg();
+    if (!act.length) return '';
+    const alerta = dia === hoyISO() && act.map(h => [h, stats(h, regs)]).find(([, s]) => s?.dosSeguidos);
+    return `<div class="stack reg-hab" style="gap:0"><div class="row"><span class="small grow"><b>${act.length === 1 ? 'Tu hábito' : 'Tus hábitos'}</b> <span class="muted">· se guarda al tocar</span></span><button type="button" class="linkbtn small" data-act="tab" data-t="habitos">Ver tu plan ›</button></div>${act.map(h => filaMarca(h, regs, dia)).join('')}
+      ${alerta ? `<p class="small hb-animo">Un día suelto no estropea nada. Hoy, aunque sea, la versión mínima: <b>${esc(alerta[0].minimo || alerta[0].titulo)}</b>.</p>` : ''}</div>`;
+  }
+  function tarjetaHoy(integrado) {
+    if (S.d?.habErr) return '';
+    if (mios().length) return integrado ? '' : bloqueHoy('Tus hábitos de hoy', true);
     if (!miTemp()) return '';
     return `<section class="section"><div class="card hb-sig stack"><div class="row"><div class="ico gold">${svg('habitos')}</div><div class="grow"><b>Genera tu plan de hábitos</b><div class="small muted">Con tu perfil te propongo por dónde empezar: un hábito pequeño cada dos semanas.</div></div></div><button class="btn full" data-act="hbGenerar">Generar mi plan</button></div></section>`;
   }
@@ -550,5 +559,5 @@ const Habitos = (() => {
   });
 
   const aislar = fn => (...args) => { try { return fn(...args); } catch (err) { console.error(err); return `<section class="section"><div class="card small muted">No se han podido mostrar los hábitos. Mándale a Jesús este mensaje: ${esc(String(err && err.message || err).slice(0, 160))}</div></section>`; } };
-  return { vista: aislar(vista), tarjetaHoy: aislar(tarjetaHoy), ctaInforme: aislar(ctaInforme), vCoach: aislar(vCoach), resumenCoach: aislar(resumenCoach), cargar, cargarCoach, cargarFicha, contexto, proponer, ordenar, filasPlan, stats, bloque, siguiente, CAT };
+  return { vista: aislar(vista), tarjetaHoy: aislar(tarjetaHoy), enRegistro: aislar(enRegistro), ctaInforme: aislar(ctaInforme), vCoach: aislar(vCoach), resumenCoach: aislar(resumenCoach), cargar, cargarCoach, cargarFicha, contexto, proponer, ordenar, filasPlan, stats, bloque, siguiente, CAT };
 })();
