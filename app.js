@@ -528,11 +528,7 @@ function vHoy() {
   ${vProcesoGlobal(s)}
   <section class="section"><h2>Lo que toca hoy</h2><div class="card">${toca}</div></section>
   ${s.modulo_futbol ? vSemanaFutbol(ini, w, p) : `${vRegistroDia(s)}
-  <section class="section"><div class="section-head"><h2>Últimos 7 días</h2><span class="small muted">${esc(fCorta(ini))} – ${esc(fCorta(hoy))}</span></div><div class="card stack" style="gap:18px">
-    ${(s.modulo_entreno ?? true) ? `<div class="stack" style="gap:8px"><div class="row"><span class="grow small">Entrenamientos</span><b class="num" style="font-family:var(--display);font-size:20px">${w.entrenos}${p?.dias_semana ? ' / ' + p.dias_semana : ''}</b></div>${tira(ini, x => w.diasEntreno.has(x) ? 'ok' : '')}</div>` : ''}
-    ${s.modulo_nutricion ? vBarraIngestas(S.d.diario, s) : ''}
-    <div class="stack" style="gap:8px"><div class="row"><span class="grow small">Pasos (media · objetivo ${fmtNum(objPasos(s), 0)})</span><b class="num" style="font-family:var(--display);font-size:20px;color:${w.pasosMedia == null ? 'inherit' : w.pasosMedia >= objPasos(s) ? 'var(--ok)' : 'var(--warn)'}">${w.pasosMedia == null ? '—' : fmtNum(w.pasosMedia, 0)}</b></div>${tira(ini, x => w.diasPasos.has(x) ? 'ok' : '')}</div>
-  </div></section>`}
+  `}
   ${vPresenciales(S.d.servicio, S.d.presenciales, false)}
   `;
 }
@@ -1170,18 +1166,25 @@ function formObjetivoComp() {
     cerrarSheet(); toast('Objetivo quitado'); await abrirFicha(f.id);
   });
 }
+/* Últimos 7 días: entrenamientos, alimentación y pasos (antes en Hoy; ahora en Progreso) */
+function vUltimos7() {
+  const s = S.d.servicio || {}, p = S.d.programa, hoy = hoyISO(), ini = sumaDias(hoy, -6), w = semana(ini);
+  return `  <section class="section"><div class="section-head"><h2>Últimos 7 días</h2><span class="small muted">${esc(fCorta(ini))} – ${esc(fCorta(hoy))}</span></div><div class="card stack" style="gap:18px">
+    ${(s.modulo_entreno ?? true) ? `<div class="stack" style="gap:8px"><div class="row"><span class="grow small">Entrenamientos</span><b class="num" style="font-family:var(--display);font-size:20px">${w.entrenos}${p?.dias_semana ? ' / ' + p.dias_semana : ''}</b></div>${tira(ini, x => w.diasEntreno.has(x) ? 'ok' : '')}</div>` : ''}
+    ${s.modulo_nutricion ? vBarraIngestas(S.d.diario, s) : ''}
+    <div class="stack" style="gap:8px"><div class="row"><span class="grow small">Pasos (media · objetivo ${fmtNum(objPasos(s), 0)})</span><b class="num" style="font-family:var(--display);font-size:20px;color:${w.pasosMedia == null ? 'inherit' : w.pasosMedia >= objPasos(s) ? 'var(--ok)' : 'var(--warn)'}">${w.pasosMedia == null ? '—' : fmtNum(w.pasosMedia, 0)}</b></div>${tira(ini, x => w.diasPasos.has(x) ? 'ok' : '')}</div>
+  </div></section>`;
+}
 function vProgreso() {
   const med = S.d.mediciones;
   const campos = [['peso', 'Peso', ' kg', 'var(--blue)'], ['grasa_pct', '% de grasa', ' %', 'var(--gold)'], ['cintura', 'Cintura', ' cm', 'var(--ink)'], ['cadera', 'Cadera', ' cm', 'var(--blue)'], ['abd_bajo', 'Abdomen bajo', ' cm', 'var(--ink)']];
   const k = c => { const p = serie(med, c), dl = delta(p); return dl == null ? '—' : (dl > 0 ? '+' : '') + fmtNum(dl); };
-  const semanas = [...Array(8)].map((_, i) => lunesDe(sumaDias(hoyISO(), -7 * (7 - i))));
-  const dpwS = l => dpwEn(S.d.uid, l, (S.d.programaBase || S.d.programa)?.dias_semana);
-  const porSem = semanas.map(l => semana(l).entrenos), maxS = Math.max(1, ...semanas.map(dpwS), ...porSem);
   return `<section class="stack"><span class="eyebrow">Tu evolución</span><h1>Progreso</h1><button class="btn" data-act="misMedidas" style="align-self:flex-start">＋ Añadir mis medidas</button></section>
   ${objetivoDe(S.d.ruta) ? `<section class="section"><div class="card stack"><span class="eyebrow">Tu objetivo</span><div class="small">${esc(objetivoDe(S.d.ruta))}</div></div></section>` : ''}
   ${med.length ? `<section class="section"><div class="kpis"><div class="kpi"><div class="v num">${k('peso')}</div><div class="l">kg de peso</div></div><div class="kpi"><div class="v num">${k('grasa_pct')}</div><div class="l">% de grasa</div></div><div class="kpi"><div class="v num">${k('cintura')}</div><div class="l">cm de cintura</div></div></div><p class="small muted">Cambio desde tu primera medición (${esc(fCorta(med[0].fecha))} ${fecha(med[0].fecha).getFullYear()}).</p></section>` : ''}
   <section class="section">${vGraficaComp(med, S.perfil, S.d.medObj) || '<div class="card empty">Aún no hay mediciones. Jesús las añadirá en tu próximo control mensual.</div>'}${vObjetivoComp(S.d.medObj, med, false)}
-  <div class="card stack chart"><h3>Entrenamientos por semana</h3><svg viewBox="0 0 320 110" role="img" aria-label="Entrenamientos por semana">${porSem.map((v, i) => { const bw = 304 / 8, h = v / maxS * 76; return `<rect x="${8 + i * bw + 6}" y="${86 - h}" width="${bw - 12}" height="${Math.max(h, 1)}" rx="4" fill="${v >= (dpwS(semanas[i]) || 99) ? 'var(--ok)' : v ? 'var(--blue)' : 'var(--line)'}"/><text x="${8 + i * bw + bw / 2}" y="${82 - h}" fill="var(--fg)" font-size="11" text-anchor="middle">${v || ''}</text><text x="${8 + i * bw + bw / 2}" y="104" fill="var(--muted)" font-size="10" text-anchor="middle">${esc(fecha(semanas[i]).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric' }))}</text>`; }).join('')}</svg></div></section>
+  </section>
+  ${vUltimos7()}
   ${med.length ? `<section class="section"><h2>Mediciones</h2><div class="card tbl"><table><thead><tr><th>Fecha</th><th>Peso</th><th>% grasa</th><th>Cintura</th><th>Cadera</th></tr></thead><tbody>${med.slice().reverse().map(m => `<tr><td>${esc(fCorta(m.fecha))} ${String(fecha(m.fecha).getFullYear()).slice(2)}</td><td class="num">${fmtNum(m.peso)}</td><td class="num">${fmtNum(m.grasa_pct)}</td><td class="num">${fmtNum(m.cintura)}</td><td class="num">${fmtNum(m.cadera)}</td></tr>`).join('')}</tbody></table></div></section>` : ''}
   ${vTestsProgreso()}`;
 }
@@ -3128,20 +3131,46 @@ function vPrueba(p, lista, val, coach) {
     ${p.foco ? `<div class="aprox stack" style="gap:4px"><span class="eyebrow">Foco de trabajo</span><div class="small pre">${esc(p.foco)}</div></div>` : ''}
     ${p.protocolo ? `<details class="como"><summary class="small"><b>Cómo se hace la prueba</b></summary><div class="small pre muted" style="margin-top:8px">${esc(p.protocolo)}</div></details>` : ''}
     ${p.video_url ? `<a class="btn sm" style="align-self:flex-start" href="${esc(p.video_url)}" target="_blank" rel="noopener">▶ Vídeo</a>` : ''}
-    ${coach ? `<div class="row" style="gap:8px"><button class="btn sm" data-act="editarPrueba" data-id="${p.id}">✎ Editar prueba</button></div>` : ''}
+    ${coach ? `<div class="row" style="gap:8px"><button class="btn sm" data-act="editarPrueba" data-id="${p.id}">✎ Editar prueba</button></div>` : !S.obj && S.d && p.tipo !== 'fc' ? `<button class="btn sm ghost" data-act="nuevoResultado" data-id="${p.id}" style="align-self:flex-start">＋ Añadir un nuevo resultado</button>` : ''}
     </div></details>`;
 }
 function vInforme(val, lista, coach) {
-  return `<div class="card hero stack"><span class="eyebrow">${esc(fLarga(val.fecha))} ${fecha(val.fecha).getFullYear()}</span><h2 style="color:#fff">${esc(val.nombre)}</h2>
+  return `<div class="card hero stack"><span class="eyebrow">${esc(fLarga(val.fecha))} ${fecha(val.fecha).getFullYear()}${val.origen === 'alumno' ? ' · registrado por el alumno' : ''}</span><h2 style="color:#fff">${esc(val.nombre)}</h2>
       ${val.resumen ? `<div class="stack" style="gap:6px;border-top:1px solid rgba(255,255,255,.14);padding-top:12px"><span class="eyebrow">Informe · valoración de todo el contexto</span><div class="small pre">${esc(val.resumen)}</div></div>` : `<div class="small muted">${coach ? 'Escribe aquí el informe general con "Editar informe".' : 'Jesús añadirá aquí el informe de la valoración.'}</div>`}
       <div class="row" style="gap:8px;flex-wrap:wrap">${coach ? `<button class="btn sm gold" data-act="editarValoracion" data-id="${val.id}">✎ Editar informe</button><button class="btn sm ghost" data-act="nuevaPrueba" data-id="${val.id}" style="background:#fff;color:#0B0B0C">＋ Añadir prueba</button>` : ''}<button class="btn sm ghost" data-act="pdfValoracion" data-id="${val.id}" style="background:#fff;color:#0B0B0C">⬇ Descargar informe en PDF</button></div></div>
     <h2 style="margin-top:6px">Pruebas</h2>
     ${(val.pruebas || []).map(p => vPrueba(p, lista, val, coach)).join('') || '<div class="card empty">Aún no hay pruebas en esta valoración.</div>'}`;
 }
+/* El alumno añade un resultado nuevo de una prueba (queda como un registro suyo; solo el coach edita o borra) */
+function formResultado(pid) {
+  const p = (S.d.valoraciones || []).flatMap(v => v.pruebas || []).find(x => x.id === pid); if (!p) return;
+  const ds = (p.datos || []).filter(x => x.nombre), di = p.tipo === 'descompensacion';
+  abrirSheet(`<form class="stack" id="f-res"><h2>Nuevo resultado</h2><p class="small muted">${esc(p.titulo)}. Apunta lo que has hecho hoy; se compara con tu resultado anterior.</p>
+    <label class="f">Fecha<input type="date" id="rs-f" value="${hoyISO()}" max="${hoyISO()}"></label>
+    ${ds.map((x, k) => di ? `<div style="display:grid;grid-template-columns:1fr 90px 90px;gap:8px;align-items:end"><span class="small"><b>${esc(x.nombre)}</b></span><label class="f">Dcha.<input type="text" inputmode="decimal" data-rd="${k}"></label><label class="f">Izda.<input type="text" inputmode="decimal" data-ri="${k}"></label></div>`
+      : `<label class="f">${esc(x.nombre)}${x.valor ? ` <span class="muted">(antes ${esc(x.valor)})</span>` : ''}<input type="text" data-rv="${k}" placeholder="Déjalo vacío si no lo has hecho"></label>`).join('')}
+    <p class="small" id="rs-err" style="color:var(--bad)"></p>
+    <button class="btn full" type="submit">Guardar resultado</button></form>`);
+  $('#f-res').addEventListener('submit', async e => {
+    e.preventDefault();
+    const bt = $('#f-res [type=submit]'); if (bt.disabled) return;
+    const v = sel => (document.querySelector(sel)?.value || '').trim();
+    const datos = ds.map((x, k) => di ? { nombre: x.nombre, d: v(`[data-rd="${k}"]`), i: v(`[data-ri="${k}"]`) } : { nombre: x.nombre, valor: v(`[data-rv="${k}"]`) }).filter(x => x.valor || x.d || x.i);
+    if (!datos.some(x => x.valor || x.d || x.i)) return $('#rs-err').textContent = 'Apunta al menos un resultado.';
+    bt.disabled = true; bt.textContent = 'Guardando…';
+    try {
+      const { data: val, error } = await sb.from('valoraciones').insert({ alumno_id: S.user.id, nombre: p.titulo, fecha: $('#rs-f').value || hoyISO(), resumen: null, origen: 'alumno' }).select().single(); if (error) throw error;
+      const { error: e2 } = await sb.from('pruebas').insert({ valoracion_id: val.id, alumno_id: S.user.id, orden: 0, tipo: p.tipo, titulo: p.titulo, protocolo: p.protocolo || null, video_url: p.video_url || null, datos }); if (e2) throw e2;
+      const r = await sb.from('valoraciones').select('*,pruebas(*)').eq('alumno_id', S.user.id).order('fecha', { ascending: false });
+      S.d.valoraciones = ordenarValoraciones(r.data || []); S.valSel = val.id;
+      cerrarSheet(); toast('Resultado guardado'); render();
+    } catch (err) { bt.disabled = false; bt.textContent = 'Guardar resultado'; fallo(err, /origen|policy|row-level/i.test(err.message || '') ? 'Falta ejecutar el Bloque 35 en Supabase.' : 'No se ha podido guardar.'); }
+  });
+}
 function vTests() {
   const l = S.d.valoraciones || [];
   if (!l.length) return `<section class="stack"><span class="eyebrow">Control y evolución</span><h1>Tests</h1></section>${Temperamento.seccionTests()}<div class="section card empty">Al empezar tu proceso Jesús te hará el test inicial. Aquí verás tu informe y el resultado de cada prueba.</div>`;
-  const sel = l.find(v => v.id === S.valSel) || l[0];
+  const sel = l.find(v => v.id === S.valSel) || l.find(v => v.origen !== 'alumno') || l[0];
   return `<section class="stack"><span class="eyebrow">Control y evolución</span><h1>Tests</h1>
     ${l.length > 1 ? `<div class="chips" style="gap:6px">${l.map(v => `<button class="pill ${v.id === sel.id ? 'blue' : ''}" data-act="verValoracion" data-id="${v.id}">${esc(v.nombre)} · ${esc(fCorta(v.fecha))}</button>`).join('')}</div>` : ''}</section>
   ${Temperamento.seccionTests()}<section class="section">${vInforme(sel, l, false)}</section>`;
@@ -3151,7 +3180,7 @@ function vTests() {
 function vTestsProgreso() {
   const l = S.d.valoraciones || [];
   if (!l.length) return `<section class="section"><h2>Tests</h2><div class="card empty">Al empezar tu proceso Jesús te hará el test inicial. Aquí verás tu informe y el resultado de cada prueba.</div></section>`;
-  const sel = l.find(v => v.id === S.valSel) || l[0];
+  const sel = l.find(v => v.id === S.valSel) || l.find(v => v.origen !== 'alumno') || l[0];
   return `<section class="section"><div class="section-head"><h2>Tests</h2></div>${l.length > 1 ? `<div class="chips" style="gap:6px;margin-bottom:10px">${l.map(v => `<button class="pill ${v.id === sel.id ? 'blue' : ''}" data-act="verValoracion" data-id="${v.id}">${esc(v.nombre)} · ${esc(fCorta(v.fecha))}</button>`).join('')}</div>` : ''}${vInforme(sel, l, false)}</section>`;
 }
 
@@ -3159,7 +3188,7 @@ function vTestsProgreso() {
 function vTestsFicha(f) {
   const l = f.val || [];
   return `<section class="section"><div class="section-head"><h2>Tests y valoraciones</h2><button class="btn sm" data-act="nuevaValoracion">＋ Nuevo test</button></div>
-    <div class="card">${l.map(v => `<div class="line" data-act="abrirValoracion" data-id="${v.id}" style="cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(v.fecha))}</span><div class="grow"><div class="small"><b>${esc(v.nombre)}</b> · ${(v.pruebas || []).length} pruebas</div>${v.resumen ? `<div class="small muted">${esc(v.resumen.slice(0, 90))}${v.resumen.length > 90 ? '…' : ''}</div>` : ''}</div><span class="small" style="color:var(--blue-text)">Abrir ›</span></div>`).join('') || `<div class="empty">${f.valError ? 'Ejecuta el Bloque 7 en Supabase para activar los tests.' : 'Sin tests todavía. Crea el test inicial con "Nuevo test".'}</div>`}</div></section>`;
+    <div class="card">${l.map(v => `<div class="line" data-act="abrirValoracion" data-id="${v.id}" style="cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(v.fecha))}</span><div class="grow"><div class="small"><b>${esc(v.nombre)}</b> · ${(v.pruebas || []).length} ${(v.pruebas || []).length === 1 ? 'prueba' : 'pruebas'}${v.origen === 'alumno' ? ' <span class="pill blue">Añadido por el alumno</span>' : ''}</div>${v.resumen ? `<div class="small muted">${esc(v.resumen.slice(0, 90))}${v.resumen.length > 90 ? '…' : ''}</div>` : ''}</div><span class="small" style="color:var(--blue-text)">Abrir ›</span></div>`).join('') || `<div class="empty">${f.valError ? 'Ejecuta el Bloque 7 en Supabase para activar los tests.' : 'Sin tests todavía. Crea el test inicial con "Nuevo test".'}</div>`}</div></section>`;
 }
 function vValoracionCoach() {
   const f = S.ficha, val = (f.val || []).find(v => v.id === S.valEd), a = S.c.perfiles.find(p => p.id === f.id) || {};
@@ -3635,6 +3664,7 @@ document.addEventListener('click', async e => {
     case 'nuevaFactura': formFactura(b.dataset.id ? +b.dataset.id : null); break;
     case 'verFactura': verFactura(+b.dataset.id); break;
     case 'cerrarFactura': S.factura = null; render(); break;
+    case 'nuevoResultado': formResultado(+b.dataset.id); break;
     case 'pdfValoracion': await PDF.valoracion(+b.dataset.id, b); break;
     case 'pdfTemp': await PDF.temperamento(b.dataset.n, b); break;
     case 'imprimirFactura': await PDF.factura(S.factura, b); break;
