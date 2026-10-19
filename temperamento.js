@@ -646,7 +646,7 @@ const Temperamento = (() => {
       case 'tpBorrar': abrirSheet(`<div class="stack"><h2>¿Borrar este cuestionario?</h2><p class="small">Se borran sus respuestas y el seguimiento de las 8 semanas. No se puede deshacer.</p><button class="btn full" style="background:var(--bad)" data-act="tpBorrarSi" data-id="${b.dataset.id}">Sí, borrar</button><button class="btn ghost full" data-act="cerrarSheet">Cancelar</button></div>`); break;
       case 'tpSenalesAvisar': { const t = (S.c.temperamentos || []).find(x => x.id === +b.dataset.id); if (!t) break; const sgN = { ...(t.seguimiento || {}) }; delete sgN.senales_vistas; if (await guardarSeguimiento(t, sgN)) { toast('Volverá a salir como alerta'); render(); } break; }
       case 'tpBorrarSi': cerrarSheet(); await borrar(+b.dataset.id); break;
-      case 'tpFicha': { const id = b.dataset.id; S.tVer = null; S.tSel = null; await abrirFicha(id); await abrirSub('temperamento'); break; }
+      case 'tpFicha': { const id = b.dataset.id; S.tVer = null; S.tSel = null; await abrirFicha(id); break; }
     }
   });
 

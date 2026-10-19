@@ -549,7 +549,7 @@ const Habitos = (() => {
       case 'hbGenerarCoach': await generarCoach(); break;
       case 'hbPropio': formPropio(); break;
       case 'hbMover': await mover(id, +b.dataset.dir); break;
-      case 'hbFicha': await abrirFicha(b.dataset.id); await abrirSub('habitos'); break;
+      case 'hbFicha': await abrirFicha(b.dataset.id); break;
     }
   });
   document.addEventListener('change', e => {

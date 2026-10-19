@@ -2558,24 +2558,26 @@ function formEjercicio(id) {
     try {
       const cambios = { musculo: $('#e-mus').value.trim() || null, descripcion: $('#e-desc').value.trim() || null, video_url: $('#e-vid').value.trim() || null };
       const file = $('#e-foto').files[0];
-      if (file) {
-        const blob = await reducirImagen(file, 1000), ruta = `ej-${x.id}-${Date.now()}.jpg`;
-        const up = await sb.storage.from('ejercicios').upload(ruta, blob, { contentType: 'image/jpeg', upsert: true });
-        if (up.error) throw up.error;
-        cambios.imagen_url = sb.storage.from('ejercicios').getPublicUrl(ruta).data.publicUrl;
-      }
+      if (file) cambios.imagen_url = await subirImagenEj(file, `ej-${x.id}`);
       const mfile = $('#e-mfoto').files[0];
-      if (mfile) {
-        const blob = await reducirImagen(mfile, 900), ruta = `mus-${x.id}-${Date.now()}.jpg`;
-        const up = await sb.storage.from('ejercicios').upload(ruta, blob, { contentType: 'image/jpeg', upsert: true });
-        if (up.error) throw up.error;
-        cambios.musculo_img_url = sb.storage.from('ejercicios').getPublicUrl(ruta).data.publicUrl;
-      }
+      if (mfile) cambios.musculo_img_url = await subirImagenEj(mfile, `mus-${x.id}`, 900);
       const { error } = await sb.from('ejercicios').update(cambios).eq('id', x.id); if (error) throw error;
       Object.assign(x, cambios); cerrarSheet(); toast('Ejercicio guardado'); await cargarAlumno(S.user.id); render();
-    } catch (err) { btn.disabled = false; btn.textContent = 'Guardar'; $('#e-err').textContent = 'No se ha podido guardar. Si subías una foto, prueba con otra o revisa la conexión.'; console.error(err); }
+    } catch (err) { btn.disabled = false; btn.textContent = 'Guardar'; $('#e-err').textContent = motivoImg(err); console.error(err); }
   });
 }
+/* Sube una imagen al bucket público «ejercicios» y devuelve su URL. Si el navegador no puede reducirla (HEIC…), sube el original */
+async function subirImagenEj(file, prefijo, max = 1000) {
+  let blob, ext = 'jpg', tipo = 'image/jpeg';
+  try { blob = await reducirImagen(file, max); }
+  catch (err) { blob = file; tipo = file.type || 'image/jpeg'; ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'; }
+  const ruta = `${prefijo}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.${ext}`;
+  const up = await sb.storage.from('ejercicios').upload(ruta, blob, { contentType: tipo, upsert: true });
+  if (up.error) throw up.error;
+  return sb.storage.from('ejercicios').getPublicUrl(ruta).data.publicUrl;
+}
+const motivoImg = err => /row-level|security|unauthori|not allowed|403|bucket|not found/i.test(err?.message || err?.error || '')
+  ? 'Supabase no deja guardar imágenes de ejercicios: ejecuta el Bloque 38.' : `No se ha podido subir la imagen${err?.message ? ' (' + err.message + ')' : ''}. Prueba con otra foto o revisa la conexión.`;
 function reducirImagen(file, max) {
   return new Promise((ok, ko) => {
     const img = new Image(), url = URL.createObjectURL(file);
@@ -3368,8 +3370,9 @@ function vEditor() {
   ${p ? p.dias.map(d => `<section class="section"><div class="card stack">
     <div class="row"><div class="grow"><span class="eyebrow">Día ${d.numero}${d.titulo ? ' · ' + esc(d.nombre) : ''}</span><h2>${esc(nomDia(d))}</h2><div class="small muted">${esc([d.foco, d.volumen && 'vol. ' + d.volumen, d.intensidad && 'int. ' + d.intensidad].filter(Boolean).join(' · '))}</div></div><button class="btn sm ghost" data-act="edDia" data-id="${d.id}">Editar día</button></div>
     ${d.bloques_sesion.map(b => `<div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:10px">
-      <div class="row"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}</h3><button class="btn sm ghost" data-act="edBloque" data-id="${b.id}">✎ Editar bloque</button></div>
-      ${b.tipo === 'fuerza' ? `${b.ejercicios_sesion.map((e, i) => `<div class="ed-ej"><div class="grow" data-act="edEj" data-id="${e.id}" style="cursor:pointer;min-width:0"><b class="small">${i + 1}. ${esc(e.ejercicios?.nombre || '')}</b><div class="small muted">${resumen(e)}</div></div><button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="-1" aria-label="Subir" ${i === 0 ? 'disabled' : ''}>↑</button><button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="1" aria-label="Bajar" ${i === b.ejercicios_sesion.length - 1 ? 'disabled' : ''}>↓</button></div>`).join('')}
+      <div class="row" style="flex-wrap:wrap"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}</h3>${(() => { const k = d.bloques_sesion.indexOf(b), pr = d.bloques_sesion[k - 1]; return b.tipo === 'fuerza' && pr?.tipo === 'fuerza' ? `<button class="btn sm ghost" data-act="unirBloque" data-id="${b.id}" title="Pasa sus ejercicios al bloque ${esc(pr.letra)}">⤒ Unir con ${esc(pr.letra)}</button>` : ''; })()}<button class="btn sm ghost" data-act="edBloque" data-id="${b.id}">✎ Editar bloque</button></div>
+      ${b.agrupacion ? `<div class="small muted">${esc(b.agrupacion)}</div>` : ''}
+      ${b.tipo === 'fuerza' ? `${b.ejercicios_sesion.map((e, i) => `<div class="ed-ej">${(() => { const u = (S.c.ejercicios || []).find(x => x.id === e.ejercicio_id)?.imagen_url; return u ? `<img class="ed-mini" src="${esc(u)}" alt="" loading="lazy" data-act="edEj" data-id="${e.id}">` : `<span class="ed-mini ed-sin" data-act="edEj" data-id="${e.id}" title="Sin foto: toca para añadirla">📷</span>`; })()}<div class="grow" data-act="edEj" data-id="${e.id}" style="cursor:pointer;min-width:0"><b class="small">${i + 1}. ${esc(e.ejercicios?.nombre || '')}</b><div class="small muted">${resumen(e)}</div></div>${i > 0 ? `<button class="mini" data-act="separarEj" data-id="${e.id}" aria-label="Separar en un bloque nuevo desde este ejercicio" title="Separar en un bloque nuevo desde aquí">✂</button>` : ''}<button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="-1" aria-label="Subir" ${i === 0 ? 'disabled' : ''}>↑</button><button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="1" aria-label="Bajar" ${i === b.ejercicios_sesion.length - 1 ? 'disabled' : ''}>↓</button></div>`).join('')}
         <button class="btn sm ghost" data-act="edEj" data-bloque="${b.id}" style="align-self:flex-start">+ Añadir ejercicio</button>` : `<div class="small muted">${esc(b.tipo === 'cardio' ? [b.duracion, b.fc_objetivo, b.maquina].filter(Boolean).join(' · ') : 'Movilidad')}</div>`}
     </div>`).join('')}
     <button class="btn sm ghost" data-act="edBloque" data-dia="${d.id}" style="align-self:flex-start">+ Añadir bloque</button>
@@ -3432,22 +3435,20 @@ ${editorEsFutbol() || b?.momento ? `    <label class="f">Momento (día de partid
     <label class="f">Vídeo (movilidad)<input type="text" id="b-vi" value="${esc(b?.video_url || '')}" placeholder="https://youtu.be/…"></label>
     ${b?.imagen_url ? `<img src="${esc(b.imagen_url)}" alt="" style="width:100%;max-height:180px;object-fit:contain;border-radius:12px;background:var(--surface-2)">` : ''}
     <label class="f">Imagen ilustrativa (cardio y movilidad)<input type="file" id="b-img" accept="image/*"></label>
-    <button class="btn full" type="submit">Guardar</button>${b ? '<button class="btn ghost full" type="button" id="b-del" style="color:var(--bad)">Eliminar bloque</button>' : ''}</form>`);
+    <p class="err" id="b-err"></p><button class="btn full" type="submit" id="b-btn">Guardar</button>${b ? '<button class="btn ghost full" type="button" id="b-del" style="color:var(--bad)">Eliminar bloque</button>' : ''}</form>`);
   $('#f-blq').addEventListener('submit', async e => {
-    e.preventDefault();
+    e.preventDefault(); const btn = $('#b-btn'); btn.disabled = true; btn.textContent = 'Guardando…';
+    const mal = t => { btn.disabled = false; btn.textContent = 'Guardar'; $('#b-err').textContent = t; };
     const v = k => $(k).value.trim() || null;
     const row = { letra: v('#b-l') || sig, nombre: v('#b-n') || 'Bloque', tipo: $('#b-t').value, agrupacion: v('#b-ag'), duracion: v('#b-du'), fc_objetivo: v('#b-fc'), maquina: v('#b-ma'), detalle: v('#b-de'), video_url: v('#b-vi') };
     if ($('#b-mo')?.value || b?.momento) row.momento = $('#b-mo')?.value || null;
     const file = $('#b-img').files[0];
     if (file) {
-      toast('Subiendo imagen…');
-      const blob = await reducirImagen(file, 1000), ruta = `bloque-${Date.now()}.jpg`;
-      const up = await sb.storage.from('ejercicios').upload(ruta, blob, { contentType: 'image/jpeg', upsert: true });
-      if (up.error) return fallo(up.error, 'No se ha podido subir la imagen.');
-      row.imagen_url = sb.storage.from('ejercicios').getPublicUrl(ruta).data.publicUrl;
+      btn.textContent = 'Subiendo imagen…';
+      try { row.imagen_url = await subirImagenEj(file, 'bloque'); } catch (err) { console.error(err); return mal(motivoImg(err)); }
     }
     const { error } = b ? await sb.from('bloques_sesion').update(row).eq('id', b.id) : await sb.from('bloques_sesion').insert({ ...row, dia_id: dia.id });
-    if (error) return fallo(error, /imagen_url/.test(error.message || '') ? 'Falta ejecutar el Bloque 7 en Supabase para guardar imágenes de bloque.' : /momento/.test(error.message || '') ? 'Falta ejecutar el Bloque 24 en Supabase.' : undefined);
+    if (error) { console.error(error); return mal(/imagen_url/.test(error.message || '') ? 'Falta ejecutar el Bloque 38 en Supabase para guardar imágenes de bloque.' : /momento/.test(error.message || '') ? 'Falta ejecutar el Bloque 24 en Supabase.' : 'No se ha podido guardar: ' + (error.message || 'revisa la conexión')); }
     cerrarSheet(); toast('Bloque guardado'); refrescarEditor();
   });
   $('#b-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez: se borrará el bloque y sus ejercicios'; return; } const { error } = await sb.from('bloques_sesion').delete().eq('id', b.id); if (error) return fallo(error, 'No se puede borrar: ese bloque ya tiene series registradas.'); cerrarSheet(); toast('Bloque eliminado'); refrescarEditor(); });
@@ -3467,10 +3468,20 @@ function formEjSesion(id, bloqueId) {
   const p = S.editor.prog, todos = p.dias.flatMap(d => d.bloques_sesion), blq = todos.find(b => b.id === bloqueId) || todos.find(b => b.ejercicios_sesion.some(x => x.id === id));
   const e = id ? blq.ejercicios_sesion.find(x => x.id === id) : null;
   const pauta = e?.pauta?.length ? e.pauta : [{ s: 3, r: '10', rir: 2, kg: '', d: 90 }];
-  const opts = S.c.ejercicios.map(x => `<option value="${x.id}" ${e?.ejercicio_id === x.id ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('');
+  const lib = S.c.ejercicios.slice().sort((x, y) => x.nombre.localeCompare(y.nombre, 'es'));
+  const opts = q => { const n = normaliza(q || ''); return lib.filter(x => !n || normaliza(x.nombre).includes(n)).map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join(''); };
+  const dia = p.dias.find(d => d.bloques_sesion.includes(blq)), hermanos = (dia?.bloques_sesion || []).filter(x => x.tipo === 'fuerza');
+  const st = { foto: null, nfoto: null };
   abrirSheet(`<form class="stack" id="f-ejs"><h2>${e ? 'Editar ejercicio' : 'Añadir ejercicio'}</h2>
-    <label class="f">Ejercicio<select id="es-ej"><option value="">— Elige de tu biblioteca —</option>${opts}<option value="nuevo">+ Ejercicio nuevo…</option></select></label>
-    <label class="f" id="es-nuevo-w" hidden>Nombre del ejercicio nuevo<input type="text" id="es-nuevo"></label>
+    <div class="stack" style="gap:6px"><span class="small muted">Ejercicio</span><input type="search" id="es-bus" placeholder="Buscar en tu biblioteca…" autocomplete="off">
+      <select id="es-ej" aria-label="Ejercicio"><option value="">— Elige de tu biblioteca —</option><option value="nuevo">＋ Crear un ejercicio nuevo…</option>${opts('')}</select></div>
+    <div id="es-prev"></div>
+    <div class="stack es-nuevo" id="es-nuevo-w" hidden><b class="small">Ejercicio nuevo · se guarda también en tu pestaña Ejercicios</b>
+      <label class="f">Nombre<input type="text" id="es-nuevo" placeholder="Ej. Hip thrust con barra"></label>
+      <label class="f">Músculo que se trabaja<input type="text" id="es-nmus" placeholder="Ej. Glúteo mayor"></label>
+      <label class="f">Foto (opcional)<input type="file" id="es-nfoto" accept="image/*"></label><div id="es-nprev"></div>
+      <label class="f">Vídeo (opcional)<input type="text" id="es-nvid" inputmode="url" placeholder="https://youtu.be/…"></label></div>
+    ${hermanos.length ? `<label class="f">Bloque<select id="es-blq">${hermanos.map(x => `<option value="${x.id}" ${x.id === blq.id ? 'selected' : ''}>${esc(x.letra)} · ${esc(x.nombre)}</option>`).join('')}<option value="nuevo">＋ En un bloque nuevo, después del ${esc(blq.letra)}</option></select></label>` : ''}
     <div class="stack" style="gap:8px"><span class="small muted">Pauta serie a serie. Usa "Tramo sin parar" para dropsets, clusters o rest-pause.</span><div id="es-tramos" class="stack" style="gap:10px">${pauta.map((t, i) => filaTramo(t, i === 0)).join('')}</div><button type="button" class="btn sm ghost" id="es-add" style="align-self:flex-start">+ Añadir fila</button></div>
     <label class="f">Método<select id="es-met"><option value="">Sin método</option>${S.editor.metodos.map(m => `<option value="${m.id}" ${e?.metodo_id === m.id ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('')}</select></label>
     <label class="f">Ajustes a su medida<input type="text" id="es-aj" value="${esc(e?.ajustes || '')}" placeholder="Ej. Silla: 5 · pies altos"></label>
@@ -3478,7 +3489,23 @@ function formEjSesion(id, bloqueId) {
     <label class="row small"><input type="checkbox" id="es-631" ${e?.aproximacion_631 ? 'checked' : ''} style="width:20px;height:20px"> Aproximación 6·3·1 antes de empezar</label>
     <p class="note">Si pones descanso 0 en la última fila, la app enlaza este ejercicio con el siguiente como superserie.</p>
     <button class="btn full" type="submit">Guardar</button>${e ? '<button class="btn ghost full" type="button" id="es-del" style="color:var(--bad)">Quitar del programa</button>' : ''}</form>`);
-  $('#es-ej').addEventListener('change', ev => { $('#es-nuevo-w').hidden = ev.target.value !== 'nuevo'; });
+  const sel = $('#es-ej');
+  const pintarPrev = () => {
+    const x = lib.find(z => z.id === +sel.value), u = st.foto ? URL.createObjectURL(st.foto) : x?.imagen_url;
+    $('#es-nuevo-w').hidden = sel.value !== 'nuevo';
+    $('#es-prev').innerHTML = x ? `<div class="es-prev">${u ? `<img src="${esc(u)}" alt="${esc(x.nombre)}" id="es-img" title="Toca para ampliar">` : `<span class="es-sin">Sin foto</span>`}<div class="grow stack" style="gap:4px;min-width:0"><b class="small">${esc(x.nombre)}</b>${x.musculo ? `<span class="small muted">${esc(x.musculo)}</span>` : ''}<label class="btn sm ghost" style="align-self:flex-start"><input type="file" id="es-foto" accept="image/*" hidden>📷 ${u ? 'Cambiar foto' : 'Añadir foto'}</label>${st.foto ? '<span class="small" style="color:var(--blue-text)">Se guarda al pulsar Guardar</span>' : ''}</div></div>` : '';
+  };
+  if (e?.ejercicio_id) { if (![...sel.options].some(o => +o.value === e.ejercicio_id)) sel.insertAdjacentHTML('beforeend', `<option value="${e.ejercicio_id}">${esc(e.ejercicios?.nombre || 'Ejercicio')}</option>`); sel.value = String(e.ejercicio_id); }
+  pintarPrev();
+  sel.addEventListener('change', () => { st.foto = null; pintarPrev(); if (sel.value === 'nuevo') { $('#es-nuevo').value = $('#es-bus').value.trim(); $('#es-nuevo').focus(); } });
+  $('#es-bus').addEventListener('input', ev => {
+    const v = sel.value, q = ev.target.value; sel.innerHTML = `<option value="">— ${q ? 'Elige entre los resultados' : 'Elige de tu biblioteca'} —</option><option value="nuevo">＋ Crear ${q ? `«${esc(q)}»` : 'un ejercicio nuevo'}…</option>${opts(q)}`;
+    if (v && v !== 'nuevo' && [...sel.options].some(o => o.value === v)) sel.value = v; else if (sel.options.length === 3) sel.value = sel.options[2].value; else if (v === 'nuevo') sel.value = 'nuevo';
+    pintarPrev();
+  });
+  $('#es-prev').addEventListener('change', ev => { if (ev.target.id === 'es-foto' && ev.target.files[0]) { st.foto = ev.target.files[0]; pintarPrev(); } });
+  $('#es-prev').addEventListener('click', ev => { if (ev.target.id === 'es-img') ev.target.classList.toggle('grande'); });
+  $('#es-nfoto').addEventListener('change', ev => { st.nfoto = ev.target.files[0] || null; $('#es-nprev').innerHTML = st.nfoto ? `<img class="es-nimg" src="${esc(URL.createObjectURL(st.nfoto))}" alt="">` : ''; });
   $('#es-add').addEventListener('click', () => { $('#es-tramos').insertAdjacentHTML('beforeend', filaTramo({ d: 0 }, false)); });
   $('#es-tramos').addEventListener('click', ev => { const q = ev.target.closest('[data-quitar]'); if (q && document.querySelectorAll('#es-tramos [data-tramo]').length > 1) q.closest('[data-tramo]').remove(); });
   $('#f-ejs').addEventListener('submit', async ev => {
@@ -3487,10 +3514,20 @@ function formEjSesion(id, bloqueId) {
       let ejId = $('#es-ej').value;
       if (ejId === 'nuevo') {
         const nombre = $('#es-nuevo').value.trim(); if (!nombre) return toast('Escribe el nombre del ejercicio nuevo');
-        const { data, error } = await sb.from('ejercicios').insert({ nombre }).select().single(); if (error) throw error;
-        S.c.ejercicios.push(data); ejId = data.id;
+        const ya = lib.find(x => normaliza(x.nombre) === normaliza(nombre));
+        if (ya) ejId = ya.id;
+        else {
+          const nuevo = { nombre, musculo: $('#es-nmus').value.trim() || null, video_url: $('#es-nvid').value.trim() || null };
+          const { data, error } = await sb.from('ejercicios').insert(nuevo).select().single(); if (error) throw error;
+          S.c.ejercicios.push(data); S.c.ejercicios.sort((x, y) => x.nombre.localeCompare(y.nombre, 'es')); ejId = data.id;
+          if (st.nfoto) { try { const u = await subirImagenEj(st.nfoto, `ej-${data.id}`); await sb.from('ejercicios').update({ imagen_url: u }).eq('id', data.id); data.imagen_url = u; } catch (err) { console.error(err); toast(motivoImg(err)); } }
+        }
       }
       if (!ejId) return toast('Elige un ejercicio');
+      if (st.foto) { try { const u = await subirImagenEj(st.foto, `ej-${ejId}`); const r = await sb.from('ejercicios').update({ imagen_url: u }).eq('id', +ejId); if (r.error) throw r.error; const x = S.c.ejercicios.find(z => z.id === +ejId); if (x) x.imagen_url = u; } catch (err) { console.error(err); return toast(motivoImg(err)); } }
+      let destino = blq; const vb = $('#es-blq')?.value;
+      if (vb === 'nuevo') destino = await nuevoBloqueTras(dia, blq);
+      else if (vb && +vb !== blq.id) destino = hermanos.find(x => x.id === +vb) || blq;
       const filas = [...document.querySelectorAll('#es-tramos [data-tramo]')].map((f, i) => {
         const g = k => f.querySelector(`[data-k="${k}"]`).value.trim();
         const t = { r: g('r') || '—' };
@@ -3504,12 +3541,53 @@ function formEjSesion(id, bloqueId) {
       const row = { ejercicio_id: +ejId, pauta: filas, series: filas.reduce((t, x) => t + (x.s || 0), 0), repeticiones: filas[0].r, rir: rirNum ?? null,
         peso_ref: filas.find(t => t.kg)?.kg || null, descanso_seg: filas[filas.length - 1].d, metodo_id: numero($('#es-met').value), ajustes: $('#es-aj').value.trim() || null,
         grupo: $('#es-gr').value.trim() || null, aproximacion_631: $('#es-631').checked };
-      const { error } = e ? await sb.from('ejercicios_sesion').update(row).eq('id', e.id) : await sb.from('ejercicios_sesion').insert({ ...row, bloque_id: blq.id, orden: (Math.max(0, ...blq.ejercicios_sesion.map(x => x.orden)) + 1) });
+      if (destino !== blq || !e) { row.bloque_id = destino.id; row.orden = Math.max(0, ...destino.ejercicios_sesion.map(x => x.orden)) + 1; }
+      const { error } = e ? await sb.from('ejercicios_sesion').update(row).eq('id', e.id) : await sb.from('ejercicios_sesion').insert(row);
       if (error) throw error;
       cerrarSheet(); toast('Ejercicio guardado'); refrescarEditor();
     } catch (err) { fallo(err); }
   });
   $('#es-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para quitarlo'; return; } const { error } = await sb.from('ejercicios_sesion').delete().eq('id', e.id); if (error) return fallo(error, 'No se puede quitar: ya tiene series registradas. Puedes cambiarlo por otro ejercicio.'); cerrarSheet(); toast('Ejercicio quitado'); refrescarEditor(); });
+}
+/* Bloques: reordenar letras (A, B, C…), crear uno a continuación, unir con el anterior y separar desde un ejercicio */
+async function reletrar(dia) {
+  const l = dia.bloques_sesion, fin = l.map((_, i) => String.fromCharCode(65 + i)), cambian = l.filter((b, i) => b.letra !== fin[i]);
+  for (const b of cambian) { const r = await sb.from('bloques_sesion').update({ letra: '~' + l.indexOf(b) }).eq('id', b.id); if (r.error) throw r.error; }
+  for (const b of cambian) { const r = await sb.from('bloques_sesion').update({ letra: fin[l.indexOf(b)] }).eq('id', b.id); if (r.error) throw r.error; b.letra = fin[l.indexOf(b)]; }
+}
+async function nuevoBloqueTras(dia, blq) {
+  const fila = { dia_id: dia.id, letra: '~n', nombre: blq.nombre || 'Bloque', tipo: blq.tipo || 'fuerza' };
+  if (blq.momento) fila.momento = blq.momento;
+  const { data, error } = await sb.from('bloques_sesion').insert(fila).select().single(); if (error) throw error;
+  const nuevo = { ...data, ejercicios_sesion: [] };
+  dia.bloques_sesion.splice(dia.bloques_sesion.indexOf(blq) + 1, 0, nuevo);
+  await reletrar(dia);
+  return nuevo;
+}
+async function unirBloque(id) {
+  const dia = S.editor.prog.dias.find(d => d.bloques_sesion.some(b => b.id === id)); if (!dia) return;
+  const k = dia.bloques_sesion.findIndex(b => b.id === id), b = dia.bloques_sesion[k], pr = dia.bloques_sesion[k - 1]; if (!pr) return;
+  if (!confirm(`¿Unir el bloque ${b.letra} con el ${pr.letra}? Sus ${b.ejercicios_sesion.length} ejercicios pasan al final del bloque ${pr.letra}.`)) return;
+  try {
+    let o = Math.max(0, ...pr.ejercicios_sesion.map(x => x.orden));
+    for (const e of b.ejercicios_sesion) { const r = await sb.from('ejercicios_sesion').update({ bloque_id: pr.id, orden: ++o }).eq('id', e.id); if (r.error) throw r.error; }
+    if (b.agrupacion && !pr.agrupacion) await sb.from('bloques_sesion').update({ agrupacion: b.agrupacion }).eq('id', pr.id);
+    const r = await sb.from('bloques_sesion').delete().eq('id', b.id); if (r.error) throw r.error;
+    dia.bloques_sesion.splice(k, 1); await reletrar(dia);
+    toast(`Bloques unidos en el ${pr.letra}`);
+  } catch (err) { fallo(err, 'No se han podido unir los bloques: ' + (err.message || 'revisa la conexión')); }
+  refrescarEditor();
+}
+async function separarEj(id) {
+  const dia = S.editor.prog.dias.find(d => d.bloques_sesion.some(b => b.ejercicios_sesion.some(e => e.id === id))); if (!dia) return;
+  const blq = dia.bloques_sesion.find(b => b.ejercicios_sesion.some(e => e.id === id)), k = blq.ejercicios_sesion.findIndex(e => e.id === id), mover = blq.ejercicios_sesion.slice(k);
+  if (!confirm(`¿Separar ${mover.length === 1 ? 'este ejercicio' : `estos ${mover.length} ejercicios (desde el ${k + 1})`} en un bloque nuevo, después del ${blq.letra}?`)) return;
+  try {
+    const nuevo = await nuevoBloqueTras(dia, blq);
+    for (const [i, e] of mover.entries()) { const r = await sb.from('ejercicios_sesion').update({ bloque_id: nuevo.id, orden: i + 1 }).eq('id', e.id); if (r.error) throw r.error; }
+    toast(`Separado en el bloque ${nuevo.letra}`);
+  } catch (err) { fallo(err, 'No se ha podido separar: ' + (err.message || 'revisa la conexión')); }
+  refrescarEditor();
 }
 async function moverEj(id, dir) {
   const blq = S.editor.prog.dias.flatMap(d => d.bloques_sesion).find(b => b.ejercicios_sesion.some(x => x.id === id));
@@ -3824,6 +3902,8 @@ document.addEventListener('click', async e => {
     case 'edBloque': formBloque(b.dataset.id ? +b.dataset.id : null, b.dataset.dia ? +b.dataset.dia : null); break;
     case 'edEj': formEjSesion(b.dataset.id ? +b.dataset.id : null, b.dataset.bloque ? +b.dataset.bloque : null); break;
     case 'moverEj': await moverEj(+b.dataset.id, +b.dataset.dir); break;
+    case 'unirBloque': await unirBloque(+b.dataset.id); break;
+    case 'separarEj': await separarEj(+b.dataset.id); break;
     case 'nuevoPrograma': formPrograma(); break;
     case 'sinVideo': toast('Jesús todavía no ha subido el vídeo de este ejercicio'); break;
     case 'pagar': await marcarPagado(+b.dataset.id, b); break;
