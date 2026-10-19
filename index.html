@@ -309,6 +309,20 @@ details.plan-ap{border-top:1px solid var(--line);padding:10px 0}details.plan-ap:
 .spark-tip.on{color:var(--fg);font-weight:600}
 
 /* ---------- Perfil de temperamento (temperamento.js) ---------- */
+.tp-mez{display:grid;gap:10px}
+.tp-mz{display:grid;grid-template-columns:96px 1fr 46px;gap:10px;align-items:center;font-size:14px;color:var(--muted)}
+.tp-mz .b{height:10px;border-radius:6px;background:var(--surface-2);overflow:hidden}
+.tp-mz .b i{display:block;height:100%;border-radius:6px;background:#C3CCDA}
+.tp-mz b{text-align:right;font-weight:700}
+.tp-mz.d,.tp-mz.s{color:var(--fg)}.tp-mz.d span:first-child{font-weight:800}
+.tp-mz.d .b i{background:var(--blue)}.tp-mz.s .b i{background:var(--blue);opacity:.45}
+.tp-crh{display:flex;justify-content:space-between;align-items:baseline;margin-top:4px}
+.tp-cre{display:grid;grid-template-columns:1fr 128px;gap:12px;font-size:11px;color:var(--muted);margin-bottom:-4px}
+.tp-cre .ext{display:flex;justify-content:space-between}
+.tp-cr{display:grid;grid-template-columns:1fr 128px;gap:12px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.tp-cr .eje{position:relative;height:10px;border-radius:6px;background:var(--surface-2)}
+.tp-cr .eje::after{content:'';position:absolute;left:50%;top:-4px;bottom:-4px;width:1.5px;margin-left:-.75px;background:var(--muted);opacity:.6}
+.tp-cr .eje i{position:absolute;top:0;bottom:0;border-radius:6px;background:var(--blue)}
 .tp-cab{display:flex;flex-direction:column;gap:10px;padding:2px 0 4px}
 .tp-paso{margin-top:18px}
 .tp-q{font-size:21px;font-weight:700;line-height:1.3;text-wrap:balance}

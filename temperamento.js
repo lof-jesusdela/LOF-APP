@@ -124,7 +124,8 @@ const Temperamento = (() => {
      Dominante: el cuadrante de los signos de las dos sumas. Si una suma da 0 decide la pregunta 1 (calor) o la 12 (humedad);
      si esa también es B, la primera respuesta distinta de B del mismo eje; si todo el eje es B, no hay datos: confianza baja.
      Secundario: se cambia el signo del eje más flojo; si empatan, el de la humedad (en la tradición el calor es la cualidad activa).
-     Confianza: alta si los dos ejes llegan a ±3, media si llega uno y baja si ninguno; con confianza baja no hay etiqueta. */
+     Confianza: alta si los dos ejes llegan a ±3, media si llega uno y baja si ninguno.
+     El perfil que se muestra (dominante y subdominante con su porcentaje) lo da perfilDe, más abajo. */
   const val = x => x === 'A' ? 1 : x === 'C' ? -1 : 0;
   const cuadrante = (c, h) => c > 0 ? (h > 0 ? 'sanguineo' : 'colerico') : (h > 0 ? 'flematico' : 'melancolico');
   function eje(a, ini, clave) {
@@ -144,11 +145,47 @@ const Temperamento = (() => {
     return { calor: c.suma, humedad: h.suma, confianza, tendencia, dominante: etiqueta ? tendencia : null, secundario: etiqueta ? secundario : null, flojo, desempate: { calor: c.por, humedad: h.por }, signos: { calor: c.s, humedad: h.s } };
   }
   const banda = (v, e) => v >= 3 ? (e === 'c' ? 'caliente' : 'húmedo') : v <= -3 ? (e === 'c' ? 'frío' : 'seco') : (e === 'c' ? 'templado' : 'equilibrado');
-  /* Perfil que manda ahora: el del cuestionario o el que puso el coach al reetiquetar */
-  function efectivo(t) {
-    const d = t?.seguimiento?.decision;
-    if (d?.tipo === 'reetiquetar' && NOM[d.nuevo]) return { dom: d.nuevo, sec: null, reetiq: true };
-    return { dom: t?.dominante || null, sec: t?.secundario || null, reetiq: false };
+  /* ---------- Mezcla en porcentajes y criterio para mujeres (Jesús, oct 2026) ----------
+     Parte caliente = (calor + 10) / 20 y parte húmeda = (humedad + 10) / 20. Cada temperamento es el producto de sus dos
+     cualidades (colérico = caliente × seco…), así que los cuatro suman 100 %. Dominante y subdominante: los dos primeros
+     de la mezcla; en los empates manda el cuadrante de los signos (con los desempates de siempre) y, para el subdominante,
+     el que conserva el calor del dominante (se cambia la humedad). En hombres da lo mismo que la regla anterior.
+     Mujeres: sin colérico ni de dominante ni de subdominante; su parte se reparte entre los otros tres en proporción.
+     La tendencia guardada sigue siendo la de las respuestas, para contrastar el criterio con los datos del piloto. */
+  const ORDEN = ['colerico', 'sanguineo', 'melancolico', 'flematico'];
+  const caliente = k => k === 'colerico' || k === 'sanguineo';
+  const permitidos = sx => sx === 'mujer' ? ORDEN.filter(k => k !== 'colerico') : ORDEN;
+  function redondear(w) {   // enteros que suman 100 (método del mayor resto)
+    const tot = ORDEN.reduce((x, k) => x + (w[k] || 0), 0), ks = ORDEN.filter(k => k in w);
+    const ex = ks.map(k => [k, (w[k] || 0) / tot * 100]), r = Object.fromEntries(ex.map(([k, v]) => [k, Math.floor(v)]));
+    let resto = 100 - ks.reduce((x, k) => x + r[k], 0);
+    ex.slice().sort((a, b) => (Math.abs((b[1] % 1) - (a[1] % 1)) < 1e-9 ? b[1] - a[1] : (b[1] % 1) - (a[1] % 1))).forEach(([k]) => { if (resto > 0) { r[k]++; resto--; } });
+    return r;
+  }
+  function mezcla(calor, humedad, sx) {
+    const pc = (calor + 10) / 20, ph = (humedad + 10) / 20;
+    const crudo = { colerico: pc * (1 - ph), sanguineo: pc * ph, melancolico: (1 - pc) * (1 - ph), flematico: (1 - pc) * ph };
+    const w = Object.fromEntries(permitidos(sx).map(k => [k, crudo[k]]));
+    if (!Object.values(w).some(x => x > 1e-12)) { w.sanguineo = .5; w.melancolico = .5; }   // mujer con +10 y −10: a medias entre sus vecinos
+    return { w, pct: redondear(w), crudo: redondear(crudo) };
+  }
+  function perfilDe(t, sx) {
+    const a = t?.respuestas?.a || [], P = puntuar(a), hay = a.some(Boolean);
+    const sC = hay ? P.signos.calor : Math.sign(t?.calor || 0), sH = hay ? P.signos.humedad : Math.sign(t?.humedad || 0);
+    const m = mezcla(t?.calor || 0, t?.humedad || 0, sx), mujer = sx === 'mujer';
+    if (!sC || !sH) return { dom: null, sec: null, tend: null, pct: null, crudo: m.crudo, mujer };
+    const tend = cuadrante(sC, sH), dif = (x, y) => Math.abs(x - y) < 1e-9 ? 0 : y - x;
+    const dom = permitidos(sx).slice().sort((x, y) => dif(m.w[x], m.w[y]) || (y === tend) - (x === tend) || (caliente(y) === sC > 0) - (caliente(x) === sC > 0))[0];
+    const sec = permitidos(sx).filter(k => k !== dom).sort((x, y) => dif(m.w[x], m.w[y]) || (caliente(y) === caliente(dom)) - (caliente(x) === caliente(dom)))[0];
+    return { dom, sec, tend, pct: m.pct, crudo: m.crudo, mujer };
+  }
+  const sexoDe = t => (S.c?.perfiles?.find(p => p.id === t?.alumno_id) || (t?.alumno_id && t.alumno_id === S.user?.id ? S.perfil : null) || {}).sexo;
+  const pctTxt = (ef, k) => !ef.reetiq && ef.pct && ef.pct[k] != null ? ` (${ef.pct[k]} %)` : '';
+  /* Perfil que manda ahora: el de las respuestas o el que puso el coach al reetiquetar */
+  function efectivo(t, sx = sexoDe(t)) {
+    const pf = perfilDe(t, sx), d = t?.seguimiento?.decision;
+    if (d?.tipo === 'reetiquetar' && NOM[d.nuevo]) return { ...pf, resp: { dom: pf.dom, sec: pf.sec }, dom: d.nuevo, sec: null, reetiq: true };
+    return { ...pf, resp: { dom: pf.dom, sec: pf.sec }, reetiq: false };
   }
 
   /* ---------- Sueño: horarios entre semana y en días libres ---------- */
@@ -227,7 +264,7 @@ const Temperamento = (() => {
     if (!t) return `<section class="section"><div class="card tp-pend stack"><span class="eyebrow">Perfil de temperamento</span><p class="small">${ped ? 'Jesús te ha pedido este cuestionario: unas 30 preguntas rápidas sobre tu cuerpo, tus hábitos y tu ritmo del día. Al terminar verás tu informe aquí.' : 'Prueba el cuestionario como lo verán tus alumnos. Se guarda como tuyo.'}</p><button class="btn full" data-act="tpEmpezar">${leerB()?.paso ? 'Continuar donde lo dejaste' : ped ? 'Empezar' : 'Probar el cuestionario'}</button></div></section>`;
     const ef = efectivo(t);
     return `<section class="section"><div class="section-head"><h2>Tu perfil</h2><span class="small muted">${esc(fCorta(t.fecha))}</span></div>
-      <button class="card tp-res" data-act="tpInforme" data-id="${t.id}"><div class="tp-mini">${mapa([{ c: t.calor, h: t.humedad }], { mini: true, res: ef.dom })}<div class="grow stack" style="gap:4px;text-align:left"><span class="eyebrow">Perfil de temperamento</span><h3>${ef.dom ? esc(NOM[ef.dom]) : 'Perfil templado'}</h3><div class="small muted">${ef.dom ? (ef.sec ? `Con rasgos de ${esc(NOM[ef.sec].toLowerCase())}` : CUAL[ef.dom][0].toUpperCase() + CUAL[ef.dom].slice(1)) : 'Tus datos marcarán el rumbo'}</div><span class="small" style="color:var(--blue-text);font-weight:700">Ver tu informe ›</span></div></div></button>
+      <button class="card tp-res" data-act="tpInforme" data-id="${t.id}"><div class="tp-mini">${mapa([{ c: t.calor, h: t.humedad }], { mini: true, res: ef.dom })}<div class="grow stack" style="gap:4px;text-align:left"><span class="eyebrow">Perfil de temperamento</span><h3>${ef.dom ? esc(NOM[ef.dom]) : 'Perfil templado'}</h3><div class="small muted">${ef.dom ? (ef.sec ? `${ef.pct[ef.dom]} % · con rasgos de ${esc(NOM[ef.sec].toLowerCase())}${pctTxt(ef, ef.sec)}` : CUAL[ef.dom][0].toUpperCase() + CUAL[ef.dom].slice(1)) : 'Tus datos marcarán el rumbo'}</div><span class="small" style="color:var(--blue-text);font-weight:700">Ver tu informe ›</span></div></div></button>
       ${ped || (coach && !ped) ? `<button class="btn ${ped ? '' : 'ghost'} full" data-act="tpEmpezar">${ped ? 'Repetir el cuestionario' : 'Volver a hacerlo'}</button>` : ''}</section>`;
   }
 
@@ -294,8 +331,8 @@ const Temperamento = (() => {
 
   async function terminar(btn) {
     const z = S.tq; if (!z || terminar.ocupado) return;
-    const P = puntuar(z.a), pts = puntosRmeq(z.r), cr = CRONO(pts);
-    const row = { alumno_id: S.user.id, fecha: hoyISO(), version: VERSION, respuestas: { a: z.a, b: z.b, r: z.r, orden: z.orden }, calor: P.calor, humedad: P.humedad, dominante: P.dominante, secundario: P.secundario, tendencia: P.tendencia, confianza: P.confianza, cronotipo: cr?.k || null, rmeq: pts, senales: z.s.slice() };
+    const P = puntuar(z.a), pts = puntosRmeq(z.r), cr = CRONO(pts), pf = perfilDe({ calor: P.calor, humedad: P.humedad, respuestas: { a: z.a } }, S.perfil?.sexo);
+    const row = { alumno_id: S.user.id, fecha: hoyISO(), version: VERSION, respuestas: { a: z.a, b: z.b, r: z.r, orden: z.orden }, calor: P.calor, humedad: P.humedad, dominante: pf.dom, secundario: pf.sec, tendencia: P.tendencia, confianza: P.confianza, cronotipo: cr?.k || null, rmeq: pts, senales: z.s.slice() };
     terminar.ocupado = true; if (btn) btn.disabled = true;
     const { data, error } = await sb.from('temperamentos').insert(row).select().single();
     terminar.ocupado = false;
@@ -312,12 +349,39 @@ const Temperamento = (() => {
     const cuando = dd === 0 ? 'hecho el mismo día' : `hecho ${dd} ${dd === 1 ? 'día' : 'días'} antes`;
     return ` El punto hueco es tu cuestionario anterior, ${cuando}.` + (dd < 56 ? ' Con menos de 8 semanas entre uno y otro, la diferencia suele venir de cómo has respondido, no de un cambio en tu cuerpo.' : '');
   }
+  /* Barras de la mezcla: dominante, subdominante y el resto */
+  function vMezcla(ef, coach) {
+    const p = ef.pct; if (!p) return '';
+    const d = ef.resp.dom, s = ef.resp.sec, rk = k => k === d ? 0 : k === s ? 1 : 2, l = Object.keys(p).sort((x, y) => rk(x) - rk(y) || p[y] - p[x]);
+    const txt = ef.reetiq ? 'Así quedó la mezcla con las respuestas del cuestionario; el perfil que manda ahora es el ajustado con los datos.'
+      : coach ? 'El primero es el dominante y el segundo, el subdominante.' : 'Nadie es un temperamento puro. La mezcla sale de tus dos ejes: cuánto tienes de caliente o de frío y cuánto de húmedo o de seco. El primero es tu temperamento dominante y el segundo, el subdominante.';
+    return `<section class="section"><h2>${coach ? 'Mezcla' : 'Tu mezcla'}</h2><div class="card stack"><div class="tp-mez">${l.map(k => `<div class="tp-mz${k === d ? ' d' : k === s ? ' s' : ''}"><span>${NOM[k]}</span><span class="b"><i style="width:${p[k]}%"></i></span><b class="num">${p[k]} %</b></div>`).join('')}</div><p class="small muted">${txt}</p></div></section>`;
+  }
+  /* Desglose por criterios clásicos: hacia dónde apunta cada grupo de preguntas */
+  const CRIT = [
+    ['c', 'Reacción a la temperatura', [0, 1, 2]], ['c', 'Apetito, digestión, sudor y ritmo', [3, 4, 5, 6]], ['c', 'Carácter', [7, 8]], ['c', 'Venas', [9]],
+    ['h', 'Piel', [10]], ['h', 'Peso, grasa y líquidos', [11, 14]], ['h', 'Forma del cuerpo y manos', [12, 13]], ['h', 'Sueño', [15, 16, 17]], ['h', 'Mucosidad y tránsito', [18, 19]]
+  ];
+  const yLista = l => l.length > 1 ? l.slice(0, -1).join(', ') + ' y ' + l[l.length - 1] : l[0] || '';
+  function vDesglose(t) {
+    const a = t.respuestas?.a || []; if (!a.some(Boolean)) return '';
+    const suma = ix => ix.reduce((x, i) => x + val(a[i]), 0);
+    const fila = ([e, l, ix]) => { const v = suma(ix), n = ix.length, hacia = v > 0 ? (e === 'c' ? 'el calor' : 'la humedad') : (e === 'c' ? 'el frío' : 'la sequedad');
+      return `<div class="tp-cr"><div class="small"><b>${l}</b><div class="muted">${v ? `${sg(v)} de ${n} · hacia ${hacia}` : 'Neutro'}</div></div><span class="eje" aria-hidden="true">${v ? `<i style="${v > 0 ? 'left' : 'right'}:50%;width:${Math.abs(v) / n * 50}%"></i>` : ''}</span></div>`; };
+    const lectura = (e, tot) => { const g = Math.sign(tot); if (!g) return '';
+      const cs = CRIT.filter(c => c[0] === e).map(c => ({ l: c[1].toLowerCase(), r: suma(c[2]) / c[2].length }));
+      const pro = cs.filter(c => Math.sign(c.r) === g && Math.abs(c.r) >= .5).map(c => c.l), contra = cs.filter(c => Math.sign(c.r) === -g).map(c => c.l);
+      const pol = e === 'c' ? (g > 0 ? 'el calor' : 'el frío') : (g > 0 ? 'la humedad' : 'la sequedad');
+      return `<p class="small">${pro.length ? `Lo que más inclina hacia ${pol}: ${yLista(pro)}.` : `Ningún criterio inclina con fuerza hacia ${pol}.`}${contra.length ? ` En sentido contrario: ${yLista(contra)}.` : ''}</p>`; };
+    const bloque = (e, tit, izq, der, tot) => `<div class="tp-crh"><b>${tit}</b><span class="small muted num">suma ${sg(tot)}</span></div><div class="tp-cre"><span></span><span class="ext"><span>${izq}</span><span>${der}</span></span></div>${CRIT.filter(c => c[0] === e).map(fila).join('')}${lectura(e, tot)}`;
+    return `<section class="section"><h2>Desglose por criterios</h2><div class="card stack">${bloque('c', 'Calor o frío', '← Frío', 'Calor →', t.calor)}${bloque('h', 'Humedad o sequedad', '← Seco', 'Húmedo →', t.humedad)}<p class="small muted">Cada fila junta las preguntas de uno de los criterios clásicos de la medicina unani; la barra va hacia el lado al que apuntan las respuestas.</p></div></section>`;
+  }
   function vInforme(t, o = {}) {
-    const nom = (o.nombre || '').split(' ')[0], ef = efectivo(t), pl = PLANT[ef.dom], sx = o.sexo, senales = t.senales || [];
+    const nom = (o.nombre || '').split(' ')[0], ef = efectivo(t, o.sexo ?? sexoDe(t)), pl = PLANT[ef.dom], sx = o.sexo, senales = t.senales || [];
     const delicado = senales.includes('animo'), cr = CRONO(t.rmeq), su = sueno(t.respuestas?.b?.horarios);
     const conf = t.confianza === 'alta' ? 'alta' : t.confianza === 'media' ? 'media' : 'baja';
     const cabecera = ef.dom
-      ? `Hola, ${esc(nom)}. Tu perfil de temperamento es <b>${esc(NOM[ef.dom].toLowerCase())}</b>${ef.sec ? `, con rasgos de <b>${esc(NOM[ef.sec].toLowerCase())}</b>` : ''}${ef.reetiq ? '' : ` (confianza ${conf})`}. Es una forma de entender tus tendencias y organizar tu plan, no un diagnóstico médico, y lo comprobaremos con tus datos cada 15 días.`
+      ? `Hola, ${esc(nom)}. Tu perfil de temperamento es <b>${esc(NOM[ef.dom].toLowerCase())}</b>${pctTxt(ef, ef.dom)}${ef.sec ? `, con rasgos de <b>${esc(NOM[ef.sec].toLowerCase())}</b>${pctTxt(ef, ef.sec)}` : ''}${ef.reetiq ? '' : ` y confianza ${conf}`}.${!ef.reetiq && conf === 'baja' ? ' Tu mezcla está muy repartida, así que tus datos de las primeras 4 semanas tendrán la última palabra.' : ''} Es una forma de entender tus tendencias y organizar tu plan, no un diagnóstico médico, y lo comprobaremos con tus datos cada 15 días.`
       : `Hola, ${esc(nom)}. Tus respuestas no apuntan con claridad a un solo temperamento. Empezamos con un plan general y dejamos que tus datos de las primeras 4 semanas nos digan hacia dónde ajustar. No es un diagnóstico médico: es un punto de partida.`;
     const pts = [o.anterior && { c: o.anterior.calor, h: o.anterior.humedad, l: 'Antes' }, { c: t.calor, h: t.humedad, l: o.anterior ? 'Ahora' : 'Tú' }].filter(Boolean);
     const hip = pl ? (delicado ? pl.hip.filter(h => !/cintura|comer|alcohol/i.test(h)) : pl.hip) : [];
@@ -326,9 +390,10 @@ const Temperamento = (() => {
     const ico = { e: 'entreno', c: 'nutri', h: 'checkin' };
     const sec = (titulo, cuerpo) => `<section class="section"><h2>${titulo}</h2><div class="card stack">${cuerpo}</div></section>`;
     return `<section class="card hero stack tp-hero"><span class="eyebrow">Tu perfil de temperamento · ${esc(fCorta(t.fecha))} ${fecha(t.fecha).getFullYear()}</span><h1>${ef.dom ? esc(NOM[ef.dom]) : 'Perfil templado'}</h1>
-      <div class="small muted">${ef.dom ? `${CUAL[ef.dom][0].toUpperCase() + CUAL[ef.dom].slice(1)}${ef.sec ? ` · con rasgos de ${NOM[ef.sec].toLowerCase()}` : ''}${ef.reetiq ? ' · ajustado con tus datos' : ` · confianza ${conf}`}` : 'Sin un temperamento claro: tus datos marcarán el rumbo'}</div></section>
-    <section class="section"><div class="card stack tp-mapa">${mapa(pts, { res: ef.dom })}<p class="small muted">Tu punto en el mapa de los cuatro temperamentos: a la izquierda el frío, a la derecha el calor; arriba lo seco, abajo lo húmedo. La franja clara del centro es la zona templada.${o.anterior ? notaAnterior(t, o.anterior) : ''}${ef.reetiq ? ' El punto es donde te colocaron tus respuestas; el cuadrante marcado es tu perfil ajustado con tus datos.' : ''}</p></div></section>
+      <div class="small muted">${ef.dom ? `${ef.reetiq ? '' : ef.pct[ef.dom] + ' % · '}${ef.reetiq ? CUAL[ef.dom][0].toUpperCase() + CUAL[ef.dom].slice(1) : CUAL[ef.dom]}${ef.sec ? ` · con rasgos de ${NOM[ef.sec].toLowerCase()}${pctTxt(ef, ef.sec)}` : ''}${ef.reetiq ? ' · ajustado con tus datos' : ` · confianza ${conf}`}` : 'Sin un temperamento claro: tus datos marcarán el rumbo'}</div></section>
+    <section class="section"><div class="card stack tp-mapa">${mapa(pts, { res: ef.dom })}<p class="small muted">Tu punto en el mapa de los cuatro temperamentos: a la izquierda el frío, a la derecha el calor; arriba lo seco, abajo lo húmedo. La franja clara del centro es la zona templada.${o.anterior ? notaAnterior(t, o.anterior) : ''}${ef.reetiq ? ' El punto es donde te colocaron tus respuestas; el cuadrante marcado es tu perfil ajustado con tus datos.' : ef.mujer && ef.tend === 'colerico' ? ' Tu punto cae en la zona caliente y seca. En la mujer no usamos el perfil colérico: tu perfil es el vecino que más pesa en tu mezcla, el que está marcado.' : ''}</p></div></section>
     <section class="section"><div class="card stack"><p>${cabecera}</p>${ef.reetiq ? `<p class="note">Jesús ha ajustado tu perfil con tus datos de estas semanas: manda lo que dice tu cuerpo.</p>` : ''}</div></section>
+    ${vMezcla(ef)}${vDesglose(t)}
     ${pl ? sec('Tus puntos fuertes', `<p>${esc(delicado && pl.fuertesSuave || pl.fuertes)}</p>`) + sec('Lo que vigilaremos', `<p>${esc(delicado && pl.vigilarSuave || pl.vigilar)}</p>`)
       + sec('Tus hipótesis para estas 8 semanas', `<ol class="tp-hip">${hip.map(h => `<li>${esc(h)}</li>`).join('')}</ol>${delicado && hip.length < pl.hip.length ? '<p class="small muted">Lo relacionado con la comida y la cintura lo vemos juntos, con calma.</p>' : ''}<p class="note">Cada 15 días miramos tus datos para ver si se cumplen. Si no, ajustamos.</p>`)
       + sec('Cómo arrancamos', `<div>${arr.map(([k, x]) => `<div class="line"><div class="ico">${svg(ico[k])}</div><div class="grow small">${esc(x)}</div></div>`).join('')}</div>${delicado ? '<p class="small muted">La alimentación la hablamos contigo antes de cambiar nada.</p>' : ''}`) : ''}
@@ -366,8 +431,8 @@ const Temperamento = (() => {
     if (!t) return `<section class="section">${head}</div><div class="card stack"><p class="small">${ped ? `Se lo pediste el ${esc(fCorta(a.temperamento_pedido))}: le aparece en su pantalla de Hoy hasta que lo haga.` : 'Aún no ha hecho el cuestionario. Cuando se lo pidas le aparecerá en su pantalla de Hoy: unos 8 minutos, y el informe te llega aquí.'}</p>${ped ? '' : `<button class="btn sm" data-act="tpPedir" data-id="${a.id}" style="align-self:flex-start">Pedírselo</button>`}</div></section>`;
     const ef = efectivo(t), pc = proxCorte(t), cr = CRONO(t.rmeq), m = medidas(f.med, t.fecha, hoyISO(), 'cintura'), r = ict((m.fin || m.ini)?.cintura, a.estatura_cm), bi = bandaICT(r);
     return `<section class="section">${head}</div>
-      <button class="card tp-res" data-act="fichaSub" data-s="temperamento"><div class="tp-mini">${mapa([{ c: t.calor, h: t.humedad }], { mini: true, res: ef.dom })}<div class="grow stack" style="gap:5px;text-align:left"><h3>${ef.dom ? esc(NOM[ef.dom]) : 'Sin etiqueta'}${ef.reetiq ? ' <span class="pill gold">reetiquetado</span>' : ''}</h3>
-        <div class="small muted">${ef.dom ? `${ef.sec ? `Rasgos de ${NOM[ef.sec].toLowerCase()} · ` : ''}confianza ${t.confianza}` : `Confianza baja${t.tendencia ? ` · tiende a ${NOM[t.tendencia].toLowerCase()}` : ''}`} · ${esc(fCorta(t.fecha))}</div>
+      <button class="card tp-res" data-act="fichaSub" data-s="temperamento"><div class="tp-mini">${mapa([{ c: t.calor, h: t.humedad }], { mini: true, res: ef.dom })}<div class="grow stack" style="gap:5px;text-align:left"><h3>${ef.dom ? esc(NOM[ef.dom]) + (ef.reetiq ? '' : ` <span class="small muted num">${ef.pct[ef.dom]} %</span>`) : 'Sin datos'}${ef.reetiq ? ' <span class="pill gold">reetiquetado</span>' : ''}</h3>
+        <div class="small muted">${ef.dom ? `${ef.sec ? `Rasgos de ${NOM[ef.sec].toLowerCase()}${pctTxt(ef, ef.sec)} · ` : ''}confianza ${t.confianza}` : 'Un eje sin datos'} · ${esc(fCorta(t.fecha))}</div>
         <div class="chips" style="gap:6px">${cr ? `<span class="pill">${esc(cr.l)}</span>` : ''}${bi ? `<span class="pill ${bi[0]}">Cintura/talla ${fmtNum(r, 2)}</span>` : ''}${(t.senales || []).length ? `<span class="pill bad">${t.senales.length} ${t.senales.length === 1 ? 'señal' : 'señales'} para derivar</span>` : ''}</div>
         <div class="small" style="color:${pc && pc.estado !== 'futura' ? 'var(--gold-ink)' : 'var(--muted)'};font-weight:700">${pc ? `${pc.estado === 'futura' ? 'Próxima revisión' : pc.estado === 'atrasada' ? 'Revisión atrasada' : 'Toca revisión'}: semana ${pc.k} · ${esc(fCorta(pc.f))}` : ped ? 'Le has pedido que lo repita' : 'Seguimiento de 8 semanas cerrado'}</div></div></div></button></section>`;
   }
@@ -384,24 +449,26 @@ const Temperamento = (() => {
     const t = l.find(x => x.id === S.tSel) || l[0], ant = l.find(x => x.fecha < t.fecha || (x.fecha === t.fecha && x.id < t.id));
     const nom = (a.nombre || '').split(' ')[0];
     if (S.tVer) return `<section class="stack"><button class="btn sm ghost" data-act="tpVer" style="align-self:flex-start">← Perfil de ${esc(nom)}</button><span class="eyebrow">Así lo ve ${esc(nom)} en su pestaña Tests</span></section>${vInforme(t, { nombre: a.nombre, sexo: a.sexo, anterior: ant })}`;
-    const ef = efectivo(t), P = puntuar(t.respuestas?.a || []), ped = pendienteDe(a.temperamento_pedido, l), b = t.respuestas?.b || {}, cr = CRONO(t.rmeq), su = sueno(b.horarios);
+    const ef = efectivo(t, a.sexo), pf = perfilDe(t, a.sexo), sinCriterio = a.sexo === 'mujer' ? perfilDe(t, null) : null, P = puntuar(t.respuestas?.a || []), ped = pendienteDe(a.temperamento_pedido, l), b = t.respuestas?.b || {}, cr = CRONO(t.rmeq), su = sueno(b.horarios);
     const m = medidas(f.med, t.fecha, hoyISO(), 'cintura'), base = m.ini, r0 = ict(base?.cintura, a.estatura_cm), b0 = bandaICT(r0);
     const des = (e, nq) => { const d = P.desempate[e], ej = e === 'calor' ? 'del calor' : 'de la humedad'; if (d == null) return ''; if (d === 'ninguna') return ` Todas sus respuestas ${ej} son B: ese eje no tiene datos.`; return d === nq ? ` La suma ${ej} da 0: decide la pregunta ${nq}.` : ` La suma ${ej} da 0 y la pregunta ${nq} también es B: decide la ${d}, la primera distinta de B.`; };
-    const explica = t.confianza === 'baja'
-      ? `${t.tendencia ? `Confianza baja: ningún eje llega a ±3, así que no se pone etiqueta (tiende a ${NOM[t.tendencia].toLowerCase()}).` : 'Confianza baja: un eje no tiene datos, así que no se pone etiqueta.'} Mandan la observación y las medidas: a las 4 semanas, asígnale el perfil que encaje.`
-      : `Dominante ${nm(t.dominante)} por los signos de las dos sumas. Secundario ${nm(t.secundario)}: se cambia el signo ${P.flojo === 'calor' ? 'del calor' : 'de la humedad'}, el eje más flojo${Math.abs(t.calor) === Math.abs(t.humedad) ? ' (empatan: se cambia la humedad)' : ''}. Confianza ${t.confianza}: ${t.confianza === 'alta' ? 'los dos ejes llegan a ±3' : 'solo un eje llega a ±3'}.`;
+    const explica = !pf.dom
+      ? 'Un eje no tiene datos (todas sus respuestas son B), así que no se puede calcular la mezcla. Mandan la observación y las medidas: a las 4 semanas, asígnale el perfil que encaje.'
+      : `Dominante ${nm(pf.dom)} (${pf.pct[pf.dom]} %) y subdominante ${nm(pf.sec)} (${pf.pct[pf.sec]} %): los dos primeros de la mezcla. Confianza ${t.confianza}: ${t.confianza === 'alta' ? 'los dos ejes llegan a ±3' : t.confianza === 'media' ? 'solo un eje llega a ±3' : 'ningún eje llega a ±3 y la mezcla está muy repartida; confírmalo con sus datos a las 4 semanas'}.`
+        + (sinCriterio?.dom && (sinCriterio.dom !== pf.dom || sinCriterio.sec !== pf.sec) ? ` Sin tu criterio para mujeres saldría ${nm(sinCriterio.dom)} con rasgos de ${nm(sinCriterio.sec)}: el colérico se lleva el ${pf.crudo.colerico} % de sus respuestas y esa parte se reparte entre los otros tres.` : '');
     const cs = cortes(t), dec = t.seguimiento?.decision;
     const resumenRev = rv => { if (!rv) return ''; const n = v => (rv.hip || []).filter(x => x === v).length; return [n('si') && `${n('si')} se cumple${n('si') > 1 ? 'n' : ''}`, n('no') && `${n('no')} no`, n('sin') && `${n('sin')} sin datos`, rv.sueno != null && `sueño ${fmtNum(rv.sueno)} h`, rv.estres != null && `estrés ${rv.estres}/10`, rv.energia != null && `energía ${rv.energia}/10`].filter(Boolean).join(' · '); };
     const filaHab = (l1, v) => v ? `<tr><td class="muted">${l1}</td><td>${v}</td></tr>` : '';
     const lista = v => Array.isArray(v) ? v.join(', ') : v;
-    return `${l.length > 1 ? `<section class="section"><div class="chips" style="gap:6px">${l.map(x => `<button class="pill ${x.id === t.id ? 'blue' : ''}" data-act="tpSel" data-id="${x.id}">${esc(fCorta(x.fecha))} · ${esc(x.dominante ? NOM[x.dominante] : 'templado')}</button>`).join('')}</div></section>` : ''}
-    <section class="section"><div class="card stack"><div class="row" style="align-items:flex-start"><div class="grow stack" style="gap:4px"><span class="eyebrow">Resultado · ${esc(fCorta(t.fecha))}</span><h2>${ef.dom ? esc(NOM[ef.dom]) : 'Sin etiqueta'}</h2><div class="small muted">${ef.reetiq ? `Reetiquetado por ti el ${esc(fCorta(dec.fecha))} · en el cuestionario salió ${t.dominante ? nm(t.dominante) : 'sin etiqueta'}` : ef.dom ? `Rasgos de ${nm(ef.sec)} · confianza ${esc(t.confianza)}` : `Confianza baja${t.tendencia ? ` · tiende a ${NOM[t.tendencia].toLowerCase()}` : ''}`}</div></div></div>
+    return `${l.length > 1 ? `<section class="section"><div class="chips" style="gap:6px">${l.map(x => { const e = efectivo(x, a.sexo); return `<button class="pill ${x.id === t.id ? 'blue' : ''}" data-act="tpSel" data-id="${x.id}">${esc(fCorta(x.fecha))} · ${esc(e.dom ? NOM[e.dom] : 'sin datos')}</button>`; }).join('')}</div></section>` : ''}
+    <section class="section"><div class="card stack"><div class="row" style="align-items:flex-start"><div class="grow stack" style="gap:4px"><span class="eyebrow">Resultado · ${esc(fCorta(t.fecha))}</span><h2>${ef.dom ? esc(NOM[ef.dom]) + (ef.reetiq ? '' : ` · ${ef.pct[ef.dom]} %`) : 'Sin datos'}</h2><div class="small muted">${ef.reetiq ? `Reetiquetado por ti el ${esc(fCorta(dec.fecha))} · en el cuestionario salió ${pf.dom ? nm(pf.dom) : 'sin datos'}` : ef.dom ? `Rasgos de ${nm(ef.sec)}${pctTxt(ef, ef.sec)} · confianza ${esc(t.confianza)}` : 'Un eje sin datos'}</div></div></div>
       <div class="tp-mapa">${mapa([ant && { c: ant.calor, h: ant.humedad, l: fCorta(ant.fecha) }, { c: t.calor, h: t.humedad, l: ant ? fCorta(t.fecha) : nom }], { res: ef.dom })}</div>
       <div class="tbl"><table><thead><tr><th>Eje</th><th>Suma</th><th>Franja</th></tr></thead><tbody>
         <tr><td>Calor (1-10)</td><td class="num"><b>${sg(t.calor)}</b></td><td>${banda(t.calor, 'c')}${t.calor === 0 || Math.abs(t.calor) < 3 ? ` <span class="muted">· signo ${P.signos.calor > 0 ? 'caliente' : P.signos.calor < 0 ? 'frío' : '—'}</span>` : ''}</td></tr>
         <tr><td>Humedad (11-20)</td><td class="num"><b>${sg(t.humedad)}</b></td><td>${banda(t.humedad, 'h')}${Math.abs(t.humedad) < 3 ? ` <span class="muted">· signo ${P.signos.humedad > 0 ? 'húmedo' : P.signos.humedad < 0 ? 'seco' : '—'}</span>` : ''}</td></tr></tbody></table></div>
       <p class="small">${explica}${des('calor', 1)}${des('humedad', 12)}</p>
       <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="tpVer">Ver su informe</button>${ped ? '<span class="pill gold">Repetición pedida</span>' : `<button class="btn sm ghost" data-act="tpPedir" data-id="${a.id}">Pedir que lo repita</button>`}<button class="btn sm ghost" data-act="tpEtiqueta" data-id="${t.id}">${ef.dom ? 'Reetiquetar' : 'Asignar perfil'}</button></div></div></section>
+    ${vMezcla(ef, true)}${vDesglose(t)}
     ${(t.senales || []).length ? `<section class="section"><h2>Señales para derivar</h2><div class="card tp-cuida">${t.senales.map(senal).filter(Boolean).map(x => `<div class="line" style="align-items:flex-start"><span class="tp-dot"></span><div class="grow small"><b>${esc(x.d)}</b><div class="muted">${esc(x.coach)}</div></div></div>`).join('')}</div></section>` : ''}
     <section class="section"><div class="section-head"><h2>Seguimiento</h2><span class="small muted">8 semanas desde el ${esc(fCorta(t.fecha))}</span></div><div class="card">
       ${cs.map(c => `<div class="line" data-act="tpRevision" data-id="${t.id}" data-k="${c.k}" style="cursor:pointer"><span class="tl-dot ${c.estado === 'hecha' ? 'ok' : c.estado === 'futura' ? '' : 'now'}"></span><div class="grow"><div class="small"><b>Semana ${c.k}</b> · ${esc(fCorta(c.f))}</div>${c.hecha ? `<div class="small muted">${esc(resumenRev(c.hecha))}</div>` : ''}</div>${PILL[c.estado][1] && c.estado !== 'futura' ? `<span class="pill ${PILL[c.estado][0]}">${PILL[c.estado][1]}</span>` : '<span class="small muted">Más adelante</span>'}</div>`).join('')}
@@ -453,7 +520,7 @@ const Temperamento = (() => {
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px"><label class="f">Sueño (h/día)<input type="text" inputmode="decimal" id="tp-su" value="${rv.sueno ?? ''}" placeholder="7,5"></label><label class="f">Estrés (0-10)<input type="text" inputmode="numeric" id="tp-es" value="${rv.estres ?? ''}"></label><label class="f">Energía (0-10)<input type="text" inputmode="numeric" id="tp-en" value="${rv.energia ?? ''}"></label></div>
       <p class="small muted" style="margin-top:-4px">Lo que te cuente en la revisión: media de la última semana.</p>
       ${k === 8 ? `<div class="aprox stack"><b class="small">Decisión a las 8 semanas</b>${grupo('tp-dec', [['mantener', ef.dom ? 'Mantener ' + NOM[ef.dom].toLowerCase() : 'Mantener sin etiqueta'], ['reetiquetar', 'Reetiquetar']], dec.tipo)}
-        <label class="f">Nuevo perfil (si reetiquetas)<select id="tp-nuevo">${Object.keys(NOM).map(x => `<option value="${x}" ${(dec.nuevo || t.tendencia) === x ? 'selected' : ''}>${NOM[x]}</option>`).join('')}</select></label>
+        <label class="f">Nuevo perfil (si reetiquetas)<select id="tp-nuevo">${permitidos(a.sexo).map(x => `<option value="${x}" ${(dec.nuevo || ef.dom) === x ? 'selected' : ''}>${NOM[x]}</option>`).join('')}</select></label>
         <label class="f">Por qué (opcional)<input type="text" id="tp-mot" value="${esc(dec.motivo || '')}" placeholder="Ej. pierde grasa rápido y duerme poco"></label>
         <label class="row small"><input type="checkbox" id="tp-rep" ${pendienteDe(a.temperamento_pedido, filasDe(a.id)) ? '' : 'checked'} style="width:20px;height:20px"> Pedirle que repita el cuestionario</label></div>` : ''}
       <label class="f">Nota privada (opcional, se guarda en tus notas)<textarea id="tp-nota" rows="2"></textarea></label>
@@ -472,14 +539,14 @@ const Temperamento = (() => {
   }
   function formEtiqueta(id) {
     const t = (S.c.temperamentos || []).find(x => x.id === id); if (!t) return;
-    const ef = efectivo(t), dec = t.seguimiento?.decision || {};
+    const sx = sexoDe(t), ef = efectivo(t, sx), dec = t.seguimiento?.decision || {};
     abrirSheet(`<form class="stack" id="tp-et"><h2>${ef.dom ? 'Reetiquetar perfil' : 'Asignar perfil'}</h2><p class="small muted">Si sus datos contradicen el perfil, manda el dato. El alumno verá en su informe el perfil nuevo.</p>
-      <label class="f">Perfil<select id="tp-et-n">${Object.keys(NOM).map(x => `<option value="${x}" ${(dec.nuevo || ef.dom || t.tendencia) === x ? 'selected' : ''}>${NOM[x]} · ${CUAL[x]}</option>`).join('')}</select></label>
+      <label class="f">Perfil<select id="tp-et-n">${permitidos(sx).map(x => `<option value="${x}" ${(dec.nuevo || ef.dom) === x ? 'selected' : ''}>${NOM[x]} · ${CUAL[x]}</option>`).join('')}</select></label>
       <label class="f">Por qué (opcional)<input type="text" id="tp-et-m" value="${esc(dec.motivo || '')}" placeholder="Ej. a las 4 semanas responde como un flemático"></label>
       <button class="btn full" type="submit">Guardar</button>${ef.reetiq ? '<button class="btn ghost full" type="button" data-act="tpQuitarEtiqueta" data-id="' + t.id + '">Volver al perfil del cuestionario</button>' : ''}</form>`);
     $('#tp-et').addEventListener('submit', async e => {
       e.preventDefault();
-      const nuevoP = $('#tp-et-n').value, sgN = { ...(t.seguimiento || {}), decision: nuevoP === t.dominante ? { fecha: hoyISO(), tipo: 'mantener', motivo: $('#tp-et-m').value.trim() || null } : { fecha: hoyISO(), tipo: 'reetiquetar', nuevo: nuevoP, motivo: $('#tp-et-m').value.trim() || null } };
+      const nuevoP = $('#tp-et-n').value, sgN = { ...(t.seguimiento || {}), decision: nuevoP === ef.resp.dom ? { fecha: hoyISO(), tipo: 'mantener', motivo: $('#tp-et-m').value.trim() || null } : { fecha: hoyISO(), tipo: 'reetiquetar', nuevo: nuevoP, motivo: $('#tp-et-m').value.trim() || null } };
       if (!await guardarSeguimiento(t, sgN)) return;
       cerrarSheet(); toast('Perfil actualizado'); render();
     });
@@ -582,5 +649,5 @@ const Temperamento = (() => {
 
   /* Si algo falla al pintar el perfil, se ve un aviso en su sitio y el resto de la pantalla sigue funcionando */
   const aislar = fn => (...args) => { try { return fn(...args); } catch (err) { console.error(err); return `<section class="section"><div class="card small muted">No se ha podido mostrar el perfil de temperamento. Mándale a Jesús este mensaje: ${esc(String(err && err.message || err).slice(0, 160))}</div></section>`; } };
-  return { tarjetaHoy: aislar(tarjetaHoy), seccionTests: aislar(seccionTests), vista: aislar(vista), activo: () => !!(S.tq || S.tinf), bloqueFicha: aislar(bloqueFicha), vSub: aislar(vSub), cargarSub, resumenCoach: aislar(resumenCoach), puntuar, puntosRmeq, CRONO, sueno, PREG, RMEQ };
+  return { tarjetaHoy: aislar(tarjetaHoy), seccionTests: aislar(seccionTests), vista: aislar(vista), activo: () => !!(S.tq || S.tinf), bloqueFicha: aislar(bloqueFicha), vSub: aislar(vSub), cargarSub, resumenCoach: aislar(resumenCoach), puntuar, puntosRmeq, CRONO, sueno, PREG, RMEQ, perfilDe, mezcla };
 })();
