@@ -28,7 +28,7 @@ function toast(t) { const el = $('#toast'); el.textContent = t; el.hidden = fals
 function abrirSheet(html) { $('#sheet-in').innerHTML = html; $('#sheet').hidden = false; }
 function cerrarSheet() { $('#sheet').hidden = true; $('#sheet-in').innerHTML = ''; }
 $('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') cerrarSheet(); });
-function fallo(err, msg) { console.error(err); toast(msg || 'No se ha podido guardar. Revisa tu conexión e inténtalo de nuevo.'); }
+function fallo(err, msg) { console.error(err); if (err?.message === 'vista_alumno') return toast(TXT_VISTA); toast(msg || 'No se ha podido guardar. Revisa tu conexión e inténtalo de nuevo.'); }
 
 const IC = {
   hoy: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
@@ -338,7 +338,7 @@ function render() {
       <div class="badge"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : esc(S.perfil.metodologia || 'Tu proceso')}</strong></div></div>
       <div class="row" style="gap:8px">${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
       <button class="avatar" data-act="cuenta" aria-label="Mi cuenta">${esCoach ? '<img src="icons/coach.jpg" alt="">' : S.perfil.foto_url ? `<img src="${esc(S.perfil.foto_url)}" alt="">` : esc((S.perfil.nombre || '?').slice(0, 2).toUpperCase())}</button></div>
-    </header>${S.prueba ? vBannerPrueba() : ''}${coach && ANCHO.matches ? vLateral(actual) : ''}<main id="main" class="${coach ? claseMain() : ''}">${(S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : (!coach && Temperamento.activo()) ? seguro(Temperamento.vista) : seguro(vistas[actual])}</main>`;
+    </header>${S.prueba ? vBannerPrueba() : S.vista ? vBannerVista() : ''}${coach && ANCHO.matches ? vLateral(actual) : ''}<main id="main" class="${coach ? claseMain() : ''}">${(S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : (!coach && Temperamento.activo()) ? seguro(Temperamento.vista) : seguro(vistas[actual])}</main>`;
   document.body.classList.toggle('modo-coach', coach);
   if (coach) aplicarFiltroAl();
   $('#tabs').hidden = false;
@@ -1376,7 +1376,7 @@ function vAlumnos() {
   const venc = c.pagos.filter(p => !p.pagado_at && p.vence < hoyISO()), vencIds = new Set(venc.map(p => p.alumno_id));
   const progs = [...new Set(c.servicios.filter(x => als.some(a => a.id === x.alumno_id)).map(x => x.producto).filter(Boolean))].sort();
   const visibleAl = (a, e) => coincideAl({ n: normaliza(a.nombre), p: prodDe(a.id), m: modalidadDe(a.id), al: e.nivel !== 'ok', v: vencIds.has(a.id) });
-  return `<section class="stack"><span class="eyebrow">Panel del coach · ${esc(fLarga(hoyISO()))}</span><h1>Tus alumnos</h1></section>
+  return `<section class="stack"><span class="eyebrow">Panel del coach · ${esc(fLarga(hoyISO()))}</span><h1>Tus alumnos</h1><button class="btn sm ghost" data-act="miFicha" style="align-self:flex-start">✎ Mi ficha (mi perfil beta)</button></section>
   <section class="section"><div class="kpis"><button class="kpi kpi-b" data-act="alFiltro" data-k="todos" aria-pressed="${S.alF.k === 'todos'}"><div class="v num">${als.length}</div><div class="l">perfiles activos ›</div></button><button class="kpi kpi-b" data-act="alFiltro" data-k="alerta" aria-pressed="${S.alF.k === 'alerta'}"><div class="v num" style="color:var(--bad)">${est.filter(x => x.e.nivel !== 'ok').length}</div><div class="l">necesitan atención ›</div></button><button class="kpi kpi-b" data-act="alFiltro" data-k="vencidos" aria-pressed="${S.alF.k === 'vencidos'}"><div class="v num" style="color:${venc.length ? 'var(--bad)' : 'var(--ok)'}">${venc.length}</div><div class="l">pagos vencidos ›</div></button></div></section>
   <section class="section"><button class="card reporte-b" data-act="abrirReporte"><div class="ico gold">${svg('checkin')}</div><div class="grow" style="text-align:left"><b>Reporting semanal</b><div class="small muted">Semana del ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -7)))} al ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -1)))} · todos tus alumnos de un vistazo</div></div><span class="small" style="color:var(--blue-text)">Abrir ›</span></button></section>
   ${vFutbolCoach()}
@@ -1825,6 +1825,56 @@ function vBannerPrueba() {
   return `<div class="prueba-b"><div class="row" style="gap:10px;align-items:flex-start"><div class="grow"><b>Modo prueba · ${esc(P.nombre)}</b><div class="small">Así lo verá tu alumno. Puedes tocarlo todo: nada de lo que hagas se guarda.</div></div><button class="btn sm" data-act="salirPrueba">Salir</button></div>
     ${P.futbol ? `<div class="row small" style="gap:6px;flex-wrap:wrap;margin-top:8px"><span>Probar cuestionarios:</span>${[['diario', 'Diario', hoyISO()], ['partido', 'Partido', sumaDias(hoyISO(), -2)], ['lunes', 'Lunes', hoyISO()], ['semana', 'Domingo', sumaDias(lunesDe(hoyISO()), 6)]].map(([t, l, f]) => `<button class="pill" data-act="wellness" data-t="${t}" data-f="${f}">${l}</button>`).join('')}</div>` : ''}</div>`;
 }
+/* ---------- Ver como alumno: la app tal cual la ve esa persona, con sus datos reales.
+   Por defecto es solo lectura (nada se guarda); el coach puede permitir guardar para hacer una demo en directo. ---------- */
+const TXT_VISTA = 'Vista como alumno: aquí no se guarda nada. Pulsa «Permitir guardar» si quieres hacerlo de verdad.';
+function bloqueadoVista(solo) {
+  if (!S.vista || S.vista.escribe) return false;
+  if (!solo) toast(TXT_VISTA);
+  return true;
+}
+const NADA = { data: null, error: { message: 'vista_alumno' } };
+function constructorBloqueado() {
+  const q = new Proxy(function () { }, { get: (_, k) => k === 'then' ? (a, b) => Promise.resolve(NADA).then(a, b) : () => q, apply: () => q });
+  return q;
+}
+async function entrarVista(id) {
+  const a = (S.c?.perfiles || []).find(x => x.id === id); if (!a) return;
+  if (S.vista || S.prueba) return;
+  toast(`Abriendo la app de ${(a.nombre || '').split(' ')[0]}…`);
+  stopTimer();
+  S.vista = { id, nombre: a.nombre, escribe: false, guard: { user: S.user, perfil: S.perfil, d: S.d, modo: S.modo, tab: S.tab, ctab: S.ctab, dia: S.dia, sesion: S.sesion, ficha: S.ficha, fichaSub: S.fichaSub, editor: S.editor, verPlan: S.verPlan, verSes: S.verSes, nDoc: S.nDoc, hp: S.hp, tSel: S.tSel, tVer: S.tVer } };
+  const orig = { from: sb.from.bind(sb), rpc: sb.rpc.bind(sb), storage: sb.storage, functions: sb.functions };
+  S.vista.propios = Object.fromEntries(['from', 'rpc', 'storage', 'functions'].map(k => [k, Object.getOwnPropertyDescriptor(sb, k) || null]));
+  const ESCRIBE = ['insert', 'update', 'delete', 'upsert'];
+  Object.defineProperty(sb, 'from', { configurable: true, writable: true, value: t => { const q = orig.from(t); return new Proxy(q, { get: (o, k) => ESCRIBE.includes(k) && !S.vista?.escribe ? () => constructorBloqueado() : typeof o[k] === 'function' ? o[k].bind(o) : o[k] }); } });
+  Object.defineProperty(sb, 'rpc', { configurable: true, writable: true, value: (...x) => S.vista?.escribe ? orig.rpc(...x) : Promise.resolve(NADA) });
+  Object.defineProperty(sb, 'functions', { configurable: true, writable: true, value: { invoke: (...x) => S.vista?.escribe ? orig.functions.invoke(...x) : Promise.resolve(NADA) } });
+  Object.defineProperty(sb, 'storage', { configurable: true, writable: true, value: { from: b => { const st = orig.storage.from(b); return new Proxy(st, { get: (o, k) => ['upload', 'remove', 'update', 'move', 'copy'].includes(k) && !S.vista?.escribe ? async () => { toast(TXT_VISTA); return NADA; } : typeof o[k] === 'function' ? o[k].bind(o) : o[k] }); } } });
+  Object.assign(S, { user: { id, email: a.email }, perfil: a, modo: 'alumno', tab: 'hoy', dia: null, sesion: null, ficha: null, fichaSub: null, editor: null, verPlan: null, verSes: null, nDoc: null, hp: null, tSel: null, tVer: null });
+  try { await cargarAlumno(id); } catch (err) { console.error(err); await salirVista(); return toast('No se ha podido abrir la vista del alumno'); }
+  render(); window.scrollTo(0, 0);
+}
+async function conmutarGuardado() {
+  if (!S.vista) return;
+  if (!S.vista.escribe && !confirm(`Con «Permitir guardar», lo que hagas se guarda de verdad en la cuenta de ${(S.vista.nombre || '').split(' ')[0]} (registros, comidas, hábitos…). ¿Activarlo?`)) return;
+  S.vista.escribe = !S.vista.escribe; S.vista.tocado = S.vista.tocado || S.vista.escribe;
+  toast(S.vista.escribe ? 'Guardado activado: ahora se guarda en su cuenta' : 'Vuelve a ser solo lectura'); render();
+}
+async function salirVista() {
+  if (!S.vista) return;
+  stopTimer();
+  const V = S.vista; S.vista = null;
+  Object.entries(V.propios).forEach(([k, d]) => { delete sb[k]; if (d) Object.defineProperty(sb, k, d); });
+  Object.assign(S, V.guard, { dia: null, sesion: null });
+  if (V.tocado) await cargarCoach();
+  if (V.guard.ficha?.id) { S.ctab = V.guard.ctab; }
+  render(); window.scrollTo(0, 0);
+}
+function vBannerVista() {
+  const V = S.vista, nom = esc((V.nombre || '').split(' ')[0]);
+  return `<div class="prueba-b vista-b"><div class="row" style="gap:10px;align-items:flex-start"><div class="grow"><b>👁 Vista como ${esc(V.nombre || '')}</b><div class="small">${V.escribe ? `<b style="color:var(--bad)">Guardado activado:</b> lo que hagas se guarda en la cuenta de ${nom}.` : `Así ve ${nom} su app, con sus datos reales. Es solo lectura: nada se guarda.`}</div></div><div class="stack" style="gap:6px;align-items:flex-end"><button class="btn sm" data-act="salirVista">← Volver a la ficha</button><button class="btn sm ghost" data-act="vistaGuardar">${V.escribe ? 'Solo lectura' : 'Permitir guardar'}</button></div></div></div>`;
+}
 /* ---------- Plantillas de programa por tipo de alumno (programas sin alumno asignado; los alumnos no las ven) ---------- */
 const CATEGORIAS = ['Futbolistas alto rendimiento', 'Recomposición hombres', 'Recomposición mujeres', 'Salud +55 · lesiones y enfermedades', 'Otras'];
 async function cargarPlantillas() {
@@ -2141,7 +2191,7 @@ function vFicha() {
   const fF = iso => fecha(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
   return `<section class="stack"><button class="btn sm ghost" data-act="cerrarFicha" style="align-self:flex-start">← Alumnos</button><span class="eyebrow">Ficha del alumno</span><div class="row" style="gap:14px;align-items:center">${avatarDe(a, 64)}<h1 class="grow" style="margin:0">${esc(a.nombre)}</h1></div>
     <div class="small muted">${esc(a.email)} · alta ${esc(fCorta(a.fecha_alta))}${a.nombre_fiscal ? ' · ' + esc(a.nombre_fiscal) : ''}</div>
-    <div class="row" style="flex-wrap:wrap;gap:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm gold" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm" data-act="abrirReporte" data-id="${a.id}">📋 Reporting semanal</button><button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}</div>${a.activo === false ? '<div class="aprox small" style="margin-top:10px">Antiguo alumno: no le llegan avisos de seguimiento al coach. Sus datos siguen guardados y puede seguir usando la app. Reactívalo si vuelve a empezar un proceso.</div>' : ''}</section>
+    <div class="row" style="flex-wrap:wrap;gap:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como ${esc(nom)}</button><button class="btn sm gold" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm" data-act="abrirReporte" data-id="${a.id}">📋 Reporting semanal</button><button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}</div>${a.activo === false ? '<div class="aprox small" style="margin-top:10px">Antiguo alumno: no le llegan avisos de seguimiento al coach. Sus datos siguen guardados y puede seguir usando la app. Reactívalo si vuelve a empezar un proceso.</div>' : ''}</section>
   ${e.motivos.length ? `<section class="section"><div class="card stack"><span class="eyebrow">Para revisar</span><div class="small">${esc(e.motivos.join(' · '))}</div></div></section>` : ''}
   <section class="section"><div class="section-head"><h2>Plan</h2><button class="btn sm ghost" data-act="editarServicio">✎ Editar</button></div><div class="card stack">
     <button class="plan-b" data-act="fichaSub" data-s="plan"><div class="grow"><h3>${esc(srv?.producto || 'Sin plan asignado')} <span style="color:var(--blue-text)">›</span></h3><div class="small" style="color:var(--blue-text)">Ver toda su planificación: entrenamiento, alimentación y hábitos</div></div></button>
@@ -3740,6 +3790,7 @@ async function subirFoto(input) {
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
+    ${S.perfil.rol === 'coach' && !S.prueba && !S.vista ? '<button class="btn ghost full" data-act="miFicha">✎ Mi ficha: editar mi plan, entrenos y datos</button>' : ''}
     <button class="btn ghost full" data-act="cambiarClave">Cambiar contraseña</button>
     <button class="btn ghost full" data-act="salir">Cerrar sesión</button>
     <p class="note">Para instalarla como app: en iPhone, Safari → Compartir → "Añadir a pantalla de inicio". En Android, Chrome → menú ⋮ → "Instalar aplicación".</p></div>`);
@@ -3951,7 +4002,11 @@ document.addEventListener('click', async e => {
     case 'pagar': await marcarPagado(+b.dataset.id, b); break;
     case 'deshacerPago': await deshacerPago(+b.dataset.id, b); break;
     case 'recordar': await copiarRecordatorio(+b.dataset.id); break;
-    case 'cuenta': if (S.prueba) { await salirPrueba(); break; } vCuenta(); break;
+    case 'cuenta': if (S.prueba) { await salirPrueba(); break; } if (S.vista) { await salirVista(); break; } vCuenta(); break;
+    case 'miFicha': cerrarSheet(); if (S.vista) await salirVista(); S.modo = 'coach'; if (!S.c) await cargarCoach(); if (!S.c.perfiles.some(x => x.id === S.user.id)) return toast('No encuentro tu perfil: cierra sesión y vuelve a entrar'); S.ctab = 'alumnos'; await abrirFicha(S.user.id); break;
+    case 'verComoAlumno': await entrarVista(b.dataset.id); break;
+    case 'salirVista': await salirVista(); break;
+    case 'vistaGuardar': await conmutarGuardado(); break;
     case 'cambiarClave': cerrarSheet(); vistaNuevaClave(); break;
     case 'cerrarSheet': cerrarSheet(); break;
     case 'salir': cerrarSheet(); stopTimer(); await sb.auth.signOut(); break;
