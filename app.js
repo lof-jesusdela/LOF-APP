@@ -169,7 +169,7 @@ async function cargarAlumno(uid) {
     sb.from('servicios').select('*').eq('alumno_id', uid).eq('activo', true).order('id', { ascending: false }).limit(1),
     conRespaldo(() => sb.from('programas').select(SEL_PROGRAMA).eq('alumno_id', uid).eq('activo', true).order('id', { ascending: false }).limit(1),
       () => sb.from('programas').select(SIN_NUEVAS(SEL_PROGRAMA)).eq('alumno_id', uid).eq('activo', true).order('id', { ascending: false }).limit(1)),
-    sb.from('mediciones').select('*').eq('alumno_id', uid).eq('es_objetivo', false).order('fecha'),
+    sb.from('mediciones').select('*').eq('alumno_id', uid).order('fecha'),
     sb.from('registro_diario').select('*').eq('alumno_id', uid).gte('fecha', desde),
     sb.from('sesiones_hechas').select('*').eq('alumno_id', uid).gte('fecha', desde).order('fecha'),
     sb.from('checkins').select('*').eq('alumno_id', uid).order('semana_inicio', { ascending: false }).limit(12),
@@ -184,7 +184,7 @@ async function cargarAlumno(uid) {
     p.dias.forEach(d => { d.bloques_sesion.sort((a, b) => a.letra.localeCompare(b.letra)); d.bloques_sesion.forEach(b => b.ejercicios_sesion.sort((a, b) => a.orden - b.orden)); });
   }
   S.d = {
-    servicio: srv.data?.[0] || null, programa: p, mediciones: med.data || [], diario: reg.data || [],
+    servicio: srv.data?.[0] || null, programa: p, mediciones: (med.data || []).filter(m => !m.es_objetivo), medObj: (med.data || []).find(m => m.es_objetivo) || null, diario: reg.data || [],
     sesiones: ses.data || [], checkins: chk.data || [], ruta: ruta.data || [],
     metodos: Object.fromEntries((met.data || []).map(m => [m.nombre, m.explicacion])),
     valoraciones: ordenarValoraciones(val.data || []),
@@ -321,7 +321,8 @@ function hechoHoy(diaId) { return S.d.sesiones.some(s => s.fecha === hoyISO() &&
 /* ---------- Registro de los últimos 7 días (pasos y comidas), con fotos opcionales ---------- */
 const DIA3 = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 /* Días que se pueden rellenar: desde el lunes de esta semana hasta hoy (el domingo cierra la semana) */
-const ventanaRegistro = () => { const hoy = hoyISO(), l = lunesDe(hoy); return [...Array(7)].map((_, k) => sumaDias(l, k)).filter(d => d <= hoy); };
+/* Días que el alumno puede rellenar: de lunes a hoy; el lunes, además, toda la semana anterior (el domingo acaba a medianoche) */
+const ventanaRegistro = () => { const hoy = hoyISO(), l = lunesDe(hoy), ini = hoy === l ? sumaDias(l, -7) : l, out = []; for (let d = ini; d <= hoy; d = sumaDias(d, 1)) out.push(d); return out; };
 const FOTOS = {};
 const fotoUrl = p => FOTOS[p] || null;
 async function pedirFotos(rutas) {
@@ -339,7 +340,7 @@ function vRegistroDia(s) {
   if (rutas.some(p => !(p in FOTOS))) pedirFotos(rutas);
   return `<section class="section"><div class="section-head"><h2>Registro del día</h2><span class="small muted">${esHoy ? 'Hoy' : esc(fLarga(sel))}</span></div><div class="card stack">
     <div class="stack" style="gap:6px"><span class="small muted">Puedes rellenar los días de esta semana, hasta el domingo.</span>
-      <div class="reg-dias" role="group" aria-label="Día a registrar">${ventanaRegistro().map(f => { const x = S.d.diario.find(y => y.fecha === f), hecho = !!x && (x.pasos != null || x.ingestas != null || !!x.alimentacion); return `<button type="button" data-act="regDia" data-f="${f}" aria-pressed="${f === sel}" class="${hecho ? 'hecho' : ''}"><small>${DIA3[fecha(f).getDay()]}</small><b class="num">${fecha(f).getDate()}</b></button>`; }).join('')}</div></div>
+      <div class="reg-dias" role="group" aria-label="Día a registrar" style="--n:${Math.max(7, ventanaRegistro().length)}">${ventanaRegistro().map(f => { const x = S.d.diario.find(y => y.fecha === f), hecho = !!x && (x.pasos != null || x.ingestas != null || !!x.alimentacion); return `<button type="button" data-act="regDia" data-f="${f}" aria-pressed="${f === sel}" class="${hecho ? 'hecho' : ''}"><small>${DIA3[fecha(f).getDay()]}</small><b class="num">${fecha(f).getDate()}</b></button>`; }).join('')}</div></div>
     <div class="row"><div class="ico">${svg('pasos')}</div><label class="f grow">Pasos${objPasos(s) ? ` <span class="muted">(objetivo ${fmtNum(objPasos(s), 0)})</span>` : ''}<input id="r-pasos" type="number" inputmode="numeric" min="0" value="${r.pasos ?? ''}" placeholder="Ej. 8500"></label></div>
     ${s.modulo_nutricion ? `<div class="stack" style="gap:6px"><span class="small">Comidas de tu plan cumplidas ${esHoy ? 'hoy' : 'ese día'} <span class="muted">(de ${comidasDia(s)})</span></span><div class="choice ing" role="group">${[...Array(comidasDia(s) + 1)].map((_, k) => `<button data-act="ingestas" data-v="${k}" aria-pressed="${r.ingestas === k}">${k}</button>`).join('')}</div></div>
     <div class="stack" style="gap:8px"><label class="btn ghost full fotos-b"><input type="file" id="r-fotos" accept="image/*" multiple hidden>📷 Añadir fotos de lo que has comido (opcional)</label>${rutas.length ? `<div class="plan-imgs">${miniFotos(rutas)}</div>` : ''}</div>` : ''}
@@ -1010,15 +1011,55 @@ async function guardarDatosPerfil(form, id, perfil) {
 
 /* Composición corporal: una sola gráfica con desplegable (peso, % grasa, cintura, abdomen) */
 const COMP = [['peso', 'Peso', ' kg', 'var(--blue)'], ['grasa_pct', '% de grasa', ' %', 'var(--gold)'], ['grasa_kg', 'Kilos de grasa', ' kg', 'var(--bad)'], ['cintura', 'Contorno de cintura', ' cm', 'var(--ink)'], ['abd_bajo', 'Contorno de abdomen', ' cm', 'var(--blue)']];
-function vGraficaComp(med, perfil) {
+function vGraficaComp(med, perfil, obj) {
   med = conKgGrasa(med);
   const disp = COMP.filter(([c]) => serie(med, c).length);
   if (!disp.length) return '';
   const sel = disp.find(([c]) => c === S.grafComp) || disp[0], [c, t, u, col] = sel, p = serie(med, c), dl = delta(p);
   return `<div class="card stack chart"><div class="row" style="gap:8px"><select class="grow" data-graf="comp" aria-label="Qué medida ver">${disp.map(([k, l]) => `<option value="${k}" ${k === c ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="row"><b class="num grow" style="font-family:var(--display);font-size:26px">${fmtNum(p[p.length - 1].v)}${u}</b>${dl != null ? `<span class="pill num ${dl <= 0 ? 'ok' : 'warn'}">${dl > 0 ? '+' : ''}${fmtNum(dl)}${u} desde el inicio</span>` : ''}</div>
+    ${obj && obj[c] != null ? `<div class="small">🎯 Objetivo: <b>${fmtNum(Number(obj[c]))}${u}</b>${(() => { const d = p[p.length - 1].v - Number(obj[c]); return Math.abs(d) < 0.05 ? ' · conseguido' : ` · a ${fmtNum(Math.abs(d))}${u} del objetivo`; })()}</div>` : ''}
     ${spark(p, { unit: u, color: col })}
     ${vResumenGrasa(med, perfil)}</div>`;
+}
+/* Objetivo de composición corporal (se fija en la valoración inicial) */
+const CAMPOS_OBJ = [['peso', 'Peso', ' kg'], ['grasa_pct', '% de grasa', ' %'], ['grasa_kg', 'Kilos de grasa', ' kg'], ['cintura', 'Cintura', ' cm'], ['cadera', 'Cadera', ' cm'], ['abd_bajo', 'Abdomen bajo', ' cm'], ['pectoral', 'Pectoral', ' cm'], ['hombros', 'Hombros', ' cm'], ['brazo_d', 'Brazo dcho.', ' cm'], ['brazo_i', 'Brazo izdo.', ' cm'], ['muslo_d', 'Muslo dcho.', ' cm'], ['muslo_i', 'Muslo izdo.', ' cm'], ['gemelo_d', 'Gemelo dcho.', ' cm'], ['gemelo_i', 'Gemelo izdo.', ' cm']];
+function vObjetivoComp(obj, med, coach) {
+  if (!obj) return coach ? `<div class="card stack"><b>🎯 Objetivo de composición corporal</b><p class="small muted">Sin objetivo todavía. Fíjalo en la valoración inicial: cuánta grasa tiene que perder y qué perímetros quieres mantener.</p><button class="btn sm" data-act="objetivoComp" style="align-self:flex-start">Fijar objetivo</button></div>` : '';
+  const m = conKgGrasa(med), ext = (k, i) => { const p = serie(m, k); return p.length ? p[i < 0 ? p.length - 1 : 0].v : null; };
+  const filas = CAMPOS_OBJ.filter(([k]) => obj[k] != null).map(([k, l, u]) => {
+    const a = ext(k, -1), i0 = ext(k, 0), o = Number(obj[k]), mant = i0 != null && Math.abs(i0 - o) < 0.05, d = a != null ? a - o : null;
+    const est = d == null ? '' : mant ? (Math.abs(d) <= 1 ? '<span class="pill ok">Se mantiene</span>' : `<span class="pill warn">${d > 0 ? '+' : ''}${fmtNum(d)}${u}</span>`) : Math.abs(d) < 0.05 ? '<span class="pill ok">Conseguido</span>' : `<span class="small muted">a ${fmtNum(Math.abs(d))}${u}</span>`;
+    return `<div class="line"><div class="grow"><b class="small">${l}</b><div class="small muted">Ahora ${a != null ? fmtNum(a) + u : '—'} · objetivo ${mant ? 'mantener ' : ''}${fmtNum(o)}${u}</div></div>${est}</div>`;
+  }).join('');
+  return `<div class="card stack"><div class="row" style="gap:8px"><b class="grow">🎯 Objetivo de composición corporal</b>${obj.fecha ? `<span class="small muted">para el ${esc(fCorta(obj.fecha))}</span>` : ''}${coach ? '<button class="btn sm ghost" data-act="objetivoComp">✎ Editar</button>' : ''}</div>${obj.nota ? `<p class="small">${esc(obj.nota)}</p>` : ''}<div>${filas || '<p class="small muted">Sin valores fijados.</p>'}</div></div>`;
+}
+function formObjetivoComp() {
+  const f = S.ficha, obj = f.medObj || {}, m = conKgGrasa(f.med), act = k => { const p = serie(m, k); return p.length ? p[p.length - 1].v : null; };
+  abrirSheet(`<form class="stack" id="f-obj"><h2>Objetivo de composición corporal</h2>
+    <p class="small muted">Escribe el valor que quieres que alcance. Para mantener un perímetro, pulsa "Mantener" y se copia su medida actual. Deja vacío lo que no quieras fijar.</p>
+    <label class="f">Fecha objetivo<input type="date" id="o-fecha" value="${esc(obj.fecha || '')}"></label>
+    <div class="stack" style="gap:8px">${CAMPOS_OBJ.map(([k, l, u]) => { const a = act(k); return `<div class="row" style="gap:8px;align-items:flex-end"><label class="f grow">${l}${a != null ? ` <span class="muted">(ahora ${fmtNum(a)}${u})</span>` : ''}<input type="text" inputmode="decimal" data-obj="${k}" value="${obj[k] != null ? String(obj[k]).replace('.', ',') : ''}"></label>${a != null ? `<button type="button" class="btn sm ghost" data-mant="${k}" data-v="${a}">Mantener</button>` : ''}</div>`; }).join('')}</div>
+    <label class="f">Notas del objetivo (las ve el alumno)<textarea id="o-nota" rows="2" placeholder="Ej. Perder 6 kg de grasa manteniendo brazos y muslos">${esc(obj.nota || '')}</textarea></label>
+    <button class="btn full" type="submit">Guardar objetivo</button>${obj.id ? '<button class="btn ghost full" type="button" id="o-del" style="color:var(--bad)">Quitar objetivo</button>' : ''}</form>`);
+  const F = $('#f-obj');
+  F.addEventListener('click', ev => { const b = ev.target.closest('[data-mant]'); if (!b) return; F.querySelector(`[data-obj="${b.dataset.mant}"]`).value = String(b.dataset.v).replace('.', ','); });
+  F.addEventListener('submit', async e => {
+    e.preventDefault();
+    const bt = F.querySelector('[type=submit]'); if (bt.disabled) return; bt.disabled = true;
+    const row = { alumno_id: f.id, es_objetivo: true, fecha: $('#o-fecha').value || hoyISO(), nota: $('#o-nota').value.trim() || null };
+    F.querySelectorAll('[data-obj]').forEach(i => { row[i.dataset.obj] = numero(i.value); });
+    const guardar = r => obj.id ? sb.from('mediciones').update(r).eq('id', obj.id) : sb.from('mediciones').insert(r);
+    let { error } = await guardar(row), aviso = null;
+    if (error && /nota/.test(error.message || '')) { delete row.nota; ({ error } = await guardar(row)); aviso = 'Objetivo guardado. Para guardar las notas, ejecuta el Bloque 32 en Supabase'; }
+    if (error) { bt.disabled = false; return fallo(error); }
+    cerrarSheet(); toast(aviso || 'Objetivo guardado'); await abrirFicha(f.id);
+  });
+  $('#o-del')?.addEventListener('click', async ev => {
+    const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para quitar el objetivo'; return; }
+    const { error } = await sb.from('mediciones').delete().eq('id', obj.id); if (error) return fallo(error);
+    cerrarSheet(); toast('Objetivo quitado'); await abrirFicha(f.id);
+  });
 }
 function vProgreso() {
   const med = S.d.mediciones;
@@ -1029,7 +1070,7 @@ function vProgreso() {
   return `<section class="stack"><span class="eyebrow">Tu evolución</span><h1>Progreso</h1><button class="btn" data-act="misMedidas" style="align-self:flex-start">＋ Añadir mis medidas</button></section>
   ${objetivoDe(S.d.ruta) ? `<section class="section"><div class="card stack"><span class="eyebrow">Tu objetivo</span><div class="small">${esc(objetivoDe(S.d.ruta))}</div></div></section>` : ''}
   ${med.length ? `<section class="section"><div class="kpis"><div class="kpi"><div class="v num">${k('peso')}</div><div class="l">kg de peso</div></div><div class="kpi"><div class="v num">${k('grasa_pct')}</div><div class="l">% de grasa</div></div><div class="kpi"><div class="v num">${k('cintura')}</div><div class="l">cm de cintura</div></div></div><p class="small muted">Cambio desde tu primera medición (${esc(fCorta(med[0].fecha))} ${fecha(med[0].fecha).getFullYear()}).</p></section>` : ''}
-  <section class="section">${vGraficaComp(med, S.perfil) || '<div class="card empty">Aún no hay mediciones. Jesús las añadirá en tu próximo control mensual.</div>'}
+  <section class="section">${vGraficaComp(med, S.perfil, S.d.medObj) || '<div class="card empty">Aún no hay mediciones. Jesús las añadirá en tu próximo control mensual.</div>'}${vObjetivoComp(S.d.medObj, med, false)}
   <div class="card stack chart"><h3>Entrenamientos por semana</h3><svg viewBox="0 0 320 110" role="img" aria-label="Entrenamientos por semana">${porSem.map((v, i) => { const bw = 304 / 8, h = v / maxS * 76; return `<rect x="${8 + i * bw + 6}" y="${86 - h}" width="${bw - 12}" height="${Math.max(h, 1)}" rx="4" fill="${v >= (S.d.programa?.dias_semana || 99) ? 'var(--ok)' : v ? 'var(--blue)' : 'var(--line)'}"/><text x="${8 + i * bw + bw / 2}" y="${82 - h}" fill="var(--fg)" font-size="11" text-anchor="middle">${v || ''}</text><text x="${8 + i * bw + bw / 2}" y="104" fill="var(--muted)" font-size="10" text-anchor="middle">${esc(fecha(semanas[i]).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric' }))}</text>`; }).join('')}</svg></div></section>
   ${med.length ? `<section class="section"><h2>Mediciones</h2><div class="card tbl"><table><thead><tr><th>Fecha</th><th>Peso</th><th>% grasa</th><th>Cintura</th><th>Cadera</th></tr></thead><tbody>${med.slice().reverse().map(m => `<tr><td>${esc(fCorta(m.fecha))} ${String(fecha(m.fecha).getFullYear()).slice(2)}</td><td class="num">${fmtNum(m.peso)}</td><td class="num">${fmtNum(m.grasa_pct)}</td><td class="num">${fmtNum(m.cintura)}</td><td class="num">${fmtNum(m.cadera)}</td></tr>`).join('')}</tbody></table></div></section>` : ''}
   ${vTestsProgreso()}`;
@@ -1189,7 +1230,7 @@ async function abrirFicha(id) {
     conRespaldo(() => sb.from('sesiones_hechas').select('id,fecha,dia_id,duracion_min').eq('alumno_id', id).gte('fecha', sumaDias(hoyISO(), -365)),
       () => sb.from('sesiones_hechas').select('id,fecha,dia_id').eq('alumno_id', id).gte('fecha', sumaDias(hoyISO(), -365)))
   ]);
-  S.ficha = { id, med: med.data || [], ses: ses.data || [], notas: notas.data || [], prog: prog.data?.[0], srv: srv.data?.[0], todas: todas.data || [] };
+  S.ficha = { id, med: (med.data || []).filter(m => !m.es_objetivo), medObj: (med.data || []).find(m => m.es_objetivo) || null, ses: ses.data || [], notas: notas.data || [], prog: prog.data?.[0], srv: srv.data?.[0], todas: todas.data || [] };
   S.valEd = null;
   const [pr, ru] = await Promise.all([sb.from('presenciales').select('*').eq('alumno_id', id).order('fecha'), sb.from('hoja_ruta').select('*').eq('alumno_id', id).order('orden')]);
   S.ficha.pres = pr.data || []; S.ficha.ruta = ru.data || []; if (S.ficha.srv) S.ficha.srv._bloques = bloquesDe(S.ficha.ruta);
@@ -1929,8 +1970,9 @@ function vFicha() {
     ${tile('habitos', 'Hábitos', pasos7 != null ? fmtNum(pasos7, 0) : '—', `pasos de media · 7 días`, `objetivo ${fmtNum(obj, 0)}`, pasos7 == null ? '' : pasos7 >= obj ? 'ok' : pasos7 >= obj * .7 ? 'warn' : 'bad')}
   </div></section>
   ${Temperamento.bloqueFicha(f, a)}
-  <section class="section"><div class="section-head"><h2>Composición corporal</h2><button class="btn sm ghost" data-act="nuevaMedicion">＋ Medición</button></div>
-    ${vGraficaComp(f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), a) || '<div class="card empty">Sin mediciones todavía.</div>'}
+  <section class="section"><div class="section-head"><h2>Composición corporal</h2><div class="row" style="gap:6px"><button class="btn sm ghost" data-act="objetivoComp">🎯 Objetivo</button><button class="btn sm ghost" data-act="nuevaMedicion">＋ Medición</button></div></div>
+    ${vGraficaComp(f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), a, f.medObj) || '<div class="card empty">Sin mediciones todavía.</div>'}
+    ${vObjetivoComp(f.medObj, f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), true)}
     <button class="btn ghost full" data-act="fichaSub" data-s="composicion">Ver todas las medidas y tests ›</button></section>
   ${vBloqueActual(f, a)}
   ${vRevisionesFicha(a)}
@@ -1991,7 +2033,7 @@ function vFichaSub(f, a) {
     const med = f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha));
     const campos = [['peso', 'Peso (kg)'], ['grasa_pct', '% grasa'], ['grasa_kg', 'Grasa (kg)'], ['cuello', 'Cuello'], ['pectoral', 'Pectoral'], ['hombros', 'Hombros'], ['cintura', 'Cintura'], ['abd_bajo', 'Abdomen bajo'], ['cadera', 'Cadera'], ['brazo_d', 'Brazo dcho.'], ['brazo_i', 'Brazo izdo.'], ['muslo_d', 'Muslo dcho.'], ['muslo_i', 'Muslo izdo.'], ['gemelo_d', 'Gemelo dcho.'], ['gemelo_i', 'Gemelo izdo.']].filter(([k]) => med.some(m => m[k] != null));
     return cab('Composición corporal') + `
-    <section class="section">${vGraficaComp(med, a) || '<div class="card empty">Sin mediciones todavía.</div>'}<div class="row" style="gap:8px"><button class="btn grow" data-act="nuevaMedicion">＋ Añadir medición</button><button class="btn ghost" data-act="calcGrasa">Calculadora</button></div></section>
+    <section class="section">${vGraficaComp(med, a, f.medObj) || '<div class="card empty">Sin mediciones todavía.</div>'}${vObjetivoComp(f.medObj, med, true)}<div class="row" style="gap:8px"><button class="btn grow" data-act="nuevaMedicion">＋ Añadir medición</button><button class="btn ghost" data-act="calcGrasa">Calculadora</button></div></section>
     ${med.length ? `<section class="section"><h2>Todas las medidas</h2><div class="card tbl" style="overflow-x:auto"><table><thead><tr><th>Medida</th>${med.map(m => `<th class="num">${esc(fCorta(m.fecha))} ${String(fecha(m.fecha).getFullYear()).slice(2)}</th>`).join('')}<th>Cambio</th></tr></thead><tbody>${campos.map(([k, l]) => { const v = med.filter(m => m[k] != null), dl = v.length > 1 ? v[v.length - 1][k] - v[0][k] : null; return `<tr><td>${l}</td>${med.map(m => `<td class="num">${m[k] == null ? '—' : fmtNum(m[k])}</td>`).join('')}<td class="num"><b>${dl == null ? '—' : (dl > 0 ? '+' : '') + fmtNum(dl)}</b></td></tr>`; }).join('')}</tbody></table></div><p class="small muted">Perímetros en cm.</p></section>` : ''}
     ${vTestsFicha(f)}`;
   }
@@ -2069,7 +2111,7 @@ function formMisMedidas() {
   });
 }
 function formMedicion() {
-  const per = S.c.perfiles.find(p => p.id === S.ficha.id) || {};
+  const per = S.c.perfiles.find(p => p.id === S.ficha.id) || {}, primera = !(S.ficha.med || []).length;
   const c = [['peso', 'Peso (kg)'], ['cuello', 'Cuello'], ['cintura', 'Cintura'], ['cadera', 'Cadera'], ['abd_bajo', 'Abdomen bajo'], ['pectoral', 'Pectoral'], ['hombros', 'Hombros'], ['brazo_d', 'Brazo contraído dcho.'], ['brazo_i', 'Brazo contraído izdo.'], ['muslo_d', 'Muslo dcho.'], ['muslo_i', 'Muslo izdo.'], ['gemelo_d', 'Gemelo dcho.'], ['gemelo_i', 'Gemelo izdo.']];
   abrirSheet(`<form class="stack" id="f-med"><h2>Nueva medición</h2><label class="f">Fecha<input type="date" id="m-fecha" value="${hoyISO()}"></label>
     ${camposPerfil(per)}
@@ -2090,6 +2132,7 @@ function formMedicion() {
     const { error } = await guardarMedicion(row);
     if (error) { bt.disabled = false; return fallo(error); }
     cerrarSheet(); toast('Medición guardada'); await abrirFicha(S.ficha.id); abrirSub('composicion');
+    if (primera && !S.ficha.medObj) { toast('Valoración inicial guardada: ahora fija su objetivo'); formObjetivoComp(); }
   });
 }
 /* Datos del alumno: nombre visible, nombre completo para facturas, NIF y datos físicos */
@@ -3476,6 +3519,7 @@ document.addEventListener('click', async e => {
     case 'cerrarPlan': S.verPlan = null; render(); window.scrollTo(0, 0); break;
     case 'verSesion': await verSesion(+b.dataset.id); break;
     case 'nuevaMedicion': formMedicion(); break;
+    case 'objetivoComp': formObjetivoComp(); break;
     case 'misMedidas': formMisMedidas(); break;
     case 'calcGrasa': formCalculadoraGrasa(); break;
     case 'datosAlumno': formDatosAlumno(b.dataset.id); break;
