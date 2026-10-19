@@ -3033,7 +3033,7 @@ function vPrueba(p, lista, val, coach) {
 function vInforme(val, lista, coach) {
   return `<div class="card hero stack"><span class="eyebrow">${esc(fLarga(val.fecha))} ${fecha(val.fecha).getFullYear()}</span><h2 style="color:#fff">${esc(val.nombre)}</h2>
       ${val.resumen ? `<div class="stack" style="gap:6px;border-top:1px solid rgba(255,255,255,.14);padding-top:12px"><span class="eyebrow">Informe · valoración de todo el contexto</span><div class="small pre">${esc(val.resumen)}</div></div>` : `<div class="small muted">${coach ? 'Escribe aquí el informe general con "Editar informe".' : 'Jesús añadirá aquí el informe de la valoración.'}</div>`}
-      <div class="row" style="gap:8px;flex-wrap:wrap">${coach ? `<button class="btn sm gold" data-act="editarValoracion" data-id="${val.id}">✎ Editar informe</button><button class="btn sm ghost" data-act="nuevaPrueba" data-id="${val.id}" style="background:#fff">＋ Añadir prueba</button>` : ''}<button class="btn sm ghost" data-act="pdfValoracion" data-id="${val.id}" style="background:#fff">⬇ Descargar informe en PDF</button></div></div>
+      <div class="row" style="gap:8px;flex-wrap:wrap">${coach ? `<button class="btn sm gold" data-act="editarValoracion" data-id="${val.id}">✎ Editar informe</button><button class="btn sm ghost" data-act="nuevaPrueba" data-id="${val.id}" style="background:#fff;color:#0B0B0C">＋ Añadir prueba</button>` : ''}<button class="btn sm ghost" data-act="pdfValoracion" data-id="${val.id}" style="background:#fff;color:#0B0B0C">⬇ Descargar informe en PDF</button></div></div>
     <h2 style="margin-top:6px">Pruebas</h2>
     ${(val.pruebas || []).map(p => vPrueba(p, lista, val, coach)).join('') || '<div class="card empty">Aún no hay pruebas en esta valoración.</div>'}`;
 }
