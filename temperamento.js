@@ -238,7 +238,8 @@ const Temperamento = (() => {
     if (S.tq) return vFlujo();
     const t = misFilas().find(x => x.id === S.tinf);
     if (!t) { S.tinf = null; return seguro(vTests); }
-    return `<section class="stack"><button class="btn sm ghost" data-act="tpCerrarInforme" style="align-self:flex-start">← Tests</button></section>${vInforme(t, { nombre: S.perfil.nombre, sexo: S.perfil.sexo, anterior: misFilas().find(x => x.fecha < t.fecha || (x.fecha === t.fecha && x.id < t.id)) })}`;
+    const borrarMio = S.perfil?.rol === 'coach' ? `<section class="section"><h2>Tus cuestionarios</h2><div class="card">${misFilas().map(x => { const e = efectivo(x); return `<div class="line"><div class="grow small"><b>${esc(fCorta(x.fecha))}</b> · ${e.dom ? esc(NOM[e.dom]) : 'Perfil templado'}${x.id === t.id ? ' · <span class="muted">el que estás viendo</span>' : ''}</div><button class="btn ghost sm" data-act="tpBorrar" data-id="${x.id}" style="color:var(--bad)">Borrar</button></div>`; }).join('')}</div><p class="small muted">Solo lo ves tú, como coach: sirve para quitar una prueba o un cuestionario que rellenó otra persona desde tu cuenta.</p></section>` : '';
+    return `<section class="stack"><button class="btn sm ghost" data-act="tpCerrarInforme" style="align-self:flex-start">← Tests</button></section>${vInforme(t, { nombre: S.perfil.nombre, sexo: S.perfil.sexo, anterior: misFilas().find(x => x.fecha < t.fecha || (x.fecha === t.fecha && x.id < t.id)) })}${borrarMio}`;
   }
 
   function vFlujo() {
@@ -497,7 +498,10 @@ const Temperamento = (() => {
   async function borrar(id) {
     const { error } = await sb.from('temperamentos').delete().eq('id', id);
     if (error) return fallo(error);
-    S.c.temperamentos = (S.c.temperamentos || []).filter(x => x.id !== id); S.tSel = null; toast('Cuestionario borrado'); render();
+    if (S.c) S.c.temperamentos = (S.c.temperamentos || []).filter(x => x.id !== id);
+    if (S.d?.temperamentos) S.d.temperamentos = S.d.temperamentos.filter(x => x.id !== id);
+    if (S.tinf === id) { S.tinf = (S.d?.temperamentos || [])[0]?.id || null; if (!S.tinf) S.tab = 'tests'; }
+    S.tSel = null; toast('Cuestionario borrado'); render(); window.scrollTo(0, 0);
   }
 
   /* Resumen del piloto en Alumnos: quién lo ha hecho, a quién le toca revisión y quién tiene señales para derivar */
