@@ -412,13 +412,14 @@ const Habitos = (() => {
     if (f.habErr) return `<section class="section"><h2>Plan de hábitos</h2><div class="card small muted">${AVISO}</div></section>`;
     const habs = (f.habitos || []).filter(h => h.estado !== 'descartado'), regs = f.habReg || [], b = bloque(habs), nom = (a.nombre || '').split(' ')[0];
     const t = ((S.c?.temperamentos || []).filter(x => x.alumno_id === a.id).sort((x, y) => y.fecha.localeCompare(x.fecha) || y.id - x.id))[0];
-    const cab = `<section class="section"><div class="section-head"><h2>Plan de hábitos</h2><button class="btn sm ghost" data-act="hbPropio">＋ Hábito propio</button></div>`;
+    const cab = `<section class="section"><div class="section-head"><h2>Plan de hábitos</h2><button class="btn sm" data-act="hbPropio">＋ Añadir hábito</button></div>`;
     if (!habs.length) return cab + `<div class="card stack"><p class="small">${esc(nom)} aún no tiene plan. ${t ? 'Se le ofrece al terminar su cuestionario y en su pestaña Hábitos; también puedes generárselo tú con el orden recomendado.' : 'Para proponérselo hace falta su cuestionario de temperamento; mientras, puedes añadirle hábitos propios.'}</p>${t ? '<button class="btn sm" data-act="hbGenerarCoach" style="align-self:flex-start">Generarle el plan</button>' : ''}</div></section>`;
-    const sig = siguiente(habs, regs);
+    const sig = siguiente(habs, regs), lista = habs.slice().sort((x, y) => x.orden - y.orden || x.id - y.id);
     const fila = h => {
       const s = stats(h, regs), mot = s ? Object.entries([...s.r.values()].filter(x => x.fecha >= sumaDias(hoyISO(), -13) && x.motivo).reduce((o, x) => (o[x.motivo] = (o[x.motivo] || 0) + 1, o), {})) : [];
       const acc = [es(h.estado, 'propuesto', 'pausado') && `<button class="btn sm" data-act="hbEstado" data-id="${h.id}" data-v="instalacion" data-ini="1">Activar</button>`, h.estado === 'instalacion' && `<button class="btn sm ghost" data-act="hbEstado" data-id="${h.id}" data-v="mantenimiento">A mantenimiento</button>`, h.estado === 'mantenimiento' && `<button class="btn sm ghost" data-act="hbEstado" data-id="${h.id}" data-v="instalacion">Volver a diario</button>`, h.estado === 'mantenimiento' && `<button class="btn sm ghost" data-act="hbEstado" data-id="${h.id}" data-v="consolidado">Consolidado</button>`, es(h.estado, 'instalacion', 'mantenimiento') && `<button class="btn sm ghost" data-act="hbEstado" data-id="${h.id}" data-v="pausado">Pausar</button>`, `<button class="btn sm ghost" data-act="hbEditar" data-id="${h.id}">Editar</button>`, `<button class="btn sm ghost" data-act="hbEstado" data-id="${h.id}" data-v="descartado" style="color:var(--bad)">Quitar</button>`].filter(Boolean).join('');
-      return `<div class="card stack" style="margin-bottom:10px"><div class="row" style="align-items:flex-start"><span class="hb-n">${h.orden}</span><div class="grow stack" style="gap:3px"><b>${esc(h.titulo)}</b><span class="small muted">${esc(h.si_entonces || '')}</span></div><span class="pill ${ESTADO[h.estado][0]}">${ESTADO[h.estado][1]}</span></div>
+      const pos = lista.indexOf(h), mover = `<span class="row" style="gap:4px;flex:none">${pos > 0 ? `<button class="btn sm ghost" data-act="hbMover" data-id="${h.id}" data-dir="-1" aria-label="Subir">↑</button>` : ''}${pos < lista.length - 1 ? `<button class="btn sm ghost" data-act="hbMover" data-id="${h.id}" data-dir="1" aria-label="Bajar">↓</button>` : ''}</span>`;
+      return `<div class="card stack" style="margin-bottom:10px"><div class="row" style="align-items:flex-start"><span class="hb-n">${pos + 1}</span><div class="grow stack" style="gap:3px"><b>${esc(h.titulo)}</b><span class="small muted">${esc(h.si_entonces || '')}</span></div><span class="pill ${ESTADO[h.estado][0]}">${ESTADO[h.estado][1]}</span>${mover}</div>
         ${s ? `<div class="row" style="gap:8px;flex-wrap:wrap">${h.estado === 'instalacion' ? pillSem(s) : ''}<span class="small muted">Desde el ${esc(fCorta(h.inicio))} · día ${s.dias} · semana ${s.wOk}/7 · ${s.semOk}/${s.semTot} semanas cumplidas${h.confianza != null ? ` · confianza ${h.confianza}/10` : ''}${h.srbai?.['4'] != null ? ` · automaticidad ${fmtNum(h.srbai['4'])}${h.srbai['8'] != null ? ' → ' + fmtNum(h.srbai['8']) : ''}/7` : ''}</span></div>
         ${h.estado === 'instalacion' ? calendario(h, s) : ''}
         ${s.dosSeguidos && h.estado === 'instalacion' ? '<span class="small" style="color:var(--bad);font-weight:700">Dos días seguidos sin cumplir: escríbele hoy (un día suelto no estropea nada; hoy, la versión mínima).</span>' : ''}${s.caida && h.estado === 'instalacion' ? '<span class="small" style="color:var(--warn);font-weight:700">Ha caído más de 20 puntos respecto a la quincena anterior.</span>' : ''}
@@ -426,7 +427,8 @@ const Habitos = (() => {
         <div class="row" style="gap:6px;flex-wrap:wrap">${acc}</div></div>`;
     };
     return cab + `${b ? `<p class="small muted" style="margin:-4px 0 10px">Bloque ${b.n} · semana ${b.sem} de 8 · ${b.nuevos} ${b.nuevos === 1 ? 'hábito nuevo' : 'hábitos nuevos'} en este bloque (máximo 3). ${sig.ok ? `<b style="color:var(--ok)">Puede entrar el siguiente: ${esc(sig.sig.titulo)}.</b>` : sig.motivo !== 'sin' ? `Siguiente: ${esc(motivoEspera(sig, true).toLowerCase())}.` : ''}</p>` : ''}
-      ${habs.slice().sort((x, y) => x.orden - y.orden).map(fila).join('')}${leyenda}
+      ${lista.map(fila).join('')}${leyenda}
+      <p class="small muted">Usa las flechas para cambiar el orden: el siguiente en entrar es el primero de la lista que esté en «Más adelante».</p>
       <p class="note" style="margin-top:10px">Verde: 80 % o más de los últimos 14 días (la versión mínima cuenta). Ámbar: no se añade nada y se ajusta una sola cosa (momento, ancla o tamaño). Rojo: versión mínima o cambiarlo por otro de la misma hipótesis.</p></section>`;
   }
   function resumenCoach() {
@@ -449,21 +451,53 @@ const Habitos = (() => {
     f.habitos = (f.habitos || []).concat(data || []).sort((x, y) => x.orden - y.orden); S.c.habitos = (S.c.habitos || []).concat(data || []);
     toast('Plan creado: empieza hoy con el primero'); render();
   }
+  /* Hábitos que el coach puede añadir a mano (también uno totalmente libre) */
+  const SUGERIDOS = [
+    { t: 'Dejar de fumar', si: 'Cuando me apetezca un cigarro → bebo un vaso de agua y espero 5 minutos antes de decidir', min: 'Retrasar el primer cigarro del día 30 minutos', pq: 'Cada cigarro que retrasas o evitas mejora tu capacidad cardiorrespiratoria, tu descanso y tu recuperación.' },
+    { t: 'Beber 2 litros de agua al día', si: 'Cuando me siente a comer o a cenar → me lleno el vaso y la botella para la tarde', min: 'Un vaso de agua al levantarme', pq: 'Bien hidratado rindes más, tienes menos hambre «falsa» y recuperas mejor.' },
+    { t: 'Verdura en comida y cena', si: 'Cuando prepare el plato → la mitad es verdura antes de servir lo demás', min: 'Verdura en una de las dos comidas', pq: 'Más saciedad con menos calorías y mejor digestión.' },
+    { t: 'Leer 10 minutos antes de dormir', si: 'Cuando me meta en la cama → dejo el móvil fuera y leo 10 minutos', min: 'Leer una página', pq: 'Desconectar de la pantalla ayuda a dormirte antes y a descansar mejor.' },
+    { t: 'Caminar 10 minutos después de comer', si: 'Cuando termine de comer → salgo a caminar 10 minutos', min: 'Caminar 3 minutos', pq: 'Mejora la digestión, el azúcar en sangre y suma pasos sin esfuerzo.' }
+  ];
+  /* Reordena la lista y guarda solo las filas cuyo orden cambia */
+  async function renumerar(f, lista) {
+    const cambios = lista.map((h, i) => ({ h, o: i + 1 })).filter(x => x.h.orden !== x.o);
+    const res = await Promise.all(cambios.map(x => sb.from('habitos').update({ orden: x.o }).eq('id', x.h.id)));
+    const err = res.find(r => r.error)?.error; if (err) { fallo(err); return false; }
+    cambios.forEach(x => { x.h.orden = x.o; const g = (S.c?.habitos || []).find(y => y.id === x.h.id); if (g) g.orden = x.o; });
+    f.habitos.sort((x, y) => x.orden - y.orden); return true;
+  }
+  const ordenados = f => (f.habitos || []).filter(h => h.estado !== 'descartado').sort((x, y) => x.orden - y.orden || x.id - y.id);
+  async function mover(id, dir) {
+    const f = S.ficha, l = ordenados(f), i = l.findIndex(h => h.id === id), j = i + dir;
+    if (i < 0 || j < 0 || j >= l.length) return;
+    [l[i], l[j]] = [l[j], l[i]];
+    if (await renumerar(f, l)) render();
+  }
   function formPropio() {
     const f = S.ficha;
-    abrirSheet(`<form class="stack" id="hb-pr"><h2>Hábito propio</h2>
-      <label class="f">Hábito<input type="text" id="hb-t" placeholder="Ej. Estirar 5 minutos al levantarme" required></label>
+    abrirSheet(`<form class="stack" id="hb-pr"><h2>Añadir hábito</h2>
+      <div class="stack" style="gap:6px"><span class="small muted">Sugerencias (toca una para rellenarla) o escribe el tuyo:</span><div class="chips" style="gap:6px;flex-wrap:wrap">${SUGERIDOS.map((x, i) => `<button type="button" class="pill blue" data-sug="${i}">${esc(x.t)}</button>`).join('')}</div></div>
+      <label class="f">Hábito<input type="text" id="hb-t" placeholder="Ej. Dejar de fumar" required></label>
       <label class="f">«Si-entonces»<textarea id="hb-si" rows="2" placeholder="Cuando… → …"></textarea></label>
       <label class="f">Versión mínima (también cuenta)<input type="text" id="hb-min"></label>
       <label class="f">Por qué (lo ve el alumno)<textarea id="hb-pq" rows="2"></textarea></label>
-      <label class="f">Cuándo<select id="hb-cu"><option value="propuesto">Al final de la lista, cuando le toque</option><option value="instalacion">Empieza hoy</option></select></label>
+      <label class="f">Cuándo entra<select id="hb-cu"><option value="siguiente">El siguiente en entrar (antes que los que esperan)</option><option value="final">Al final de la lista</option><option value="hoy">Empieza hoy</option></select></label>
       <button class="btn full" type="submit">Guardar</button></form>`);
-    $('#hb-pr').addEventListener('submit', async e => {
+    const F = $('#hb-pr');
+    F.addEventListener('click', ev => { const c = ev.target.closest('[data-sug]'); if (!c) return; const x = SUGERIDOS[+c.dataset.sug]; $('#hb-t').value = x.t; $('#hb-si').value = x.si; $('#hb-min').value = x.min; $('#hb-pq').value = x.pq; });
+    F.addEventListener('submit', async e => {
       e.preventDefault();
-      const est = $('#hb-cu').value, row = { alumno_id: f.id, clave: 'propio', titulo: $('#hb-t').value.trim(), si_entonces: $('#hb-si').value.trim() || null, minimo: $('#hb-min').value.trim() || null, porque: $('#hb-pq').value.trim() || null, orden: Math.max(0, ...(f.habitos || []).map(h => h.orden)) + 1, estado: est, inicio: est === 'instalacion' ? hoyISO() : null };
+      const bt = F.querySelector('[type=submit]'); if (bt.disabled) return; bt.disabled = true;
+      const cu = $('#hb-cu').value, est = cu === 'hoy' ? 'instalacion' : 'propuesto';
+      const row = { alumno_id: f.id, clave: 'propio', titulo: $('#hb-t').value.trim(), si_entonces: $('#hb-si').value.trim() || null, minimo: $('#hb-min').value.trim() || null, porque: $('#hb-pq').value.trim() || null, orden: Math.max(0, ...(f.habitos || []).map(h => h.orden)) + 1, estado: est, inicio: est === 'instalacion' ? hoyISO() : null };
       const { data, error } = await sb.from('habitos').insert(row).select().single();
-      if (error) return fallo(error, /habitos/.test(error.message || '') ? AVISO : undefined);
-      f.habitos = (f.habitos || []).concat(data || row); S.c.habitos = (S.c.habitos || []).concat(data || row);
+      if (error) { bt.disabled = false; return fallo(error, /habitos/.test(error.message || '') ? AVISO : undefined); }
+      const nuevo = data || row; f.habitos = (f.habitos || []).concat(nuevo); S.c.habitos = (S.c.habitos || []).concat(nuevo);
+      if (cu === 'siguiente') {   // se coloca justo antes del primero que espera su turno
+        const l = ordenados(f).filter(h => h !== nuevo), k = l.findIndex(h => h.estado === 'propuesto');
+        l.splice(k < 0 ? l.length : k, 0, nuevo); await renumerar(f, l);
+      }
       cerrarSheet(); toast('Hábito añadido'); render();
     });
   }
@@ -505,6 +539,7 @@ const Habitos = (() => {
       }
       case 'hbGenerarCoach': await generarCoach(); break;
       case 'hbPropio': formPropio(); break;
+      case 'hbMover': await mover(id, +b.dataset.dir); break;
       case 'hbFicha': await abrirFicha(b.dataset.id); await abrirSub('habitos'); break;
     }
   });

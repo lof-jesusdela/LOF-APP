@@ -382,6 +382,49 @@ input[type=time]{width:100%;background:var(--surface-2);border:1px solid var(--l
 .tp-chips{gap:6px}
 .tp-cuida{border-color:rgba(210,59,50,.35)}
 .tp-dot{width:8px;height:8px;border-radius:50%;background:var(--bad);flex:none;margin-top:6px}
+
+/* Documentos PDF (pdf.js): maqueta A4 de 794 px, siempre en claro */
+.pd-doc{width:794px;background:#EEF2F7;color:#0C1A2E;font-family:"DM Sans",Arial,Helvetica,sans-serif;font-size:12.5px;line-height:1.45;padding:0 26px 18px;box-sizing:border-box;
+  --bg:#EEF2F7;--surface:#FFFFFF;--surface-2:#EEF2F8;--line:#E1E6EF;--fg:#0C0D10;--muted:#5D6574;--gold:#D4AF37;--gold-ink:#8C6D12;--gold-soft:rgba(212,175,55,.16);--blue:#0066FF;--blue-text:#0057D9;--blue-soft:rgba(0,102,255,.09);--ok:#1E9A5E;--warn:#B9740A;--bad:#D23B32;--ink:#0B0B0C;--on-ink:#FFFFFF;--on-ink-muted:#B9BEC9}
+.pd-doc *{box-sizing:border-box}
+.pd-head{display:flex;gap:18px;align-items:center;background:#062441;color:#fff;margin:0 -26px 18px;padding:22px 30px;border-radius:0 0 14px 14px}
+.pd-head img{width:62px;height:62px;border-radius:50%;border:2px solid #fff;flex:none}
+.pd-t{font-weight:800;font-size:21px;letter-spacing:.02em;text-transform:uppercase}
+.pd-n{font-weight:800;font-size:28px;color:#D4AF37;text-transform:uppercase;line-height:1.1}
+.pd-s{font-size:10px;letter-spacing:.06em;text-transform:uppercase;opacity:.85;margin-top:4px}
+.pd-sec{background:#062441;color:#fff;border-radius:10px;padding:9px 14px;font-weight:800;font-size:14px;text-transform:uppercase;margin:16px 0 10px}
+.pd-sec b{color:#D4AF37;margin-right:6px}
+.pd-card{background:#fff;border-radius:10px;padding:12px 14px}
+.pd-card h4,.pd-val h4,.pd-foco h4{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+.pd-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px}
+.pd-grid2{display:grid;grid-template-columns:1.5fr 1fr;gap:10px;margin-bottom:10px}
+.pd-kpi span{display:block;font-size:10px;font-weight:700;text-transform:uppercase;color:#5D6574}
+.pd-kpi b{display:block;font-size:26px;color:#0066FF;margin-top:6px}
+.pd-tab{width:100%;border-collapse:collapse}
+.pd-tab td,.pd-tab th{padding:5px 8px;text-align:left}
+.pd-tab tr:nth-child(odd) td{background:#F0F3F8}
+.pd-tab td:last-child{font-weight:700}
+.pd-tab th{font-size:10px;text-transform:uppercase;color:#5D6574;background:#fff}
+.pd-di td.pd-d{color:#0066FF;font-weight:700}.pd-di td.pd-i{color:#B08A1E;font-weight:700}
+.pd-obj{margin-bottom:8px}.pd-obj span{display:block;font-size:10px;font-weight:700;text-transform:uppercase;color:#5D6574}
+.pd-obj b{display:block;font-size:22px;color:#0066FF}.pd-obj small{color:#5D6574;font-size:10px}
+.pd-val{padding:4px 14px;margin:8px 0}.pd-val h4{color:#0057D9}.pd-val p,.pd-foco p{margin:0;white-space:pre-wrap}
+.pd-foco{background:#FFF7DD;border-radius:10px;padding:10px 14px;margin:8px 0}
+.pd-res{background:#fff;border-radius:10px;padding:12px 14px}
+.pd-mini{font-size:10.5px;color:#3B4352;margin:6px 0 0}
+.pd-fc{font-weight:800;font-size:14px;margin:4px 2px 8px}
+.pd-zonas{display:grid;gap:8px;margin-bottom:6px}
+.pd-zona span{display:block;font-weight:800;font-size:11px;text-transform:uppercase}
+.pd-zona b{display:block;font-size:17px;margin:4px 0 2px}.pd-zona small{font-size:9.5px;color:#5D6574}
+.pd-fila{display:grid;grid-template-columns:170px 1fr 48px;gap:12px;align-items:center;padding:3px 0}
+.pd-fila i{display:block;height:8px;border-radius:4px;background:#E8EEF8;overflow:hidden}.pd-fila u{display:block;height:100%;background:#0066FF;border-radius:4px}
+.pd-fila b{text-align:right}
+.pd-app .pd-cuerpo .section{margin-top:12px}.pd-app .card{box-shadow:none}
+.kpi-b{font:inherit;color:inherit;text-align:left;cursor:pointer}
+.kpi-b[aria-pressed="true"]{border-color:var(--blue);box-shadow:0 0 0 2px var(--blue-soft)}
+.al-filtros{display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:10px}
+@media (min-width:640px){.al-filtros{grid-template-columns:2fr 1fr 1fr}}
+.lat-busca{margin:0 8px 8px;width:calc(100% - 16px);padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:inherit;font-size:14px}
 </style>
 </head>
 <body>
@@ -403,6 +446,7 @@ input[type=time]{width:100%;background:var(--surface-2);border:1px solid var(--l
 <script src="config.js"></script>
 <script src="temperamento.js"></script>
 <script src="habitos.js"></script>
+<script src="pdf.js"></script>
 <script src="app.js"></script>
 <script>
 if ('serviceWorker' in navigator) { window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {})); }

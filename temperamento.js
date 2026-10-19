@@ -274,7 +274,7 @@ const Temperamento = (() => {
     const t = misFilas().find(x => x.id === S.tinf);
     if (!t) { S.tinf = null; return seguro(vTests); }
     const borrarMio = S.perfil?.rol === 'coach' ? `<section class="section"><h2>Tus cuestionarios</h2><div class="card">${misFilas().map(x => { const e = efectivo(x); return `<div class="line"><div class="grow small"><b>${esc(fCorta(x.fecha))}</b> · ${e.dom ? esc(NOM[e.dom]) : 'Perfil templado'}${x.id === t.id ? ' · <span class="muted">el que estás viendo</span>' : ''}</div><button class="btn ghost sm" data-act="tpBorrar" data-id="${x.id}" style="color:var(--bad)">Borrar</button></div>`; }).join('')}</div><p class="small muted">Solo lo ves tú, como coach: sirve para quitar una prueba o un cuestionario que rellenó otra persona desde tu cuenta.</p></section>` : '';
-    return `<section class="stack"><button class="btn sm ghost" data-act="tpCerrarInforme" style="align-self:flex-start">← Hábitos</button></section>${vInforme(t, { nombre: S.perfil.nombre, sexo: S.perfil.sexo, cta: true, anterior: misFilas().find(x => x.fecha < t.fecha || (x.fecha === t.fecha && x.id < t.id)) })}${borrarMio}`;
+    return `<section class="stack"><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm ghost" data-act="tpCerrarInforme">← Hábitos</button><button class="btn sm" data-act="pdfTemp" data-n="${esc(S.perfil.nombre || '')}">⬇ Descargar en PDF</button></div></section><div id="tp-informe">${vInforme(t, { nombre: S.perfil.nombre, sexo: S.perfil.sexo, cta: true, anterior: misFilas().find(x => x.fecha < t.fecha || (x.fecha === t.fecha && x.id < t.id)) })}</div>${borrarMio}`;
   }
 
   function vFlujo() {
@@ -432,12 +432,15 @@ const Temperamento = (() => {
     return `<section class="section">${head}</div>
       <button class="card tp-res" data-act="fichaSub" data-s="temperamento"><div class="tp-mini">${mapa([{ c: t.calor, h: t.humedad }], { mini: true, res: ef.dom })}<div class="grow stack" style="gap:5px;text-align:left"><h3>${ef.dom ? esc(NOM[ef.dom]) + (ef.reetiq ? '' : ` <span class="small muted num">${ef.pct[ef.dom]} %</span>`) : 'Sin datos'}${ef.reetiq ? ' <span class="pill gold">reetiquetado</span>' : ''}</h3>
         <div class="small muted">${ef.dom ? `${ef.sec ? `Rasgos de ${NOM[ef.sec].toLowerCase()}${pctTxt(ef, ef.sec)} · ` : ''}confianza ${t.confianza}` : 'Un eje sin datos'} · ${esc(fCorta(t.fecha))}</div>
-        <div class="chips" style="gap:6px">${cr ? `<span class="pill">${esc(cr.l)}</span>` : ''}${bi ? `<span class="pill ${bi[0]}">Cintura/talla ${fmtNum(r, 2)}</span>` : ''}${(t.senales || []).length ? `<span class="pill bad">${t.senales.length} ${t.senales.length === 1 ? 'señal' : 'señales'} para derivar</span>` : ''}</div>
+        <div class="chips" style="gap:6px">${cr ? `<span class="pill">${esc(cr.l)}</span>` : ''}${bi ? `<span class="pill ${bi[0]}">Cintura/talla ${fmtNum(r, 2)}</span>` : ''}${(t.senales || []).length ? `<span class="pill ${senalesPend(t) ? 'bad' : ''}">${t.senales.length} ${t.senales.length === 1 ? 'señal' : 'señales'} para derivar${senalesPend(t) ? '' : ' · vistas'}</span>` : ''}</div>
         <div class="small" style="color:${pc && pc.estado !== 'futura' ? 'var(--gold-ink)' : 'var(--muted)'};font-weight:700">${pc ? `${pc.estado === 'futura' ? 'Próxima revisión' : pc.estado === 'atrasada' ? 'Revisión atrasada' : 'Toca revisión'}: semana ${pc.k} · ${esc(fCorta(pc.f))}` : ped ? 'Le has pedido que lo repita' : 'Seguimiento de 8 semanas cerrado'}</div></div></div></button></section>`;
   }
 
+  /* Señales para derivar: avisan hasta que el coach abre su perfil; desde entonces quedan como vistas */
+  const senalesPend = t => (t?.senales || []).length > 0 && !t.seguimiento?.senales_vistas;
   async function cargarSub(f) {
     const l = filasDe(f.id); if (!l.length) return;
+    const t0 = l[0]; if (senalesPend(t0)) await guardarSeguimiento(t0, { ...(t0.seguimiento || {}), senales_vistas: hoyISO() });
     const r = await sb.from('registro_diario').select('*').eq('alumno_id', f.id).gte('fecha', sumaDias(l[l.length - 1].fecha, -7));
     f.tDiario = r.data || [];
   }
@@ -447,7 +450,7 @@ const Temperamento = (() => {
     const l = filasDe(a.id); if (!l.length) return `<section class="section"><div class="card empty">Aún no ha hecho el cuestionario.</div></section>`;
     const t = l.find(x => x.id === S.tSel) || l[0], ant = l.find(x => x.fecha < t.fecha || (x.fecha === t.fecha && x.id < t.id));
     const nom = (a.nombre || '').split(' ')[0];
-    if (S.tVer) return `<section class="stack"><button class="btn sm ghost" data-act="tpVer" style="align-self:flex-start">← Perfil de ${esc(nom)}</button><span class="eyebrow">Así lo ve ${esc(nom)} en su pestaña Tests</span></section>${vInforme(t, { nombre: a.nombre, sexo: a.sexo, anterior: ant })}`;
+    if (S.tVer) return `<section class="stack"><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm ghost" data-act="tpVer">← Perfil de ${esc(nom)}</button><button class="btn sm" data-act="pdfTemp" data-n="${esc(a.nombre || '')}">⬇ Descargar en PDF</button></div><span class="eyebrow">Así lo ve ${esc(nom)} en su pestaña Tests</span></section><div id="tp-informe">${vInforme(t, { nombre: a.nombre, sexo: a.sexo, anterior: ant })}</div>`;
     const ef = efectivo(t, a.sexo), pf = perfilDe(t, a.sexo), P = puntuar(t.respuestas?.a || []), ped = pendienteDe(a.temperamento_pedido, l), b = t.respuestas?.b || {}, cr = CRONO(t.rmeq), su = sueno(b.horarios);
     const m = medidas(f.med, t.fecha, hoyISO(), 'cintura'), base = m.ini, r0 = ict(base?.cintura, a.estatura_cm), b0 = bandaICT(r0);
     const des = (e, nq) => { const d = P.desempate[e], ej = e === 'calor' ? 'del calor' : 'de la humedad'; if (d == null) return ''; if (d === 'ninguna') return ` Todas sus respuestas ${ej} son B: ese eje no tiene datos.`; return d === nq ? ` La suma ${ej} da 0: decide la pregunta ${nq}.` : ` La suma ${ej} da 0 y la pregunta ${nq} también es B: decide la ${d}, la primera distinta de B.`; };
@@ -467,7 +470,8 @@ const Temperamento = (() => {
       <p class="small">${explica}${des('calor', 1)}${des('humedad', 12)}</p>
       <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="tpVer">Ver su informe</button>${ped ? '<span class="pill gold">Repetición pedida</span>' : `<button class="btn sm ghost" data-act="tpPedir" data-id="${a.id}">Pedir que lo repita</button>`}<button class="btn sm ghost" data-act="tpEtiqueta" data-id="${t.id}">${ef.dom ? 'Reetiquetar' : 'Asignar perfil'}</button></div></div></section>
     ${vMezcla(ef, true)}${vDesglose(t)}
-    ${(t.senales || []).length ? `<section class="section"><h2>Señales para derivar</h2><div class="card tp-cuida">${t.senales.map(senal).filter(Boolean).map(x => `<div class="line" style="align-items:flex-start"><span class="tp-dot"></span><div class="grow small"><b>${esc(x.d)}</b><div class="muted">${esc(x.coach)}</div></div></div>`).join('')}</div></section>` : ''}
+    ${(t.senales || []).length ? `<section class="section"><h2>Señales para derivar</h2><div class="card tp-cuida">${t.senales.map(senal).filter(Boolean).map(x => `<div class="line" style="align-items:flex-start"><span class="tp-dot"></span><div class="grow small"><b>${esc(x.d)}</b><div class="muted">${esc(x.coach)}</div></div></div>`).join('')}
+      <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px">${t.seguimiento?.senales_vistas ? `<span class="small muted grow">Vistas el ${esc(fCorta(t.seguimiento.senales_vistas))}: ya no salen como alerta.</span><button class="btn sm ghost" data-act="tpSenalesAvisar" data-id="${t.id}">Volver a avisarme</button>` : '<span class="small muted">Se marcarán como vistas al abrir esta pantalla.</span>'}</div></div></section>` : ''}
     <section class="section"><div class="section-head"><h2>Seguimiento</h2><span class="small muted">8 semanas desde el ${esc(fCorta(t.fecha))}</span></div><div class="card">
       ${cs.map(c => `<div class="line" data-act="tpRevision" data-id="${t.id}" data-k="${c.k}" style="cursor:pointer"><span class="tl-dot ${c.estado === 'hecha' ? 'ok' : c.estado === 'futura' ? '' : 'now'}"></span><div class="grow"><div class="small"><b>Semana ${c.k}</b> · ${esc(fCorta(c.f))}</div>${c.hecha ? `<div class="small muted">${esc(resumenRev(c.hecha))}</div>` : ''}</div>${PILL[c.estado][1] && c.estado !== 'futura' ? `<span class="pill ${PILL[c.estado][0]}">${PILL[c.estado][1]}</span>` : '<span class="small muted">Más adelante</span>'}</div>`).join('')}
       ${dec ? `<div class="aprox small"><b>${dec.tipo === 'reetiquetar' ? `Reetiquetado a ${esc((NOM[dec.nuevo] || dec.nuevo || '').toLowerCase())}` : 'Perfil mantenido'}</b> · ${esc(fCorta(dec.fecha))}${dec.motivo ? ` · ${esc(dec.motivo)}` : ''}</div>` : ''}
@@ -575,13 +579,13 @@ const Temperamento = (() => {
     const als = S.c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach'), hoy = hoyISO();
     const filas = als.map(a => { const l = filasDe(a.id); return { a, t: l[0], ped: pendienteDe(a.temperamento_pedido, l) }; }).filter(x => x.t || x.ped);
     if (!filas.length) return `<section class="section"><div class="card row"><div class="ico gold">${svg('tests')}</div><div class="grow small"><b>Perfil de temperamento</b><div class="muted">Pídeselo a los alumnos del piloto desde su ficha: lo hacen en unos 8 minutos y el informe te llega aquí.</div></div></div></section>`;
-    const hechos = filas.filter(x => x.t), pend = filas.filter(x => x.ped), conS = hechos.filter(x => (x.t.senales || []).length);
+    const hechos = filas.filter(x => x.t), pend = filas.filter(x => x.ped), conS = hechos.filter(x => senalesPend(x.t));
     const cuenta = { si: 0, no: 0, sin: 0 }; let reet = 0;
     hechos.forEach(({ t }) => { const rv = t.seguimiento?.revisiones || {}, ult = CORTES.slice().reverse().find(k => rv[k]); if (ult) (rv[ult].hip || []).forEach(v => cuenta[v] = (cuenta[v] || 0) + 1); if (t.seguimiento?.decision?.tipo === 'reetiquetar') reet++; });
     const lineas = filas.map(({ a, t, ped }) => {
-      const pc = t && proxCorte(t), urg = (t?.senales || []).length ? 0 : pc && pc.estado === 'atrasada' ? 1 : pc && pc.estado === 'toca' ? 2 : ped ? 3 : 4;
+      const pc = t && proxCorte(t), urg = senalesPend(t) ? 0 : pc && pc.estado === 'atrasada' ? 1 : pc && pc.estado === 'toca' ? 2 : ped ? 3 : 4;
       const ef = t && efectivo(t);
-      const txt = [t ? (ef.dom ? NOM[ef.dom] : 'Sin etiqueta') : null, t && (t.senales || []).length ? `<b style="color:var(--bad)">${t.senales.length} ${t.senales.length === 1 ? 'señal' : 'señales'} para derivar</b>` : null, pc && pc.estado !== 'futura' ? `<b style="color:var(--gold-ink)">revisión semana ${pc.k}${pc.estado === 'atrasada' ? ' atrasada' : ''}</b>` : null, ped ? `pedido el ${esc(fCorta(a.temperamento_pedido))}, sin hacer` : null].filter(Boolean).join(' · ');
+      const txt = [t ? (ef.dom ? NOM[ef.dom] : 'Sin etiqueta') : null, t && (t.senales || []).length ? (senalesPend(t) ? `<b style="color:var(--bad)">${t.senales.length} ${t.senales.length === 1 ? 'señal' : 'señales'} para derivar</b>` : `señales vistas el ${esc(fCorta(t.seguimiento.senales_vistas))}`) : null, pc && pc.estado !== 'futura' ? `<b style="color:var(--gold-ink)">revisión semana ${pc.k}${pc.estado === 'atrasada' ? ' atrasada' : ''}</b>` : null, ped ? `pedido el ${esc(fCorta(a.temperamento_pedido))}, sin hacer` : null].filter(Boolean).join(' · ');
       return { urg, html: `<div class="line" data-act="tpFicha" data-id="${a.id}" style="cursor:pointer">${t ? `<span class="tp-thumb">${mapa([{ c: t.calor, h: t.humedad }], { mini: true, res: ef.dom })}</span>` : '<span class="tp-thumb vacio"></span>'}<div class="grow"><h3 style="font-size:16px">${esc(a.nombre)}</h3><div class="small muted">${txt}</div></div><span class="small" style="color:var(--blue-text)">›</span></div>` };
     }).sort((x, y) => x.urg - y.urg);
     const totalHip = cuenta.si + cuenta.no + cuenta.sin;
@@ -640,6 +644,7 @@ const Temperamento = (() => {
       case 'tpEtiqueta': formEtiqueta(+b.dataset.id); break;
       case 'tpQuitarEtiqueta': { const t = (S.c.temperamentos || []).find(x => x.id === +b.dataset.id); if (!t) break; const sgN = { ...(t.seguimiento || {}) }; delete sgN.decision; if (await guardarSeguimiento(t, sgN)) { cerrarSheet(); toast('Vuelve al perfil del cuestionario'); render(); } break; }
       case 'tpBorrar': abrirSheet(`<div class="stack"><h2>¿Borrar este cuestionario?</h2><p class="small">Se borran sus respuestas y el seguimiento de las 8 semanas. No se puede deshacer.</p><button class="btn full" style="background:var(--bad)" data-act="tpBorrarSi" data-id="${b.dataset.id}">Sí, borrar</button><button class="btn ghost full" data-act="cerrarSheet">Cancelar</button></div>`); break;
+      case 'tpSenalesAvisar': { const t = (S.c.temperamentos || []).find(x => x.id === +b.dataset.id); if (!t) break; const sgN = { ...(t.seguimiento || {}) }; delete sgN.senales_vistas; if (await guardarSeguimiento(t, sgN)) { toast('Volverá a salir como alerta'); render(); } break; }
       case 'tpBorrarSi': cerrarSheet(); await borrar(+b.dataset.id); break;
       case 'tpFicha': { const id = b.dataset.id; S.tVer = null; S.tSel = null; await abrirFicha(id); await abrirSub('temperamento'); break; }
     }

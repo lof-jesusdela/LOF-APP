@@ -220,7 +220,8 @@ function vLateral(actual) {
   return `<aside class="lateral" aria-label="Navegación del coach">
     <nav class="lat-nav">${nav.map(([k, l]) => `<button data-act="ctab" data-t="${k}" ${actual === k && !S.ficha && !S.reporte && !S.editor && !S.obj ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span></button>`).join('')}<button data-act="abrirReporte" ${S.reporte && !S.reporte.alumno ? 'aria-current="page"' : ''}>${svg('checkin')}<span>Reporting semanal</span></button></nav>
     <div class="eyebrow" style="margin:18px 12px 6px">Alumnos · ${als.length}</div>
-    <div class="lat-al">${als.map(({ a, e }) => `<button data-act="ficha" data-id="${a.id}" ${S.ficha?.id === a.id ? 'aria-current="page"' : ''}><i class="al-dot" data-act="verAlertas" data-id="${a.id}" role="button" aria-label="Ver alertas de ${esc(a.nombre)}" style="background:var(--${e.nivel})"></i><span class="grow">${esc(a.nombre)}</span>${e.control ? '<b class="small" style="color:var(--gold-ink)">●</b>' : ''}</button>`).join('')}</div>
+    <input type="search" id="lat-busca" class="lat-busca" placeholder="Buscar alumno…" value="${esc(S.alF.q)}" aria-label="Buscar alumno" autocomplete="off">
+    <div class="lat-al">${als.map(({ a, e }) => `<button data-act="ficha" data-id="${a.id}" data-n="${esc(normaliza(a.nombre))}" ${S.ficha?.id === a.id ? 'aria-current="page"' : ''}${S.alF.q && !normaliza(a.nombre).includes(normaliza(S.alF.q)) ? ' hidden' : ''}><i class="al-dot" data-act="verAlertas" data-id="${a.id}" role="button" aria-label="Ver alertas de ${esc(a.nombre)}" style="background:var(--${e.nivel})"></i><span class="grow">${esc(a.nombre)}</span>${e.control ? '<b class="small" style="color:var(--gold-ink)">●</b>' : ''}</button>`).join('')}</div>
   </aside>`;
 }
 /* Si una pantalla falla, se muestra el motivo en vez de quedarse bloqueada */
@@ -241,6 +242,7 @@ function render() {
       <button class="avatar" data-act="cuenta" aria-label="Mi cuenta">${esCoach ? '<img src="icons/coach.jpg" alt="">' : esc((S.perfil.nombre || '?').slice(0, 2).toUpperCase())}</button></div>
     </header>${S.prueba ? vBannerPrueba() : ''}${coach && ANCHO.matches ? vLateral(actual) : ''}<main id="main" class="${coach ? claseMain() : ''}">${(S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : (!coach && Temperamento.activo()) ? seguro(Temperamento.vista) : seguro(vistas[actual])}</main>`;
   document.body.classList.toggle('modo-coach', coach);
+  if (coach) aplicarFiltroAl();
   $('#tabs').hidden = false;
   $('#tabs-in').innerHTML = tabs.map(([k, l]) => `<button data-act="${coach ? 'ctab' : 'tab'}" data-t="${k}" ${actual === k && !((S.ficha || S.editor || S.obj) && coach) ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${!coach && ((k === 'checkin' && tocaCheckin()) || (k === 'hoy' && pendientesFutbol().length)) ? '<i class="badge-dot"></i>' : ''}</button>`).join('');
   if (S.dia && ((!coach && S.tab === 'entreno') || (coach && S.obj))) rellenarSesion();
@@ -375,23 +377,35 @@ const ZONAS_FC = [
   { n: 2, nom: 'Zona 2 · umbral', corto: 'Umbral', desde: .80, hasta: .90, col: '#E0B43A', desc: 'Empieza a predominar el metabolismo glucolítico, es decir, los hidratos de carbono. Se reduce la participación de las grasas y el oxidativo, y el ácido láctico y la fatiga empiezan a aparecer más rápido.' },
   { n: 3, nom: 'Zona 3 · predominio anaeróbico', corto: 'Predominio anaeróbico', desde: .90, hasta: 1, col: '#D9473B', desc: 'Zona de potencia: el cuerpo no puede mantenerla más que unos pocos segundos o minutos. El metabolismo es casi 100 % anaeróbico y depende de tu VO2max, la capacidad de transportar y absorber oxígeno. Es el motor de tu cuerpo, frente a la zona 1, que es el depósito.' }
 ];
-const fcMaxDe = () => {
-  const pr = (S.d?.valoraciones || []).flatMap(v => v.pruebas || []).filter(p => p.tipo === 'fc');
+/* Futbolistas: modelo de 5 zonas por % de FC máxima */
+const ZONAS_FC5 = [
+  { n: 1, nom: 'Zona 1 · recuperación', corto: 'Recuperación', desde: .50, hasta: .60, col: '#BFD4EA', desc: 'Intensidad muy suave, por debajo del umbral aeróbico. Sirve para recuperar entre partidos y sesiones duras, activar y soltar piernas. Se puede mantener mucho tiempo con fatiga casi nula.' },
+  { n: 2, nom: 'Zona 2 · aeróbica (umbral aeróbico, VT1)', corto: 'Aeróbica', desde: .60, hasta: .70, col: '#7ED957', desc: 'Alrededor del umbral aeróbico (VT1). Construye la base aeróbica que te permite repetir esfuerzos y recuperar entre acciones durante el partido. El lactato apenas sube.' },
+  { n: 3, nom: 'Zona 3 · tempo', corto: 'Tempo', desde: .70, hasta: .80, col: '#F7D04B', desc: 'Entre los dos umbrales. El esfuerzo ya se nota y el lactato empieza a subir, pero todavía se mantiene estable. Mejora la resistencia a ritmo de juego continuo.' },
+  { n: 4, nom: 'Zona 4 · umbral anaeróbico (VT2)', corto: 'Umbral', desde: .80, hasta: .90, col: '#E67E2E', desc: 'Alrededor del umbral anaeróbico (VT2): es el máximo esfuerzo en el que el lactato aún se mantiene estable. Mejora tu capacidad de sostener ritmos altos durante más tiempo.' },
+  { n: 5, nom: 'Zona 5 · máxima (VO2max)', corto: 'Máxima', desde: .90, hasta: 1, col: '#D63A2F', tx: '#fff', desc: 'Por encima del umbral anaeróbico, cerca de tu VO2max. Esfuerzos muy intensos de segundos a pocos minutos: sprints, presión alta, acciones decisivas. Genera mucha fatiga y requiere recuperación.' }
+];
+const zonasDe = fut => fut ? ZONAS_FC5 : ZONAS_FC;
+/* FC máxima: la medida en su test o, si no hay, la estimada por edad (Tanaka) */
+const fcMaxDe = (vals, perfil) => {
+  const pr = (vals || S.d?.valoraciones || []).flatMap(v => v.pruebas || []).filter(p => p.tipo === 'fc');
   const medida = numDe(pr[0]?.datos?.[0]?.valor); if (medida) return Math.round(medida);
-  const e = edadDe(S.perfil?.fecha_nacimiento); return e ? Math.round(208.75 - 0.7 * e) : null;
+  const e = edadDe((perfil || S.perfil)?.fecha_nacimiento); return e ? Math.round(208.75 - 0.7 * e) : null;
 };
-function vZonasFC() {
-  const mx = fcMaxDe(); if (!mx) return '';
+function vZonasFC(o = {}) {
+  const fut = o.futbol ?? !!S.d?.servicio?.modulo_futbol, mx = fcMaxDe(o.vals, o.perfil), Z = zonasDe(fut);
+  if (!mx) return o.coach ? `<section class="section"><div class="card small muted">Para ver sus zonas de frecuencia cardiaca, pon su fecha de nacimiento en "Datos del alumno" o añade un test de FC máxima.</div></section>` : '';
   const ppm = x => Math.round(mx * x);
-  return `<section class="section"><div class="card stack zonas-fc"><div class="row"><span class="eyebrow grow">Tus zonas de frecuencia cardiaca</span><span class="pill num">FC máx ${mx} ppm</span></div>
-    <img src="img/zonas-fc.jpg" alt="Gráfico de zonas: Z1 hasta el 80 %, Z2 del 80 al 87 %, Z3 del 87 al 100 % de la FC máxima" loading="lazy" style="width:100%;border-radius:12px;display:block">
-    <div class="zonas-bar" role="group" aria-label="Zonas de frecuencia cardiaca">${ZONAS_FC.map(z => `<button type="button" data-act="zonaFC" data-z="${z.n}" style="background:${z.col}" aria-label="${esc(z.nom)}, de ${ppm(z.desde)} a ${ppm(z.hasta)} ppm"><b>${z.n}</b><span class="num">${ppm(z.desde)}–${ppm(z.hasta)}</span></button>`).join('')}</div>
-    <div class="zonas-lab">${ZONAS_FC.map(z => `<span>${esc(z.corto)}</span>`).join('')}</div>
-    <p class="small muted">Toca una zona para saber qué significa.</p></div></section>`;
+  const img = fut ? ['img/zonas-fc5.jpg', 'Gráfico de 5 zonas: lactato en sangre según la intensidad, con el umbral aeróbico (VT1) en la zona 2 y el anaeróbico (VT2) en la zona 4'] : ['img/zonas-fc.jpg', 'Gráfico de 3 zonas de frecuencia cardiaca'];
+  return `<section class="section"><div class="card stack zonas-fc"><div class="row"><span class="eyebrow grow">${o.coach ? 'Sus zonas de frecuencia cardiaca' : 'Tus zonas de frecuencia cardiaca'}</span><span class="pill num">FC máx ${mx} ppm</span></div>
+    <img src="${img[0]}" alt="${img[1]}" loading="lazy" style="width:100%;border-radius:12px;display:block">
+    <div class="zonas-bar" role="group" aria-label="Zonas de frecuencia cardiaca">${Z.map(z => `<button type="button" data-act="zonaFC" data-z="${z.n}" data-f="${fut ? 1 : 0}" data-mx="${mx}" style="background:${z.col};color:${z.tx || '#111'}" aria-label="${esc(z.nom)}, de ${ppm(z.desde)} a ${ppm(z.hasta)} ppm"><b>${z.n}</b><span class="num">${ppm(z.desde)}–${ppm(z.hasta)}</span></button>`).join('')}</div>
+    <div class="zonas-lab">${Z.map(z => `<span>${esc(z.corto)}</span>`).join('')}</div>
+    <p class="small muted">${fut ? '5 zonas para futbolista. ' : ''}Toca una zona para saber qué significa.</p></div></section>`;
 }
-function zonaFC(n) {
-  const z = ZONAS_FC.find(x => x.n === n), mx = fcMaxDe(); if (!z || !mx) return;
-  abrirSheet(`<div class="stack"><span class="eyebrow">Zona ${n}</span><h2>${esc(z.nom)}</h2><div class="pill num" style="align-self:flex-start">${Math.round(mx * z.desde)}–${Math.round(mx * z.hasta)} ppm · ${Math.round(z.desde * 100)}–${Math.round(z.hasta * 100)} % de tu FC máxima</div><p class="small pre">${esc(z.desc)}</p><button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
+function zonaFC(n, fut, mx) {
+  const z = zonasDe(fut).find(x => x.n === n); mx = mx || fcMaxDe(); if (!z || !mx) return;
+  abrirSheet(`<div class="stack"><span class="eyebrow">Zona ${n}</span><h2>${esc(z.nom)}</h2><div class="pill num" style="align-self:flex-start">${Math.round(mx * z.desde)}–${Math.round(mx * z.hasta)} ppm · ${Math.round(z.desde * 100)}–${Math.round(z.hasta * 100)} % de la FC máxima</div><p class="small pre">${esc(z.desc)}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`);
 }
 function vHoy() {
   const s = S.d.servicio || {}, p = S.d.programa, hoy = hoyISO();
@@ -1201,21 +1215,53 @@ async function cambiarArchivo(id, activo) {
   toast(activo ? 'Alumno reactivado' : 'Pasado a antiguos alumnos');
   await cargarCoach(); render();
 }
+/* Buscador y filtros del panel de alumnos (se filtra sin repintar para no perder el foco al escribir) */
+S.alF = S.alF || { q: '', p: '', m: '', k: '' };
+const MODALIDADES = ['Online', 'Híbrido', 'Presencial', 'Bono', 'Sin servicio'];
+const normaliza = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+const srvDe = id => (S.c?.servicios || []).find(x => x.alumno_id === id);
+const prodDe = id => srvDe(id)?.producto || '';
+function modalidadDe(id) {
+  const v = srvDe(id); if (!v) return 'Sin servicio';
+  if (/bono/i.test(v.producto || '')) return 'Bono';
+  const pres = !!(v.modulo_presencial || v.sesiones_incluidas), ent = v.modulo_entreno ?? true;
+  return pres && ent ? 'Híbrido' : pres ? 'Presencial' : 'Online';
+}
+function coincideAl(d) {
+  const f = S.alF, q = normaliza(f.q);
+  return (!q || d.n.includes(q)) && (!f.p || d.p === f.p) && (!f.m || d.m === f.m) && (f.k !== 'alerta' || d.al) && (f.k !== 'vencidos' || d.v);
+}
+function aplicarFiltroAl() {
+  let n = 0;
+  document.querySelectorAll('.al-fila').forEach(el => { const ok = coincideAl({ n: el.dataset.n, p: el.dataset.p, m: el.dataset.m, al: el.dataset.al === '1', v: el.dataset.v === '1' }); el.hidden = !ok; if (ok) n++; });
+  const tot = document.querySelectorAll('.al-fila').length, c = $('#al-cuenta'), z = $('#al-nada');
+  if (c) c.textContent = n === tot ? `${tot}` : `${n} de ${tot}`;
+  if (z) z.hidden = n > 0 || !tot;
+  const q = normaliza(S.alF.q);
+  document.querySelectorAll('.lat-al button[data-n]').forEach(el => { el.hidden = !!q && !el.dataset.n.includes(q); });
+}
 function vAlumnos() {
   const c = S.c, als = c.perfiles.filter(p => p.activo !== false);
   const est = als.map(a => ({ a, e: estadoAlumno(a) })), orden = { bad: 0, warn: 1, ok: 2 };
   est.sort((x, y) => orden[x.e.nivel] - orden[y.e.nivel]);
   const lab = { ok: 'En camino', warn: 'Atención', bad: 'Revisar' };
-  const venc = c.pagos.filter(p => !p.pagado_at && p.vence < hoyISO());
+  const venc = c.pagos.filter(p => !p.pagado_at && p.vence < hoyISO()), vencIds = new Set(venc.map(p => p.alumno_id));
+  const progs = [...new Set(c.servicios.filter(x => als.some(a => a.id === x.alumno_id)).map(x => x.producto).filter(Boolean))].sort();
+  const visibleAl = (a, e) => coincideAl({ n: normaliza(a.nombre), p: prodDe(a.id), m: modalidadDe(a.id), al: e.nivel !== 'ok', v: vencIds.has(a.id) });
   return `<section class="stack"><span class="eyebrow">Panel del coach · ${esc(fLarga(hoyISO()))}</span><h1>Tus alumnos</h1></section>
-  <section class="section"><div class="kpis"><div class="kpi"><div class="v num">${als.length}</div><div class="l">perfiles activos</div></div><div class="kpi"><div class="v num" style="color:var(--bad)">${est.filter(x => x.e.nivel !== 'ok').length}</div><div class="l">necesitan atención</div></div><div class="kpi"><div class="v num" style="color:${venc.length ? 'var(--bad)' : 'var(--ok)'}">${venc.length}</div><div class="l">pagos vencidos</div></div></div></section>
+  <section class="section"><div class="kpis"><button class="kpi kpi-b" data-act="alFiltro" data-k="todos" aria-pressed="${S.alF.k === 'todos'}"><div class="v num">${als.length}</div><div class="l">perfiles activos ›</div></button><button class="kpi kpi-b" data-act="alFiltro" data-k="alerta" aria-pressed="${S.alF.k === 'alerta'}"><div class="v num" style="color:var(--bad)">${est.filter(x => x.e.nivel !== 'ok').length}</div><div class="l">necesitan atención ›</div></button><button class="kpi kpi-b" data-act="alFiltro" data-k="vencidos" aria-pressed="${S.alF.k === 'vencidos'}"><div class="v num" style="color:${venc.length ? 'var(--bad)' : 'var(--ok)'}">${venc.length}</div><div class="l">pagos vencidos ›</div></button></div></section>
   <section class="section"><button class="card reporte-b" data-act="abrirReporte"><div class="ico gold">${svg('checkin')}</div><div class="grow" style="text-align:left"><b>Reporting semanal</b><div class="small muted">Semana del ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -7)))} al ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -1)))} · todos tus alumnos de un vistazo</div></div><span class="small" style="color:var(--blue-text)">Abrir ›</span></button></section>
   ${vFutbolCoach()}
   ${Temperamento.resumenCoach()}
   ${Habitos.resumenCoach()}
   ${vResumenCoach(est)}
   ${vAntiguos()}
-  <section class="section"><h2>Alumnos</h2><div class="card">${est.map(({ a, e }) => `<div class="line" data-act="ficha" data-id="${a.id}" style="cursor:pointer"><span style="width:4px;align-self:stretch;border-radius:2px;background:var(--${e.nivel})"></span><div class="grow stack" style="gap:3px"><div class="row"><h3 class="grow">${esc(a.nombre)}</h3>${e.control ? '<span class="pill gold">Revisión mensual</span>' : ''}<span class="pill ${e.nivel}">${lab[e.nivel]}</span></div><div class="small muted">${esc((c.servicios.find(s => s.alumno_id === a.id) || {}).producto || 'Sin servicio')}${e.ult ? ` · motivación ${e.ult.motivacion}/10` : ''}</div>${e.dpw ? barra('Semana', e.semana, e.dpw) + barra('Últimas 4 semanas', e.mes, e.dpw * 4) : ''}${e.motivos.length ? `<div class="small">${esc(e.motivos.join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no hay alumnos.</div>'}</div>
+  <section class="section" id="al-lista"><div class="section-head"><h2>Alumnos</h2><span class="small muted" id="al-cuenta"></span></div>
+    <div class="al-filtros"><input type="search" id="al-busca" placeholder="Buscar por nombre…" value="${esc(S.alF.q)}" aria-label="Buscar alumno por nombre" autocomplete="off">
+      <select id="al-prog" aria-label="Programa"><option value="">Todos los programas</option>${progs.map(x => `<option ${S.alF.p === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
+      <select id="al-mod" aria-label="Modalidad"><option value="">Todas las modalidades</option>${MODALIDADES.map(x => `<option ${S.alF.m === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+    ${S.alF.k ? `<div class="row" style="gap:8px;margin:8px 0"><span class="pill ${S.alF.k === 'todos' ? 'blue' : 'bad'}">Mostrando: ${{ todos: 'todos los perfiles activos', alerta: 'necesitan atención', vencidos: 'con pagos vencidos' }[S.alF.k]}</span><button class="linkbtn small" data-act="alFiltro" data-k="">Quitar filtro</button></div>` : ''}
+    <div class="card">${est.map(({ a, e }) => `<div class="line al-fila" data-act="ficha" data-id="${a.id}" data-n="${esc(normaliza(a.nombre))}" data-p="${esc(prodDe(a.id))}" data-m="${esc(modalidadDe(a.id))}" data-al="${e.nivel !== 'ok' ? 1 : 0}" data-v="${vencIds.has(a.id) ? 1 : 0}" style="cursor:pointer"${visibleAl(a, e) ? '' : ' hidden'}><span style="width:4px;align-self:stretch;border-radius:2px;background:var(--${e.nivel})"></span><div class="grow stack" style="gap:3px"><div class="row"><h3 class="grow">${esc(a.nombre)}</h3>${e.control ? '<span class="pill gold">Revisión mensual</span>' : ''}<span class="pill ${e.nivel}">${lab[e.nivel]}</span></div><div class="small muted">${esc((c.servicios.find(s => s.alumno_id === a.id) || {}).producto || 'Sin servicio')}${e.ult ? ` · motivación ${e.ult.motivacion}/10` : ''}</div>${e.dpw ? barra('Semana', e.semana, e.dpw) + barra('Últimas 4 semanas', e.mes, e.dpw * 4) : ''}${e.motivos.length ? `<div class="small">${esc(e.motivos.join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no hay alumnos.</div>'}<div class="empty" id="al-nada" hidden>Ningún alumno coincide con la búsqueda.</div></div>
   <p class="note">Para dar de alta a un alumno nuevo, créalo en Supabase → Authentication → Users. Su perfil aparecerá aquí solo.</p></section>`;
 }
 
@@ -2000,7 +2046,7 @@ function vFichaSub(f, a) {
     const dpw = f.prog?.dias_semana || 0, P = proceso(srv), linea = s2 => `<div class="line" data-act="verSesion" data-id="${s2.id}" style="cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(s2.fecha))}</span><div class="grow"><div class="small"><b>${esc(nomDia(s2.dias))}</b> · ${esc(s2.dias?.foco || '')} · ${(s2.registros_series || []).length} series${s2.duracion_min ? ` · ${s2.duracion_min} min` : ''}${s2.cansancio ? ` · cansancio ${s2.cansancio}/5` : ''}${(s2.omitidos || []).length ? ` · ${s2.omitidos.length} no realizado${s2.omitidos.length > 1 ? 's' : ''}` : ''}</div>${s2.nota ? `<div class="small muted">"${esc(s2.nota)}"</div>` : ''}</div><span class="small" style="color:var(--blue-text)">›</span></div>`;
     const semana = f.ses.filter(x => x.fecha >= lunes), bloque = P && !P.antes ? f.ses.filter(x => x.fecha >= P.cc.ini && x.fecha <= P.cc.fin && x.fecha < lunes) : [];
     const unicas = l => new Set(l.map(x => x.fecha + x.dia_id)).size, mes = unicas(f.todas.filter(x => x.fecha >= sumaDias(hoy, -27)));
-    return cab('Entrenamiento') + `
+    return cab('Entrenamiento') + vZonasFC({ vals: f.val, perfil: a, futbol: !!srv?.modulo_futbol, coach: true }) + `
     <section class="section"><div class="section-head"><h2>Programa</h2><button class="btn sm" data-act="editarPrograma" data-id="${a.id}">${f.prog ? '✎ Editar programa' : 'Crear programa'}</button></div><div class="card small">${f.prog ? `<b>${esc(f.prog.nombre)}</b> · ${dpw || '—'} días por semana` : 'Aún no tiene programa.'}</div></section>
     <section class="section"><h2>Esta semana</h2><div class="card">${dpw ? barra('Entrenos de la semana', unicas(semana), dpw, '') + barra('Últimas 4 semanas', mes, dpw * 4, '') : ''}${semana.map(linea).join('') || '<div class="empty">Aún no ha entrenado esta semana.</div>'}</div></section>
     ${P && !P.antes ? `<section class="section"><h2>Resto del bloque · ${esc(nomCiclo(P.cc))}</h2><div class="card">${bloque.map(linea).join('') || '<div class="empty">Sin entrenamientos anteriores en este bloque.</div>'}</div></section>` : ''}
@@ -2551,8 +2597,8 @@ function vFacturaDoc() {
   const fa = S.factura, F = S.c.fiscal || {};
   const campo = (l, v, extra = '') => `<div class="fd-f ${extra}"><span>${l}</span><div>${esc(v || '')}</div></div>`;
   return `<section class="stack no-print"><button class="btn sm ghost" data-act="cerrarFactura" style="align-self:flex-start">← Pagos</button>
-    <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" data-act="imprimirFactura">Descargar / imprimir PDF</button><button class="btn ghost" data-act="editarFactura" data-id="${fa.id}">✎ Modificar</button></div>
-    <p class="small muted">En el móvil: pulsa "Descargar / imprimir PDF" y elige "Guardar como PDF" o compártela por WhatsApp.</p></section>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" data-act="imprimirFactura">Descargar PDF</button><button class="btn ghost" data-act="editarFactura" data-id="${fa.id}">✎ Modificar</button></div>
+    <p class="small muted">En el móvil: pulsa "Descargar PDF" y elige "Compartir o guardar" para mandarla por WhatsApp o guardarla en Archivos.</p></section>
   <div class="factura-doc">
     <div class="fd-top"></div>
     <div class="fd-head"><img src="icons/logo-96.jpg" alt="LOF"><div><h1>FACTURA</h1><div class="fd-sub">ENTRENAMIENTO Y ACOMPAÑAMIENTO</div></div></div>
@@ -2987,7 +3033,7 @@ function vPrueba(p, lista, val, coach) {
 function vInforme(val, lista, coach) {
   return `<div class="card hero stack"><span class="eyebrow">${esc(fLarga(val.fecha))} ${fecha(val.fecha).getFullYear()}</span><h2 style="color:#fff">${esc(val.nombre)}</h2>
       ${val.resumen ? `<div class="stack" style="gap:6px;border-top:1px solid rgba(255,255,255,.14);padding-top:12px"><span class="eyebrow">Informe · valoración de todo el contexto</span><div class="small pre">${esc(val.resumen)}</div></div>` : `<div class="small muted">${coach ? 'Escribe aquí el informe general con "Editar informe".' : 'Jesús añadirá aquí el informe de la valoración.'}</div>`}
-      ${coach ? `<div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm gold" data-act="editarValoracion" data-id="${val.id}">✎ Editar informe</button><button class="btn sm ghost" data-act="nuevaPrueba" data-id="${val.id}" style="background:#fff">＋ Añadir prueba</button></div>` : ''}</div>
+      <div class="row" style="gap:8px;flex-wrap:wrap">${coach ? `<button class="btn sm gold" data-act="editarValoracion" data-id="${val.id}">✎ Editar informe</button><button class="btn sm ghost" data-act="nuevaPrueba" data-id="${val.id}" style="background:#fff">＋ Añadir prueba</button>` : ''}<button class="btn sm ghost" data-act="pdfValoracion" data-id="${val.id}" style="background:#fff">⬇ Descargar informe en PDF</button></div></div>
     <h2 style="margin-top:6px">Pruebas</h2>
     ${(val.pruebas || []).map(p => vPrueba(p, lista, val, coach)).join('') || '<div class="card empty">Aún no hay pruebas en esta valoración.</div>'}`;
 }
@@ -3164,13 +3210,20 @@ function formDia(id) {
   });
   $('#d-del')?.addEventListener('click', async ev => { const b = ev.currentTarget; if (!b.dataset.ok) { b.dataset.ok = 1; b.textContent = 'Pulsa otra vez: se borrará el día con todos sus ejercicios'; return; } const { error } = await sb.from('dias').delete().eq('id', d.id); if (error) return fallo(error, 'No se puede borrar: ese día ya tiene entrenos registrados.'); cerrarSheet(); toast('Día eliminado'); refrescarEditor(); });
 }
+/* ¿El programa que se edita es de futbolista? (alumno con módulo de fútbol o plantilla de futbolistas) */
+function editorEsFutbol() {
+  const e = S.editor || {}, p = e.prog || {};
+  if (e.alumnoId) return !!(S.c?.servicios || []).find(x => x.alumno_id === e.alumnoId)?.modulo_futbol;
+  const cat = p.categoria || (S.c?.plantillas || []).find(x => x.id === p.id)?.categoria || '';
+  return /futbol/i.test(cat.normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+}
 function formBloque(id, diaId) {
   const p = S.editor.prog, dia = p.dias.find(d => d.id === diaId) || p.dias.find(d => d.bloques_sesion.some(b => b.id === id)), b = id ? dia.bloques_sesion.find(x => x.id === id) : null;
   const sig = String.fromCharCode(65 + (dia?.bloques_sesion.length || 0));
   abrirSheet(`<form class="stack" id="f-blq"><h2>${b ? 'Editar bloque' : 'Nuevo bloque'}</h2>
     <div style="display:grid;grid-template-columns:70px 1fr;gap:8px"><label class="f">Letra<input type="text" id="b-l" maxlength="2" value="${esc(b?.letra || sig)}"></label><label class="f">Nombre<input type="text" id="b-n" value="${esc(b?.nombre || '')}" placeholder="Ej. Tren inferior" required></label></div>
     <label class="f">Tipo<select id="b-t">${[['fuerza', 'Fuerza (ejercicios con series)'], ['cardio', 'Cardio'], ['movilidad', 'Movilidad']].map(([v, l]) => `<option value="${v}" ${b?.tipo === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-    <label class="f">Momento (día de partido)<select id="b-mo">${[['', 'Normal'], ['pre', 'Antes del partido'], ['post', 'Después del partido']].map(([v, l]) => `<option value="${v}" ${(b?.momento || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+${editorEsFutbol() || b?.momento ? `    <label class="f">Momento (día de partido)<select id="b-mo">${[['', 'Normal'], ['pre', 'Antes del partido'], ['post', 'Después del partido']].map(([v, l]) => `<option value="${v}" ${(b?.momento || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>` : ''}
     <label class="f">Indicación del bloque (superserie, circuito…)<input type="text" id="b-ag" value="${esc(b?.agrupacion || '')}" placeholder="Ej. 1 y 2 juntos (superserie). Descanso 1 minuto."></label>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="f">Duración (cardio)<input type="text" id="b-du" value="${esc(b?.duracion || '')}" placeholder="30 min"></label><label class="f">Frecuencia cardiaca<input type="text" id="b-fc" value="${esc(b?.fc_objetivo || '')}" placeholder="135–140 ppm"></label></div>
     <label class="f">Máquina<input type="text" id="b-ma" value="${esc(b?.maquina || '')}"></label>
@@ -3183,7 +3236,7 @@ function formBloque(id, diaId) {
     e.preventDefault();
     const v = k => $(k).value.trim() || null;
     const row = { letra: v('#b-l') || sig, nombre: v('#b-n') || 'Bloque', tipo: $('#b-t').value, agrupacion: v('#b-ag'), duracion: v('#b-du'), fc_objetivo: v('#b-fc'), maquina: v('#b-ma'), detalle: v('#b-de'), video_url: v('#b-vi') };
-    if ($('#b-mo').value || b?.momento) row.momento = $('#b-mo').value || null;
+    if ($('#b-mo')?.value || b?.momento) row.momento = $('#b-mo')?.value || null;
     const file = $('#b-img').files[0];
     if (file) {
       toast('Subiendo imagen…');
@@ -3460,7 +3513,9 @@ document.addEventListener('click', async e => {
     case 'nuevaFactura': formFactura(b.dataset.id ? +b.dataset.id : null); break;
     case 'verFactura': verFactura(+b.dataset.id); break;
     case 'cerrarFactura': S.factura = null; render(); break;
-    case 'imprimirFactura': { const t = document.title; document.title = `Factura_${S.factura.numero}_${S.factura.cliente_nombre}`.replace(/\s+/g, '_'); window.print(); setTimeout(() => document.title = t, 1500); break; }
+    case 'pdfValoracion': await PDF.valoracion(+b.dataset.id, b); break;
+    case 'pdfTemp': await PDF.temperamento(b.dataset.n, b); break;
+    case 'imprimirFactura': await PDF.factura(S.factura, b); break;
     case 'datosFiscales': formDatosFiscales(); break;
     case 'escala': document.querySelectorAll(`#${b.dataset.g} button`).forEach(x => x.setAttribute('aria-pressed', x === b)); break;
     case 'editarSesion': await editarSesionCerrada(); break;
@@ -3492,6 +3547,7 @@ document.addEventListener('click', async e => {
     case 'enviarCheckin': await enviarCheckin(); break;
     case 'ficha': cerrarSheet(); await abrirFicha(b.dataset.id); break;
     case 'verAlertas': verAlertas(b.dataset.id); break;
+    case 'alFiltro': S.alF.k = S.alF.k === b.dataset.k ? '' : b.dataset.k; if (S.obj) await salirComo(); S.ficha = null; S.reporte = null; S.factura = null; S.editor = null; S.ctab = 'alumnos'; render(); if (S.alF.k) $('#al-lista')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
     case 'cerrarFicha': S.ficha = null; S.verSes = null; S.verPlan = null; S.valEd = null; render(); break;
     case 'cerrarVerSesion': S.verSes = null; render(); window.scrollTo(0, 0); break;
     case 'verPlan': verPlan(+b.dataset.p, +b.dataset.d); break;
@@ -3499,7 +3555,7 @@ document.addEventListener('click', async e => {
     case 'nuevaPlantilla': formNuevaPlantilla(); break;
     case 'valPlantilla': formValPlantilla(+b.dataset.id); break;
     case 'regDia': S.regDia = b.dataset.f; render(); break;
-    case 'zonaFC': zonaFC(+b.dataset.z); break;
+    case 'zonaFC': zonaFC(+b.dataset.z, b.dataset.f === '1', +b.dataset.mx || null); break;
     case 'archivarAlumno': await cambiarArchivo(b.dataset.id, false); break;
     case 'reactivarAlumno': await cambiarArchivo(b.dataset.id, true); break;
     case 'asignarPlantilla': formAsignarPlantilla(b.dataset.al || null, b.dataset.id ? +b.dataset.id : null); break;
@@ -3552,6 +3608,7 @@ document.addEventListener('click', async e => {
   }
 });
 document.addEventListener('change', async e => {
+  if (e.target.id === 'al-prog' || e.target.id === 'al-mod') { S.alF[e.target.id === 'al-prog' ? 'p' : 'm'] = e.target.value; aplicarFiltroAl(); return; }
   if (e.target.dataset?.graf === 'comp') { S.grafComp = e.target.value; render(); return; }
   const m = (e.target.id || '').match(/^(kg|rp|ri)-(\d+)-(\d+)(?:-(\d+))?$/); if (!m || !S.sesion) return;
   const fila = `${m[2]}-${m[3]}`, z = S.sesion; if (!z.regs[fila]) return;
@@ -3564,6 +3621,7 @@ document.addEventListener('change', async e => {
   reg[campo] = val; toast('Cambio guardado');
 });
 document.addEventListener('input', e => {
+  if (e.target.id === 'al-busca' || e.target.id === 'lat-busca') { S.alF.q = e.target.value; const o = e.target.id === 'al-busca' ? $('#lat-busca') : $('#al-busca'); if (o) o.value = e.target.value; aplicarFiltroAl(); return; }
   if (e.target.id === 'ej-buscar') { S.filtroEj = e.target.value; const pos = e.target.selectionStart; render(); const i = $('#ej-buscar'); i.focus(); try { i.setSelectionRange(pos, pos); } catch (er) { } }
   if (e.target.id === 'k-mot') $('#k-mot-v').textContent = e.target.value + '/10';
   if (e.target.id === 'k-nut') $('#k-nut-v').textContent = e.target.value + ' %';
