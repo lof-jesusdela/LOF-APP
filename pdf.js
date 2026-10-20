@@ -164,7 +164,7 @@ const PDF = (() => {
           + `<p class="pd-mini">${mxp >= 0 ? `<b>Mayor diferencia: ${mxp} %</b><br>` : ''}Diferencia por encima del 15 %: desequilibrio a trabajar. Entre 8 y 15 %: a vigilar.</p>`;
       } else if (ds.length) {
         const nums = ds.map(x => numDe(x.valor)), top = Math.max(1, ...nums.filter(v => v != null)), barras = p.tipo === '1rm';
-        cuerpo = `<div class="pd-card">${ds.map((x, k) => barras ? `<div class="pd-fila"><span>${esc(x.nombre)}</span>${nums[k] != null ? `<i><u style="width:${nums[k] / top * 100}%"></u></i>` : '<em></em>'}<b>${n1(x.valor)}</b></div>` : `<div class="pd-fila pd-fila-t"><span>${esc(x.nombre)}</span><b>${n1(x.valor)}</b></div>`).join('')}</div>`;
+        cuerpo = `<div class="pd-card">${ds.map((x, k) => barras ? `<div class="pd-fila"><span>${esc(x.nombre)}</span>${nums[k] != null ? `<i><u style="width:${nums[k] / top * 100}%"></u></i>` : '<em></em>'}<b>${n1(x.valor)}</b></div>` : `<div style="display:flex;gap:14px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #EEF2F7"><span style="flex:0 0 38%;font-weight:700">${k + 1}. ${esc(x.nombre)}</span><span style="flex:1;min-width:0;font-weight:500;line-height:1.4">${n1(x.valor)}</span></div>`).join('')}</div>`;
       }
       h += seccion(++n, p.tipo === 'descompensacion' ? 'Test de lateralidad (descompensaciones)' : p.titulo) + (im ? `<div class="pd-card pd-keep" style="padding:8px;text-align:center"><img src="${im}" alt="" style="display:block;max-width:100%;max-height:430px;margin:0 auto;object-fit:contain;border-radius:8px"></div>` : '') + cuerpo + textoCoach(p);
     });
