@@ -3450,7 +3450,7 @@ function vEditor() {
   ${p ? p.dias.map(d => `<section class="section"><div class="card stack">
     <div class="row"><div class="grow"><span class="eyebrow">Día ${d.numero}${d.titulo ? ' · ' + esc(d.nombre) : ''}</span><h2>${esc(nomDia(d))}</h2><div class="small muted">${esc([d.foco, d.volumen && 'vol. ' + d.volumen, d.intensidad && 'int. ' + d.intensidad].filter(Boolean).join(' · '))}</div></div><button class="btn sm ghost" data-act="edDia" data-id="${d.id}">Editar día</button></div>
     ${d.bloques_sesion.map(b => `<div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:10px">
-      <div class="row" style="flex-wrap:wrap"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}</h3>${(() => { const k = d.bloques_sesion.indexOf(b), pr = d.bloques_sesion[k - 1]; return b.tipo === 'fuerza' && pr?.tipo === 'fuerza' ? `<button class="btn sm ghost" data-act="unirBloque" data-id="${b.id}" title="Pasa sus ejercicios al bloque ${esc(pr.letra)}">⤒ Unir con ${esc(pr.letra)}</button>` : ''; })()}<button class="btn sm ghost" data-act="edBloque" data-id="${b.id}">✎ Editar bloque</button></div>
+      <div class="row" style="flex-wrap:wrap"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}</h3>${(() => { const k = d.bloques_sesion.indexOf(b), pr = d.bloques_sesion[k - 1]; return b.tipo === 'fuerza' && pr?.tipo === 'fuerza' ? `<button class="btn sm ghost" data-act="unirBloque" data-id="${b.id}" title="Pasa sus ejercicios al bloque ${esc(pr.letra)}">⤒ Unir con ${esc(pr.letra)}</button>` : ''; })()}<button class="btn sm ghost" data-act="dupBloque" data-id="${b.id}">⧉ Duplicar</button><button class="btn sm ghost" data-act="edBloque" data-id="${b.id}">✎ Editar bloque</button></div>
       ${b.agrupacion ? `<div class="small muted">${esc(b.agrupacion)}</div>` : ''}
       ${b.tipo === 'fuerza' ? `${b.ejercicios_sesion.map((e, i) => `<div class="ed-ej">${(() => { const u = (S.c.ejercicios || []).find(x => x.id === e.ejercicio_id)?.imagen_url; return u ? `<img class="ed-mini" src="${esc(u)}" alt="" loading="lazy" data-act="edEj" data-id="${e.id}">` : `<span class="ed-mini ed-sin" data-act="edEj" data-id="${e.id}" title="Sin foto: toca para añadirla">📷</span>`; })()}<div class="grow" data-act="edEj" data-id="${e.id}" style="cursor:pointer;min-width:0"><b class="small">${i + 1}. ${esc(e.ejercicios?.nombre || '')}</b><div class="small muted">${resumen(e)}</div></div>${i > 0 ? `<button class="mini" data-act="separarEj" data-id="${e.id}" aria-label="Separar en un bloque nuevo desde este ejercicio" title="Separar en un bloque nuevo desde aquí">✂</button>` : ''}<button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="-1" aria-label="Subir" ${i === 0 ? 'disabled' : ''}>↑</button><button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="1" aria-label="Bajar" ${i === b.ejercicios_sesion.length - 1 ? 'disabled' : ''}>↓</button></div>`).join('')}
         <button class="btn sm ghost" data-act="edEj" data-bloque="${b.id}" style="align-self:flex-start">+ Añadir ejercicio</button>` : `<div class="row" style="gap:10px">${b.imagen_url ? `<img class="ed-mini" src="${esc(b.imagen_url)}" alt="" loading="lazy" data-act="verImagen" data-src="${esc(b.imagen_url)}" onerror="this.outerHTML='<span class=&quot;ed-mini ed-sin&quot;>⚠</span>'">` : ''}<div class="small muted">${esc(b.tipo === 'cardio' ? [b.duracion, fcTexto(b.fc_objetivo, fcEditor()), b.maquina].filter(Boolean).join(' · ') : 'Movilidad')}</div></div>`}
@@ -3678,6 +3678,35 @@ async function nuevoBloqueTras(dia, blq) {
   dia.bloques_sesion.splice(dia.bloques_sesion.indexOf(blq) + 1, 0, nuevo);
   await reletrar(dia);
   return nuevo;
+}
+/* Duplicar un bloque (con todos sus ejercicios) en otro día o en otra posición, y abrirlo para editarlo */
+function formDuplicar(id) {
+  const p = S.editor.prog, dia0 = p.dias.find(d => d.bloques_sesion.some(b => b.id === id)), blq = dia0?.bloques_sesion.find(b => b.id === id); if (!blq) return;
+  const nomD = d => `Día ${d.numero} · ${nomDia(d)}${d.nombre && d.titulo ? ' (' + d.nombre + ')' : ''}`;
+  const posiciones = d => [['0', 'Al principio'], ...d.bloques_sesion.map((x, i) => [String(i + 1), `Después de ${x.letra} · ${x.nombre}`])].map(([v, t], i, a) => `<option value="${v}" ${i === a.length - 1 ? 'selected' : ''}>${esc(t)}${i === a.length - 1 ? ' (al final)' : ''}</option>`).join('');
+  abrirSheet(`<form class="stack" id="f-dup"><h2>Duplicar bloque</h2><p class="small muted" style="margin-top:-6px">${esc(blq.letra)} · ${esc(blq.nombre)}${blq.tipo === 'fuerza' ? ` · ${blq.ejercicios_sesion.length} ejercicios` : ''}. Se copia entero y se abre para que lo ajustes.</p>
+    <label class="f">¿En qué día lo pones?<select id="dp-d">${p.dias.map(d => `<option value="${d.id}" ${d.id === dia0.id ? 'selected' : ''}>${esc(nomD(d))}</option>`).join('')}</select></label>
+    <label class="f">¿En qué posición?<select id="dp-p">${posiciones(dia0)}</select></label>
+    <p class="err" id="dp-err"></p><button class="btn full" type="submit" id="dp-b">Duplicar y editar</button></form>`);
+  $('#dp-d').addEventListener('change', e => { const d = p.dias.find(x => x.id === +e.target.value); $('#dp-p').innerHTML = posiciones(d); });
+  $('#f-dup').addEventListener('submit', async e => {
+    e.preventDefault(); const btn = $('#dp-b'); btn.disabled = true; btn.textContent = 'Duplicando…';
+    try {
+      const dia = p.dias.find(x => x.id === +$('#dp-d').value), pos = Math.min(+$('#dp-p').value, dia.bloques_sesion.length);
+      const fila = { dia_id: dia.id, letra: '~d', nombre: blq.nombre, tipo: blq.tipo };
+      ['agrupacion', 'duracion', 'fc_objetivo', 'maquina', 'detalle', 'video_url', 'imagen_url', 'momento'].forEach(k => { if (blq[k] != null && blq[k] !== '') fila[k] = blq[k]; });
+      const { data, error } = await sb.from('bloques_sesion').insert(fila).select().single(); if (error) throw error;
+      const nuevo = { ...data, ejercicios_sesion: [] };
+      for (const [i, x] of blq.ejercicios_sesion.entries()) {
+        const f = { bloque_id: data.id, orden: i + 1 };
+        ['ejercicio_id', 'series', 'repeticiones', 'rir', 'peso_ref', 'descanso_seg', 'metodo_id', 'ajustes', 'aproximacion_631', 'grupo', 'pauta'].forEach(k => { if (x[k] !== undefined) f[k] = x[k]; });
+        const r = await sb.from('ejercicios_sesion').insert(f); if (r.error) throw r.error;
+      }
+      dia.bloques_sesion.splice(pos, 0, nuevo); await reletrar(dia);
+      cerrarSheet(); toast(`Bloque duplicado en el día ${dia.numero}`); await refrescarEditor();
+      const dd = S.editor?.prog?.dias.find(x => x.id === dia.id), nb = dd?.bloques_sesion.find(x => x.id === data.id); if (nb) formBloque(nb.id, dia.id);
+    } catch (err) { console.error(err); btn.disabled = false; btn.textContent = 'Duplicar y editar'; $('#dp-err').textContent = 'No se ha podido duplicar: ' + (err.message || 'revisa la conexión'); refrescarEditor(); }
+  });
 }
 async function unirBloque(id) {
   const dia = S.editor.prog.dias.find(d => d.bloques_sesion.some(b => b.id === id)); if (!dia) return;
@@ -4018,6 +4047,7 @@ document.addEventListener('click', async e => {
     case 'edBloque': formBloque(b.dataset.id ? +b.dataset.id : null, b.dataset.dia ? +b.dataset.dia : null); break;
     case 'edEj': formEjSesion(b.dataset.id ? +b.dataset.id : null, b.dataset.bloque ? +b.dataset.bloque : null); break;
     case 'moverEj': await moverEj(+b.dataset.id, +b.dataset.dir); break;
+    case 'dupBloque': formDuplicar(+b.dataset.id); break;
     case 'unirBloque': await unirBloque(+b.dataset.id); break;
     case 'separarEj': await separarEj(+b.dataset.id); break;
     case 'nuevoPrograma': formPrograma(); break;
