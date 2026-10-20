@@ -151,7 +151,8 @@ const PDF = (() => {
     /* Resto de pruebas */
     (val.pruebas || []).filter(p => p.tipo !== 'fc').forEach(p => {
       const ds = (p.datos || []).filter(x => x.nombre && (x.valor || x.d || x.i));
-      if (!ds.length && !p.valoracion && !p.foco) return;
+      const im = c.imgs?.[p.imagen_url];
+      if (!ds.length && !p.valoracion && !p.foco && !im) return;
       let cuerpo = '';
       if (p.tipo === 'descompensacion' && ds.length) {
         const pcs = ds.map(x => difPct(x.d, x.i)), mxp = Math.max(-1, ...pcs.map(v => v ?? -1));
@@ -161,12 +162,25 @@ const PDF = (() => {
         const nums = ds.map(x => numDe(x.valor)), top = Math.max(1, ...nums.filter(v => v != null)), barras = p.tipo === '1rm';
         cuerpo = `<div class="pd-card">${ds.map((x, k) => `<div class="pd-fila"><span>${esc(x.nombre)}</span>${barras && nums[k] != null ? `<i><u style="width:${nums[k] / top * 100}%"></u></i>` : '<em></em>'}<b>${n1(x.valor)}</b></div>`).join('')}</div>`;
       }
-      h += seccion(++n, p.tipo === 'descompensacion' ? 'Test de lateralidad (descompensaciones)' : p.titulo) + cuerpo + textoCoach(p);
+      h += seccion(++n, p.tipo === 'descompensacion' ? 'Test de lateralidad (descompensaciones)' : p.titulo) + (im ? `<div class="pd-card pd-keep" style="padding:8px;text-align:center"><img src="${im}" alt="" style="display:block;max-width:100%;max-height:430px;margin:0 auto;object-fit:contain;border-radius:8px"></div>` : '') + cuerpo + textoCoach(p);
     });
     return `<div class="pd-doc">${h}</div>`;
   }
-  function valoracion(id, btn) {
+  /* Imágenes resumen de las pruebas: se firman, se descargan y se incrustan para que el PDF no dependa de la red */
+  async function imagenesPruebas(val) {
+    const out = {}, rutas = [...new Set((val.pruebas || []).map(p => p.imagen_url).filter(Boolean))];
+    await Promise.all(rutas.map(async r => {
+      try {
+        const f = await sb.storage.from('planificacion').createSignedUrls([r], 600), u = f.data?.[0]?.signedUrl; if (!u) return;
+        const b = await (await fetch(u)).blob();
+        out[r] = await new Promise((ok, ko) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = ko; fr.readAsDataURL(b); });
+      } catch (err) { console.warn('Imagen de prueba no incluida', err); }
+    }));
+    return out;
+  }
+  async function valoracion(id, btn) {
     const c = ctxValoracion(), val = c.vals.find(v => v.id === id); if (!val) return toast('No se encuentra el informe');
+    c.imgs = await imagenesPruebas(val);
     return generar(htmlValoracion(val, c), limpio(`${c.perfil.nombre || 'Alumno'} - informe ${val.nombre || 'valoracion'}`), { btn });
   }
 
