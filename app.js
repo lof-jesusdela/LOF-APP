@@ -3273,10 +3273,24 @@ function vRegistros(regs, p, coach) {
     return `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(v.fecha))}</span><div class="grow small">${esc(txtDatos(x.datos))}${mejoras.length ? `<div class="small" style="color:var(--ok);font-weight:700">${esc(mejoras.join(' · '))}</div>` : ''}</div>${coach ? `<button class="btn sm ghost" data-act="abrirValoracion" data-id="${v.id}">Ver</button>` : ''}</div>`;
   }).join('')}</div>`;
 }
+/* Imagen resumen de una prueba (movilidad, análisis de carrera…): bucket privado, se firma al verla */
+const IMG_PRUEBA = {};
+async function pedirImgPrueba(ruta) {
+  if (!ruta || ruta in IMG_PRUEBA) return;
+  IMG_PRUEBA[ruta] = null;
+  const r = await sb.storage.from('planificacion').createSignedUrls([ruta], 6 * 3600);
+  const u = r.data?.[0]?.signedUrl; if (u) { IMG_PRUEBA[ruta] = u; render(); }
+}
+function vImgPrueba(p) {
+  if (!p.imagen_url) return '';
+  pedirImgPrueba(p.imagen_url); const u = IMG_PRUEBA[p.imagen_url];
+  return u ? `<button class="img prueba-img" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver resumen visual"><img src="${esc(u)}" alt="Resumen visual de ${esc(p.titulo)}" loading="lazy" onerror="this.parentNode.hidden=true"><span>Resumen visual · toca para ampliar</span></button>` : '<div class="small muted">Cargando imagen…</div>';
+}
 function vPrueba(p, lista, val, coach) {
   const ant = anteriorDe(lista.filter(v => v.origen !== 'alumno'), val, p), regs = val.origen === 'alumno' ? [] : registrosDe(lista, val, p);
   return `<details class="card prueba" ${coach || S.pruebaAbierta === p.id ? 'open' : ''}><summary><div class="row"><div class="grow"><h3>${esc(p.titulo)}</h3><div class="small muted">${esc(resumenPrueba(p))}${regs.length ? ` · último resultado ${esc(fCorta(regs[0].v.fecha))}` : ''}</div></div><span class="mas">＋</span></div></summary>
     <div class="stack" style="margin-top:12px">
+    ${vImgPrueba(p)}
     ${vResultados(p, ant)}
     ${vRegistros(regs, p, coach)}
     ${ant ? `<p class="small muted">Comparado con ${esc(fCorta(lista.find(v => (v.pruebas || []).includes(ant)).fecha))}.</p>` : ''}
@@ -3406,10 +3420,15 @@ function formPrueba(id) {
     <label class="f">Foco de trabajo<textarea id="p-f" rows="4">${esc(p.foco || '')}</textarea></label>
     <label class="f">Cómo se hace la prueba<textarea id="p-pr" rows="5">${esc(p.protocolo || '')}</textarea></label>
     <label class="f">Vídeo (opcional)<input type="text" id="p-vi" value="${esc(p.video_url || '')}" placeholder="https://…"></label>
-    <button class="btn full" type="submit">Guardar</button><button class="btn ghost full" type="button" id="p-del" style="color:var(--bad)">Eliminar prueba</button></form>`);
+    <div class="stack" style="gap:6px"><span class="small"><b>Imagen resumen</b> <span class="muted">(opcional · una sola foto con el resumen visual de toda la prueba)</span></span>
+      <div id="p-img">${vImgPrueba(p)}</div>
+      <label class="btn ghost full"><input type="file" id="p-imgf" accept="image/*" hidden><span id="p-imgl">📷 ${p.imagen_url ? 'Cambiar la imagen' : 'Añadir imagen'}</span></label>
+      ${p.imagen_url ? '<label class="row small" style="gap:8px"><input type="checkbox" id="p-imgq" style="width:20px;height:20px"> Quitar la imagen</label>' : ''}</div>
+    <p class="err" id="p-err"></p><button class="btn full" type="submit" id="p-b">Guardar</button><button class="btn ghost full" type="button" id="p-del" style="color:var(--bad)">Eliminar prueba</button></form>`);
   const cont = $('#p-datos');
   cont.addEventListener('click', ev => { const q = ev.target.closest('[data-quitar]'); if (q) q.closest('[data-dato]').remove(); });
   $('#p-add').addEventListener('click', () => cont.insertAdjacentHTML('beforeend', filaDato({}, di)));
+  $('#p-imgf').addEventListener('change', ev => { const f = ev.target.files[0]; if (!f) return; $('#p-img').innerHTML = `<div class="prueba-img"><img src="${esc(URL.createObjectURL(f))}" alt=""><span>Se guarda al pulsar Guardar</span></div>`; $('#p-imgl').textContent = '📷 Cambiar la imagen'; if ($('#p-imgq')) $('#p-imgq').checked = false; });
   if (p.tipo === 'ritmos') ritmosEnVivo(cont, () => [...cont.querySelectorAll('[data-dato]')].map(r => ({ nombre: r.querySelector('[data-k="nombre"]')?.value || '', input: r.querySelector('[data-k="valor"]') })).filter(x => x.input));
   $('#p-calc')?.addEventListener('click', () => {
     const e = numero($('#p-edad').value); if (!e) return toast('Indica la edad');
@@ -3419,9 +3438,20 @@ function formPrueba(id) {
   $('#f-pr').addEventListener('submit', async ev => {
     ev.preventDefault();
     const datos = completarRitmos(p.tipo, [...cont.querySelectorAll('[data-dato]')].map(r => Object.fromEntries([...r.querySelectorAll('[data-k]')].map(i => [i.dataset.k, i.value.trim()]))).filter(x => x.nombre));
-    const v = k => $(k).value.trim() || null;
-    const { error } = await sb.from('pruebas').update({ titulo: v('#p-t') || p.titulo, datos, valoracion: v('#p-v'), foco: v('#p-f'), protocolo: v('#p-pr'), video_url: v('#p-vi') }).eq('id', p.id);
-    if (error) return fallo(error);
+    const v = k => $(k).value.trim() || null, btn = $('#p-b'), mal = t => { btn.disabled = false; btn.textContent = 'Guardar'; $('#p-err').textContent = t; };
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    const cambios = { titulo: v('#p-t') || p.titulo, datos, valoracion: v('#p-v'), foco: v('#p-f'), protocolo: v('#p-pr'), video_url: v('#p-vi') };
+    const fi = $('#p-imgf').files[0];
+    if (fi) {
+      try {
+        const blob = await reducirImagen(fi, 1600), ruta = `${p.alumno_id || S.ficha.id}/prueba-${p.id}-${Date.now().toString(36)}.jpg`;
+        const up = await sb.storage.from('planificacion').upload(ruta, blob, { contentType: 'image/jpeg' }); if (up.error) throw up.error;
+        cambios.imagen_url = ruta;
+      } catch (err) { console.error(err); return mal('No se ha podido subir la imagen. ' + (/bucket|row-level|security/i.test(err.message || '') ? 'Revisa los permisos de Supabase (Bloque 17 y 40).' : 'Prueba con otra foto o revisa la conexión.')); }
+    } else if ($('#p-imgq')?.checked) cambios.imagen_url = null;
+    const { error } = await sb.from('pruebas').update(cambios).eq('id', p.id);
+    if (error) { console.error(error); return mal(/imagen_url/.test(error.message || '') ? 'Falta ejecutar el Bloque 40 en Supabase para guardar la imagen resumen.' : 'No se ha podido guardar. Revisa la conexión.'); }
+    if (p.imagen_url && (fi || $('#p-imgq')?.checked)) sb.storage.from('planificacion').remove([p.imagen_url]);
     cerrarSheet(); toast('Prueba guardada'); await cargarValoraciones();
   });
   $('#p-del').addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para borrarla'; return; } const { error } = await sb.from('pruebas').delete().eq('id', p.id); if (error) return fallo(error); cerrarSheet(); toast('Prueba eliminada'); await cargarValoraciones(); });
