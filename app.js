@@ -162,7 +162,7 @@ function vistaMensaje(t, m, salir) {
 // Si la base de datos aún no tiene las columnas nuevas, repite la consulta en su versión anterior.
 async function conRespaldo(a, b) { const r = await a(); if (r.error) { console.warn('Usando consulta anterior:', r.error.message); return await b(); } return r; }
 const SIN_NUEVAS = sel => sel.replace(',imagen_url,musculo_img_url', '').replace(',musculo_img_url', '');
-const SEL_PROGRAMA = 'id,nombre,dias_semana,dias(*,bloques_sesion(*,ejercicios_sesion(id,orden,series,repeticiones,rir,peso_ref,descanso_seg,ajustes,aproximacion_631,grupo,pauta,ejercicios(nombre,video_url,imagen_url,musculo_img_url,musculo,descripcion),metodos(nombre,explicacion))))';
+const SEL_PROGRAMA = 'id,nombre,dias_semana,dias(*,bloques_sesion(*,ejercicios_sesion(*,ejercicios(*),metodos(nombre,explicacion))))';
 
 /* ---------- Contextos temporales de entrenamiento ----------
    Un contexto es un programa paralelo para unas semanas concretas (vacaciones, viaje, lesión…): durante esas semanas el
@@ -682,7 +682,9 @@ function vEjercicio(e, i, ro) {
     ${ej.imagen_url || ej.musculo_img_url ? `<div class="imgs">${ej.imagen_url ? `<button class="img" data-act="verImagen" data-src="${esc(ej.imagen_url)}" aria-label="Ver imagen del ejercicio"><img src="${esc(ej.imagen_url)}" alt="${esc(ej.nombre)}" loading="lazy" onerror="this.parentNode.hidden=true"><span>Ejercicio</span></button>` : ''}${ej.musculo_img_url ? `<button class="img" data-act="verImagen" data-src="${esc(ej.musculo_img_url)}" aria-label="Ver músculo trabajado"><img src="${esc(ej.musculo_img_url)}" alt="Músculo trabajado" loading="lazy" onerror="this.parentNode.hidden=true"><span>Músculo</span></button>` : ''}</div>` : ''}
     <div class="row" style="align-items:flex-start"><span class="exn num">${i}</span><div class="grow"><h3>${esc(ej.nombre)}</h3>${!ej.musculo_img_url && ej.musculo ? `<div class="small muted">${esc(ej.musculo)}</div>` : ''}</div><div class="stack" style="gap:6px;align-items:flex-end">${vid}${ro ? '' : `<button class="btn sm ghost omitir-b" data-act="omitir" data-es="${e.id}" data-n="${esc(ej.nombre)}">No lo hago</button>`}</div></div>
     <div class="chips ex-chips"><span class="pill">${e.series} ${e.series === 1 ? 'serie' : 'series'}</span><span class="pill">${desc ? 'Descanso ' + seg(desc) : 'Sin descanso'}</span>${e.metodos ? `<button class="pill gold" data-act="metodo" data-n="${esc(e.metodos.nombre)}">${esc(e.metodos.nombre)} ⓘ</button>` : ''}${e.aproximacion_631 ? '<button class="pill gold" data-act="metodo" data-n="Aproximación 6·3·1">Aproximación 6·3·1 ⓘ</button>' : ''}</div>
+    ${(() => { const mt = e.material ?? ej.material, mi = e.material_img_url ?? ej.material_img_url; return mt || mi ? `<div class="row a-medida small" style="gap:10px;align-items:center">${mi ? `<button class="img mat-img" data-act="verImagen" data-src="${esc(mi)}" aria-label="Ver imagen del material"><img src="${esc(mi)}" alt="Material" loading="lazy" onerror="this.parentNode.hidden=true"></button>` : ''}${mt ? `<span><b>Material:</b> ${esc(mt)}</span>` : '<span><b>Material</b></span>'}</div>` : ''; })()}
     ${aj.length ? `<div class="small a-medida"><b>A tu medida:</b> ${aj.map(esc).join(' · ')}</div>` : ''}
+    ${e.nota ? `<div class="small ex-nota"><b>Nota de Jesús:</b> ${esc(e.nota)}</div>` : ''}
     ${e.aproximacion_631 && !ro ? vAprox(e) : ''}
     ${ro && !plan ? resumenEjCerrado(ro, e) : ''}
     <div class="sets"><span class="h">Nº</span><span class="h">Kg</span><span class="h">Reps</span><span class="h">RIR</span><span class="h">${plan ? '' : 'Hecha'}</span>${filas}</div>
@@ -3426,7 +3428,7 @@ function formPrueba(id) {
 }
 
 /* ---------- Editor de programas (coach) ---------- */
-const SEL_EDITOR = 'id,nombre,dias_semana,alumno_id,dias(*,bloques_sesion(*,ejercicios_sesion(id,orden,ejercicio_id,series,repeticiones,rir,peso_ref,descanso_seg,metodo_id,ajustes,aproximacion_631,grupo,pauta,ejercicios(nombre))))';
+const SEL_EDITOR = 'id,nombre,dias_semana,alumno_id,dias(*,bloques_sesion(*,ejercicios_sesion(*,ejercicios(nombre))))';
 async function abrirEditor(alumnoId, progId = null) {
   S.editor = { alumnoId, progId, cargando: true }; render(); window.scrollTo(0, 0);
   const [prog, met] = await Promise.all([
@@ -3579,6 +3581,7 @@ function filaTramo(t, primero) {
     <label style="grid-column:3/5">RIR<input type="text" data-k="rir" value="${esc(t.rir ?? '')}" placeholder="1"></label>
   </div>`;
 }
+const MATERIALES = ['Barra recta', 'Barra Z', 'Barra olímpica', 'Cuerda', 'Agarre en V', 'Agarre neutro', 'Agarre prono', 'Agarre supino', 'Agarre amplio', 'Agarre cerrado', 'Barra de polea corta', 'Mancuernas', 'Kettlebell', 'Banda elástica', 'Mini banda', 'Tobillera', 'Landmine', 'Smith', 'Banco plano', 'Banco inclinado'];
 function formEjSesion(id, bloqueId) {
   const p = S.editor.prog, todos = p.dias.flatMap(d => d.bloques_sesion), blq = todos.find(b => b.id === bloqueId) || todos.find(b => b.ejercicios_sesion.some(x => x.id === id));
   const e = id ? blq.ejercicios_sesion.find(x => x.id === id) : null;
@@ -3586,7 +3589,8 @@ function formEjSesion(id, bloqueId) {
   const lib = S.c.ejercicios.slice().sort((x, y) => x.nombre.localeCompare(y.nombre, 'es'));
   const opts = q => { const n = normaliza(q || ''); return lib.filter(x => !n || normaliza(x.nombre).includes(n)).map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join(''); };
   const dia = p.dias.find(d => d.bloques_sesion.includes(blq)), hermanos = (dia?.bloques_sesion || []).filter(x => x.tipo === 'fuerza');
-  const st = { foto: null, nfoto: null };
+  const st = { foto: null, nfoto: null, mimg: null, mquitar: false };
+  const libEj = e ? (S.c.ejercicios || []).find(x => x.id === e.ejercicio_id) : null;
   abrirSheet(`<form class="stack" id="f-ejs"><h2>${e ? 'Editar ejercicio' : 'Añadir ejercicio'}</h2>
     <div class="stack" style="gap:6px"><span class="small muted">Ejercicio</span><input type="search" id="es-bus" placeholder="Buscar en tu biblioteca…" autocomplete="off">
       <select id="es-ej" aria-label="Ejercicio"><option value="">— Elige de tu biblioteca —</option><option value="nuevo">＋ Crear un ejercicio nuevo…</option>${opts('')}</select></div>
@@ -3600,6 +3604,15 @@ function formEjSesion(id, bloqueId) {
     <div class="stack" style="gap:8px"><span class="small muted">Pauta serie a serie. Usa "Tramo sin parar" para dropsets, clusters o rest-pause.</span><div id="es-tramos" class="stack" style="gap:10px">${pauta.map((t, i) => filaTramo(t, i === 0)).join('')}</div><button type="button" class="btn sm ghost" id="es-add" style="align-self:flex-start">+ Añadir fila</button></div>
     <label class="f">Método<select id="es-met"><option value="">Sin método</option>${S.editor.metodos.map(m => `<option value="${m.id}" ${e?.metodo_id === m.id ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('')}</select></label>
     <label class="f">Ajustes a su medida<input type="text" id="es-aj" value="${esc(e?.ajustes || '')}" placeholder="Ej. Silla: 5 · pies altos"></label>
+    <div class="stack" style="gap:8px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2)">
+      <label class="f">Material (barra, agarre, accesorio…)<input type="text" id="es-mat" list="es-mat-l" value="${esc(e?.material ?? libEj?.material ?? '')}" placeholder="Ej. Barra recta · agarre neutro" autocomplete="off"></label>
+      <datalist id="es-mat-l">${MATERIALES.map(m => `<option value="${esc(m)}">`).join('')}</datalist>
+      <div id="es-mimg"></div>
+      <div class="stack" id="es-mat-o" style="gap:6px" hidden>
+        <label class="row small" style="gap:8px;align-items:flex-start"><input type="radio" name="es-ma" value="solo" checked style="width:20px;height:20px;margin-top:1px"><span><b>Solo en este ejercicio</b><br><span class="muted">Solo en este programa o plantilla</span></span></label>
+        <label class="row small" style="gap:8px;align-items:flex-start"><input type="radio" name="es-ma" value="todos" style="width:20px;height:20px;margin-top:1px"><span><b>En todos los <span id="es-mat-n"></span></b><br><span class="muted">Se verá en todos los programas y plantillas que lo usen, salvo donde le hayas puesto uno propio</span></span></label></div>
+    </div>
+    <label class="f">Descripción adicional (opcional)<textarea id="es-nota" rows="3" placeholder="Algo que quieras añadir y que no sale en el vídeo: «sube explosivo, baja en 3 s», «codos pegados»…">${esc(e?.nota || '')}</textarea></label>
     <label class="f">Indicación de superserie (opcional)<input type="text" id="es-gr" value="${esc(e?.grupo || '')}" placeholder="Ej. 3 y 4 juntos (superserie)"></label>
     <label class="row small"><input type="checkbox" id="es-631" ${e?.aproximacion_631 ? 'checked' : ''} style="width:20px;height:20px"> Aproximación 6·3·1 antes de empezar</label>
     <p class="note">Si pones descanso 0 en la última fila, la app enlaza este ejercicio con el siguiente como superserie.</p>
@@ -3610,8 +3623,19 @@ function formEjSesion(id, bloqueId) {
     $('#es-nuevo-w').hidden = sel.value !== 'nuevo';
     $('#es-prev').innerHTML = x ? `<div class="es-prev">${u ? `<img src="${esc(u)}" alt="${esc(x.nombre)}" id="es-img" title="Toca para ampliar">` : `<span class="es-sin">Sin foto</span>`}<div class="grow stack" style="gap:4px;min-width:0"><b class="small">${esc(x.nombre)}</b>${x.musculo ? `<span class="small muted">${esc(x.musculo)}</span>` : ''}<label class="btn sm ghost" style="align-self:flex-start"><input type="file" id="es-foto" accept="image/*" hidden>📷 ${u ? 'Cambiar foto' : 'Añadir foto'}</label>${st.foto ? '<span class="small" style="color:var(--blue-text)">Se guarda al pulsar Guardar</span>' : ''}</div></div>` : '';
   };
+  /* Imagen del material: la de este ejercicio en el programa manda sobre la de la biblioteca ('' = sin imagen aquí) */
+  const mimgActual = () => { if (st.mquitar) return null; if (st.mimg) return URL.createObjectURL(st.mimg); const x = lib.find(z => z.id === +sel.value), u = e?.material_img_url ?? x?.material_img_url; return u || null; };
+  const alcance = () => { const x = lib.find(z => z.id === +sel.value), v = $('#es-mat').value.trim(), cambia = v !== (e?.material ?? x?.material ?? ''); $('#es-mat-o').hidden = !(x && ((v && cambia) || st.mimg || st.mquitar)); $('#es-mat-n').textContent = x ? `«${x.nombre}»` : 'ejercicios iguales'; };
+  const pintarMat = () => {
+    const u = mimgActual();
+    $('#es-mimg').innerHTML = `<div class="es-prev">${u ? `<img src="${esc(u)}" alt="Material" onerror="this.outerHTML='<span class=&quot;es-sin&quot;>No carga</span>'">` : '<span class="es-sin">Sin imagen</span>'}<div class="grow stack" style="gap:6px;min-width:0"><span class="small muted">Imagen del material (barra, agarre…) · opcional</span><div class="row" style="gap:6px;flex-wrap:wrap"><label class="btn sm ghost"><input type="file" id="es-mfile" accept="image/*" hidden>📷 ${u ? 'Cambiar' : 'Añadir imagen'}</label>${u ? '<button type="button" class="btn sm ghost" id="es-mquita">Quitar</button>' : ''}</div></div></div>`;
+    alcance();
+  };
+  $('#es-mimg').addEventListener('change', ev => { if (ev.target.id === 'es-mfile' && ev.target.files[0]) { st.mimg = ev.target.files[0]; st.mquitar = false; pintarMat(); } });
+  $('#es-mimg').addEventListener('click', ev => { if (ev.target.id === 'es-mquita') { st.mimg = null; st.mquitar = true; pintarMat(); } });
+  $('#es-mat').addEventListener('input', alcance); sel.addEventListener('change', () => { st.mimg = null; st.mquitar = false; pintarMat(); });
   if (e?.ejercicio_id) { if (![...sel.options].some(o => +o.value === e.ejercicio_id)) sel.insertAdjacentHTML('beforeend', `<option value="${e.ejercicio_id}">${esc(e.ejercicios?.nombre || 'Ejercicio')}</option>`); sel.value = String(e.ejercicio_id); }
-  pintarPrev();
+  pintarPrev(); pintarMat();
   sel.addEventListener('change', () => { st.foto = null; pintarPrev(); if (sel.value === 'nuevo') { $('#es-nuevo').value = $('#es-bus').value.trim(); $('#es-nuevo').focus(); } });
   $('#es-bus').addEventListener('input', ev => {
     const v = sel.value, q = ev.target.value; sel.innerHTML = `<option value="">— ${q ? 'Elige entre los resultados' : 'Elige de tu biblioteca'} —</option><option value="nuevo">＋ Crear ${q ? `«${esc(q)}»` : 'un ejercicio nuevo'}…</option>${opts(q)}`;
@@ -3656,11 +3680,24 @@ function formEjSesion(id, bloqueId) {
       const row = { ejercicio_id: +ejId, pauta: filas, series: filas.reduce((t, x) => t + (x.s || 0), 0), repeticiones: filas[0].r, rir: rirNum ?? null,
         peso_ref: filas.find(t => t.kg)?.kg || null, descanso_seg: filas[filas.length - 1].d, metodo_id: numero($('#es-met').value), ajustes: $('#es-aj').value.trim() || null,
         grupo: $('#es-gr').value.trim() || null, aproximacion_631: $('#es-631').checked };
+      const mat = $('#es-mat').value.trim(), nota = $('#es-nota').value.trim(), todos = !$('#es-mat-o').hidden && document.querySelector('input[name="es-ma"]:checked')?.value === 'todos';
+      const libX = (S.c.ejercicios || []).find(z => z.id === +ejId), matBib = libX?.material || '';
+      let urlMat; if (st.mimg) { try { urlMat = await subirImagenEj(st.mimg, 'material', 900); } catch (err) { console.error(err); return toast(motivoImg(err)); } }
+      const cambiaImg = !!urlMat || st.mquitar;
+      if (todos && (mat || cambiaImg)) {
+        const cam = {}; if (mat) cam.material = mat; if (urlMat) cam.material_img_url = urlMat; else if (st.mquitar) cam.material_img_url = null;
+        const r = await sb.from('ejercicios').update(cam).eq('id', +ejId); if (r.error) throw r.error;
+        if (libX) Object.assign(libX, cam); row.material = null; if (cambiaImg) row.material_img_url = null;
+      } else {
+        if (mat) row.material = mat === matBib && !e?.material ? null : mat; else if (e && e.material != null) row.material = null;
+        if (urlMat) row.material_img_url = urlMat; else if (st.mquitar) row.material_img_url = libX?.material_img_url && !(e?.material_img_url) ? '' : null;
+      }
+      if (nota || (e && e.nota != null)) row.nota = nota || null;
       if (destino !== blq || !e) { row.bloque_id = destino.id; row.orden = Math.max(0, ...destino.ejercicios_sesion.map(x => x.orden)) + 1; }
       const { error } = e ? await sb.from('ejercicios_sesion').update(row).eq('id', e.id) : await sb.from('ejercicios_sesion').insert(row);
       if (error) throw error;
       cerrarSheet(); toast('Ejercicio guardado'); refrescarEditor();
-    } catch (err) { fallo(err); }
+    } catch (err) { fallo(err, /material|nota|column/i.test(err.message || '') ? 'Falta ejecutar el Bloque 39 en Supabase para guardar el material y la descripción.' : /bucket|row-level|security/i.test(err.message || '') ? 'Supabase no deja subir imágenes: ejecuta el Bloque 38.' : undefined); }
   });
   $('#es-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para quitarlo'; return; } const { error } = await sb.from('ejercicios_sesion').delete().eq('id', e.id); if (error) return fallo(error, 'No se puede quitar: ya tiene series registradas. Puedes cambiarlo por otro ejercicio.'); cerrarSheet(); toast('Ejercicio quitado'); refrescarEditor(); });
 }
@@ -3699,7 +3736,7 @@ function formDuplicar(id) {
       const nuevo = { ...data, ejercicios_sesion: [] };
       for (const [i, x] of blq.ejercicios_sesion.entries()) {
         const f = { bloque_id: data.id, orden: i + 1 };
-        ['ejercicio_id', 'series', 'repeticiones', 'rir', 'peso_ref', 'descanso_seg', 'metodo_id', 'ajustes', 'aproximacion_631', 'grupo', 'pauta'].forEach(k => { if (x[k] !== undefined) f[k] = x[k]; });
+        ['ejercicio_id', 'series', 'repeticiones', 'rir', 'peso_ref', 'descanso_seg', 'metodo_id', 'ajustes', 'aproximacion_631', 'grupo', 'pauta', 'material', 'material_img_url', 'nota'].forEach(k => { if (x[k] != null) f[k] = x[k]; });
         const r = await sb.from('ejercicios_sesion').insert(f); if (r.error) throw r.error;
       }
       dia.bloques_sesion.splice(pos, 0, nuevo); await reletrar(dia);
