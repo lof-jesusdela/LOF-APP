@@ -88,7 +88,7 @@ const PDF = (() => {
         if (cancelado) return;
         const pg = capa?.querySelector('#pdf-prog'); if (pg) pg.textContent = `${i + 1} / ${bloques.length}`;
         const esc2 = Math.min(tactil() ? 1.5 : 2, Math.sqrt((tactil() ? 3e6 : 6e6) / Math.max(1, r.width * r.height)));   // lienzo acotado (iPad/iPhone tienen poca memoria)
-        const pinta = sc => Promise.race([window.html2canvas(el, { scale: sc, backgroundColor: fondo, useCORS: true, logging: false, windowWidth: doc ? 794 : undefined }), new Promise((_, ko) => setTimeout(() => ko(new Error('tiempo')), 20000))]);
+        const pinta = sc => Promise.race([window.html2canvas(el, { scale: sc, backgroundColor: fondo, useCORS: true, logging: false, windowWidth: doc ? 794 : undefined, ignoreElements: n => !!capa && n.parentNode === document.body && n !== capa }), new Promise((_, ko) => setTimeout(() => ko(new Error('tiempo')), 20000))]);
         let cv; try { cv = await pinta(esc2); } catch (e1) { if (cancelado) return; console.warn('Reintento a menor resolución', e1); cv = await pinta(1); }
         // Si el bloque no cabe en una página, se corta en trozos de página
         let hecho = 0; const pxPorMm = cv.height / h;
