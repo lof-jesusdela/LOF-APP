@@ -225,7 +225,7 @@ const Nutricion = (() => {
       try {
         let foto = x?.foto || null;
         if (st.file) {
-          const blob = await reducirImagen(st.file, 1280), ruta = `${S.user.id}/menu/${dia}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}.jpg`;
+          const blob = await reducirImagen(st.file, 960), ruta = `${S.user.id}/menu/${dia}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}.jpg`;
           const up = await sb.storage.from('comidas').upload(ruta, blob, { contentType: 'image/jpeg' }); if (up.error) throw up.error;
           foto = ruta;
         }

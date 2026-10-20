@@ -462,7 +462,7 @@ async function subirFotosComida(input) {
   toast(`Subiendo ${files.length === 1 ? 'foto' : files.length + ' fotos'}…`);
   try {
     for (const fl of files) {
-      const blob = await reducirImagen(fl, 1280), ruta = `${S.user.id}/${f}/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}.jpg`;
+      const blob = await reducirImagen(fl, 960), ruta = `${S.user.id}/${f}/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}.jpg`;
       const up = await sb.storage.from('comidas').upload(ruta, blob, { contentType: 'image/jpeg' }); if (up.error) throw up.error;
       rutas.push(ruta);
     }
@@ -3453,7 +3453,7 @@ function vEditor() {
       <div class="row" style="flex-wrap:wrap"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}</h3>${(() => { const k = d.bloques_sesion.indexOf(b), pr = d.bloques_sesion[k - 1]; return b.tipo === 'fuerza' && pr?.tipo === 'fuerza' ? `<button class="btn sm ghost" data-act="unirBloque" data-id="${b.id}" title="Pasa sus ejercicios al bloque ${esc(pr.letra)}">⤒ Unir con ${esc(pr.letra)}</button>` : ''; })()}<button class="btn sm ghost" data-act="edBloque" data-id="${b.id}">✎ Editar bloque</button></div>
       ${b.agrupacion ? `<div class="small muted">${esc(b.agrupacion)}</div>` : ''}
       ${b.tipo === 'fuerza' ? `${b.ejercicios_sesion.map((e, i) => `<div class="ed-ej">${(() => { const u = (S.c.ejercicios || []).find(x => x.id === e.ejercicio_id)?.imagen_url; return u ? `<img class="ed-mini" src="${esc(u)}" alt="" loading="lazy" data-act="edEj" data-id="${e.id}">` : `<span class="ed-mini ed-sin" data-act="edEj" data-id="${e.id}" title="Sin foto: toca para añadirla">📷</span>`; })()}<div class="grow" data-act="edEj" data-id="${e.id}" style="cursor:pointer;min-width:0"><b class="small">${i + 1}. ${esc(e.ejercicios?.nombre || '')}</b><div class="small muted">${resumen(e)}</div></div>${i > 0 ? `<button class="mini" data-act="separarEj" data-id="${e.id}" aria-label="Separar en un bloque nuevo desde este ejercicio" title="Separar en un bloque nuevo desde aquí">✂</button>` : ''}<button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="-1" aria-label="Subir" ${i === 0 ? 'disabled' : ''}>↑</button><button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="1" aria-label="Bajar" ${i === b.ejercicios_sesion.length - 1 ? 'disabled' : ''}>↓</button></div>`).join('')}
-        <button class="btn sm ghost" data-act="edEj" data-bloque="${b.id}" style="align-self:flex-start">+ Añadir ejercicio</button>` : `<div class="small muted">${esc(b.tipo === 'cardio' ? [b.duracion, fcTexto(b.fc_objetivo, fcEditor()), b.maquina].filter(Boolean).join(' · ') : 'Movilidad')}</div>`}
+        <button class="btn sm ghost" data-act="edEj" data-bloque="${b.id}" style="align-self:flex-start">+ Añadir ejercicio</button>` : `<div class="row" style="gap:10px">${b.imagen_url ? `<img class="ed-mini" src="${esc(b.imagen_url)}" alt="" loading="lazy" data-act="verImagen" data-src="${esc(b.imagen_url)}" onerror="this.outerHTML='<span class=&quot;ed-mini ed-sin&quot;>⚠</span>'">` : ''}<div class="small muted">${esc(b.tipo === 'cardio' ? [b.duracion, fcTexto(b.fc_objetivo, fcEditor()), b.maquina].filter(Boolean).join(' · ') : 'Movilidad')}</div></div>`}
     </div>`).join('')}
     <button class="btn sm ghost" data-act="edBloque" data-dia="${d.id}" style="align-self:flex-start">+ Añadir bloque</button>
   </div></section>`).join('') : '<div class="section card empty">Crea el programa para empezar a añadir días.</div>'}`;
@@ -3531,8 +3531,12 @@ ${editorEsFutbol() || b?.momento ? `    <label class="f">Momento (día de partid
     $('#b-ma').hidden = $('#b-mq').value !== 'otra'; $('#b-fc').hidden = $('#b-fz').value !== 'otra';
     const zv = $('#b-fz').value; $('#b-fzt').textContent = zv && zv !== 'otra' ? fcTexto('Zona ' + zv, FC) + (FC.mx ? '' : ' (pon su FC máxima o su fecha de nacimiento para ver las pulsaciones)') : '';
     const m = $('#b-mq').value !== 'otra' ? $('#b-mq').value : '', u = fotoMaquina(m), cardio = $('#b-t').value === 'cardio';
-    $('#b-mqf').innerHTML = cardio && m ? (u ? `<div class="es-prev"><img src="${esc(u)}" alt="${esc(m)}"><span class="small muted grow">Foto de ${esc(m)}: se pone sola en el bloque${b?.imagen_url && b.imagen_url !== u ? ' (sustituye a la actual)' : ''}.</span></div>` : `<p class="small muted" style="margin:0">Aún no tienes foto de ${esc(m)}: súbela abajo y se usará siempre para esta máquina.</p>`) : '';
-    $('#b-mqg').hidden = !(cardio && m && $('#b-img').files[0]); $('#b-mqn').textContent = m;
+    const act = b?.imagen_url, nueva = $('#b-img').files[0];
+    const prev = (src, txt, extra = '') => `<div class="es-prev"><img src="${esc(src)}" alt="${esc(m || 'Foto del bloque')}" onerror="this.outerHTML='<span class=&quot;es-sin&quot;>No carga</span>'"><div class="grow stack" style="gap:6px"><span class="small muted">${txt}</span>${extra}</div></div>`;
+    $('#b-mqf').innerHTML = !cardio ? '' : nueva ? '' : u ? prev(u, `Foto de ${esc(m)}: se pone sola en el bloque${act && act !== u ? ' (sustituye a la actual)' : ''}.`)
+      : act ? prev(act, m ? `Esta es la foto actual del bloque. Aún no tienes foto de ${esc(m)}.` : 'Esta es la foto actual del bloque.', m ? `<label class="row small" style="gap:8px"><input type="checkbox" id="b-adopta" checked style="width:20px;height:20px"> <span>Usarla siempre para <b>${esc(m)}</b></span></label>` : '')
+      : m ? `<p class="small muted" style="margin:0">Aún no tienes foto de ${esc(m)}: súbela abajo y se usará siempre para esta máquina.</p>` : '';
+    $('#b-mqg').hidden = !(cardio && m && nueva); $('#b-mqn').textContent = m;
   };
   ['#b-t', '#b-mq', '#b-fz', '#b-img'].forEach(k => $(k).addEventListener('change', pintarCardio)); pintarCardio();
   $('#f-blq').addEventListener('submit', async e => {
@@ -3542,6 +3546,11 @@ ${editorEsFutbol() || b?.momento ? `    <label class="f">Momento (día de partid
     const fz = $('#b-fz').value, maq = maqSel(), mStd = MAQUINAS.includes($('#b-mq').value) ? $('#b-mq').value : null;
     const row = { letra: v('#b-l') || sig, nombre: v('#b-n') || 'Bloque', tipo: $('#b-t').value, agrupacion: v('#b-ag'), duracion: v('#b-du'), fc_objetivo: fz === 'otra' ? v('#b-fc') : fz ? 'Zona ' + fz : null, maquina: maq, detalle: v('#b-de'), video_url: v('#b-vi') };
     if (row.tipo === 'cardio' && mStd && fotoMaquina(mStd) && !$('#b-img').files[0]) row.imagen_url = fotoMaquina(mStd);
+    else if (row.tipo === 'cardio' && mStd && b?.imagen_url && !$('#b-img').files[0] && $('#b-adopta')?.checked) {
+      const nom = 'Cardio · ' + mStd, ya = (S.c.ejercicios || []).find(x => normaliza(x.nombre) === normaliza(nom));
+      const r = ya ? await sb.from('ejercicios').update({ imagen_url: b.imagen_url }).eq('id', ya.id).select().single() : await sb.from('ejercicios').insert({ nombre: nom, imagen_url: b.imagen_url, musculo: 'Cardio' }).select().single();
+      if (!r.error && r.data) { if (ya) Object.assign(ya, r.data); else S.c.ejercicios.push(r.data); }
+    }
     if ($('#b-mo')?.value || b?.momento) row.momento = $('#b-mo')?.value || null;
     const file = $('#b-img').files[0];
     if (file) {
