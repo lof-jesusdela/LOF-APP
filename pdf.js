@@ -55,14 +55,15 @@ const PDF = (() => {
   /* Convierte un elemento (o HTML) en PDF A4. pie: "LOF · Construyendo tu prime" y "Página X de N" */
   async function generar(contenido, nombre, { pie = true, btn } = {}) {
     const txt = btn?.textContent; if (btn) { btn.disabled = true; btn.textContent = 'Generando PDF…'; }
-    let capa = null;
+    let capa = null, cancelado = false;
     try {
       await cargar();
       let root = contenido, doc = false;
       if (typeof contenido === 'string') {   // documento de la app: se monta en una capa temporal a 794 px (A4)
         capa = document.createElement('div');
         capa.style.cssText = 'position:fixed;inset:0;z-index:9999;overflow:hidden;background:rgba(6,36,65,.92)';
-        capa.innerHTML = `<div style="position:absolute;left:0;top:0;width:794px">${contenido}</div><div style="position:absolute;left:0;right:0;bottom:40%;text-align:center;color:#fff;font:600 16px system-ui">Generando PDF…</div>`;
+        capa.innerHTML = `<div style="position:absolute;left:0;top:0;width:794px">${contenido}</div><div style="position:absolute;left:0;right:0;bottom:40%;text-align:center;color:#fff;font:600 16px system-ui">Generando PDF…<br><small id="pdf-prog" style="font-weight:400;opacity:.8"></small></div><button id="pdf-x" style="position:absolute;left:50%;bottom:30%;transform:translateX(-50%);padding:12px 26px;border-radius:12px;border:0;font:600 15px system-ui;background:#fff;color:#0B0B0C">Cancelar</button>`;
+        capa.querySelector('#pdf-x').onclick = () => { cancelado = true; capa?.remove(); capa = null; };
         document.body.appendChild(capa); root = capa.firstElementChild.firstElementChild; doc = true;
         const espera = ms => new Promise(r => setTimeout(r, ms));   // nunca esperar para siempre a una imagen o una fuente
         capa.querySelectorAll('img').forEach(i => { i.loading = 'eager'; });
@@ -84,8 +85,11 @@ const PDF = (() => {
         const sig = el.classList.contains('pd-sec') && bloques[i + 1], sr = sig && sig.getBoundingClientRect(), extra = sig ? Math.min((sr.bottom - r.bottom) * k, 60) : 0;
         if (y + gap + h + extra > abajo && y > arribaSig + 1 && h + extra <= abajo - arribaSig) { pdf.addPage(); pag++; pintaFondo(); y = arribaSig; gap = 0; }
         y += gap;
-        const esc2 = Math.min(2, Math.sqrt(6e6 / Math.max(1, r.width * r.height)));   // lienzo como mucho de ~6 Mpx
-        const cv = await window.html2canvas(el, { scale: esc2, backgroundColor: fondo, useCORS: true, logging: false, windowWidth: doc ? 794 : undefined });
+        if (cancelado) return;
+        const pg = capa?.querySelector('#pdf-prog'); if (pg) pg.textContent = `${i + 1} / ${bloques.length}`;
+        const esc2 = Math.min(tactil() ? 1.5 : 2, Math.sqrt((tactil() ? 3e6 : 6e6) / Math.max(1, r.width * r.height)));   // lienzo acotado (iPad/iPhone tienen poca memoria)
+        const pinta = sc => Promise.race([window.html2canvas(el, { scale: sc, backgroundColor: fondo, useCORS: true, logging: false, windowWidth: doc ? 794 : undefined }), new Promise((_, ko) => setTimeout(() => ko(new Error('tiempo')), 20000))]);
+        let cv; try { cv = await pinta(esc2); } catch (e1) { if (cancelado) return; console.warn('Reintento a menor resolución', e1); cv = await pinta(1); }
         // Si el bloque no cabe en una página, se corta en trozos de página
         let hecho = 0; const pxPorMm = cv.height / h;
         while (hecho < h - 0.01) {
@@ -93,11 +97,11 @@ const PDF = (() => {
           if (cabe < 5 && hecho < h) { pdf.addPage(); pag++; pintaFondo(); y = arribaSig; continue; }
           const t = document.createElement('canvas'); t.width = cv.width; t.height = Math.max(1, Math.round(cabe * pxPorMm));
           t.getContext('2d').drawImage(cv, 0, Math.round(hecho * pxPorMm), cv.width, t.height, 0, 0, cv.width, t.height);
-          pdf.addImage(t.toDataURL('image/jpeg', 0.92), 'JPEG', x, y, w, cabe);
+          pdf.addImage(t.toDataURL('image/jpeg', 0.92), 'JPEG', x, y, w, cabe); t.width = t.height = 0;   // libera memoria (Safari)
           hecho += cabe; y += cabe;
           if (hecho < h - 0.01) { pdf.addPage(); pag++; pintaFondo(); y = arribaSig; }
         }
-        prevBottom = r.bottom;
+        prevBottom = r.bottom; cv.width = cv.height = 0;
         await respira();   // deja respirar a la pantalla entre bloques (no se bloquea)
       }
       if (pie) {
