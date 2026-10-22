@@ -343,7 +343,7 @@ function vLateral(actual) {
     <nav class="lat-nav">${nav.map(([k, l]) => `<button data-act="ctab" data-t="${k}" ${actual === k && !S.ficha && !S.reporte && !S.editor && !S.obj ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span></button>`).join('')}<button data-act="abrirReporte" ${S.reporte && !S.reporte.alumno ? 'aria-current="page"' : ''}>${svg('checkin')}<span>Reporting semanal</span></button></nav>
     <div class="eyebrow" style="margin:18px 12px 6px">Alumnos · ${als.length}</div>
     <input type="search" id="lat-busca" class="lat-busca" placeholder="Buscar alumno…" value="${esc(S.alF.q)}" aria-label="Buscar alumno" autocomplete="off">
-    <div class="lat-al">${als.map(({ a, e }) => `<button data-act="ficha" data-id="${a.id}" data-n="${esc(normaliza(a.nombre))}" ${S.ficha?.id === a.id ? 'aria-current="page"' : ''}${S.alF.q && !normaliza(a.nombre).includes(normaliza(S.alF.q)) ? ' hidden' : ''}><i class="al-dot" data-act="verAlertas" data-id="${a.id}" role="button" aria-label="Ver alertas de ${esc(a.nombre)}" style="background:var(--${e.nivel})"></i><span class="grow">${esc(a.nombre)}</span>${e.control ? '<b class="small" style="color:var(--gold-ink)">●</b>' : ''}</button>`).join('')}</div>
+    <div class="lat-al">${als.map(({ a, e }) => `<button data-act="ficha" data-id="${a.id}" data-n="${esc(normaliza(a.nombre))}" ${S.ficha?.id === a.id ? 'aria-current="page"' : ''}${S.alF.q && !normaliza(a.nombre).includes(normaliza(S.alF.q)) ? ' hidden' : ''}><i class="al-dot ${e.nuevas ? 'nueva' : ''}" data-act="verAlertas" data-id="${a.id}" role="button" aria-label="Ver alertas de ${esc(a.nombre)}" style="background:var(--${e.nivel})"></i><span class="grow">${esc(a.nombre)}</span>${e.nuevas ? `<b class="al-n">${e.nuevas}</b>` : ''}${e.control ? '<b class="small" style="color:var(--gold-ink)">●</b>' : ''}</button>`).join('')}</div>
   </aside>`;
 }
 /* Si una pantalla falla, se muestra el motivo en vez de quedarse bloqueada */
@@ -1380,6 +1380,7 @@ async function cargarCoach() {
     sb.from('ejercicios').select('*').order('nombre'),
     sb.from('hoja_ruta').select('*').order('orden')
   ]);
+  await Alertas.cargar();
   S.c = { perfiles: per.data || [], servicios: srv.data || [], sesiones: ses.data || [], checkins: chk.data || [], diario: reg.data || [], pagos: pag.data || [], programas: prg.data || [], ejercicios: ejs.data || [] };
   S.c.servicios.forEach(x => x._bloques = bloquesDe((rut.data || []).filter(r => r.alumno_id === x.alumno_id)));
   const [fa, ap] = await Promise.all([sb.from('facturas').select('*').order('numero', { ascending: false }), sb.from('ajustes_privados').select('*')]);
@@ -1405,6 +1406,25 @@ function semanaDatos(aid, lunes, src) {
   const ing = ingestasSemana(reg, lunes, (S.c?.servicios || []).find(x => x.alumno_id === aid));
   return { lunes, fin, ses, entrenos: new Set(ses.map(x => x.fecha + x.dia_id)).size, reg, pasosMedia: pasos.length ? Math.round(pasos.reduce((a, b) => a + b, 0) / pasos.length) : null, diasPasos: pasos.length, chk, ing, nutri: ing.pct ?? chk?.nutricion_pct ?? null, cansancio: media('cansancio'), poderio: media('poderio') };
 }
+/* Estado de las alertas del coach: vistas (quita la notificación) y solventadas (pasa a verde).
+   Se guarda en la tabla alertas_coach (Bloque 51); si no existe, en este dispositivo. */
+const Alertas = {
+  m: {}, local: false,
+  clave: t => normaliza(t).replace(/\s+/g, ' ').trim(),
+  async cargar() {
+    const r = await sb.from('alertas_coach').select('*');
+    if (r.error) { this.local = true; try { this.m = JSON.parse(localStorage.getItem('lof-alertas') || '{}'); } catch (e) { this.m = {}; } return; }
+    this.local = false; this.m = Object.fromEntries((r.data || []).map(x => [x.alumno_id, { vistas: x.vistas || [], resueltas: x.resueltas || [] }]));
+  },
+  de(aid) { return this.m[aid] || (this.m[aid] = { vistas: [], resueltas: [] }); },
+  async guardar(aid) {
+    const x = this.de(aid);
+    if (!this.local) { const { error } = await sb.from('alertas_coach').upsert({ alumno_id: aid, vistas: x.vistas, resueltas: x.resueltas, actualizado_at: new Date().toISOString() }, { onConflict: 'alumno_id' }); if (!error) return; this.local = true; }
+    try { localStorage.setItem('lof-alertas', JSON.stringify(this.m)); } catch (e) { }
+  },
+  async verTodas(aid, motivos) { const x = this.de(aid), nuevas = motivos.map(this.clave).filter(k => !x.vistas.includes(k)); if (!nuevas.length) return false; x.vistas = [...new Set([...x.vistas, ...nuevas])].slice(-60); await this.guardar(aid); return true; },
+  async resolver(aid, motivo, on) { const x = this.de(aid), k = this.clave(motivo); x.resueltas = on ? [...new Set([...x.resueltas, k])].slice(-60) : x.resueltas.filter(z => z !== k); if (on && !x.vistas.includes(k)) x.vistas.push(k); await this.guardar(aid); }
+};
 /* Alertas: semana anterior incumplida, o semana en curso por debajo del 50 % a partir del sábado */
 function estadoAlumno(a) {
   const c = S.c, hoy = hoyISO(), lunes = lunesDe(hoy), dow = (fecha(hoy).getDay() + 6) % 7; // 0 = lunes … 6 = domingo
@@ -1412,8 +1432,9 @@ function estadoAlumno(a) {
   const dpwPre = dpwEn(a.id, sumaDias(lunes, -7), dpwBase), dpw = dpwEn(a.id, lunes, dpwBase), dpw4 = [0, 1, 2, 3].reduce((t, k) => t + dpwEn(a.id, sumaDias(lunes, -7 * k), dpwBase), 0);
   const ses = c.sesiones.filter(s => s.alumno_id === a.id);
   const chks = c.checkins.filter(k => k.alumno_id === a.id), ult = chks[0], ant = chks[1];
-  const motivos = []; let nivel = 'ok';
-  const sube = n => { if (n === 'bad' || nivel === 'ok') nivel = n; };
+  const motivos = [], niveles = []; let nivel = 'ok', ultimo = 'warn';
+  const sube = n => { ultimo = n; };
+  motivos.push = m => { Array.prototype.push.call(motivos, m); niveles.push(ultimo); ultimo = 'warn'; return motivos.length; };
   const vencidos = c.pagos.filter(p => p.alumno_id === a.id && !p.pagado_at && p.vence < hoy);
   if (vencidos.length) { sube('bad'); motivos.push(`Pago vencido: ${vencidos.map(p => p.importe + ' €').join(', ')}`); }
   const enProceso = !srv?.inicio || srv.inicio <= sumaDias(lunes, -7);
@@ -1438,13 +1459,21 @@ function estadoAlumno(a) {
   const mes = new Set(ses.filter(s => s.fecha >= sumaDias(hoy, -27)).map(s => s.fecha + s.dia_id)).size;
   const control = revisionPendiente(srv, (c.revisiones || []).filter(r => r.alumno_id === a.id), c.revisionesErr) || (c.revisionesErr ? controlEnSemana(srv, lunes) : null);
   if (control?.atrasada) { sube('warn'); motivos.push(`Revisión mensual ${control.n} pendiente desde el ${fCorta(control.fecha)}`); }
-  return { nivel, motivos, ult, ultSes: ses[0], dpw, dpw4, ctx: ctxDe(a.id), semana, mes, control, ses7: semana };
+  const st = Alertas.de(a.id), items = motivos.map((m, i) => ({ m, n: niveles[i], k: Alertas.clave(m) })).map(x => ({ ...x, ok: st.resueltas.includes(x.k), nueva: !st.vistas.includes(x.k) }));
+  const pend = items.filter(x => !x.ok);
+  pend.forEach(x => { if (x.n === 'bad' || nivel === 'ok') nivel = x.n; });
+  return { nivel, motivos: pend.map(x => x.m), items, nuevas: items.filter(x => x.nueva && !x.ok).length, ult, ultSes: ses[0], dpw, dpw4, ctx: ctxDe(a.id), semana, mes, control, ses7: semana };
+}
+/* Lista de incidencias con su botón de solventado (las solventadas, tachadas y con deshacer) */
+function vListaAlertas(aid, e, conResueltas = false) {
+  const l = e.items.filter(x => conResueltas || !x.ok);
+  return `<div class="stack" style="gap:6px">${l.map(x => `<div class="row small" style="gap:8px;align-items:flex-start"><span class="al-dot-s" style="background:var(--${x.ok ? 'ok' : x.n})"></span><span class="grow" style="${x.ok ? 'text-decoration:line-through;color:var(--muted)' : ''}">${esc(x.m)}${(x.nueva || S.ficha?.recien?.has(x.k)) && !x.ok ? ' <span class="pill bad">Nueva</span>' : ''}</span><button class="btn sm ${x.ok ? 'ghost' : ''}" data-act="alResolver" data-id="${aid}" data-m="${esc(x.m)}" data-on="${x.ok ? 0 : 1}">${x.ok ? 'Deshacer' : '✓ Solventado'}</button></div>`).join('')}</div>`;
 }
 function verAlertas(id) {
   const a = S.c.perfiles.find(x => x.id === id); if (!a) return;
   const e = estadoAlumno(a), lab = { ok: 'En camino', warn: 'Atención', bad: 'Revisar' };
   abrirSheet(`<div class="stack"><span class="eyebrow">Alertas</span><h2>${esc(a.nombre)}</h2><span class="pill ${e.nivel}" style="align-self:flex-start">${lab[e.nivel]}</span>
-    ${e.motivos.length ? `<ul class="alertas-lista">${e.motivos.map(m => `<li>${esc(m)}</li>`).join('')}</ul>` : '<p class="small muted">Ahora mismo no tiene ninguna alerta.</p>'}
+    ${e.motivos.length ? vListaAlertas(a.id, e) : '<p class="aprox small" style="margin:0">✅ <b>Todo al día.</b> No tiene incidencias pendientes.</p>'}
     <button class="btn full" data-act="ficha" data-id="${a.id}">Abrir su ficha</button></div>`);
 }
 function vAntiguos() {
@@ -1505,7 +1534,7 @@ function vAlumnos() {
       <select id="al-prog" aria-label="Programa"><option value="">Todos los programas</option>${progs.map(x => `<option ${S.alF.p === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
       <select id="al-mod" aria-label="Modalidad"><option value="">Todas las modalidades</option>${MODALIDADES.map(x => `<option ${S.alF.m === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
     ${S.alF.k ? `<div class="row" style="gap:8px;margin:8px 0"><span class="pill ${S.alF.k === 'todos' ? 'blue' : 'bad'}">Mostrando: ${{ todos: 'todos los perfiles activos', alerta: 'necesitan atención', vencidos: 'con pagos vencidos' }[S.alF.k]}</span><button class="linkbtn small" data-act="alFiltro" data-k="">Quitar filtro</button></div>` : ''}
-    <div class="card">${est.map(({ a, e }) => `<div class="line al-fila" data-act="ficha" data-id="${a.id}" data-n="${esc(normaliza(a.nombre))}" data-p="${esc(prodDe(a.id))}" data-m="${esc(modalidadDe(a.id))}" data-al="${e.nivel !== 'ok' ? 1 : 0}" data-v="${vencIds.has(a.id) ? 1 : 0}" style="cursor:pointer"${visibleAl(a, e) ? '' : ' hidden'}><span style="width:4px;align-self:stretch;border-radius:2px;background:var(--${e.nivel})"></span>${avatarDe(a, 40)}<div class="grow stack" style="gap:3px"><div class="row"><h3 class="grow">${esc(a.nombre)}</h3>${e.ctx ? `<span class="pill gold" title="Semana adaptada">${esc(e.ctx.contexto_nombre || 'Contexto')}</span>` : ''}${e.control ? '<span class="pill gold">Revisión mensual</span>' : ''}<span class="pill ${e.nivel}">${lab[e.nivel]}</span></div><div class="small muted">${esc((c.servicios.find(s => s.alumno_id === a.id) || {}).producto || 'Sin servicio')}${e.ult ? ` · motivación ${e.ult.motivacion}/10` : ''}</div>${e.dpw ? barra('Semana', e.semana, e.dpw) + barra('Últimas 4 semanas', e.mes, e.dpw4 || e.dpw * 4) : ''}${e.motivos.length ? `<div class="small">${esc(e.motivos.join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no hay alumnos.</div>'}<div class="empty" id="al-nada" hidden>Ningún alumno coincide con la búsqueda.</div></div>
+    <div class="card">${est.map(({ a, e }) => `<div class="line al-fila" data-act="ficha" data-id="${a.id}" data-n="${esc(normaliza(a.nombre))}" data-p="${esc(prodDe(a.id))}" data-m="${esc(modalidadDe(a.id))}" data-al="${e.nivel !== 'ok' ? 1 : 0}" data-v="${vencIds.has(a.id) ? 1 : 0}" style="cursor:pointer"${visibleAl(a, e) ? '' : ' hidden'}><span style="width:4px;align-self:stretch;border-radius:2px;background:var(--${e.nivel})"></span><i class="al-dot ${e.nuevas ? 'nueva' : ''}" data-act="verAlertas" data-id="${a.id}" role="button" aria-label="Ver alertas de ${esc(a.nombre)}" style="background:var(--${e.nivel})"></i>${avatarDe(a, 40)}<div class="grow stack" style="gap:3px"><div class="row"><h3 class="grow">${esc(a.nombre)}</h3>${e.ctx ? `<span class="pill gold" title="Semana adaptada">${esc(e.ctx.contexto_nombre || 'Contexto')}</span>` : ''}${e.control ? '<span class="pill gold">Revisión mensual</span>' : ''}${e.nuevas ? `<span class="pill bad">${e.nuevas} ${e.nuevas === 1 ? 'nueva' : 'nuevas'}</span>` : ''}<span class="pill ${e.nivel}">${lab[e.nivel]}</span></div><div class="small muted">${esc((c.servicios.find(s => s.alumno_id === a.id) || {}).producto || 'Sin servicio')}${e.ult ? ` · motivación ${e.ult.motivacion}/10` : ''}</div>${e.dpw ? barra('Semana', e.semana, e.dpw) + barra('Últimas 4 semanas', e.mes, e.dpw4 || e.dpw * 4) : ''}${e.motivos.length ? `<div class="small">${esc(e.motivos.join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no hay alumnos.</div>'}<div class="empty" id="al-nada" hidden>Ningún alumno coincide con la búsqueda.</div></div>
   <p class="note">Para dar de alta a un alumno nuevo, créalo en Supabase → Authentication → Users. Su perfil aparecerá aquí solo.</p></section>`;
 }
 
@@ -1527,6 +1556,7 @@ async function abrirFicha(id) {
   const [pr, ru] = await Promise.all([sb.from('presenciales').select('*').eq('alumno_id', id).order('fecha'), sb.from('hoja_ruta').select('*').eq('alumno_id', id).order('orden')]);
   S.ficha.pres = pr.data || []; S.ficha.ruta = ru.data || []; if (S.ficha.srv) S.ficha.srv._bloques = bloquesDe(S.ficha.ruta);
   const f = S.ficha; await Promise.all([cargarValoraciones(), cargarProgramasFicha(f)]);
+  { const a = S.c?.perfiles?.find(x => x.id === id); if (a && S.ficha === f) { const it = estadoAlumno(a).items; f.recien = new Set(it.filter(x => x.nueva).map(x => x.k)); await Alertas.verTodas(id, it.map(x => x.m)); } }
   if (S.ficha === f && !S.verSes && !S.fichaSub) render();
 }
 /* Todos los programas del alumno (con días y ejercicios); el activo es su bloque actual */
@@ -2333,7 +2363,7 @@ function vFicha() {
   return `<section class="stack"><button class="btn sm ghost" data-act="cerrarFicha" style="align-self:flex-start">← Alumnos</button><span class="eyebrow">Ficha del alumno</span><div class="row" style="gap:14px;align-items:center">${avatarDe(a, 64)}<h1 class="grow" style="margin:0">${esc(a.nombre)}</h1></div>
     <div class="small muted">${esc(a.email)} · alta ${esc(fCorta(a.fecha_alta))}${a.nombre_fiscal ? ' · ' + esc(a.nombre_fiscal) : ''}</div>
     <div class="row" style="flex-wrap:wrap;gap:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como ${esc(nom)}</button><button class="btn sm gold" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm" data-act="abrirReporte" data-id="${a.id}">📋 Reporting semanal</button><button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}</div>${a.activo === false ? '<div class="aprox small" style="margin-top:10px">Antiguo alumno: no le llegan avisos de seguimiento al coach. Sus datos siguen guardados y puede seguir usando la app. Reactívalo si vuelve a empezar un proceso.</div>' : ''}</section>
-  ${e.motivos.length ? `<section class="section"><div class="card stack"><span class="eyebrow">Para revisar</span><div class="small">${esc(e.motivos.join(' · '))}</div></div></section>` : ''}
+  ${e.items.length ? `<section class="section"><div class="card stack"><div class="row"><span class="eyebrow grow">Para revisar</span>${e.motivos.length ? '' : '<span class="pill ok">✅ Todo al día</span>'}</div>${vListaAlertas(a.id, e, true)}</div></section>` : ''}
   <section class="section"><div class="section-head"><h2>Plan</h2><button class="btn sm ghost" data-act="editarServicio">✎ Editar</button></div><div class="card stack">
     <button class="plan-b" data-act="fichaSub" data-s="plan"><div class="grow"><h3>${esc(srv?.producto || 'Sin plan asignado')} <span style="color:var(--blue-text)">›</span></h3><div class="small" style="color:var(--blue-text)">Ver toda su planificación: entrenamiento, alimentación y hábitos</div></div></button>
     <div class="row"><div class="grow"><div class="small muted">${[f.prog && `${esc(f.prog.nombre)}${dpw ? ` · ${dpw} días por semana` : ''}`, srv?.modulo_nutricion && 'con nutrición', (srv?.modulo_presencial || srv?.sesiones_incluidas) && `${srv.sesiones_incluidas || ''} presenciales`.trim()].filter(Boolean).join(' · ') || 'Sin programa'}</div></div>${P && !P.sinFin ? `<b class="num" style="font-family:var(--display);font-size:24px">${P.pctTotal} %</b>` : ''}</div>
@@ -4473,6 +4503,7 @@ document.addEventListener('click', async e => {
     case 'enviarCheckin': await enviarCheckin(); break;
     case 'ficha': cerrarSheet(); await abrirFicha(b.dataset.id); break;
     case 'verAlertas': verAlertas(b.dataset.id); break;
+    case 'alResolver': { const enSheet = !!b.closest('#sheet'); await Alertas.resolver(b.dataset.id, b.dataset.m, b.dataset.on === '1'); toast(b.dataset.on === '1' ? 'Marcado como solventado' : 'Vuelve a estar pendiente'); render(); if (enSheet) verAlertas(b.dataset.id); break; }
     case 'alFiltro': S.alF.k = S.alF.k === b.dataset.k ? '' : b.dataset.k; if (S.obj) await salirComo(); S.ficha = null; S.reporte = null; S.factura = null; S.editor = null; S.ctab = 'alumnos'; render(); if (S.alF.k) $('#al-lista')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
     case 'cerrarFicha': S.ficha = null; S.verSes = null; S.verPlan = null; S.valEd = null; render(); break;
     case 'cerrarVerSesion': S.verSes = null; render(); window.scrollTo(0, 0); break;
