@@ -718,7 +718,9 @@ function vHoy() {
   ${Casos.lineaHoy()}
   ${vProcesoGlobal(s)}
   ${vAvisoContexto()}
+  ${Casos.tarjetaHoy(true)}
   <section class="section"><h2>Lo que toca hoy</h2><div class="card">${toca}</div></section>
+  ${Casos.tarjetaHoy(false)}
   ${s.modulo_futbol ? vFutbolHoy() + vSemanaFutbol(ini, w, p) + Habitos.tarjetaHoy(false) : vRegistroDia(s)}
   ${tocaCheckin() ? `<section class="section"><div class="card aviso-chk stack"><div class="row"><div class="ico gold">${svg('checkin')}</div><div class="grow"><b>Toca rellenar tu check-in</b><div class="small muted">Es fin de semana: cuéntale a Jesús cómo ha ido tu semana.</div></div></div><button class="btn full" data-act="tab" data-t="checkin">Rellenar check-in</button>${'Notification' in window && Notification.permission === 'default' ? '<button class="btn ghost full" data-act="permisoAvisos">Activar avisos en el móvil</button>' : ''}</div></section>` : ''}
   ${Temperamento.tarjetaHoy()}

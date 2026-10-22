@@ -137,6 +137,22 @@ const Casos = (() => {
     const { error } = await sb.from('canjes').update({ estado: ok ? 'aplicado' : 'rechazado', resuelto_at: new Date().toISOString() }).eq('id', id);
     if (error) return fallo(error); S.ficha.fotosProg = null; await cargarCoach(); toast(ok ? 'Canje aplicado' : 'Canje rechazado: se le devuelven los puntos'); render();
   }
+  /* Tarjeta de Hoy: franja tranquila fuera de la ventana; destacada (sin presión) en la semana del control */
+  function tarjetaHoy(arriba) {
+    const D = S.d; if (!D || D.casosErr || D.puntosErr || !D.servicio?.inicio || S.vista || S.prueba) return '';
+    const P = saldo(D.servicio, D.fotosProg, D.testimonios, D.canjes), act = P.ms.find(m => m.abierto), sig = PREMIOS.find(p => p[2] > P.saldo), puede = PREMIOS.filter(p => p[2] <= P.saldo).slice(-1)[0];
+    const enVentana = !!act && !act.completo;
+    if (arriba !== enVentana) return '';
+    if (enVentana) {
+      const max = PTS.foto + PTS.reflexion + PTS.ambos + (act.racha ? PTS.racha : 0), chk = (ok, t) => `<span class="small" style="${ok ? 'color:var(--ok);font-weight:700' : ''}">${ok ? '✓' : '○'} ${t}</span>`;
+      return `<section class="section"><div class="card stack" style="border:2px solid var(--gold)"><div class="row"><div class="grow"><span class="eyebrow">Esta semana · tu mes en fotos</span><h3 style="margin:0">Tus fotos y tu reflexión del mes</h3></div><b class="num" style="font-family:var(--display);font-size:22px;color:var(--gold-ink,#8a6d1f)">+${max}</b></div>
+        <div class="row" style="gap:14px;flex-wrap:wrap">${chk(act.foto, `Fotos ${act.vistas}/3`)}${chk(act.refl, 'Reflexión')}</div>
+        <p class="small muted" style="margin:0">Tienes hasta el ${esc(fLarga(act.fin))}. Solo para ti y Jesús: verte mes a mes es lo que más motiva. Llevas ${P.saldo} puntos${sig ? `; con este mes te acercas a ${sig[3]} ${esc(sig[1].toLowerCase())}` : ''}.</p>
+        <button class="btn gold" data-act="fpSubir" style="align-self:flex-start">Hacerlo ahora</button></div></section>`;
+    }
+    const hecho = act?.completo;
+    return `<section class="section"><button class="card row" data-act="tab" data-t="progreso" style="width:100%;text-align:left;gap:10px;align-items:center"><span style="font-size:22px">${hecho ? '✅' : '🏆'}</span><div class="grow stack" style="gap:4px"><span class="small">${hecho ? `<b>Hecho este mes · +${act.pts}</b> · ` : ''}<b>${P.saldo} puntos</b>${puede ? ` · <span style="color:var(--gold-ink,#8a6d1f);font-weight:700">ya puedes canjear ${puede[3]}</span>` : sig ? ` · te faltan ${sig[2] - P.saldo} para ${sig[3]}` : ''}</span><div class="track"><i style="width:${Math.min(100, Math.round(P.saldo / (sig ? sig[2] : PREMIOS[PREMIOS.length - 1][2]) * 100))}%;background:var(--gold)"></i></div></div><span class="small" style="color:var(--blue-text)">›</span></button></section>`;
+  }
   function vSeccionAlumno() {
     const D = S.d; if (!D) return '';
     if (D.casosErr) return '';
@@ -323,5 +339,5 @@ const Casos = (() => {
     return perm.concat((S.c?.casos || []).filter(x => x.alumno_id === aid && x.estado !== 'pendiente' && x.respondido_at && x.respondido_at.slice(0, 10) >= sumaDias(hoyISO(), -7)).map(x => x.estado === 'aprobado' ? 'Ha aprobado que compartas su caso de éxito' : 'No quiere que se publique la propuesta de caso de éxito'));
   }
 
-  return { canjear, resolverCanje, saldo, campoTestimonio, guardarTestimonio, VERSION, vistaInicial, cargar, cargarCoach, vSeccionAlumno, camposFotos, subirDesde, formSubir, borrarFecha, formPermisos, avisoNovedad, lineaHoy, responder, alertaFotos, vFicha, formNuevo, borrarCaso, resumenCoach, avisosCoach, cargarFicha };
+  return { tarjetaHoy, canjear, resolverCanje, saldo, campoTestimonio, guardarTestimonio, VERSION, vistaInicial, cargar, cargarCoach, vSeccionAlumno, camposFotos, subirDesde, formSubir, borrarFecha, formPermisos, avisoNovedad, lineaHoy, responder, alertaFotos, vFicha, formNuevo, borrarCaso, resumenCoach, avisosCoach, cargarFicha };
 })();
