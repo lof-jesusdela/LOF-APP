@@ -66,7 +66,7 @@ const Acomp = (() => {
     const av = [], prio = [];
     if (dpw) { av.push(`${w.entrenos} de ${dpw} entrenos${w.entrenos >= dpw ? ' ✅' : ''}`); if (w.entrenos < dpw) prio.push(`llegar a los ${dpw} entrenos de la semana`); }
     if (conPasos(srv) && w.pasosMedia != null) { av.push(`${fmtNum(w.pasosMedia, 0)} pasos de media${w.pasosMedia >= obj ? ' ✅' : ` (objetivo ${fmtNum(obj, 0)})`}`); if (w.pasosMedia < obj) prio.push(`subir los pasos hacia ${fmtNum(obj, 0)} al día`); }
-    if (srv?.modulo_nutricion && w.ing?.dias) { av.push(`alimentación al ${w.ing.pctReg ?? w.nutri} % en los días registrados`); if ((w.ing.pctReg ?? 100) < 85) prio.push('cumplir las comidas del plan, sobre todo entre semana'); }
+    if (srv?.modulo_nutricion && midoCoach(a.id) && w.ing?.dias) { av.push(`alimentación al ${w.ing.pctReg ?? w.nutri} % en los días registrados`); if ((w.ing.pctReg ?? 100) < 85) prio.push('cumplir las comidas del plan, sobre todo entre semana'); }
     if (chk.motivacion != null) av.push(`motivación ${chk.motivacion}/10`);
     const med = (f.med || []).slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), dl = med.length > 1 ? med[med.length - 1].peso - med[med.length - 2].peso : null;
     if (dl != null && !isNaN(dl)) av.push(`peso ${dl > 0 ? '+' : ''}${fmtNum(dl)} kg desde la medición anterior`);
