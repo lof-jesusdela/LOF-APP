@@ -258,7 +258,7 @@ const Habitos = (() => {
     }
     const act = habs.filter(h => h.estado === 'instalacion' && h.inicio), man = habs.filter(h => h.estado === 'mantenimiento'), b = bloque(habs);
     const sig = siguiente(habs, regs), prop = habs.filter(h => h.estado === 'propuesto').sort((x, y) => x.orden - y.orden);
-    return cab + `
+    return cab + bannerPausa() + `
       ${b ? `<section class="section"><div class="card stack"><div class="row"><span class="eyebrow grow">Bloque ${b.n} · semana ${b.sem} de 8</span><span class="small muted">${act.length} cada día${man.length ? ` · ${man.length} en mantenimiento` : ''}</span></div><div class="hb-bl">${[1, 2, 3, 4, 5, 6, 7, 8].map(n => `<i class="${n < b.sem ? 'ok' : n === b.sem ? 'now' : ''}"></i>`).join('')}</div><p class="small muted">${b.sem >= 7 ? 'Semanas 7 y 8: toca consolidar. El siguiente hábito entra en tu próximo bloque.' : 'Un hábito nuevo cada dos semanas, solo si el anterior está en verde.'}</p></div></section>` : ''}
       ${bloqueHoy('Hoy', false)}
       ${sig.ok ? vSiguiente(sig.sig) : ''}
@@ -266,7 +266,28 @@ const Habitos = (() => {
       ${man.length ? `<section class="section"><h2>En mantenimiento</h2>${man.map(h => tarjetaMantenimiento(h, regs)).join('')}</section>` : ''}
       ${prop.length ? `<section class="section"><h2>Lo que viene</h2><div class="card">${prop.map((h, i) => `<div class="line"><span class="hb-n">${i + 1}</span><div class="grow"><b class="small">${esc(h.titulo)}</b><div class="small muted">${i === 0 && !sig.ok ? esc(motivoEspera(sig)) : 'Después del anterior'}</div></div></div>`).join('')}</div></section>` : ''}
       ${Temperamento.seccionTests()}
+      ${comoFunciona()}
       <section class="section"><p class="note">Un día suelto no estropea nada: lo que forma el hábito es repetirlo en el mismo momento del día. Si un día no puedes, haz la versión mínima.</p></section>`;
+  }
+  /* Qué significa cada estado y qué permite avanzar */
+  function comoFunciona() {
+    return `<section class="section"><details class="card"><summary><b>¿Cómo funciona tu plan de hábitos?</b></summary><div class="stack small" style="gap:8px;margin-top:10px">
+      <div><b>Cada día</b> · el hábito que estás instalando. Lo marcas con un toque: hecho, versión mínima (también cuenta) o no.</div>
+      <div><span class="pill ok">En verde</span> 80 % o más de los últimos 14 días. <span class="pill warn">En ámbar</span> entre el 50 y el 80 %. <span class="pill bad">En rojo</span> por debajo: toca hacerlo más pequeño, no esforzarse más.</div>
+      <div><b>Cuándo entra el siguiente:</b> cuando el último lleve al menos 2 semanas y esté en verde. Nunca más de 3 a la vez con registro diario.</div>
+      <div><b>Mantenimiento</b> · ya te sale solo: lo marcas una vez por semana. <b>Consolidado</b> · forma parte de tu día y deja de registrarse.</div>
+      <div><b>Ajustar mi hábito</b> · si no encaja, cambia el momento o la versión mínima. Jesús ve el cambio y lo comenta contigo.</div></div></details></section>`;
+  }
+  /* Tras una pausa: volver con la versión mínima, sin acumular avisos */
+  function bannerPausa() {
+    const e = typeof Acomp !== 'undefined' ? Acomp.estado(S.d?.servicio) : { k: 'activo' };
+    if (e.k === 'pausado') return `<section class="section"><div class="card small" style="border:2px solid var(--blue)">⏸ Estás en pausa: tus hábitos no cuentan estos días. Si te apetece, mantén solo la <b>versión mínima</b> de uno.</div></section>`;
+    if (e.k === 'regreso') return `<section class="section"><div class="card small" style="border:2px solid var(--gold)">↩️ <b>Volvemos poco a poco:</b> estas dos semanas basta con la <b>versión mínima</b> de cada hábito. No añadimos nada nuevo hasta que vuelvan a estar en verde.</div></section>`;
+    return '';
+  }
+  /* Ajustes del alumno en los últimos 7 días (para las alertas del coach) */
+  function ajustesRecientes(aid) {
+    return (S.c?.habitos || []).filter(h => h.alumno_id === aid && h.ajustado_alumno_at && h.ajustado_alumno_at.slice(0, 10) >= sumaDias(hoyISO(), -7)).map(h => `Ha ajustado su hábito «${h.titulo}»${h.minimo ? ` (mínimo: ${h.minimo})` : ''}`);
   }
   function motivoEspera(sig, coach) {
     const t = { pronto: `Entra dentro de ${sig.faltan} ${sig.faltan === 1 ? 'día' : 'días'} si tu último hábito sigue en verde`, ambar: 'Primero, que tu último hábito vuelva a verde', rojo: 'Primero, que tu último hábito vuelva a verde', nuevo: 'En cuanto tu último hábito coja ritmo', lleno: 'Cuando uno de tus hábitos pase a mantenimiento', bloque: 'En tu próximo bloque de 8 semanas', consolidar: 'En tu próximo bloque: ahora toca consolidar' }[sig.motivo] || 'Más adelante';
@@ -360,8 +381,9 @@ const Habitos = (() => {
     const { error } = await sb.from('habitos_registro').update({ motivo: nuevo }).eq('habito_id', id).eq('fecha', f); if (error) return fallo(error);
     r.motivo = nuevo; render();
   }
-  async function actualizar(h, cambios, msg) {
+  async function actualizar(h, cambios, msg, reintenta) {
     const { data, error } = await sb.from('habitos').update(cambios).eq('id', h.id).select().single();
+    if (error && reintenta && /ajustado_alumno_at/.test(error.message || '')) return 'col';
     if (error) { fallo(error, /habitos/.test(error.message || '') ? AVISO : undefined); return false; }
     Object.assign(h, data || cambios); if (msg) toast(msg); render(); return true;
   }
@@ -391,7 +413,10 @@ const Habitos = (() => {
       e.preventDefault();
       const c = { si_entonces: $('#hb-si').value.trim() || null, minimo: $('#hb-min').value.trim() || null };
       if (coach) { c.titulo = $('#hb-t').value.trim() || h.titulo; c.porque = $('#hb-pq').value.trim() || null; }
-      if (await actualizar(h, c, 'Hábito guardado')) cerrarSheet();
+      else c.ajustado_alumno_at = new Date().toISOString();
+      let ok = await actualizar(h, c, coach ? 'Hábito guardado' : 'Hábito ajustado: Jesús verá el cambio', true);
+      if (ok === 'col') { delete c.ajustado_alumno_at; ok = await actualizar(h, c, 'Hábito ajustado'); }
+      if (ok) cerrarSheet();
     });
   }
   function formSrbai(id, k) {
@@ -445,7 +470,7 @@ const Habitos = (() => {
     const als = S.c.perfiles.filter(p => p.activo !== false), regs = S.c.habReg || [], hoy = hoyISO(), ay = sumaDias(hoy, -1), an = sumaDias(hoy, -2);
     const conPlan = als.filter(a => S.c.habitos.some(h => h.alumno_id === a.id && h.estado !== 'descartado'));
     const falla = (h, d) => h.inicio && d >= h.inicio && !regs.some(x => x.habito_id === h.id && x.fecha === d && cumple(x.valor));
-    const alertas = conPlan.map(a => ({ a, hs: S.c.habitos.filter(h => h.alumno_id === a.id && h.estado === 'instalacion' && h.inicio && h.inicio <= an && falla(h, ay) && falla(h, an)) })).filter(x => x.hs.length);
+    const alertas = conPlan.filter(a => typeof Acomp === 'undefined' || Acomp.estado((S.c.servicios || []).find(x => x.alumno_id === a.id)).k !== 'pausado').map(a => ({ a, hs: S.c.habitos.filter(h => h.alumno_id === a.id && h.estado === 'instalacion' && h.inicio && h.inicio <= an && falla(h, ay) && falla(h, an)) })).filter(x => x.hs.length);
     const activos = S.c.habitos.filter(h => h.estado === 'instalacion').length;
     return `<section class="section"><h2>Hábitos</h2><div class="kpis"><div class="kpi"><div class="v num">${conPlan.length}</div><div class="l">con plan</div></div><div class="kpi"><div class="v num">${activos}</div><div class="l">hábitos diarios</div></div><div class="kpi"><div class="v num" style="color:${alertas.length ? 'var(--bad)' : 'var(--ok)'}">${alertas.length}</div><div class="l">2 días sin cumplir</div></div></div>
       ${alertas.length ? `<div class="card">${alertas.map(({ a, hs }) => `<div class="line" data-act="hbFicha" data-id="${a.id}" style="cursor:pointer"><div class="grow"><h3 style="font-size:16px">${esc(a.nombre)}</h3><div class="small muted">${hs.map(h => esc(h.titulo)).join(' · ')}</div></div><span class="small" style="color:var(--blue-text)">›</span></div>`).join('')}</div><p class="small muted">Un mensaje hoy marca la diferencia: un fallo suelto no frena el hábito, dos seguidos empiezan a pesar.</p>` : ''}</section>`;
@@ -559,5 +584,5 @@ const Habitos = (() => {
   });
 
   const aislar = fn => (...args) => { try { return fn(...args); } catch (err) { console.error(err); return `<section class="section"><div class="card small muted">No se han podido mostrar los hábitos. Mándale a Jesús este mensaje: ${esc(String(err && err.message || err).slice(0, 160))}</div></section>`; } };
-  return { vista: aislar(vista), tarjetaHoy: aislar(tarjetaHoy), enRegistro: aislar(enRegistro), ctaInforme: aislar(ctaInforme), vCoach: aislar(vCoach), resumenCoach: aislar(resumenCoach), cargar, cargarCoach, cargarFicha, contexto, proponer, ordenar, filasPlan, stats, bloque, siguiente, CAT };
+  return { ajustesRecientes, vista: aislar(vista), tarjetaHoy: aislar(tarjetaHoy), enRegistro: aislar(enRegistro), ctaInforme: aislar(ctaInforme), vCoach: aislar(vCoach), resumenCoach: aislar(resumenCoach), cargar, cargarCoach, cargarFicha, contexto, proponer, ordenar, filasPlan, stats, bloque, siguiente, CAT };
 })();

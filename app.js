@@ -1742,6 +1742,7 @@ function estadoAlumno(a) {
   { const ad = Acomp.alertaDevolucion(a.id); if (ad) { sube('warn'); motivos.push(ad); } }
   { const ap = Acomp.alertaProxima(a.id); if (ap) { sube('warn'); motivos.push(ap); } }
   Casos.avisosCoach(a.id).forEach(m => { sube('warn'); motivos.push(m); });
+  Habitos.ajustesRecientes(a.id).forEach(m => { sube('warn'); motivos.push(m); });
   { const af = avisoFin(srv); if (af) { sube('warn'); motivos.push(af.terminado ? `Su proceso terminó el ${fCorta(af.fin)}: añade una extensión o pásalo a antiguos alumnos` : `Le queda menos de un mes de proceso (termina el ${fCorta(af.fin)}): ¿extensión?`); } }
   if (ult && ult.motivacion <= 4) { sube('bad'); motivos.push(`Motivación ${ult.motivacion}/10`); }
   else if (ult && ant && ant.motivacion - ult.motivacion >= 3) { sube('warn'); motivos.push(`Motivación de ${ant.motivacion} a ${ult.motivacion}`); }
