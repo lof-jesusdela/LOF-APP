@@ -320,6 +320,7 @@ async function cargarAlumno(uid) {
   await Habitos.cargar(uid, S.d);
   await Nutricion.cargar(uid, S.d);
   await Casos.cargar(uid, S.d);
+  await Acomp.cargarAlumno(uid, S.d);
 }
 
 /* ---------- Render principal ---------- */
@@ -361,7 +362,7 @@ function render() {
   const tabs = coach ? [['alumnos', 'Alumnos'], ['plantillas', 'Plantillas'], ['ejercicios', 'Ejercicios'], ['pagos', 'Pagos']] : tabsAlumno();
   const actual = coach ? S.ctab : S.tab;
   const esCoach = S.perfil.rol === 'coach';
-  const vistas = { hoy: vHoy, entreno: vEntreno, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, tests: vProgreso, habitos: Habitos.vista, alumnos: vAlumnos, pagos: vPagos, ejercicios: vEjercicios, plantillas: vPlantillas };
+  const vistas = { hoy: vHoy, entreno: vEntreno, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, tests: vProgreso, coach: Acomp.vTuCoach, habitos: Habitos.vista, alumnos: vAlumnos, pagos: vPagos, ejercicios: vEjercicios, plantillas: vPlantillas };
   $('#app').innerHTML = `<header class="top">
       <div class="badge"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : esc(S.perfil.metodologia || 'Tu proceso')}</strong></div></div>
       <div class="row" style="gap:8px">${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
@@ -370,9 +371,7 @@ function render() {
   document.body.classList.toggle('modo-coach', coach);
   if (coach) aplicarFiltroAl();
   $('#tabs').hidden = false;
-  $('#tabs-in').innerHTML = tabs.map(([k, l]) => !coach && k === 'coach'
-    ? (waJesus('Hola Jesús, ') ? `<a class="tab-wa" href="${esc(waJesus('Hola Jesús, '))}" target="_blank" rel="noopener" aria-label="Habla con tu coach por WhatsApp">${svg('coach')}<span>${l}</span></a>` : `<button data-act="sinWhatsapp">${svg('coach')}<span>${l}</span></button>`)
-    : `<button data-act="${coach ? 'ctab' : 'tab'}" data-t="${k}" ${actual === k && !((S.ficha || S.editor || S.obj) && coach) ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${!coach && k === 'hoy' && (pendientesFutbol().length || tocaCheckin()) ? '<i class="badge-dot"></i>' : ''}</button>`).join('');
+  $('#tabs-in').innerHTML = tabs.map(([k, l]) => `<button data-act="${coach ? 'ctab' : 'tab'}" data-t="${k}" ${actual === k && !((S.ficha || S.editor || S.obj) && coach) ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${!coach && k === 'hoy' && (pendientesFutbol().length || tocaCheckin()) ? '<i class="badge-dot"></i>' : ''}${!coach && k === 'coach' && Acomp.sinLeer() ? '<i class="badge-dot"></i>' : ''}</button>`).join('');
   if (S.dia && ((!coach && S.tab === 'entreno') || (coach && S.obj))) rellenarSesion();
 }
 
@@ -413,6 +412,7 @@ function ingestasSemana(reg, ini, srv) {
 function tocaCheckin() {
   const now = new Date(), dow = now.getDay();
   if (!((dow === 6 && now.getHours() >= 15) || dow === 0)) return false;
+  if (Acomp.estado(S.d?.servicio).k === 'pausado') return false;
   return !(S.d?.checkins || []).some(c => c.semana_inicio === lunesDe(hoyISO()));
 }
 async function avisoCheckin() {
@@ -714,8 +714,10 @@ function vHoy() {
       <p class="frase-hoy">${esc(S.perfil.frase_motivacion || FRASE_DEF)}</p></div>${avatarDe(S.perfil, 72)}</div>
     ${objetivoDe(S.d.ruta) ? `<div style="border-top:1px solid rgba(255,255,255,.14);padding-top:12px" class="stack"><span class="eyebrow">Tu objetivo</span><div class="small">${esc(objetivoDe(S.d.ruta))}</div></div>` : ''}
   </section>
+  ${Acomp.tarjetaEstadoHoy()}
   ${Bienvenida.tarjeta()}
   ${Casos.lineaHoy()}
+  ${Acomp.tarjetaDevolucionHoy()}
   ${vProcesoGlobal(s)}
   ${vAvisoContexto()}
   ${Casos.tarjetaHoy(true)}
@@ -1524,6 +1526,7 @@ async function cargarCoach() {
   await Alertas.cargar();
   S.c = { perfiles: per.data || [], servicios: srv.data || [], sesiones: ses.data || [], checkins: chk.data || [], diario: reg.data || [], pagos: pag.data || [], programas: prg.data || [], ejercicios: ejs.data || [] };
   await Casos.cargarCoach();
+  await Acomp.cargarCoach();
   S.c.servicios.forEach(x => x._bloques = bloquesDe((rut.data || []).filter(r => r.alumno_id === x.alumno_id)));
   const [fa, ap] = await Promise.all([sb.from('facturas').select('*').order('numero', { ascending: false }), sb.from('ajustes_privados').select('*')]);
   await cargarPlantillas();
@@ -1556,16 +1559,16 @@ const Alertas = {
   async cargar() {
     const r = await sb.from('alertas_coach').select('*');
     if (r.error) { this.local = true; try { this.m = JSON.parse(localStorage.getItem('lof-alertas') || '{}'); } catch (e) { this.m = {}; } return; }
-    this.local = false; this.m = Object.fromEntries((r.data || []).map(x => [x.alumno_id, { vistas: x.vistas || [], resueltas: x.resueltas || [] }]));
+    this.local = false; this.m = Object.fromEntries((r.data || []).map(x => [x.alumno_id, { vistas: x.vistas || [], resueltas: x.resueltas || [], notas: x.notas || {} }]));
   },
   de(aid) { return this.m[aid] || (this.m[aid] = { vistas: [], resueltas: [] }); },
   async guardar(aid) {
     const x = this.de(aid);
-    if (!this.local) { const { error } = await sb.from('alertas_coach').upsert({ alumno_id: aid, vistas: x.vistas, resueltas: x.resueltas, actualizado_at: new Date().toISOString() }, { onConflict: 'alumno_id' }); if (!error) return; this.local = true; }
+    if (!this.local) { let { error } = await sb.from('alertas_coach').upsert({ alumno_id: aid, vistas: x.vistas, resueltas: x.resueltas, notas: x.notas || {}, actualizado_at: new Date().toISOString() }, { onConflict: 'alumno_id' }); if (error && /notas/.test(error.message || '')) ({ error } = await sb.from('alertas_coach').upsert({ alumno_id: aid, vistas: x.vistas, resueltas: x.resueltas, actualizado_at: new Date().toISOString() }, { onConflict: 'alumno_id' })); if (!error) return; this.local = true; }
     try { localStorage.setItem('lof-alertas', JSON.stringify(this.m)); } catch (e) { }
   },
   async verTodas(aid, motivos) { const x = this.de(aid), nuevas = motivos.map(this.clave).filter(k => !x.vistas.includes(k)); if (!nuevas.length) return false; x.vistas = [...new Set([...x.vistas, ...nuevas])].slice(-60); await this.guardar(aid); return true; },
-  async resolver(aid, motivo, on) { const x = this.de(aid), k = this.clave(motivo); x.resueltas = on ? [...new Set([...x.resueltas, k])].slice(-60) : x.resueltas.filter(z => z !== k); if (on && !x.vistas.includes(k)) x.vistas.push(k); await this.guardar(aid); }
+  async resolver(aid, motivo, on, nota) { const x = this.de(aid), k = this.clave(motivo); x.notas ||= {}; x.resueltas = on ? [...new Set([...x.resueltas, k])].slice(-60) : x.resueltas.filter(z => z !== k); if (on && !x.vistas.includes(k)) x.vistas.push(k); if (on) x.notas[k] = { t: nota || '', f: hoyISO() }; else delete x.notas[k]; await this.guardar(aid); }
 };
 /* Alertas: semana anterior incumplida, o semana en curso por debajo del 50 % a partir del sábado */
 function estadoAlumno(a) {
@@ -1579,7 +1582,8 @@ function estadoAlumno(a) {
   motivos.push = m => { Array.prototype.push.call(motivos, m); niveles.push(ultimo); ultimo = 'warn'; return motivos.length; };
   const vencidos = c.pagos.filter(p => p.alumno_id === a.id && !p.pagado_at && p.vence < hoy);
   if (vencidos.length) { sube('bad'); motivos.push(`Pago vencido: ${vencidos.map(p => p.importe + ' €').join(', ')}`); }
-  const enProceso = !srv?.inicio || srv.inicio <= sumaDias(lunes, -7);
+  const est = Acomp.estado(srv), pausa = est.k === 'pausado';
+  const enProceso = !pausa && (!srv?.inicio || srv.inicio <= sumaDias(lunes, -7));
   const pre = semanaDatos(a.id, sumaDias(lunes, -7), c);
   if (enProceso) {
     if (dpwPre && pre.entrenos < dpwPre) { sube(pre.entrenos <= dpwPre / 2 ? 'bad' : 'warn'); motivos.push(`Semana pasada: ${pre.entrenos} de ${dpwPre} entrenos`); }
@@ -1587,14 +1591,17 @@ function estadoAlumno(a) {
     else if (pre.pasosMedia < obj) { sube('warn'); motivos.push(`Semana pasada: ${fmtNum(pre.pasosMedia, 0)} pasos de media (objetivo ${fmtNum(obj, 0)})`); }
     if (srv?.modulo_nutricion && pre.nutri != null && pre.nutri < 85) { sube(pre.nutri < 60 ? 'bad' : 'warn'); motivos.push(`Semana pasada: alimentación ${evalNutri(pre.nutri)[1].toLowerCase()} (${pre.nutri} % de ingestas)`); }
   }
-  if (dow >= 5) {
+  if (dow >= 5 && !pausa) {
     const cur = semanaDatos(a.id, lunes, c), dias = dow + 1;
     if (dpw && cur.entrenos < dpw * 0.5) { sube('bad'); motivos.push(`Esta semana: solo ${cur.entrenos} de ${dpw} entrenos y ya es ${dow === 5 ? 'sábado' : 'domingo'}`); }
     if (cur.diasPasos < dias * 0.5 || (cur.pasosMedia != null && cur.pasosMedia < obj * 0.5)) { sube('warn'); motivos.push(`Esta semana: pasos registrados ${cur.diasPasos} de ${dias} días${cur.pasosMedia != null ? `, media ${fmtNum(cur.pasosMedia, 0)}` : ''}`); }
     if (srv?.modulo_nutricion && cur.nutri != null && cur.nutri < 50) { sube('bad'); motivos.push(`Esta semana: alimentación al ${cur.nutri} %`); }
   }
   if (srv?.modulo_futbol) alertasFutbol(a.id).forEach(([n, m]) => { sube(n); motivos.push(m); });
-  if (!srv?.modulo_futbol) { const af = Casos.alertaFotos(a.id, srv); if (af) { sube('warn'); motivos.push(af); } }
+  if (!srv?.modulo_futbol && !pausa) { const af = Casos.alertaFotos(a.id, srv); if (af) { sube('warn'); motivos.push(af); } }
+  if (est.k === 'pausaVencida') { sube('warn'); motivos.push(`Su pausa terminó el ${fCorta(est.hasta)}: pásalo a Regreso o a Activo`); }
+  { const ad = Acomp.alertaDevolucion(a.id); if (ad) { sube('warn'); motivos.push(ad); } }
+  { const ap = Acomp.alertaProxima(a.id); if (ap) { sube('warn'); motivos.push(ap); } }
   Casos.avisosCoach(a.id).forEach(m => { sube('warn'); motivos.push(m); });
   { const af = avisoFin(srv); if (af) { sube('warn'); motivos.push(af.terminado ? `Su proceso terminó el ${fCorta(af.fin)}: añade una extensión o pásalo a antiguos alumnos` : `Le queda menos de un mes de proceso (termina el ${fCorta(af.fin)}): ¿extensión?`); } }
   if (ult && ult.motivacion <= 4) { sube('bad'); motivos.push(`Motivación ${ult.motivacion}/10`); }
@@ -1602,16 +1609,16 @@ function estadoAlumno(a) {
   const semana = new Set(ses.filter(s => s.fecha >= lunes).map(s => s.fecha + s.dia_id)).size;
   const mes = new Set(ses.filter(s => s.fecha >= sumaDias(hoy, -27)).map(s => s.fecha + s.dia_id)).size;
   const control = revisionPendiente(srv, (c.revisiones || []).filter(r => r.alumno_id === a.id), c.revisionesErr) || (c.revisionesErr ? controlEnSemana(srv, lunes) : null);
-  if (control?.atrasada) { sube('warn'); motivos.push(`Revisión mensual ${control.n} pendiente desde el ${fCorta(control.fecha)}`); }
+  if (control?.atrasada && !pausa) { sube('warn'); motivos.push(`Revisión mensual ${control.n} pendiente desde el ${fCorta(control.fecha)}`); }
   const st = Alertas.de(a.id), items = motivos.map((m, i) => ({ m, n: niveles[i], k: Alertas.clave(m) })).map(x => ({ ...x, ok: st.resueltas.includes(x.k), nueva: !st.vistas.includes(x.k) }));
   const pend = items.filter(x => !x.ok);
-  pend.forEach(x => { if (x.n === 'bad' || nivel === 'ok') nivel = x.n; });
+  pend.forEach(x => { const n = est.k === 'regreso' && x.n === 'bad' ? 'warn' : x.n; if (n === 'bad' || nivel === 'ok') nivel = n; });
   return { nivel, motivos: pend.map(x => x.m), items, nuevas: items.filter(x => x.nueva && !x.ok).length, ult, ultSes: ses[0], dpw, dpw4, ctx: ctxDe(a.id), semana, mes, control, ses7: semana };
 }
 /* Lista de incidencias con su botón de solventado (las solventadas, tachadas y con deshacer) */
 function vListaAlertas(aid, e, conResueltas = false) {
   const l = e.items.filter(x => conResueltas || !x.ok);
-  return `<div class="stack" style="gap:6px">${l.map(x => `<div class="row small" style="gap:8px;align-items:flex-start"><span class="al-dot-s" style="background:var(--${x.ok ? 'ok' : x.n})"></span><span class="grow" style="${x.ok ? 'text-decoration:line-through;color:var(--muted)' : ''}">${esc(x.m)}${(x.nueva || S.ficha?.recien?.has(x.k)) && !x.ok ? ' <span class="pill bad">Nueva</span>' : ''}</span><button class="btn sm ${x.ok ? 'ghost' : ''}" data-act="alResolver" data-id="${aid}" data-m="${esc(x.m)}" data-on="${x.ok ? 0 : 1}">${x.ok ? 'Deshacer' : '✓ Solventado'}</button></div>`).join('')}</div>`;
+  return `<div class="stack" style="gap:6px">${l.map(x => `<div class="row small" style="gap:8px;align-items:flex-start"><span class="al-dot-s" style="background:var(--${x.ok ? 'ok' : x.n})"></span><span class="grow" style="${x.ok ? 'text-decoration:line-through;color:var(--muted)' : ''}">${esc(x.m)}${x.ok && Alertas.de(aid).notas?.[x.k] ? `<span style="display:block;text-decoration:none;color:var(--ok)">✓ ${esc(Alertas.de(aid).notas[x.k].t || 'Atendida')} · ${esc(fCorta(Alertas.de(aid).notas[x.k].f))}</span>` : ''}${(x.nueva || S.ficha?.recien?.has(x.k)) && !x.ok ? ' <span class="pill bad">Nueva</span>' : ''}</span><button class="btn sm ${x.ok ? 'ghost' : ''}" data-act="alResolver" data-id="${aid}" data-m="${esc(x.m)}" data-on="${x.ok ? 0 : 1}">${x.ok ? 'Deshacer' : '✓ Solventado'}</button></div>`).join('')}</div>`;
 }
 function verAlertas(id) {
   const a = S.c.perfiles.find(x => x.id === id); if (!a) return;
@@ -1699,7 +1706,7 @@ async function abrirFicha(id) {
   S.valEd = null;
   const [pr, ru] = await Promise.all([sb.from('presenciales').select('*').eq('alumno_id', id).order('fecha'), sb.from('hoja_ruta').select('*').eq('alumno_id', id).order('orden')]);
   S.ficha.pres = pr.data || []; S.ficha.ruta = ru.data || []; if (S.ficha.srv) S.ficha.srv._bloques = bloquesDe(S.ficha.ruta);
-  const f = S.ficha; await Promise.all([cargarValoraciones(), cargarProgramasFicha(f)]);
+  const f = S.ficha; await Promise.all([cargarValoraciones(), cargarProgramasFicha(f), Acomp.cargarFicha(f)]);
   { const a = S.c?.perfiles?.find(x => x.id === id); if (a && S.ficha === f) { const it = estadoAlumno(a).items; f.recien = new Set(it.filter(x => x.nueva).map(x => x.k)); await Alertas.verTodas(id, it.map(x => x.m)); } }
   if (S.ficha === f && !S.verSes && !S.fichaSub) render();
 }
@@ -2507,6 +2514,7 @@ function vFicha() {
   return `<section class="stack"><button class="btn sm ghost" data-act="cerrarFicha" style="align-self:flex-start">← Alumnos</button><span class="eyebrow">Ficha del alumno</span><div class="row" style="gap:14px;align-items:center">${avatarDe(a, 64)}<h1 class="grow" style="margin:0">${esc(a.nombre)}</h1></div>
     <div class="small muted">${esc(a.email)} · alta ${esc(fCorta(a.fecha_alta))}${a.nombre_fiscal ? ' · ' + esc(a.nombre_fiscal) : ''}</div>
     <div class="row" style="flex-wrap:wrap;gap:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como ${esc(nom)}</button><button class="btn sm gold" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm" data-act="abrirReporte" data-id="${a.id}">📋 Reporting semanal</button><button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}</div>${a.activo === false ? '<div class="aprox small" style="margin-top:10px">Antiguo alumno: no le llegan avisos de seguimiento al coach. Sus datos siguen guardados y puede seguir usando la app. Reactívalo si vuelve a empezar un proceso.</div>' : ''}</section>
+  ${Acomp.vResumen(f, a)}
   ${e.items.length ? `<section class="section"><div class="card stack"><div class="row"><span class="eyebrow grow">Para revisar</span>${e.motivos.length ? '' : '<span class="pill ok">✅ Todo al día</span>'}</div>${vListaAlertas(a.id, e, true)}</div></section>` : ''}
   <section class="section"><div class="section-head"><h2>Plan</h2><button class="btn sm ghost" data-act="editarServicio">✎ Editar</button></div><div class="card stack">
     <button class="plan-b" data-act="fichaSub" data-s="plan"><div class="grow"><h3>${esc(srv?.producto || 'Sin plan asignado')} <span style="color:var(--blue-text)">›</span></h3><div class="small" style="color:var(--blue-text)">Ver toda su planificación: entrenamiento, alimentación y hábitos</div></div></button>
@@ -2531,7 +2539,7 @@ function vFicha() {
   ${vBloqueActual(f, a)}
   ${vRevisionesFicha(a)}
   ${vPresenciales(srv, f.pres, true)}
-  <section class="section"><h2>Check-ins</h2><div class="card">${chks.map(k => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(k.semana_inicio))}</span><div class="grow stack" style="gap:4px"><div class="small">Motivación <b>${k.motivacion}/10</b> · implicación <b>${k.implicacion}/10</b></div>${k.dificultades ? `<div class="small"><span class="muted">Dificultades:</span> ${esc(k.dificultades)}</div>` : ''}${(k.proxima_semana_etiquetas || []).length || k.proxima_semana ? `<div class="small"><span class="muted">Semana que viene:</span> ${esc([...(k.proxima_semana_etiquetas || []), k.proxima_semana].filter(Boolean).join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Sin check-ins todavía.</div>'}</div></section>
+  ${Acomp.vCheckinsFicha(f, chks)}
   <section class="section"><div class="section-head"><h2>Plan de pagos</h2><button class="btn sm ghost" data-act="nuevoPago">＋ Cuota</button></div><div class="card">${pagos.map(lineaPago).join('') || '<div class="empty">Sin cuotas registradas.</div>'}</div></section>
   <section class="section"><div class="section-head"><h2>Notas privadas</h2><button class="btn sm ghost" data-act="nuevaNota">＋ Nota</button></div><div class="card">${f.notas.map(n => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(n.fecha))}</span><div class="small grow">${esc(n.texto)}</div></div>`).join('') || '<div class="empty">Solo tú ves estas notas.</div>'}</div></section>`;
 }
@@ -4659,7 +4667,7 @@ document.addEventListener('click', async e => {
     case 'bvIr': Bienvenida.abrir(+b.dataset.i); break;
     case 'bvFin': Bienvenida.fin(); break;
     case 'bvVer': Bienvenida.abrir(0); break;
-    case 'alResolver': { const enSheet = !!b.closest('#sheet'); await Alertas.resolver(b.dataset.id, b.dataset.m, b.dataset.on === '1'); toast(b.dataset.on === '1' ? 'Marcado como solventado' : 'Vuelve a estar pendiente'); render(); if (enSheet) verAlertas(b.dataset.id); break; }
+    case 'alResolver': { const enSheet = !!b.closest('#sheet'), on = b.dataset.on === '1', nota = on ? prompt('¿Cómo lo has atendido? (opcional, ej. «hablado por WhatsApp»)', 'Hablado por WhatsApp') : null; if (on && nota === null) break; await Alertas.resolver(b.dataset.id, b.dataset.m, on, nota); toast(b.dataset.on === '1' ? 'Marcado como solventado' : 'Vuelve a estar pendiente'); render(); if (enSheet) verAlertas(b.dataset.id); break; }
     case 'alFiltro': S.alF.k = S.alF.k === b.dataset.k ? '' : b.dataset.k; if (S.obj) await salirComo(); S.ficha = null; S.reporte = null; S.factura = null; S.editor = null; S.ctab = 'alumnos'; render(); if (S.alF.k) $('#al-lista')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
     case 'cerrarFicha': S.ficha = null; S.verSes = null; S.verPlan = null; S.valEd = null; render(); break;
     case 'cerrarVerSesion': S.verSes = null; render(); window.scrollTo(0, 0); break;
@@ -4728,6 +4736,10 @@ document.addEventListener('click', async e => {
     case 'vistaGuardar': await conmutarGuardado(); break;
     case 'cambiarClave': cerrarSheet(); vistaNuevaClave(); break;
     case 'cerrarSheet': cerrarSheet(); break;
+    case 'estadoAl': Acomp.formEstado(); break;
+    case 'devolucion': Acomp.formDevolucion(b.dataset.s); break;
+    case 'devLeida': await Acomp.marcarLeida(+b.dataset.id); break;
+    case 'proxAccion': Acomp.formProxima(); break;
     case 'fpSubir': Casos.formSubir(); break;
     case 'fpBorrar': await Casos.borrarFecha(b.dataset.f); break;
     case 'permisos': Casos.formPermisos(); break;
