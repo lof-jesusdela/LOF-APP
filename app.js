@@ -337,6 +337,7 @@ async function cargarAlumno(uid) {
   const ctxs = ctxR.error ? [] : (ctxR.data || []).filter(esContexto);
   ctxs.forEach(c => { ordSemana(c.dias ||= []); c.dias.forEach(ordenarDia); });
   if (p) {
+    p.dias = (p.dias || []).filter(d => !d.oculto);
     ordSemana(p.dias ||= []);
     p.dias.forEach(d => { d.bloques_sesion.sort(ordBloque); d.bloques_sesion.forEach(b => b.ejercicios_sesion.sort((a, b) => a.orden - b.orden)); });
   }
@@ -1160,9 +1161,19 @@ function vSesionCerrada() {
     <div class="card stack"><span class="eyebrow">Objetivo del día</span><div class="small">${esc(d.objetivo || '')}</div>
     <div class="kpis"><div class="kpi"><div class="l">Volumen</div><b>${esc(d.volumen || '—')}</b></div><div class="kpi"><div class="l">Intensidad</div><b>${esc(d.intensidad || '—')}</b></div><div class="kpi"><div class="l">Foco</div><b>${esc(d.foco || '—')}</b></div></div></div>
     ${v.antFecha ? `<p class="note">Debajo de cada serie ves lo que hizo la vez anterior (${esc(fCorta(v.antFecha))}).</p>` : ''}</section>
+  ${(v.cambios || []).length ? `<section class="section"><div class="card stack" style="border:2px solid var(--gold)"><span class="eyebrow">⚖️ Ha cambiado su peso en esta sesión</span>${v.cambios.map(x => `<div class="small"><b>${esc(x.ejercicio || 'Ejercicio')}</b>: ${esc(x.antes || '')} → <b>${esc(x.despues || '')}</b> · desde ahora es su pauta</div>`).join('')}<span class="small muted">Lo eligió él al terminar la serie. Si no te encaja, cámbialo en su programa.</span></div></section>` : ''}
   <section class="section">${vBloquesDia(d, cont, v)}
   ${v.huerfanas.length ? `<div class="card stack"><span class="eyebrow">Ejercicios que ya no están en el programa</span>${v.huerfanas.map(r => `<div class="small num">Serie ${r.serie}: ${r.kg == null ? '—' : fmtNum(r.kg, 2) + ' kg'} × ${r.repeticiones ?? '—'} · RIR ${r.rir ?? '—'}</div>`).join('')}</div>` : ''}
-  <button class="btn full ghost" data-act="cerrarVerSesion">Volver a la ficha</button></section>`;
+  <button class="btn full ghost" data-act="cerrarVerSesion">Volver a la ficha</button>
+  <button class="btn full ghost" data-act="borrarRegistro" style="color:var(--bad);margin-top:8px">Eliminar este entrenamiento registrado</button></section>`;
+}
+/* El coach borra un entrenamiento registrado por error (sus series incluidas) */
+async function borrarRegistroSesion() {
+  const v = S.verSes; if (!v) return;
+  if (!confirm(`¿Eliminar el entrenamiento del ${fLarga(v.ses.fecha)} con todas sus series? No se puede deshacer.`)) return;
+  const r1 = await sb.from('registros_series').delete().eq('sesion_id', v.ses.id); if (r1.error) return fallo(r1.error);
+  const r2 = await sb.from('sesiones_hechas').delete().eq('id', v.ses.id); if (r2.error) return fallo(r2.error, 'No se ha podido eliminar.');
+  const aid = S.ficha.id; S.verSes = null; toast('Entrenamiento eliminado'); await abrirFicha(aid);
 }
 /* Imagen ilustrativa de cardio y movilidad: la de la hoja o, si no hay, un dibujo propio */
 const ILU = {
@@ -1364,6 +1375,7 @@ async function toggleSerie(b) {
       () => sb.from('registros_series').insert(rows.map(({ tramo, ...x }) => x)).select('id'));
     if (error) throw error;
     z.regs[fila] = data.map(x => x.id);
+    if (!z.editar && !S.obj) Peso.revisar(es, fila, T, sid);
     if (!z.editar) { const c = conteoSeries(S.dia, z), est = { series_hechas: c.hechas, series_total: c.total }; sb.from('sesiones_hechas').update(est).eq('id', sid).then(r => { if (!r.error) Object.assign(S.d.sesiones.find(x => x.id === sid) || {}, est); }); }
     rows.forEach((r, k) => {
       r.id = data[k]?.id; z.valores[`${fila}-${k}`] = r;
@@ -1416,6 +1428,34 @@ const Cola = {
 window.Cola = Cola;
 window.addEventListener('online', () => Cola.enviar());
 setInterval(() => { if (navigator.onLine && Cola.leer().length) Cola.enviar(); }, 20000);
+/* ---------- Cambio de peso: el alumno decide si el peso que ha usado pasa a ser su pauta ---------- */
+const Peso = {
+  revisar(es, fila, T, sid) {
+    const z = S.sesion; z.pesoPreg ||= {}; if (z.pesoPreg[es]) return;
+    const e = S.dia.bloques_sesion.flatMap(b => b.ejercicios_sesion).find(x => x.id === es); if (!e || esSinPeso(e)) return;
+    let antes = null, despues = null;
+    for (let k = 0; k < T; k++) { const i = document.getElementById(`kg-${fila}-${k}`); if (!i || !i.value.trim()) continue; const v = numero(i.value), ph = numero(i.placeholder); if (v != null && ph != null && v !== ph) { antes = ph; despues = v; break; } }
+    if (despues == null) return;
+    z.pesoPreg[es] = { antes, despues, sid };
+    const ex = document.getElementById('ex-' + es); if (!ex || ex.querySelector('.peso-preg')) return;
+    ex.querySelector('.sets')?.insertAdjacentHTML('afterend', `<div class="peso-preg aprox stack" style="gap:8px;margin-top:8px"><b class="small">Has usado ${fmtNum(despues, 2)} kg (pauta: ${fmtNum(antes, 2)} kg). ¿Quieres que ${fmtNum(despues, 2)} kg sea tu peso a partir de ahora?</b><span class="small muted">Se cambiará en tus próximos entrenamientos de este ejercicio y Jesús lo verá en tu seguimiento.</span><div class="row" style="gap:8px"><button class="btn sm" data-act="pesoSi" data-es="${es}">Sí, usar ${fmtNum(despues, 2)} kg</button><button class="btn sm ghost" data-act="pesoNo" data-es="${es}">Solo hoy</button></div></div>`);
+  },
+  descartar(es) { document.querySelector(`#ex-${es} .peso-preg`)?.remove(); },
+  async aplicar(es) {
+    const z = S.sesion, x = z?.pesoPreg?.[es]; if (!x) return;
+    const e = S.dia.bloques_sesion.flatMap(b => b.ejercicios_sesion).find(y => y.id === es); if (!e) return;
+    const igual = v => numero(kgDe({ kg: v })) === x.antes, conKg = v => { const t = String(v ?? ''); return /kg/i.test(t) ? t.replace(/\d+(?:[.,]\d+)?/, String(x.despues).replace('.', ',')) : String(x.despues).replace('.', ','); };
+    let tocado = false;
+    const pauta = (e.pauta || []).map(t => kgDe(t) && igual(t.kg) ? (tocado = true, { ...t, kg: conKg(t.kg) }) : t);
+    const peso = e.peso_ref && numero(kgDe({ kg: e.peso_ref })) === x.antes ? conKg(e.peso_ref) : (!tocado ? String(x.despues).replace('.', ',') + ' kg' : null);
+    const nombre = ejDe(e).nombre || '';
+    const { error } = await sb.rpc('ajustar_peso', { es, pauta_nueva: tocado ? pauta : null, peso_nuevo: peso, antes: fmtNum(x.antes, 2) + ' kg', despues: fmtNum(x.despues, 2) + ' kg', sesion: x.sid || z.id || null, nombre });
+    if (error) return fallo(error, /ajustar_peso|function/i.test(error.message || '') ? 'Falta ejecutar el Bloque 59 en Supabase.' : 'No se ha podido cambiar el peso.');
+    if (tocado) e.pauta = pauta; if (peso) e.peso_ref = peso;
+    const pr = document.querySelector(`#ex-${es} .peso-preg`); if (pr) pr.outerHTML = `<div class="small" style="color:var(--ok);font-weight:700;margin-top:8px">✓ Desde ahora tu peso en este ejercicio es ${fmtNum(x.despues, 2)} kg</div>`;
+    toast('Peso actualizado para tus próximos entrenamientos');
+  }
+};
 function terminar() {
   if (S.obj && S.sesion?.editar) return guardarSesion();
   const min = S.sesion?.inicio ? Math.max(1, Math.round((Date.now() - S.sesion.inicio) / 60000)) : null;
@@ -1587,7 +1627,7 @@ function formObjetivoComp() {
 function vUltimos7() {
   const s = S.d.servicio || {}, p = S.d.programa, hoy = hoyISO(), ini = sumaDias(hoy, -6), w = semana(ini);
   return `  <section class="section"><div class="section-head"><h2>Últimos 7 días</h2><span class="small muted">${esc(fCorta(ini))} – ${esc(fCorta(hoy))}</span></div><div class="card stack" style="gap:18px">
-    ${(s.modulo_entreno ?? true) ? `<div class="stack" style="gap:8px"><div class="row"><span class="grow small">Entrenamientos</span><b class="num" style="font-family:var(--display);font-size:20px">${w.entrenos}${p?.dias_semana ? ' / ' + p.dias_semana : ''}</b></div>${tira(ini, x => w.diasEntreno.has(x) ? 'ok' : '')}</div>` : ''}
+    ${(s.modulo_entreno ?? true) ? `<div class="stack" style="gap:8px"><div class="row"><span class="grow small">Entrenamientos</span><b class="num" style="font-family:var(--display);font-size:20px">${p?.dias_semana && w.entrenos > p.dias_semana ? `${p.dias_semana} / ${p.dias_semana}</b><span class="pill gold">+${w.entrenos - p.dias_semana} extra</span>` : `${w.entrenos}${p?.dias_semana ? ' / ' + p.dias_semana : ''}</b>`}</div>${tira(ini, x => w.diasEntreno.has(x) ? 'ok' : '')}</div>` : ''}
     ${midoAlumno() ? vBarraIngestas(S.d.diario, s) : ''}
     ${conPasos(s) ? '' : '<!--'}<div class="stack" style="gap:8px"><div class="row"><span class="grow small">Pasos (media · objetivo ${fmtNum(objPasos(s), 0)})</span><b class="num" style="font-family:var(--display);font-size:20px;color:${w.pasosMedia == null || w.diasPasos.size < 3 ? 'inherit' : w.pasosMedia >= objPasos(s) ? 'var(--ok)' : 'var(--warn)'}">${w.pasosMedia == null ? '—' : fmtNum(w.pasosMedia, 0)}</b></div>${tira(ini, x => w.diasPasos.has(x) ? 'ok' : '')}</div>${conPasos(s) ? '' : '-->'}
   </div></section>`;
@@ -1602,7 +1642,7 @@ function vProgreso() {
   <section class="section">${vGraficaComp(med, S.perfil, S.d.medObj) || '<div class="card empty">Aún no hay mediciones. Jesús las añadirá en tu próximo control mensual.</div>'}${vObjetivoComp(S.d.medObj, med, false)}
   </section>
   ${vUltimos7()}
-  ${med.length ? `<section class="section"><h2>Mediciones</h2><div class="card tbl"><table><thead><tr><th>Fecha</th><th>Peso</th><th>% grasa</th><th>Cintura</th><th>Cadera</th></tr></thead><tbody>${med.slice().reverse().map(m => `<tr><td>${esc(fCorta(m.fecha))} ${String(fecha(m.fecha).getFullYear()).slice(2)}</td><td class="num">${fmtNum(m.peso)}</td><td class="num">${fmtNum(m.grasa_pct)}</td><td class="num">${fmtNum(m.cintura)}</td><td class="num">${fmtNum(m.cadera)}</td></tr>`).join('')}</tbody></table></div></section>` : ''}
+  ${med.length ? `<section class="section"><h2>Mediciones</h2><div class="card tbl"><table><thead><tr><th>Fecha · método</th><th>Peso (kg)</th><th>% grasa</th><th>Cintura (cm)</th><th>Cadera (cm)</th></tr></thead><tbody>${med.slice().reverse().map(m => `<tr><td>${esc(fCorta(m.fecha))} ${String(fecha(m.fecha).getFullYear()).slice(2)}${m.metodo ? `<div class="small muted">${esc(m.metodo)}</div>` : ''}</td><td class="num">${fmtNum(m.peso)}</td><td class="num">${fmtNum(m.grasa_pct)}</td><td class="num">${fmtNum(m.cintura)}</td><td class="num">${fmtNum(m.cadera)}</td></tr>`).join('')}</tbody></table></div></section>` : ''}
   ${vTestsProgreso()}
   ${Casos.vSeccionAlumno()}`;
 }
@@ -1616,7 +1656,7 @@ function vCheckin(enHoy) {
   const etiquetas = ['Viaje', 'Turnos de trabajo', 'Evento social', 'Enfermedad', 'Semana tranquila'];
   return `<section class="stack"><span class="eyebrow">Semana del ${esc(fCorta(lunes))} al ${esc(fCorta(sumaDias(lunes, 6)))}</span>${enHoy ? '<h2 style="margin:0">Check-in semanal · resumen de tu semana</h2>' : '<h1>Check-in</h1>'}<p class="small muted">${c ? 'Ya lo enviaste esta semana. Puedes corregirlo si algo ha cambiado.' : 'Lo que registras cada día se rellena solo. Aquí solo te pregunto lo que falta.'}</p></section>
   <section class="section"><div class="card stack"><span class="eyebrow">Tu semana en datos</span>
-    ${(s.modulo_entreno ?? true) ? `<div class="row small"><span class="grow">Entrenamientos</span><span class="pill ${juzgaEntrenos(w.entrenos, p?.dias_semana, lunes, s)} num">${w.entrenos}${p ? ' de ' + p.dias_semana : ''}</span></div>` : ''}
+    ${(s.modulo_entreno ?? true) ? `<div class="row small"><span class="grow">Entrenamientos</span><span class="pill ${juzgaEntrenos(w.entrenos, p?.dias_semana, lunes, s)} num">${p && w.entrenos > p.dias_semana ? `${p.dias_semana} de ${p.dias_semana} · +${w.entrenos - p.dias_semana} extra` : `${w.entrenos}${p ? ' de ' + p.dias_semana : ''}`}</span></div>` : ''}
 
     ${conPasos(s) ? `<div class="row small"><span class="grow">Pasos (media)</span><span class="pill num">${w.pasosMedia == null ? 'Sin registros' : fmtNum(w.pasosMedia, 0)}</span></div>` : ''}
   </div>
@@ -1664,6 +1704,7 @@ async function cargarCoach() {
   await Alertas.cargar();
   S.c = { perfiles: per.data || [], servicios: srv.data || [], sesiones: ses.data || [], checkins: chk.data || [], diario: reg.data || [], pagos: pag.data || [], programas: prg.data || [], ejercicios: ejs.data || [] };
   await Casos.cargarCoach();
+  { const r = await sb.from('cambios_peso').select('*').is('visto_at', null).order('created_at', { ascending: false }); S.c.cambiosPeso = r.data || []; }
   await Acomp.cargarCoach();
   S.c.servicios.forEach(x => x._bloques = bloquesDe((rut.data || []).filter(r => r.alumno_id === x.alumno_id)));
   const [fa, ap] = await Promise.all([sb.from('facturas').select('*').order('numero', { ascending: false }), sb.from('ajustes_privados').select('*')]);
@@ -1743,6 +1784,7 @@ function estadoAlumno(a) {
   { const ap = Acomp.alertaProxima(a.id); if (ap) { sube('warn'); motivos.push(ap); } }
   Casos.avisosCoach(a.id).forEach(m => { sube('warn'); motivos.push(m); });
   Habitos.ajustesRecientes(a.id).forEach(m => { sube('warn'); motivos.push(m); });
+  (S.c.cambiosPeso || []).filter(x => x.alumno_id === a.id).forEach(x => { sube('warn'); motivos.push(`Ha cambiado su peso en ${x.ejercicio || 'un ejercicio'}: ${x.antes} → ${x.despues} (míralo en su entrenamiento del ${fCorta((x.created_at || '').slice(0, 10))})`); });
   { const af = avisoFin(srv); if (af) { sube('warn'); motivos.push(af.terminado ? `Su proceso terminó el ${fCorta(af.fin)}: añade una extensión o pásalo a antiguos alumnos` : `Le queda menos de un mes de proceso (termina el ${fCorta(af.fin)}): ¿extensión?`); } }
   if (ult && ult.motivacion <= 4) { sube('bad'); motivos.push(`Motivación ${ult.motivacion}/10`); }
   else if (ult && ant && ant.motivacion - ult.motivacion >= 3) { sube('warn'); motivos.push(`Motivación de ${ant.motivacion} a ${ult.motivacion}`); }
@@ -2775,7 +2817,10 @@ async function verSesion(id) {
     if (r.sesion_id === id) { if (esIds.has(r.ejercicio_sesion_id)) valores[k] = r; else huerfanas.push(r); }
     else antM[k] = r;
   });
-  S.verSes = { ses, dia, valores, ant: antM, antFecha: ant?.fecha, huerfanas };
+  const cp = await sb.from('cambios_peso').select('*').eq('sesion_id', id);
+  S.verSes = { ses, dia, valores, ant: antM, antFecha: ant?.fecha, huerfanas, cambios: cp.data || [] };
+  const nv = (cp.data || []).filter(x => !x.visto_at).map(x => x.id);
+  if (nv.length) { await sb.from('cambios_peso').update({ visto_at: new Date().toISOString() }).in('id', nv); if (S.c?.cambiosPeso) S.c.cambiosPeso = S.c.cambiosPeso.filter(x => !nv.includes(x.id)); }
   render(); window.scrollTo(0, 0);
 }
 async function verSesionLista(id) {
@@ -2789,6 +2834,11 @@ async function verSesionLista(id) {
 const MEDIDAS_ALUMNO = [['cuello', 'Cuello', 'incluida la nuez'], ['cintura', 'Cintura', 'bajo la última costilla'], ['abd_bajo', 'Abdomen bajo', 'a la altura del ombligo'], ['cadera', 'Cadera', 'parte más ancha del glúteo'], ['muslo_d', 'Muslo derecho', 'parte más ancha'], ['muslo_i', 'Muslo izquierdo', 'parte más ancha'], ['gemelo_d', 'Gemelo derecho', 'parte más ancha'], ['gemelo_i', 'Gemelo izquierdo', 'parte más ancha'], ['hombros', 'Anchura de hombros', 'medición más ancha'], ['brazo_d', 'Brazo contraído', 'parte más ancha']];
 /* Una medición por alumno y día: si ya existe ese día, se actualiza en vez de duplicarla */
 async function guardarMedicion(row) {
+  const r = await guardarMedicion0(row);
+  if (r.error && /metodo/.test(r.error.message || '')) { const { metodo, ...sin } = row; return guardarMedicion0(sin); }
+  return r;
+}
+async function guardarMedicion0(row) {
   const { data: ya, error: e0 } = await sb.from('mediciones').select('id').eq('alumno_id', row.alumno_id).eq('fecha', row.fecha)
     .or('es_objetivo.is.null,es_objetivo.eq.false').order('id').limit(1);
   if (e0) return { error: e0 };
@@ -2808,7 +2858,7 @@ function formMisMedidas() {
   $('#f-mm').addEventListener('submit', async e => {
     e.preventDefault();
     const bt = $('#f-mm [type=submit]'); if (bt.disabled) return; bt.disabled = true;
-    const row = { alumno_id: S.user.id, fecha: $('#mm-f').value || hoyISO() };
+    const row = { alumno_id: S.user.id, fecha: $('#mm-f').value || hoyISO(), metodo: 'Cinta métrica (tus medidas)' };
     document.querySelectorAll('#f-mm [data-campo]').forEach(i => { const v = numero(i.value); if (v != null) row[i.dataset.campo] = v; });
     const conFotos = [...document.querySelectorAll('#f-mm [data-fpv]')].some(i => i.files?.[0]);
     try { if (await Casos.guardarTestimonio($('#f-mm'), row.fecha) && Object.keys(row).length < 3 && !conFotos) { cerrarSheet(); toast('Testimonio guardado. ¡Gracias!'); return; } } catch (err) { console.warn(err); }
@@ -2825,7 +2875,7 @@ function formMisMedidas() {
 function formMedicion() {
   const per = S.c.perfiles.find(p => p.id === S.ficha.id) || {}, primera = !(S.ficha.med || []).length;
   const c = [['peso', 'Peso (kg)'], ['cuello', 'Cuello'], ['cintura', 'Cintura'], ['cadera', 'Cadera'], ['abd_bajo', 'Abdomen bajo'], ['pectoral', 'Pectoral'], ['hombros', 'Hombros'], ['brazo_d', 'Brazo contraído dcho.'], ['brazo_i', 'Brazo contraído izdo.'], ['muslo_d', 'Muslo dcho.'], ['muslo_i', 'Muslo izdo.'], ['gemelo_d', 'Gemelo dcho.'], ['gemelo_i', 'Gemelo izdo.']];
-  abrirSheet(`<form class="stack" id="f-med"><h2>Nueva medición</h2><label class="f">Fecha<input type="date" id="m-fecha" value="${hoyISO()}"></label>
+  abrirSheet(`<form class="stack" id="f-med"><h2>Nueva medición</h2><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Fecha<input type="date" id="m-fecha" value="${hoyISO()}"></label><label class="f">Método<select id="m-met">${METODOS_MED.map(x => `<option>${x}</option>`).join('')}</select></label></div>
     ${camposPerfil(per)}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${c.map(([k, l]) => `<label class="f">${l}<input type="text" inputmode="decimal" id="m-${k}" data-campo="${k}"></label>`).join('')}</div>
     <div class="calc-grasa card" style="padding:12px"></div>
@@ -2838,7 +2888,7 @@ function formMedicion() {
     e.preventDefault();
     const bt = fm.querySelector('[type=submit]'); if (bt.disabled) return; bt.disabled = true;
     await guardarDatosPerfil(fm, S.ficha.id, per);
-    const row = { alumno_id: S.ficha.id, fecha: $('#m-fecha').value };
+    const row = { alumno_id: S.ficha.id, fecha: $('#m-fecha').value }; if ($('#m-met')?.value) row.metodo = $('#m-met').value;
     fm.querySelectorAll('[data-campo]').forEach(i => { const v = numero(i.value); if (v != null) row[i.dataset.campo] = v; });
     if (row.grasa_pct != null && row.grasa_kg == null && row.peso) row.grasa_kg = Math.round(row.peso * row.grasa_pct) / 100;
     const { error } = await guardarMedicion(row);
@@ -2917,6 +2967,7 @@ function formNota() {
 /* ---------- Estadísticas del alumno (coach) ---------- */
 /* ---------- Objetivo de pasos y control mensual ---------- */
 const PASOS_DEF = 10000;
+const METODOS_MED = ['Cinta métrica (Jesús)', 'Báscula de bioimpedancia', 'Plicómetro', 'DEXA / estudio clínico', 'Otro'];
 const objPasos = srv => srv?.objetivo_pasos || PASOS_DEF;
 /* ¿Tiene seguimiento de pasos? Se elige en su servicio (futbolistas y alumnos en buena composición, sin pasos) */
 const conPasos = srv => srv?.pasos_activo !== false;
@@ -3732,6 +3783,21 @@ async function renumerarDias(dias, futbol) {
     const { error } = await sb.from('dias').update(row).eq('id', d.id); if (error) throw error;
   }
 }
+async function quitarDia2(id) { const c = window.confirm; window.confirm = () => true; try { await quitarDia(id); } finally { window.confirm = c; } }
+async function quitarDia(id) {
+  const p = S.editor?.prog, d = p?.dias.find(x => x.id === id); if (!d) return;
+  if (!confirm(`¿Eliminar «${etiquetaFlex(d)}» del bloque? Se quita con sus bloques y ejercicios. Si ya lo ha entrenado, se guarda su historial.`)) return;
+  let { error } = await sb.from('dias').delete().eq('id', id), oculto = false;
+  if (error) { ({ error } = await sb.from('dias').update({ oculto: true }).eq('id', id)); oculto = true; }
+  if (error) return fallo(error, /oculto/.test(error.message || '') ? 'Ese día ya tiene entrenos registrados: ejecuta el Bloque 59 para poder quitarlo conservando su historial.' : 'No se ha podido eliminar.');
+  try { await renumerarDias(p.dias.filter(x => x.id !== id), editorEsFutbol()); } catch (e) { }
+  toast(oculto ? 'Día quitado del bloque (su historial se conserva)' : 'Día eliminado'); refrescarEditor();
+}
+async function restaurarDia(id) {
+  const p = S.editor?.prog, { error } = await sb.from('dias').update({ oculto: false, numero: p.dias.length + 1 }).eq('id', id); if (error) return fallo(error);
+  const d = p.quitados.find(x => x.id === id); try { await renumerarDias([...p.dias, d], editorEsFutbol()); } catch (e) { }
+  toast('Día recuperado al final del bloque'); refrescarEditor();
+}
 async function moverDia(id, dir) {
   const p = S.editor?.prog; if (!p) return;
   const l = p.dias.slice(), i = l.findIndex(d => d.id === id), j = i + dir; if (i < 0 || j < 0 || j >= l.length) return;
@@ -4135,7 +4201,7 @@ async function abrirEditor(alumnoId, progId = null, quieto = false) {
     sb.from('metodos').select('id,nombre').order('nombre')
   ]);
   const p = prog.data?.[0] || null;
-  if (p) { ordSemana(p.dias ||= []); p.dias.forEach(d => { d.bloques_sesion.sort(ordBloque); d.bloques_sesion.forEach(b => b.ejercicios_sesion.sort((a, b) => a.orden - b.orden)); }); }
+  if (p) { p.quitados = (p.dias || []).filter(d => d.oculto); p.dias = (p.dias || []).filter(d => !d.oculto); ordSemana(p.dias ||= []); p.dias.forEach(d => { d.bloques_sesion.sort(ordBloque); d.bloques_sesion.forEach(b => b.ejercicios_sesion.sort((a, b) => a.orden - b.orden)); }); }
   S.editor = { alumnoId, progId, plantilla: !!progId && !alumnoId, prog: p, metodos: met.data || [], ctx: p ? [...(S.ficha?.contextos || []), ...(S.c?.contextos || [])].find(x => x.id === p.id) || null : null }; render();
 }
 async function refrescarEditor() { const id = S.editor.alumnoId, pid = S.editor.progId, y = window.scrollY, dia = S.editor.dia; await abrirEditor(id, pid, true); S.editor.dia = dia; if (id && id === S.user.id) await cargarAlumno(S.user.id); if (!id) await cargarPlantillas(); render(); window.scrollTo(0, y); requestAnimationFrame(() => window.scrollTo(0, y)); }
@@ -4148,7 +4214,7 @@ function vEditor() {
     <div class="row" style="gap:8px;flex-wrap:wrap">${p ? `<button class="btn sm ghost" data-act="nuevoPrograma">Cambiar nombre</button><button class="btn sm" data-act="edDia">Añadir día</button>${p.dias.length ? '<button class="btn sm ghost" data-act="clipProg">📋 Copiar programa</button>' : ''}${Clip.hay() ? `<button class="btn sm gold" data-act="clipPegar">📥 Pegar ${Clip.hay().tipo === 'dia' ? 'día' : 'programa'}</button>` : ''}${editorEsFutbol() && p.dias.length < 7 ? '<button class="btn sm ghost" data-act="semanaCompleta">📅 Completar semana (lunes a domingo)</button>' : ''}${E.plantilla ? `<button class="btn sm gold" data-act="probarPlantilla" data-id="${p.id}">👁 Ver como alumno de prueba</button>` : E.ctx ? '' : '<button class="btn sm gold" data-act="nuevoCiclo">Nuevo ciclo (copiar)</button>'}` : `<button class="btn sm" data-act="nuevoPrograma">Crear programa</button>`}</div>
     ${p && !editorEsFutbol() && !esFlex(p) && p.dias.length ? `<div class="aprox small row" style="gap:8px;flex-wrap:wrap"><span class="grow">Este programa usa días de la semana. Para alumnos que no son futbolistas, mejor <b>Día 1, Día 2…</b>: el alumno elige cuándo los hace.</span><button class="btn sm" data-act="aDiasN">Pasar a Día 1, 2, 3…</button></div>` : ''}
     <p class="note">${E.plantilla ? 'Toca cualquier elemento para editarlo. Los cambios solo afectan a la plantilla: los alumnos que ya la tienen asignada conservan su copia.' : 'Toca cualquier elemento para editarlo. Los cambios los ve el alumno en cuanto vuelve a abrir la app.'}</p></section>
-  ${p && !E.dia ? `<section class="section"><div class="row" style="margin-bottom:8px"><span class="grow small muted">Edita un día o todo el bloque a la vez${!editorEsFutbol() && p.dias.length > 1 ? ' · ▲▼ fija el orden del bloque (Día 1, Día 2…); la distribución en la semana la decide el alumno contigo' : ''}</span><button class="btn sm" data-act="edAbrirDia" data-id="todos">✎ Editar todos los días</button></div><div class="card">${p.dias.map(d => `<div class="line" data-act="edAbrirDia" data-id="${d.id}" style="cursor:pointer"><span class="pill gold">${d.numero}</span><div class="grow" style="min-width:0"><b>${esc(nomDia(d))}</b>${tipoDiaDe(d) ? ` <span class="pill ${conPartido(d) ? 'gold' : ''}">${tipoDiaDe(d)[2]} ${tipoDiaDe(d)[1]}</span>` : ''}<div class="small muted">${d.bloques_sesion.length} bloques · ${d.bloques_sesion.reduce((t, b) => t + b.ejercicios_sesion.length, 0)} ejercicios${d.foco ? ' · ' + esc(d.foco) : ''}</div></div>${!editorEsFutbol() && p.dias.length > 1 ? `<span class="stack" style="gap:2px"><button class="btn sm ghost" data-act="moverDia" data-id="${d.id}" data-dir="-1" aria-label="Subir día" ${p.dias[0] === d ? 'disabled' : ''} style="padding:2px 10px">▲</button><button class="btn sm ghost" data-act="moverDia" data-id="${d.id}" data-dir="1" aria-label="Bajar día" ${p.dias[p.dias.length - 1] === d ? 'disabled' : ''} style="padding:2px 10px">▼</button></span>` : ''}<button class="btn sm ghost" data-act="clipDia" data-id="${d.id}" aria-label="Copiar este día" title="Copiar este día">📋</button><button class="btn sm" data-act="edAbrirDia" data-id="${d.id}">Editar</button></div>`).join('')}</div></section>` : ''}
+  ${p && !E.dia ? `<section class="section"><div class="row" style="margin-bottom:8px"><span class="grow small muted">Edita un día o todo el bloque a la vez${!editorEsFutbol() && p.dias.length > 1 ? ' · ▲▼ fija el orden del bloque (Día 1, Día 2…); la distribución en la semana la decide el alumno contigo' : ''}</span><button class="btn sm" data-act="edAbrirDia" data-id="todos">✎ Editar todos los días</button></div><div class="card">${p.dias.map(d => `<div class="line" data-act="edAbrirDia" data-id="${d.id}" style="cursor:pointer"><span class="pill gold">${d.numero}</span><div class="grow" style="min-width:0"><b>${esc(nomDia(d))}</b>${tipoDiaDe(d) ? ` <span class="pill ${conPartido(d) ? 'gold' : ''}">${tipoDiaDe(d)[2]} ${tipoDiaDe(d)[1]}</span>` : ''}<div class="small muted">${d.bloques_sesion.length} bloques · ${d.bloques_sesion.reduce((t, b) => t + b.ejercicios_sesion.length, 0)} ejercicios${d.foco ? ' · ' + esc(d.foco) : ''}</div></div>${!editorEsFutbol() && p.dias.length > 1 ? `<span class="stack" style="gap:2px"><button class="btn sm ghost" data-act="moverDia" data-id="${d.id}" data-dir="-1" aria-label="Subir día" ${p.dias[0] === d ? 'disabled' : ''} style="padding:2px 10px">▲</button><button class="btn sm ghost" data-act="moverDia" data-id="${d.id}" data-dir="1" aria-label="Bajar día" ${p.dias[p.dias.length - 1] === d ? 'disabled' : ''} style="padding:2px 10px">▼</button></span>` : ''}<button class="btn sm ghost" data-act="clipDia" data-id="${d.id}" aria-label="Copiar este día" title="Copiar este día">📋</button><button class="btn sm ghost" data-act="quitarDia" data-id="${d.id}" aria-label="Eliminar este día del bloque" title="Eliminar del bloque" style="color:var(--bad)">🗑</button><button class="btn sm" data-act="edAbrirDia" data-id="${d.id}">Editar</button></div>`).join('')}</div>${(p.quitados || []).length ? `<details class="card" style="margin-top:8px"><summary class="small"><b>Días quitados del bloque (${p.quitados.length})</b> <span class="muted">· conservan su historial</span></summary>${p.quitados.map(d => `<div class="line"><span class="grow small">${esc(etiquetaFlex(d))}</span><button class="btn sm ghost" data-act="restaurarDia" data-id="${d.id}">Volver a ponerlo</button></div>`).join('')}</details>` : ''}</section>` : ''}
   ${p ? p.dias.filter(d => E.dia === 'todos' || d.id === E.dia).map((d, i) => `<section class="section">${i === 0 ? `<button class="btn sm ghost" data-act="edAbrirDia" data-id="" style="margin-bottom:8px">← Lista de días</button>` : ''}<div class="card stack">
     <div class="row"><div class="grow"><span class="eyebrow">Día ${d.numero}${d.titulo ? ' · ' + esc(d.nombre) : ''}</span><h2>${esc(nomDia(d))}</h2>${tipoDiaDe(d) ? `<span class="pill ${conPartido(d) ? 'gold' : ''}">${tipoDiaDe(d)[2]} ${tipoDiaDe(d)[1]}</span>` : ''}<div class="small muted">${esc([d.foco, d.volumen && 'vol. ' + d.volumen, d.intensidad && 'int. ' + d.intensidad].filter(Boolean).join(' · '))}</div></div><button class="btn sm ghost" data-act="edDia" data-id="${d.id}">Editar día</button></div>
     ${conPartido(d) && E.alumnoId ? (() => { const pt = partidoDelDia(d, (S.c.partidos || []).filter(x => x.alumno_id === E.alumnoId)); return `<div class="aprox stack" style="gap:6px">${pt ? vPartidoMini(pt, `<button class="btn sm ghost" data-act="partido" data-al="${E.alumnoId}" data-id="${pt.id}">Editar</button>`) : `<div class="row small"><span class="grow">🏟️ Aún no hay partido apuntado para este ${esc(DIAS.find(x => esDia(d, norm(x))) || 'día').toLowerCase()}</span><button class="btn sm" data-act="partido" data-al="${E.alumnoId}" data-f="${fechaDiaSemana(d, lunesDe(hoyISO())) >= hoyISO() ? fechaDiaSemana(d, lunesDe(hoyISO())) : sumaDias(fechaDiaSemana(d, lunesDe(hoyISO())) || hoyISO(), 7)}">＋ Partido</button></div>`}</div>`; })() : ''}
@@ -4198,7 +4264,7 @@ function formDia(id) {
     if (error) return fallo(error, /tipo_dia/.test(error.message || '') ? 'Falta ejecutar el Bloque 49 en Supabase.' : /titulo/.test(error.message || '') ? 'Para poner nombre libre al entreno falta ejecutar el Bloque 31 en Supabase.' : undefined);
     cerrarSheet(); toast('Día guardado'); refrescarEditor();
   });
-  $('#d-del')?.addEventListener('click', async ev => { const b = ev.currentTarget; if (!b.dataset.ok) { b.dataset.ok = 1; b.textContent = 'Pulsa otra vez: se borrará el día con todos sus ejercicios'; return; } const { error } = await sb.from('dias').delete().eq('id', d.id); if (error) return fallo(error, 'No se puede borrar: ese día ya tiene entrenos registrados.'); cerrarSheet(); toast('Día eliminado'); refrescarEditor(); });
+  $('#d-del')?.addEventListener('click', async ev => { const b = ev.currentTarget; if (!b.dataset.ok) { b.dataset.ok = 1; b.textContent = 'Pulsa otra vez: se borrará el día con todos sus ejercicios'; return; } cerrarSheet(); await quitarDia2(d.id); });
 }
 /* ¿El programa que se edita es de futbolista? (alumno con módulo de fútbol o plantilla de futbolistas) */
 function editorEsFutbol() {
@@ -4991,6 +5057,11 @@ document.addEventListener('click', async e => {
     case 'guiaModo': Guia.cambiar(); break;
     case 'clipDia': Clip.copiarDia(+b.dataset.id); break;
     case 'moverDia': await moverDia(+b.dataset.id, +b.dataset.dir); break;
+    case 'quitarDia': await quitarDia(+b.dataset.id); break;
+    case 'restaurarDia': await restaurarDia(+b.dataset.id); break;
+    case 'pesoSi': await Peso.aplicar(+b.dataset.es); break;
+    case 'pesoNo': Peso.descartar(+b.dataset.es); break;
+    case 'borrarRegistro': await borrarRegistroSesion(); break;
     case 'clipProg': Clip.copiarProg(); break;
     case 'clipPegar': Clip.formPegar(); break;
     case 'clipQuitar': Clip.quitar(); break;
