@@ -99,13 +99,14 @@ async function cargarPerfil() {
   const { data, error } = await sb.from('perfiles').select('*').eq('id', S.user.id).maybeSingle();
   if (error || !data) return vistaMensaje('Tu cuenta aún no está activa', 'Avisa a Jesús para que active tu perfil.', true);
   S.perfil = data;
-  if (!data.consentimiento_at) return vistaConsentimiento();
+  if (!data.consentimiento_at) return Casos.vistaInicial();
   S.modo = data.rol === 'coach' ? 'coach' : 'alumno';
   await Promise.all([cargarAlumno(S.user.id), cargarAjustes()]);
   avisoCheckin();
   if (S.modo === 'coach') await cargarCoach();
   render();
   if (S.modo === 'alumno' && Bienvenida.reciente() && !Bienvenida.vista() && $('#sheet').hidden) Bienvenida.abrir(0);
+  else if ($('#sheet').hidden) Casos.avisoNovedad();
 }
 
 function vistaLogin(msg = '') {
@@ -318,6 +319,7 @@ async function cargarAlumno(uid) {
     S.d.revisiones = r.data || []; S.d.revisionesErr = !!r.error; S.d.temperamentos = tq.data || []; S.d.tempErr = !!tq.error; }
   await Habitos.cargar(uid, S.d);
   await Nutricion.cargar(uid, S.d);
+  await Casos.cargar(uid, S.d);
 }
 
 /* ---------- Render principal ---------- */
@@ -713,6 +715,7 @@ function vHoy() {
     ${objetivoDe(S.d.ruta) ? `<div style="border-top:1px solid rgba(255,255,255,.14);padding-top:12px" class="stack"><span class="eyebrow">Tu objetivo</span><div class="small">${esc(objetivoDe(S.d.ruta))}</div></div>` : ''}
   </section>
   ${Bienvenida.tarjeta()}
+  ${Casos.lineaHoy()}
   ${vProcesoGlobal(s)}
   ${vAvisoContexto()}
   <section class="section"><h2>Lo que toca hoy</h2><div class="card">${toca}</div></section>
@@ -1460,7 +1463,8 @@ function vProgreso() {
   </section>
   ${vUltimos7()}
   ${med.length ? `<section class="section"><h2>Mediciones</h2><div class="card tbl"><table><thead><tr><th>Fecha</th><th>Peso</th><th>% grasa</th><th>Cintura</th><th>Cadera</th></tr></thead><tbody>${med.slice().reverse().map(m => `<tr><td>${esc(fCorta(m.fecha))} ${String(fecha(m.fecha).getFullYear()).slice(2)}</td><td class="num">${fmtNum(m.peso)}</td><td class="num">${fmtNum(m.grasa_pct)}</td><td class="num">${fmtNum(m.cintura)}</td><td class="num">${fmtNum(m.cadera)}</td></tr>`).join('')}</tbody></table></div></section>` : ''}
-  ${vTestsProgreso()}`;
+  ${vTestsProgreso()}
+  ${Casos.vSeccionAlumno()}`;
 }
 
 /* ---------- Check-in ---------- */
@@ -1517,6 +1521,7 @@ async function cargarCoach() {
   ]);
   await Alertas.cargar();
   S.c = { perfiles: per.data || [], servicios: srv.data || [], sesiones: ses.data || [], checkins: chk.data || [], diario: reg.data || [], pagos: pag.data || [], programas: prg.data || [], ejercicios: ejs.data || [] };
+  await Casos.cargarCoach();
   S.c.servicios.forEach(x => x._bloques = bloquesDe((rut.data || []).filter(r => r.alumno_id === x.alumno_id)));
   const [fa, ap] = await Promise.all([sb.from('facturas').select('*').order('numero', { ascending: false }), sb.from('ajustes_privados').select('*')]);
   await cargarPlantillas();
@@ -1587,6 +1592,8 @@ function estadoAlumno(a) {
     if (srv?.modulo_nutricion && cur.nutri != null && cur.nutri < 50) { sube('bad'); motivos.push(`Esta semana: alimentación al ${cur.nutri} %`); }
   }
   if (srv?.modulo_futbol) alertasFutbol(a.id).forEach(([n, m]) => { sube(n); motivos.push(m); });
+  if (!srv?.modulo_futbol) { const af = Casos.alertaFotos(a.id, srv); if (af) { sube('warn'); motivos.push(af); } }
+  Casos.avisosCoach(a.id).forEach(m => { sube('warn'); motivos.push(m); });
   { const af = avisoFin(srv); if (af) { sube('warn'); motivos.push(af.terminado ? `Su proceso terminó el ${fCorta(af.fin)}: añade una extensión o pásalo a antiguos alumnos` : `Le queda menos de un mes de proceso (termina el ${fCorta(af.fin)}): ¿extensión?`); } }
   if (ult && ult.motivacion <= 4) { sube('bad'); motivos.push(`Motivación ${ult.motivacion}/10`); }
   else if (ult && ant && ant.motivacion - ult.motivacion >= 3) { sube('warn'); motivos.push(`Motivación de ${ant.motivacion} a ${ult.motivacion}`); }
@@ -1661,6 +1668,7 @@ function vAlumnos() {
   <section class="section"><button class="card reporte-b" data-act="abrirReporte"><div class="ico gold">${svg('checkin')}</div><div class="grow" style="text-align:left"><b>Reporting semanal</b><div class="small muted">Semana del ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -7)))} al ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -1)))} · todos tus alumnos de un vistazo</div></div><span class="small" style="color:var(--blue-text)">Abrir ›</span></button></section>
   ${vFutbolCoach()}
   ${Habitos.resumenCoach()}
+  ${Casos.resumenCoach()}
   ${vResumenCoach(est)}
   ${vAntiguos()}
   <section class="section" id="al-lista"><div class="section-head"><h2>Alumnos</h2><span class="small muted" id="al-cuenta"></span></div>
@@ -2516,7 +2524,7 @@ function vFicha() {
   <section class="section"><div class="section-head"><h2>Composición corporal</h2><div class="row" style="gap:6px"><button class="btn sm ghost" data-act="objetivoComp">🎯 Objetivo</button><button class="btn sm ghost" data-act="nuevaMedicion">＋ Medición</button></div></div>
     ${vGraficaComp(f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), a, f.medObj) || '<div class="card empty">Sin mediciones todavía.</div>'}
     ${vObjetivoComp(f.medObj, f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), true)}
-    <button class="btn ghost full" data-act="fichaSub" data-s="composicion">Ver todas las medidas ›</button></section>
+    <button class="btn ghost full" data-act="fichaSub" data-s="composicion">Medidas, fotos y caso de éxito ›</button></section>
   ${vTestsFicha(f)}
   ${vBloqueActual(f, a)}
   ${vRevisionesFicha(a)}
@@ -2583,6 +2591,7 @@ function vFichaSub(f, a) {
     return cab('Composición corporal') + `
     <section class="section">${vGraficaComp(med, a, f.medObj) || '<div class="card empty">Sin mediciones todavía.</div>'}${vObjetivoComp(f.medObj, med, true)}<div class="row" style="gap:8px"><button class="btn grow" data-act="nuevaMedicion">＋ Añadir medición</button><button class="btn ghost" data-act="calcGrasa">Calculadora</button></div></section>
     ${med.length ? `<section class="section"><h2>Todas las medidas</h2><div class="card tbl" style="overflow-x:auto"><table><thead><tr><th>Medida</th>${med.map(m => `<th class="num">${esc(fCorta(m.fecha))} ${String(fecha(m.fecha).getFullYear()).slice(2)}</th>`).join('')}<th>Cambio</th></tr></thead><tbody>${campos.map(([k, l]) => { const v = med.filter(m => m[k] != null), dl = v.length > 1 ? v[v.length - 1][k] - v[0][k] : null; return `<tr><td>${l}</td>${med.map(m => `<td class="num">${m[k] == null ? '—' : fmtNum(m[k])}</td>`).join('')}<td class="num"><b>${dl == null ? '—' : (dl > 0 ? '+' : '') + fmtNum(dl)}</b></td></tr>`; }).join('')}</tbody></table></div><p class="small muted">Perímetros en cm.</p></section>` : ''}
+    ${Casos.vFicha(f, a)}
     ${vTestsFicha(f)}`;
   }
   S.fichaSub = null; return vFicha();
@@ -2643,6 +2652,7 @@ function formMisMedidas() {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${MEDIDAS_ALUMNO.map(([k, l, h]) => `<label class="f">${l} <span class="muted" style="font-weight:400">· ${h}</span><input type="text" inputmode="decimal" data-campo="${k}" placeholder="cm"></label>`).join('')}</div>
     <label class="f">Peso (si tienes báscula)<input type="text" inputmode="decimal" data-campo="peso" placeholder="kg"></label>
     <div class="calc-grasa card" style="padding:12px"></div>
+    ${S.d?.casosErr ? '' : Casos.camposFotos()}
     <button class="btn full" type="submit">Guardar mis medidas</button></form>`);
   enganchaCalcGrasa($('#f-mm'), S.perfil);
   $('#f-mm').addEventListener('submit', async e => {
@@ -2650,12 +2660,15 @@ function formMisMedidas() {
     const bt = $('#f-mm [type=submit]'); if (bt.disabled) return; bt.disabled = true;
     const row = { alumno_id: S.user.id, fecha: $('#mm-f').value || hoyISO() };
     document.querySelectorAll('#f-mm [data-campo]').forEach(i => { const v = numero(i.value); if (v != null) row[i.dataset.campo] = v; });
+    const conFotos = [...document.querySelectorAll('#f-mm [data-fpv]')].some(i => i.files?.[0]);
+    if (Object.keys(row).length < 3 && conFotos) { try { await Casos.subirDesde($('#f-mm'), row.fecha); } catch (err) { bt.disabled = false; return fallo(err, 'No se han podido subir las fotos.'); } cerrarSheet(); toast('Fotos guardadas'); await cargarAlumno(S.user.id); return render(); }
     if (Object.keys(row).length < 3) { bt.disabled = false; return toast('Escribe al menos una medida'); }
     await guardarDatosPerfil($('#f-mm'), S.user.id, S.perfil);
     const fm = $('#f-mm'); if (fm.dataset.grasaPct) { row.grasa_pct = +fm.dataset.grasaPct; if (fm.dataset.grasaKg) row.grasa_kg = +fm.dataset.grasaKg; }
     const { error } = await guardarMedicion(row);
     if (error) { bt.disabled = false; return fallo(error, /row-level|policy/.test(error.message || '') ? 'Falta ejecutar el Bloque 12 en Supabase.' : undefined); }
-    cerrarSheet(); toast('Medidas guardadas. ¡Gracias!'); await cargarAlumno(S.user.id); render();
+    if (conFotos) { try { await Casos.subirDesde($('#f-mm'), row.fecha); } catch (err) { toast('Medidas guardadas, pero no las fotos: inténtalo desde Progreso'); } }
+    cerrarSheet(); toast(conFotos ? 'Medidas y fotos guardadas. ¡Gracias!' : 'Medidas guardadas. ¡Gracias!'); await cargarAlumno(S.user.id); render();
   });
 }
 function formMedicion() {
@@ -2767,7 +2780,7 @@ function vEventos(srv, pres) {
   const rev = revisionPendiente(srv, S.d?.revisiones || [], S.d?.revisionesErr);
   const cEsta = rev || (S.d?.revisionesErr ? controlEnSemana(srv, lunes) : null), cProx = !cEsta && controlEnSemana(srv, sumaDias(lunes, 7));
   if (rev) ev.push(`<div class="line evento"><div class="ico gold">${svg('progreso')}</div><div class="grow"><b class="small">Toca tu revisión mensual con Jesús</b><div class="small muted">Una llamada o videollamada de 10-15 minutos para ver cómo te sientes, cómo vas con tus objetivos y tu composición corporal. Escríbele para agendarla.</div><div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px">${waJesus(`Hola Jesús, me toca la revisión mensual ${rev.n}. ¿Cuándo te viene bien la llamada?`) ? `<a class="btn sm" href="${esc(waJesus(`Hola Jesús, me toca la revisión mensual ${rev.n}. ¿Cuándo te viene bien la llamada?`))}" target="_blank" rel="noopener">Agendar por WhatsApp</a>` : ''}${srv?.modulo_presencial ? '' : '<button class="btn sm ghost" data-act="misMedidas">Añadir mis medidas</button>'}</div></div></div>`);
-  else if (cEsta) ev.push(`<div class="line evento"><div class="ico gold">${svg('progreso')}</div><div class="grow"><b class="small">Esta semana toca tu control mensual ${cEsta.n}</b><div class="small muted">Composición corporal, ajustes y mejoras: tienes pendiente la reunión de seguimiento mensual con Jesús.${srv?.modulo_presencial ? '' : ' Antes de la reunión, tómate tus medidas.'}</div>${srv?.modulo_presencial ? '' : '<button class="btn sm" data-act="misMedidas" style="margin-top:8px">Añadir mis medidas</button>'}</div></div>`);
+  else if (cEsta) ev.push(`<div class="line evento"><div class="ico gold">${svg('progreso')}</div><div class="grow"><b class="small">Esta semana toca tu control mensual ${cEsta.n}</b><div class="small muted">Composición corporal, ajustes y mejoras: tienes pendiente la reunión de seguimiento mensual con Jesús.${srv?.modulo_presencial ? '' : ' Antes de la reunión, tómate tus medidas y tus fotos de progreso.'}</div>${srv?.modulo_presencial ? '' : '<button class="btn sm" data-act="misMedidas" style="margin-top:8px">Añadir medidas y fotos</button>'}</div></div>`);
   else if (cProx) ev.push(`<div class="line evento"><div class="ico">${svg('progreso')}</div><div class="grow"><b class="small">La semana que viene: control mensual ${cProx.n}</b><div class="small muted">Semana del ${esc(fCorta(cProx.lunes))}. Reunión de seguimiento, composición corporal y ajustes.</div></div></div>`);
   (pres || []).filter(p => p.estado === 'programada' && p.fecha >= hoy && p.fecha <= sumaDias(hoy, 13)).sort(ordPres).slice(0, 3)
     .forEach(p => ev.push(`<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">Entrenamiento con Jesús</b><div class="small muted">${esc(fLargaP(p))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</div></div><span class="small muted">›</span></div>`));
@@ -4712,6 +4725,12 @@ document.addEventListener('click', async e => {
     case 'vistaGuardar': await conmutarGuardado(); break;
     case 'cambiarClave': cerrarSheet(); vistaNuevaClave(); break;
     case 'cerrarSheet': cerrarSheet(); break;
+    case 'fpSubir': Casos.formSubir(); break;
+    case 'fpBorrar': await Casos.borrarFecha(b.dataset.f); break;
+    case 'permisos': Casos.formPermisos(); break;
+    case 'casoResp': await Casos.responder(+b.dataset.id, b.dataset.ok === '1'); break;
+    case 'casoNuevo': Casos.formNuevo(); break;
+    case 'casoBorrar': await Casos.borrarCaso(+b.dataset.id); break;
     case 'salir': cerrarSheet(); stopTimer(); await sb.auth.signOut(); break;
   }
 });
@@ -4736,6 +4755,6 @@ document.addEventListener('input', e => {
   if (e.target.id === 'k-imp') $('#k-imp-v').textContent = e.target.value + '/10';
 });
 
-document.addEventListener('change', e => { if (e.target.id === 'r-fotos') subirFotosComida(e.target); if (e.target.dataset?.foto) subirFoto(e.target); });
+document.addEventListener('change', e => { if (e.target.dataset?.fp) { S.fpSel = { ...(S.fpSel || {}), [e.target.dataset.fp]: e.target.value }; render(); return; } if (e.target.id === 'r-fotos') subirFotosComida(e.target); if (e.target.dataset?.foto) subirFoto(e.target); });
 
 arrancar().catch(err => { console.error(err); vistaMensaje('No se ha podido cargar', 'Revisa tu conexión y vuelve a abrir la app.', false); });
