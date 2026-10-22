@@ -282,7 +282,7 @@ async function cargarAlumno(uid) {
   ctxs.forEach(c => { (c.dias ||= []).sort((a, b) => a.numero - b.numero); c.dias.forEach(ordenarDia); });
   if (p) {
     (p.dias ||= []).sort((a, b) => a.numero - b.numero);
-    p.dias.forEach(d => { d.bloques_sesion.sort((a, b) => a.letra.localeCompare(b.letra)); d.bloques_sesion.forEach(b => b.ejercicios_sesion.sort((a, b) => a.orden - b.orden)); });
+    p.dias.forEach(d => { d.bloques_sesion.sort(ordBloque); d.bloques_sesion.forEach(b => b.ejercicios_sesion.sort((a, b) => a.orden - b.orden)); });
   }
   S.d = {
     servicio: srv.data?.[0] || null, programa: p, mediciones: (med.data || []).filter(m => !m.es_objetivo), medObj: (med.data || []).find(m => m.es_objetivo) || null, diario: reg.data || [],
@@ -830,7 +830,7 @@ async function entrenarAhora(alumnoId, op = {}) {
   if (!S.d.programa) { toast('Este alumno aún no tiene programa'); return salirComo(); }
   render(); window.scrollTo(0, 0);
 }
-const ordenarDia = d => { d.bloques_sesion.sort((a, b) => a.letra.localeCompare(b.letra)); d.bloques_sesion.forEach(b => b.ejercicios_sesion.sort((a, b) => a.orden - b.orden)); };
+const ordenarDia = d => { d.bloques_sesion.sort(ordBloque); d.bloques_sesion.forEach(b => b.ejercicios_sesion.sort((a, b) => a.orden - b.orden)); };
 /* Vista del coach: sesión ya cerrada, tal como la vio el alumno pero sin poder tocar nada */
 function filaCerrada(ro, r, n, T, sp) {
   const v = k => ro.valores[`${r}-${k}`], a = k => ro.ant[`${r}-${k}`];
@@ -892,13 +892,24 @@ function imgBloque(b) {
   if (!u) return ilu;
   return `<div class="bimg"><button class="img" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver imagen"><img src="${esc(u)}" alt="${esc(b.nombre)}" loading="lazy" onerror="this.closest('.bimg').classList.add('roto')"></button>${ilu}</div>`;
 }
+/* Orden de bloques: por letra y, dentro de una letra con opciones (Tipo A, B…), por opción */
+function ordBloque(a, b) { return a.letra.localeCompare(b.letra) || String(a.variante || '').localeCompare(String(b.variante || ''), 'es', { numeric: true }); }
+/* Opciones de un mismo bloque (misma letra, con «variante»): el alumno elige cuál hace; se sugiere una por semana */
+const grupoOpc = (l, i) => { const b = l[i]; if (!b.variante) return [b]; const g = [b]; for (let k = i + 1; k < l.length && l[k].letra === b.letra && l[k].variante; k++) g.push(l[k]); return g; };
+function opcionSugerida(n) { const P = proceso(S.d?.servicio); const sem = P && !P.antes ? P.semana : Math.ceil(fecha(hoyISO()).getDate() / 7); return (Math.max(1, sem) - 1) % n; }
+function vOpciones(g, d, cont, ro) {
+  const k = `${d.id}-${g[0].letra}`, sug = opcionSugerida(g.length), sel = (S.opc ||= {})[k] ?? sug, b = g[Math.min(sel, g.length - 1)];
+  const chips = `<div class="card stack" style="gap:8px"><div class="row"><span class="pill gold">${esc(b.letra)}</span><b class="grow">Elige el entrenamiento de hoy</b></div><div class="chips" role="group" aria-label="Opciones del bloque ${esc(b.letra)}">${g.map((x, i) => `<button type="button" data-act="opcBloque" data-k="${esc(k)}" data-i="${i}" aria-pressed="${x === b}">${esc(x.variante)}${i === sug ? ' · esta semana' : ''}</button>`).join('')}</div></div>`;
+  return chips + vBloque({ ...b, nombre: b.nombre + ' · ' + b.variante }, cont, ro);
+}
 /* Bloques del día; en día de partido se separan "Antes del partido" y "Después del partido" */
 const MOMENTOS = { pre: ['🏟️ Antes del partido', 'Activación: hazlo antes de salir al campo'], post: ['🏁 Después del partido', 'Recuperación: al terminar el partido'] };
 function vBloquesDia(d, cont, ro) {
-  let act = null;
-  return d.bloques_sesion.map(b => {
+  let act = null; const l = d.bloques_sesion;
+  return l.map((b, i) => {
+    if (b.variante && i > 0 && l[i - 1].letra === b.letra && l[i - 1].variante) return '';
     const m = MOMENTOS[b.momento] ? b.momento : null, cab = m && m !== act ? `<div class="momento ${m}"><b>${MOMENTOS[m][0]}</b><span class="small">${MOMENTOS[m][1]}</span></div>` : '';
-    act = m || act; return cab + vBloque(b, cont, ro);
+    act = m || act; const g = grupoOpc(l, i); return cab + (g.length > 1 ? vOpciones(g, d, cont, ro) : vBloque(b, cont, ro));
   }).join('');
 }
 function vBloque(b, cont, ro) {
@@ -3491,7 +3502,7 @@ async function abrirEditor(alumnoId, progId = null) {
     sb.from('metodos').select('id,nombre').order('nombre')
   ]);
   const p = prog.data?.[0] || null;
-  if (p) { (p.dias ||= []).sort((a, b) => a.numero - b.numero); p.dias.forEach(d => { d.bloques_sesion.sort((a, b) => a.letra.localeCompare(b.letra)); d.bloques_sesion.forEach(b => b.ejercicios_sesion.sort((a, b) => a.orden - b.orden)); }); }
+  if (p) { (p.dias ||= []).sort((a, b) => a.numero - b.numero); p.dias.forEach(d => { d.bloques_sesion.sort(ordBloque); d.bloques_sesion.forEach(b => b.ejercicios_sesion.sort((a, b) => a.orden - b.orden)); }); }
   S.editor = { alumnoId, progId, plantilla: !!progId && !alumnoId, prog: p, metodos: met.data || [], ctx: p ? [...(S.ficha?.contextos || []), ...(S.c?.contextos || [])].find(x => x.id === p.id) || null : null }; render();
 }
 async function refrescarEditor() { const id = S.editor.alumnoId, pid = S.editor.progId; await abrirEditor(id, pid); if (id && id === S.user.id) await cargarAlumno(S.user.id); if (!id) await cargarPlantillas(); }
@@ -3506,7 +3517,7 @@ function vEditor() {
   ${p ? p.dias.map(d => `<section class="section"><div class="card stack">
     <div class="row"><div class="grow"><span class="eyebrow">Día ${d.numero}${d.titulo ? ' · ' + esc(d.nombre) : ''}</span><h2>${esc(nomDia(d))}</h2><div class="small muted">${esc([d.foco, d.volumen && 'vol. ' + d.volumen, d.intensidad && 'int. ' + d.intensidad].filter(Boolean).join(' · '))}</div></div><button class="btn sm ghost" data-act="edDia" data-id="${d.id}">Editar día</button></div>
     ${d.bloques_sesion.map(b => `<div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:10px">
-      <div class="row" style="flex-wrap:wrap"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}</h3>${(() => { const k = d.bloques_sesion.indexOf(b), pr = d.bloques_sesion[k - 1]; return b.tipo === 'fuerza' && pr?.tipo === 'fuerza' ? `<button class="btn sm ghost" data-act="unirBloque" data-id="${b.id}" title="Pasa sus ejercicios al bloque ${esc(pr.letra)}">⤒ Unir con ${esc(pr.letra)}</button>` : ''; })()}<button class="btn sm ghost" data-act="dupBloque" data-id="${b.id}">⧉ Duplicar</button><button class="btn sm ghost" data-act="edBloque" data-id="${b.id}">✎ Editar bloque</button></div>
+      <div class="row" style="flex-wrap:wrap"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}${b.variante ? ` <span class="pill blue">${esc(b.variante)}</span>` : ''}</h3>${(() => { const k = d.bloques_sesion.indexOf(b), pr = d.bloques_sesion[k - 1]; return b.tipo === 'fuerza' && pr?.tipo === 'fuerza' ? `<button class="btn sm ghost" data-act="unirBloque" data-id="${b.id}" title="Pasa sus ejercicios al bloque ${esc(pr.letra)}">⤒ Unir con ${esc(pr.letra)}</button>` : ''; })()}<button class="btn sm ghost" data-act="dupBloque" data-id="${b.id}">⧉ Duplicar</button><button class="btn sm ghost" data-act="edBloque" data-id="${b.id}">✎ Editar bloque</button></div>
       ${b.agrupacion ? `<div class="small muted">${esc(b.agrupacion)}</div>` : ''}
       ${b.tipo === 'fuerza' ? `${b.ejercicios_sesion.map((e, i) => `<div class="ed-ej">${(() => { const u = e.imagen_url || (S.c.ejercicios || []).find(x => x.id === e.ejercicio_id)?.imagen_url; return u ? `<img class="ed-mini" src="${esc(u)}" alt="" loading="lazy" data-act="edEj" data-id="${e.id}">` : `<span class="ed-mini ed-sin" data-act="edEj" data-id="${e.id}" title="Sin foto: toca para añadirla">📷</span>`; })()}<div class="grow" data-act="edEj" data-id="${e.id}" style="cursor:pointer;min-width:0"><b class="small">${i + 1}. ${esc(e.ejercicios?.nombre || '')}</b><div class="small muted">${resumen(e)}</div></div>${i > 0 ? `<button class="mini" data-act="separarEj" data-id="${e.id}" aria-label="Separar en un bloque nuevo desde este ejercicio" title="Separar en un bloque nuevo desde aquí">✂</button>` : ''}<button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="-1" aria-label="Subir" ${i === 0 ? 'disabled' : ''}>↑</button><button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="1" aria-label="Bajar" ${i === b.ejercicios_sesion.length - 1 ? 'disabled' : ''}>↓</button></div>`).join('')}
         <button class="btn sm ghost" data-act="edEj" data-bloque="${b.id}" style="align-self:flex-start">+ Añadir ejercicio</button>` : `<div class="row" style="gap:10px">${(b.imagen_url || miniYoutube(b.video_url)) ? `<img class="ed-mini" src="${esc(b.imagen_url || miniYoutube(b.video_url))}" alt="" loading="lazy" data-act="verImagen" data-src="${esc(b.imagen_url)}" onerror="this.outerHTML='<span class=&quot;ed-mini ed-sin&quot;>⚠</span>'">` : ''}<div class="small muted">${esc(b.tipo === 'cardio' ? [b.duracion, fcTexto(b.fc_objetivo, fcEditor()), b.maquina].filter(Boolean).join(' · ') : 'Movilidad')}</div></div>`}
@@ -3575,6 +3586,8 @@ ${editorEsFutbol() || b?.momento ? `    <label class="f">Momento (día de partid
         <label class="f">Frecuencia cardiaca<select id="b-fz"><option value="">Sin indicar</option>${zonas.map(z => `<option value="${z.n}" ${String(z.n) === fcZ ? 'selected' : ''}>Zona ${z.n} · ${esc(z.corto)}</option>`).join('')}<option value="otra" ${fcOtra ? 'selected' : ''}>Otra…</option></select></label></div>
       <input type="text" id="b-fc" value="${esc(fcOtra ? b.fc_objetivo : '')}" placeholder="Ej. 135–145 ppm" ${fcOtra ? '' : 'hidden'}>
       <div class="small" id="b-fzt" style="color:var(--bad);font-weight:700"></div></div>
+    <label class="f">Opción para alternar <span class="muted">(opcional)</span><input type="text" id="b-va" value="${esc(b?.variante || '')}" placeholder="Ej. Tipo A"></label>
+    <p class="note" style="margin-top:-6px">Varios bloques con la misma letra y una opción cada uno (Tipo A, Tipo B…) se muestran al alumno como alternativas: elige una, y la app le sugiere una distinta cada semana.</p>
     <label class="f">Detalle<textarea id="b-de">${esc(b?.detalle || '')}</textarea></label>
     <label class="f">Vídeo (movilidad)<input type="text" id="b-vi" value="${esc(b?.video_url || '')}" placeholder="https://youtu.be/…"></label>
     ${b?.imagen_url ? `<img src="${esc(b.imagen_url)}" alt="" style="width:100%;max-height:180px;object-fit:contain;border-radius:12px;background:var(--surface-2)">` : ''}
@@ -3607,6 +3620,7 @@ ${editorEsFutbol() || b?.momento ? `    <label class="f">Momento (día de partid
       const r = ya ? await sb.from('ejercicios').update({ imagen_url: b.imagen_url }).eq('id', ya.id).select().single() : await sb.from('ejercicios').insert({ nombre: nom, imagen_url: b.imagen_url, musculo: 'Cardio' }).select().single();
       if (!r.error && r.data) { if (ya) Object.assign(ya, r.data); else S.c.ejercicios.push(r.data); }
     }
+    if (v('#b-va') || b?.variante) row.variante = v('#b-va');
     if ($('#b-mo')?.value || b?.momento) row.momento = $('#b-mo')?.value || null;
     const file = $('#b-img').files[0];
     if (file) {
@@ -3619,7 +3633,7 @@ ${editorEsFutbol() || b?.momento ? `    <label class="f">Momento (día de partid
       }
     }
     const { error } = b ? await sb.from('bloques_sesion').update(row).eq('id', b.id) : await sb.from('bloques_sesion').insert({ ...row, dia_id: dia.id });
-    if (error) { console.error(error); return mal(/imagen_url/.test(error.message || '') ? 'Falta ejecutar el Bloque 38 en Supabase para guardar imágenes de bloque.' : /momento/.test(error.message || '') ? 'Falta ejecutar el Bloque 24 en Supabase.' : 'No se ha podido guardar: ' + (error.message || 'revisa la conexión')); }
+    if (error) { console.error(error); return mal(/variante/.test(error.message || '') ? 'Falta ejecutar el Bloque 45 en Supabase para las opciones de bloque.' : /imagen_url/.test(error.message || '') ? 'Falta ejecutar el Bloque 38 en Supabase para guardar imágenes de bloque.' : /momento/.test(error.message || '') ? 'Falta ejecutar el Bloque 24 en Supabase.' : 'No se ha podido guardar: ' + (error.message || 'revisa la conexión')); }
     cerrarSheet(); toast('Bloque guardado'); refrescarEditor();
   });
   $('#b-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez: se borrará el bloque y sus ejercicios'; return; } const { error } = await sb.from('bloques_sesion').delete().eq('id', b.id); if (error) return fallo(error, 'No se puede borrar: ese bloque ya tiene series registradas.'); cerrarSheet(); toast('Bloque eliminado'); refrescarEditor(); });
@@ -3775,7 +3789,7 @@ function formEjSesion(id, bloqueId) {
 }
 /* Bloques: reordenar letras (A, B, C…), crear uno a continuación, unir con el anterior y separar desde un ejercicio */
 async function reletrar(dia) {
-  const l = dia.bloques_sesion, fin = l.map((_, i) => String.fromCharCode(65 + i)), cambian = l.filter((b, i) => b.letra !== fin[i]);
+  const l = dia.bloques_sesion; let n = -1; const fin = l.map((b, i) => { if (!(i && b.variante && l[i - 1].variante && l[i - 1].letra === b.letra)) n++; return String.fromCharCode(65 + n); }), cambian = l.filter((b, i) => b.letra !== fin[i]);
   for (const b of cambian) { const r = await sb.from('bloques_sesion').update({ letra: '~' + l.indexOf(b) }).eq('id', b.id); if (r.error) throw r.error; }
   for (const b of cambian) { const r = await sb.from('bloques_sesion').update({ letra: fin[l.indexOf(b)] }).eq('id', b.id); if (r.error) throw r.error; b.letra = fin[l.indexOf(b)]; }
 }
@@ -3803,7 +3817,7 @@ function formDuplicar(id) {
     try {
       const dia = p.dias.find(x => x.id === +$('#dp-d').value), pos = Math.min(+$('#dp-p').value, dia.bloques_sesion.length);
       const fila = { dia_id: dia.id, letra: '~d', nombre: blq.nombre, tipo: blq.tipo };
-      ['agrupacion', 'duracion', 'fc_objetivo', 'maquina', 'detalle', 'video_url', 'imagen_url', 'momento'].forEach(k => { if (blq[k] != null && blq[k] !== '') fila[k] = blq[k]; });
+      ['agrupacion', 'duracion', 'fc_objetivo', 'maquina', 'detalle', 'video_url', 'imagen_url', 'momento', 'variante'].forEach(k => { if (blq[k] != null && blq[k] !== '') fila[k] = blq[k]; });
       const { data, error } = await sb.from('bloques_sesion').insert(fila).select().single(); if (error) throw error;
       const nuevo = { ...data, ejercicios_sesion: [] };
       for (const [i, x] of blq.ejercicios_sesion.entries()) {
@@ -4066,6 +4080,7 @@ document.addEventListener('click', async e => {
     case 'fichaSub': await abrirSub(b.dataset.s); break;
     case 'cerrarSub': S.fichaSub = null; render(); window.scrollTo(0, 0); break;
     case 'editarComidas': formComidas(); break;
+    case 'opcBloque': (S.opc ||= {})[b.dataset.k] = +b.dataset.i; render(); if (S.dia) rellenarSesion(); break;
     case 'nuevaFactura': formFactura(b.dataset.id ? +b.dataset.id : null); break;
     case 'verFactura': verFactura(+b.dataset.id); break;
     case 'cerrarFactura': S.factura = null; render(); break;
