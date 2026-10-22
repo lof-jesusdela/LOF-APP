@@ -178,8 +178,8 @@ const Casos = (() => {
       sb.from('fotos_progreso').select('alumno_id,fecha').gte('fecha', sumaDias(hoyISO(), -120)),
       sb.from('casos_exito').select('id,alumno_id,estado,tipo,created_at,respondido_at')
     ]);
-    const ult = {}; (c.data || []).forEach(x => { if (!ult[x.alumno_id]) ult[x.alumno_id] = x; });
-    S.c.consent = ult; S.c.fotosProg = f.data || []; S.c.casos = k.data || []; S.c.casosErr = !!(c.error || f.error);
+    const ult = {}, n = {}; (c.data || []).forEach(x => { n[x.alumno_id] = (n[x.alumno_id] || 0) + 1; if (!ult[x.alumno_id]) ult[x.alumno_id] = x; }); 
+    S.c.consent = ult; S.c.consentN = n; S.c.fotosProg = f.data || []; S.c.casos = k.data || []; S.c.casosErr = !!(c.error || f.error);
   }
   /* Alerta: pasó la semana del control mensual y no hay fotos de progreso cerca de esa fecha */
   function alertaFotos(aid, srv) {
@@ -247,7 +247,12 @@ const Casos = (() => {
   }
   /* Respuestas nuevas de los alumnos (aprobado/rechazado en los últimos 7 días) para las alertas */
   function avisosCoach(aid) {
-    return (S.c?.casos || []).filter(x => x.alumno_id === aid && x.estado !== 'pendiente' && x.respondido_at && x.respondido_at.slice(0, 10) >= sumaDias(hoyISO(), -7)).map(x => x.estado === 'aprobado' ? 'Ha aprobado que compartas su caso de éxito' : 'No quiere que se publique la propuesta de caso de éxito');
+    const c = S.c?.consent?.[aid], perm = [];
+    if (c && c.created_at && c.created_at.slice(0, 10) >= sumaDias(hoyISO(), -14)) {
+      const cuando = new Date(c.created_at).toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      perm.push(`${(S.c.consentN?.[aid] || 1) > 1 ? 'Ha cambiado' : 'Ha rellenado'} sus permisos de imagen y privacidad (${cuando}): testimonio ${c.testimonio ? 'sí' : 'no'} · fotos sin cara ${c.fotos ? 'sí' : 'no'} · ${(IDENT[c.identificacion] || '').toLowerCase()}`);
+    }
+    return perm.concat((S.c?.casos || []).filter(x => x.alumno_id === aid && x.estado !== 'pendiente' && x.respondido_at && x.respondido_at.slice(0, 10) >= sumaDias(hoyISO(), -7)).map(x => x.estado === 'aprobado' ? 'Ha aprobado que compartas su caso de éxito' : 'No quiere que se publique la propuesta de caso de éxito'));
   }
 
   return { VERSION, vistaInicial, cargar, cargarCoach, vSeccionAlumno, camposFotos, subirDesde, formSubir, borrarFecha, formPermisos, avisoNovedad, lineaHoy, responder, alertaFotos, vFicha, formNuevo, borrarCaso, resumenCoach, avisosCoach, cargarFicha };

@@ -1,6 +1,6 @@
 // Guarda la "carcasa" de la app para que abra rápido y sin conexión.
 // Los datos siempre se piden a la base de datos (nunca se guardan aquí).
-const VERSION = 'lof-v87';
+const VERSION = 'lof-v88';
 const CARCASA = ['./', 'index.html', 'app.js', 'temperamento.js', 'habitos.js', 'nutricion.js', 'pdf.js', 'casos.js', 'config.js', 'manifest.webmanifest', 'icons/logo-96.jpg', 'icons/coach.jpg', 'icons/icon-192.png'];
 
 self.addEventListener('install', e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(CARCASA)).then(() => self.skipWaiting())); });
