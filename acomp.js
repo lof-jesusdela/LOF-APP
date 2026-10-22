@@ -158,7 +158,16 @@ const Acomp = (() => {
         ${pres.map(p => `<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">Entrenamiento personal con Jesús</b><div class="small muted">${esc(fLargaP(p))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</div></div><span class="small muted">›</span></div>`).join('')}
         ${!prox && !pres.length ? '<div class="empty">Sin citas próximas.</div>' : ''}</div></section>`;
   }
+  /* Última indicación de Jesús en Hoy (cuando no hay una devolución nueva sin leer, que ya sale en Pendiente) */
+  function ultimaIndicacion() {
+    const D = S.d || {}; if (S.vista || S.prueba || (D.devoluciones || []).some(x => !x.leida_at)) return '';
+    const d = (D.devoluciones || [])[0], r = (D.revisiones || [])[0];
+    const usarRev = r?.resumen && (!d || r.fecha > d.semana_inicio);
+    if (!d && !usarRev) return '';
+    const fechaTxt = usarRev ? fLarga(r.fecha) : 'semana del ' + fCorta(d.semana_inicio), principal = usarRev ? r.resumen : (d.prioridad || d.ajuste || d.avance || '');
+    return `<section class="section"><details class="card"><summary class="stack" style="gap:4px"><span class="eyebrow">Última indicación de Jesús · ${esc(fechaTxt)}</span><span class="small">${usarRev ? '🗓 Revisión mensual: ' : '🎯 '}${esc(principal.slice(0, 160))}${principal.length > 160 ? '…' : ''}</span><span class="small" style="color:var(--blue-text)">Ver completa ›</span></summary><div style="margin-top:10px">${usarRev ? `<div class="small pre">${esc(r.resumen)}</div>` : bloqueDev(d)}</div></details></section>`;
+  }
   const sinLeer = () => (S.d?.devoluciones || []).filter(d => !d.leida_at).length;
 
-  return { estado, pillEstado, formEstado, tarjetaEstadoHoy, cargarAlumno, cargarCoach, alertaDevolucion, formDevolucion, cargarFicha, vCheckinsFicha, tarjetaDevolucionHoy, marcarLeida, vResumen, formProxima, alertaProxima, vTuCoach, sinLeer };
+  return { ultimaIndicacion, estado, pillEstado, formEstado, tarjetaEstadoHoy, cargarAlumno, cargarCoach, alertaDevolucion, formDevolucion, cargarFicha, vCheckinsFicha, tarjetaDevolucionHoy, marcarLeida, vResumen, formProxima, alertaProxima, vTuCoach, sinLeer };
 })();
