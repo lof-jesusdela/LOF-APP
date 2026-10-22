@@ -490,13 +490,17 @@ const ZONAS_FC = [
 ];
 /* Futbolistas: modelo de 5 zonas por % de FC máxima */
 const ZONAS_FC5 = [
-  { n: 1, nom: 'Zona 1 · recuperación', corto: 'Recuperación', desde: .50, hasta: .60, col: '#BFD4EA', desc: 'Intensidad muy suave, por debajo del umbral aeróbico. Sirve para recuperar entre partidos y sesiones duras, activar y soltar piernas. Se puede mantener mucho tiempo con fatiga casi nula.' },
-  { n: 2, nom: 'Zona 2 · aeróbica (umbral aeróbico, VT1)', corto: 'Aeróbica', desde: .60, hasta: .70, col: '#7ED957', desc: 'Alrededor del umbral aeróbico (VT1). Construye la base aeróbica que te permite repetir esfuerzos y recuperar entre acciones durante el partido. El lactato apenas sube.' },
-  { n: 3, nom: 'Zona 3 · tempo', corto: 'Tempo', desde: .70, hasta: .80, col: '#F7D04B', desc: 'Entre los dos umbrales. El esfuerzo ya se nota y el lactato empieza a subir, pero todavía se mantiene estable. Mejora la resistencia a ritmo de juego continuo.' },
-  { n: 4, nom: 'Zona 4 · umbral anaeróbico (VT2)', corto: 'Umbral', desde: .80, hasta: .90, col: '#E67E2E', desc: 'Alrededor del umbral anaeróbico (VT2): es el máximo esfuerzo en el que el lactato aún se mantiene estable. Mejora tu capacidad de sostener ritmos altos durante más tiempo.' },
-  { n: 5, nom: 'Zona 5 · máxima (VO2max)', corto: 'Máxima', desde: .90, hasta: 1, col: '#D63A2F', tx: '#fff', desc: 'Por encima del umbral anaeróbico, cerca de tu VO2max. Esfuerzos muy intensos de segundos a pocos minutos: sprints, presión alta, acciones decisivas. Genera mucha fatiga y requiere recuperación.' }
+  { n: 1, nom: 'Zona 1 · aeróbica base', corto: 'Aeróbica base', desde: .50, hasta: .60, col: '#BFD4EA', desc: 'Intensidad muy suave. Construye la base aeróbica y sirve para recuperar entre sesiones duras. Se puede mantener mucho tiempo con una fatiga casi nula.' },
+  { n: 2, nom: 'Zona 2 · umbral aeróbico (VT1)', corto: 'Umbral aeróbico', desde: .60, hasta: .70, col: '#7ED957', desc: 'Alrededor del umbral aeróbico (VT1). Predominan las grasas como combustible y el lactato apenas sube. Es la zona que más mejora tu motor aeróbico.' },
+  { n: 3, nom: 'Zona 3 · capacidad aeróbica', corto: 'Capacidad aeróbica', desde: .70, hasta: .80, col: '#F7D04B', desc: 'Entre los dos umbrales. El esfuerzo ya se nota y el lactato empieza a subir, pero se mantiene estable. Mejora tu capacidad de sostener ritmos continuos.' },
+  { n: 4, nom: 'Zona 4 · umbral anaeróbico (VT2)', corto: 'Umbral anaeróbico', desde: .80, hasta: .90, col: '#E67E2E', desc: 'Alrededor del umbral anaeróbico (VT2): el máximo esfuerzo en el que el lactato aún se mantiene estable. Mejora tu capacidad de sostener ritmos altos durante más tiempo.' },
+  { n: 5, nom: 'Zona 5 · VO2max', corto: 'VO2max', desde: .90, hasta: 1, col: '#D63A2F', tx: '#fff', desc: 'Por encima del umbral anaeróbico, cerca de tu VO2max. Esfuerzos muy intensos de segundos a pocos minutos. Genera mucha fatiga y requiere recuperación.' }
 ];
 const zonasDe = fut => fut ? ZONAS_FC5 : ZONAS_FC;
+/* Modelo de zonas del alumno: el que elijas en su ficha (3 o 5); si no, 5 para futbolistas y 3 para el resto */
+const cincoZ = srv => srv?.fc_modelo ? +srv.fc_modelo === 5 : !!srv?.modulo_futbol;
+/* Pulsaciones de una zona: las ajustadas a mano (p. ej. enfermedad coronaria) o las calculadas con su FC máxima */
+const rangoZona = (z, mx, srv, cinco) => { const m = srv?.fc_zonas?.[cinco ? 5 : 3]?.[z.n - 1]; if (m && m[0] && m[1]) return [+m[0], +m[1]]; return mx ? [Math.round(mx * z.desde), Math.round(mx * z.hasta)] : null; };
 /* FC máxima: la medida en su test o, si no hay, la estimada por edad (Tanaka) */
 const fcMaxDe = (vals, perfil) => {
   const pr = (vals || S.d?.valoraciones || []).flatMap(v => v.pruebas || []).filter(p => p.tipo === 'fc');
@@ -504,15 +508,17 @@ const fcMaxDe = (vals, perfil) => {
   const e = edadDe((perfil || S.perfil)?.fecha_nacimiento); return e ? Math.round(208.75 - 0.7 * e) : null;
 };
 function vZonasFC(o = {}) {
-  const fut = o.futbol ?? !!S.d?.servicio?.modulo_futbol, mx = fcMaxDe(o.vals, o.perfil), Z = zonasDe(fut);
-  if (!mx) return o.coach ? `<section class="section"><div class="card small muted">Para ver sus zonas de frecuencia cardiaca, pon su fecha de nacimiento en "Datos del alumno" o añade un test de FC máxima.</div></section>` : '';
-  const ppm = x => Math.round(mx * x);
+  const srv = 'srv' in o ? o.srv : S.d?.servicio, fut = o.futbol ?? cincoZ(srv), mx = fcMaxDe(o.vals, o.perfil), Z = zonasDe(fut), manual = !!srv?.fc_zonas?.[fut ? 5 : 3]?.length; S._zsrv = srv;
+  const editar = o.coach ? `<button class="btn sm ghost" data-act="editarZonasFC">✎ Modelo y zonas</button>` : '';
+  if (!mx && !manual) return o.coach ? `<section class="section"><div class="card stack"><div class="small muted">Para ver sus zonas de frecuencia cardiaca, pon su fecha de nacimiento en "Datos del alumno", añade un test de FC máxima o ajústalas a mano.</div>${editar}</div></section>` : '';
+  if (false) return o.coach ? `<section class="section"><div class="card small muted">Para ver sus zonas de frecuencia cardiaca, pon su fecha de nacimiento en "Datos del alumno" o añade un test de FC máxima.</div></section>` : '';
+  const R = z => rangoZona(z, mx, srv, fut);
   const img = fut ? ['img/zonas-fc5.jpg', 'Gráfico de 5 zonas: lactato en sangre según la intensidad, con el umbral aeróbico (VT1) en la zona 2 y el anaeróbico (VT2) en la zona 4'] : ['img/zonas-fc.jpg', 'Gráfico de 3 zonas de frecuencia cardiaca'];
-  return `<section class="section"><div class="card stack zonas-fc"><div class="row"><span class="eyebrow grow">${o.coach ? 'Sus zonas de frecuencia cardiaca' : 'Tus zonas de frecuencia cardiaca'}</span><span class="pill num">FC máx ${mx} ppm</span></div>
+  return `<section class="section"><div class="card stack zonas-fc"><div class="row"><span class="eyebrow grow">${o.coach ? 'Sus zonas de frecuencia cardiaca' : 'Tus zonas de frecuencia cardiaca'}</span>${mx ? `<span class="pill num">FC máx ${mx} ppm</span>` : ''}</div>
     <img src="${img[0]}" alt="${img[1]}" loading="lazy" style="width:100%;border-radius:12px;display:block">
-    <div class="zonas-bar" role="group" aria-label="Zonas de frecuencia cardiaca">${Z.map(z => `<button type="button" data-act="zonaFC" data-z="${z.n}" data-f="${fut ? 1 : 0}" data-mx="${mx}" style="background:${z.col};color:${z.tx || '#111'}" aria-label="${esc(z.nom)}, de ${ppm(z.desde)} a ${ppm(z.hasta)} ppm"><b>${z.n}</b><span class="num">${ppm(z.desde)}–${ppm(z.hasta)}</span></button>`).join('')}</div>
+    <div class="zonas-bar" role="group" aria-label="Zonas de frecuencia cardiaca">${Z.map(z => `<button type="button" data-act="zonaFC" data-z="${z.n}" data-f="${fut ? 1 : 0}" data-mx="${mx || 0}" style="background:${z.col};color:${z.tx || '#111'}" aria-label="${esc(z.nom)}, de ${R(z)[0]} a ${R(z)[1]} ppm"><b>${z.n}</b><span class="num">${R(z)[0]}–${R(z)[1]}</span></button>`).join('')}</div>
     <div class="zonas-lab">${Z.map(z => `<span>${esc(z.corto)}</span>`).join('')}</div>
-    <p class="small muted">${fut ? '5 zonas para futbolista. ' : ''}Toca una zona para saber qué significa.</p></div></section>`;
+    <div class="row"><p class="small muted grow" style="margin:0">${manual ? 'Zonas ajustadas a tu medida. ' : ''}Toca una zona para saber qué significa.</p>${editar}</div></div></section>`;
 }
 /* Cardio: máquinas con foto propia (se guarda en la biblioteca como «Cardio · Cinta»…) y FC por zonas */
 const MAQUINAS = ['Correr', 'Cinta', 'Stepper', 'Bicicleta', 'Elíptica', 'Remo'];
@@ -528,8 +534,8 @@ function fcTexto(t, o = {}) {
   const pc = /^\s*(\d{2,3})(?:\s*[-–]\s*(\d{2,3}))?\s*%/.exec(t || '');
   if (pc) { const mx = 'mx' in o ? o.mx : fcMaxDe(o.vals, o.perfil), a = +pc[1], z = pc[2] ? +pc[2] : null; return `${a}${z ? '–' + z : ''} % FC máx.${mx ? ` · ${Math.round(mx * a / 100)}${z ? '–' + Math.round(mx * z / 100) : ''} ppm` : ''}`; }
   const m = /^\s*zona\s*(\d)\s*$/i.exec(t || ''); if (!m) return t || '';
-  const fut = o.fut ?? !!S.d?.servicio?.modulo_futbol, z = zonasDe(fut).find(x => x.n === +m[1]), mx = 'mx' in o ? o.mx : fcMaxDe(o.vals, o.perfil);
-  return !z ? `Zona ${m[1]}` : mx ? `Zona ${z.n} · ${Math.round(mx * z.desde)}–${Math.round(mx * z.hasta)} ppm` : `Zona ${z.n} · ${Math.round(z.desde * 100)}–${Math.round(z.hasta * 100)} % FC máx.`;
+  const srv = 'srv' in o ? o.srv : S.d?.servicio, fut = o.fut ?? cincoZ(srv), z = zonasDe(fut).find(x => x.n === +m[1]), mx = 'mx' in o ? o.mx : fcMaxDe(o.vals, o.perfil), r = z && rangoZona(z, mx, srv, fut);
+  return !z ? `Zona ${m[1]}` : r ? `Zona ${z.n} · ${r[0]}–${r[1]} ppm` : `Zona ${z.n} · ${Math.round(z.desde * 100)}–${Math.round(z.hasta * 100)} % FC máx.`;
 }
 /* ---------- Running: zonas por VAM (test de 5 minutos) y FC, y sesiones de carrera por fases ---------- */
 /* % de la VAM por zona (ajustable). Ritmo min/km = 60 / (VAM × %) */
@@ -540,7 +546,7 @@ const ritmoTxt = kmh => { const t = Math.round(3600 / kmh), m = Math.floor(t / 6
 function zonaCarrera(n, vam, mx) {
   const v = ZONAS_VAM.find(z => z[0] === n), f = ZONAS_FC5.find(z => z.n === n), out = [];
   if (v && vam) out.push(`${ritmoTxt(vam * v[1])}–${ritmoTxt(vam * v[2])} min/km`);
-  if (f && mx) out.push(`${Math.round(mx * f.desde)}–${Math.round(mx * f.hasta)} ppm`);
+  const r = f && rangoZona(f, mx, S.modo === 'coach' && S.editor ? fcEditor().srv : S.modo === 'coach' && S.ficha ? S.ficha.srv : S.d?.servicio, true); if (r) out.push(`${r[0]}–${r[1]} ppm`);
   return out.join(' · ');
 }
 function vRitmosVAM(o = {}) {
@@ -563,14 +569,34 @@ function vCarrera(c, o = {}) {
 }
 /* Datos de FC de la persona del editor (si se abrió desde su ficha) */
 function fcEditor() {
-  const E = S.editor || {}, fut = editorEsFutbol();
-  if (!E.alumnoId) return { fut, mx: null };
-  const f = S.ficha?.id === E.alumnoId ? S.ficha : null, perfil = (S.c?.perfiles || []).find(x => x.id === E.alumnoId);
-  return { fut, mx: fcMaxDe(f?.val || [], perfil || {}), vam: vamDe(f?.val || []) };
+  const E = S.editor || {};
+  if (!E.alumnoId) return { fut: editorEsFutbol(), mx: null, srv: null };
+  const f = S.ficha?.id === E.alumnoId ? S.ficha : null, perfil = (S.c?.perfiles || []).find(x => x.id === E.alumnoId), srv = (S.c?.servicios || []).find(x => x.alumno_id === E.alumnoId) || f?.srv, fut = srv?.fc_modelo ? cincoZ(srv) : editorEsFutbol();
+  return { fut, srv, mx: fcMaxDe(f?.val || [], perfil || {}), vam: vamDe(f?.val || []) };
+}
+/* Coach: modelo de 3 o 5 zonas y pulsaciones a mano (p. ej. enfermedad coronaria) */
+function formZonasFC() {
+  const srv = S.ficha?.srv; if (!srv?.id) return toast('Primero asigna un plan en "Editar"');
+  const a = S.c.perfiles.find(x => x.id === S.ficha.id) || {}, mx = fcMaxDe(S.ficha.val || [], a);
+  let cinco = cincoZ(srv);
+  const filas = () => { const Z = zonasDe(cinco), man = srv.fc_zonas?.[cinco ? 5 : 3]; return Z.map(z => { const r = rangoZona(z, mx, srv, cinco) || ['', '']; return `<div class="row" style="gap:8px"><span class="pill" style="background:${z.col};color:${z.tx || '#111'};min-width:72px;justify-content:center">Zona ${z.n}</span><span class="small grow">${esc(z.corto)}<br><span class="muted">${Math.round(z.desde * 100)}–${Math.round(z.hasta * 100)} %${mx ? ` · ${Math.round(mx * z.desde)}–${Math.round(mx * z.hasta)} ppm` : ''}</span></span><input type="number" data-z="${z.n}" data-k="0" value="${r[0]}" style="width:76px" aria-label="Zona ${z.n} desde"><span>–</span><input type="number" data-z="${z.n}" data-k="1" value="${r[1]}" style="width:76px" aria-label="Zona ${z.n} hasta"></div>`; }).join('') + `<label class="row small" style="gap:8px"><input type="checkbox" id="zf-man" ${man?.length ? 'checked' : ''} style="width:20px;height:20px"> Usar estas pulsaciones a mano (si no, se calculan con su FC máxima)</label>`; };
+  abrirSheet(`<form class="stack" id="f-zf"><h2>Zonas de frecuencia cardiaca</h2>
+    <label class="f">Modelo<select id="zf-mod"><option value="3" ${!cinco ? 'selected' : ''}>3 zonas</option><option value="5" ${cinco ? 'selected' : ''}>5 zonas</option></select></label>
+    <p class="small muted" style="margin:0">${mx ? `FC máxima: ${mx} ppm.` : 'Sin FC máxima: escribe las pulsaciones a mano.'} Si cambias una pulsación se marca solo el ajuste manual.</p>
+    <div class="stack" id="zf-l" style="gap:10px">${filas()}</div><button class="btn full" type="submit">Guardar</button></form>`);
+  $('#zf-mod').addEventListener('change', ev => { cinco = ev.target.value === '5'; $('#zf-l').innerHTML = filas(); });
+  $('#zf-l').addEventListener('input', ev => { if (ev.target.dataset.z) $('#zf-man').checked = true; });
+  $('#f-zf').addEventListener('submit', async ev => {
+    ev.preventDefault(); const k = cinco ? 5 : 3, zonas = { ...(srv.fc_zonas || {}) };
+    if ($('#zf-man').checked) zonas[k] = zonasDe(cinco).map(z => [0, 1].map(i => +document.querySelector(`#zf-l [data-z="${z.n}"][data-k="${i}"]`).value || null)); else delete zonas[k];
+    const cam = { fc_modelo: k, fc_zonas: Object.keys(zonas).length ? zonas : null };
+    const { error } = await sb.from('servicios').update(cam).eq('id', srv.id); if (error) return fallo(error, /fc_/.test(error.message || '') ? 'Falta ejecutar el Bloque 48 en Supabase.' : undefined);
+    Object.assign(srv, cam); const s2 = (S.c.servicios || []).find(x => x.id === srv.id); if (s2) Object.assign(s2, cam); cerrarSheet(); toast('Zonas guardadas'); render();
+  });
 }
 function zonaFC(n, fut, mx) {
-  const z = zonasDe(fut).find(x => x.n === n); mx = mx || fcMaxDe(); if (!z || !mx) return;
-  abrirSheet(`<div class="stack"><span class="eyebrow">Zona ${n}</span><h2>${esc(z.nom)}</h2><div class="pill num" style="align-self:flex-start">${Math.round(mx * z.desde)}–${Math.round(mx * z.hasta)} ppm · ${Math.round(z.desde * 100)}–${Math.round(z.hasta * 100)} % de la FC máxima</div><p class="small pre">${esc(z.desc)}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`);
+  const z = zonasDe(fut).find(x => x.n === n); mx = mx || fcMaxDe(); const r = z && rangoZona(z, mx, S._zsrv, fut); if (!r) return;
+  abrirSheet(`<div class="stack"><span class="eyebrow">Zona ${n}</span><h2>${esc(z.nom)}</h2><div class="pill num" style="align-self:flex-start">${r[0]}–${r[1]} ppm · ${Math.round(z.desde * 100)}–${Math.round(z.hasta * 100)} % de la FC máxima</div><p class="small pre">${esc(z.desc)}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`);
 }
 const FRASE_DEF = 'Estar aquí y dar el paso ya es tu mayor logro. Ahora vamos juntos a hacerlo realidad.';
 function vHoy() {
@@ -2317,7 +2343,7 @@ function vFichaSub(f, a) {
     const dpwB = f.prog?.dias_semana || 0, dpw = dpwEn(a.id, lunes, dpwB), dpw4 = [0, 1, 2, 3].reduce((t, k) => t + dpwEn(a.id, sumaDias(lunes, -7 * k), dpwB), 0), P = proceso(srv), linea = s2 => `<div class="line" data-act="verSesion" data-id="${s2.id}" style="cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(s2.fecha))}</span><div class="grow"><div class="small"><b>${esc(nomDia(s2.dias))}</b> · ${esc(s2.dias?.foco || '')} · ${(s2.registros_series || []).length} series${s2.duracion_min ? ` · ${s2.duracion_min} min` : ''}${s2.cansancio ? ` · cansancio ${s2.cansancio}/5` : ''}${(s2.omitidos || []).length ? ` · ${s2.omitidos.length} no realizado${s2.omitidos.length > 1 ? 's' : ''}` : ''}</div>${s2.nota ? `<div class="small muted">"${esc(s2.nota)}"</div>` : ''}</div><span class="small" style="color:var(--blue-text)">›</span></div>`;
     const semana = f.ses.filter(x => x.fecha >= lunes), bloque = P && !P.antes ? f.ses.filter(x => x.fecha >= P.cc.ini && x.fecha <= P.cc.fin && x.fecha < lunes) : [];
     const unicas = l => new Set(l.map(x => x.fecha + x.dia_id)).size, mes = unicas(f.todas.filter(x => x.fecha >= sumaDias(hoy, -27)));
-    return cab('Entrenamiento') + vZonasFC({ vals: f.val, perfil: a, futbol: !!srv?.modulo_futbol, coach: true }) + vContextos(f, a) + `
+    return cab('Entrenamiento') + vZonasFC({ vals: f.val, perfil: a, srv, coach: true }) + vContextos(f, a) + `
     <section class="section"><div class="section-head"><h2>Programa</h2><button class="btn sm" data-act="editarPrograma" data-id="${a.id}">${f.prog ? '✎ Editar programa' : 'Crear programa'}</button></div><div class="card small">${f.prog ? `<b>${esc(f.prog.nombre)}</b> · ${dpw || '—'} días por semana` : 'Aún no tiene programa.'}</div></section>
     <section class="section"><h2>Esta semana</h2><div class="card">${dpw ? barra('Entrenos de la semana', unicas(semana), dpw, '') + barra('Últimas 4 semanas', mes, dpw4, '') : ''}${semana.map(linea).join('') || '<div class="empty">Aún no ha entrenado esta semana.</div>'}</div></section>
     ${P && !P.antes ? `<section class="section"><h2>Resto del bloque · ${esc(nomCiclo(P.cc))}</h2><div class="card">${bloque.map(linea).join('') || '<div class="empty">Sin entrenamientos anteriores en este bloque.</div>'}</div></section>` : ''}
@@ -4198,6 +4224,7 @@ document.addEventListener('click', async e => {
     case 'ejFalta': S.ejFalta = S.ejFalta === b.dataset.v ? '' : b.dataset.v; render(); break;
     case 'edAbrirDia': S.editor.dia = b.dataset.id === 'todos' ? 'todos' : +b.dataset.id || null; render(); window.scrollTo(0, 0); break;
     case 'edCarrera': await nuevaCarrera(+b.dataset.dia); break;
+    case 'editarZonasFC': formZonasFC(); break;
     case 'opcBloque': (S.opc ||= {})[b.dataset.k] = +b.dataset.i; render(); if (S.dia) rellenarSesion(); break;
     case 'nuevaFactura': formFactura(b.dataset.id ? +b.dataset.id : null); break;
     case 'verFactura': verFactura(+b.dataset.id); break;
