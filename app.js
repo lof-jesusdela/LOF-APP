@@ -1431,6 +1431,7 @@ function estadoAlumno(a) {
     if (srv?.modulo_nutricion && cur.nutri != null && cur.nutri < 50) { sube('bad'); motivos.push(`Esta semana: alimentación al ${cur.nutri} %`); }
   }
   if (srv?.modulo_futbol) alertasFutbol(a.id).forEach(([n, m]) => { sube(n); motivos.push(m); });
+  { const af = avisoFin(srv); if (af) { sube('warn'); motivos.push(af.terminado ? `Su proceso terminó el ${fCorta(af.fin)}: añade una extensión o pásalo a antiguos alumnos` : `Le queda menos de un mes de proceso (termina el ${fCorta(af.fin)}): ¿extensión?`); } }
   if (ult && ult.motivacion <= 4) { sube('bad'); motivos.push(`Motivación ${ult.motivacion}/10`); }
   else if (ult && ant && ant.motivacion - ult.motivacion >= 3) { sube('warn'); motivos.push(`Motivación de ${ant.motivacion} a ${ult.motivacion}`); }
   const semana = new Set(ses.filter(s => s.fecha >= lunes).map(s => s.fecha + s.dia_id)).size;
@@ -1516,10 +1517,12 @@ async function abrirFicha(id) {
     sb.from('notas_coach').select('*').eq('alumno_id', id).order('fecha', { ascending: false }).limit(20),
     sb.from('programas').select('nombre,dias_semana').eq('alumno_id', id).eq('activo', true).limit(1),
     sb.from('servicios').select('*').eq('alumno_id', id).eq('activo', true).limit(1),
-    conRespaldo(() => sb.from('sesiones_hechas').select('id,fecha,dia_id,duracion_min').eq('alumno_id', id).gte('fecha', sumaDias(hoyISO(), -365)),
-      () => sb.from('sesiones_hechas').select('id,fecha,dia_id').eq('alumno_id', id).gte('fecha', sumaDias(hoyISO(), -365)))
+    conRespaldo(() => sb.from('sesiones_hechas').select('id,fecha,dia_id,duracion_min,previa').eq('alumno_id', id).gte('fecha', sumaDias(hoyISO(), -730)),
+      () => conRespaldo(() => sb.from('sesiones_hechas').select('id,fecha,dia_id,duracion_min').eq('alumno_id', id).gte('fecha', sumaDias(hoyISO(), -365)),
+        () => sb.from('sesiones_hechas').select('id,fecha,dia_id').eq('alumno_id', id).gte('fecha', sumaDias(hoyISO(), -365))))
   ]);
-  S.ficha = { id, med: (med.data || []).filter(m => !m.es_objetivo), medObj: (med.data || []).find(m => m.es_objetivo) || null, ses: ses.data || [], notas: notas.data || [], prog: prog.data?.[0], srv: srv.data?.[0], todas: todas.data || [] };
+  S.ficha = { id, med: (med.data || []).filter(m => !m.es_objetivo), medObj: (med.data || []).find(m => m.es_objetivo) || null, ses: (ses.data || []).filter(x => !x.previa), notas: notas.data || [], prog: prog.data?.[0], srv: srv.data?.[0], todas: todas.data || [] };
+  S.ficha.previas = S.ficha.todas.filter(x => x.previa).length;
   S.valEd = null;
   const [pr, ru] = await Promise.all([sb.from('presenciales').select('*').eq('alumno_id', id).order('fecha'), sb.from('hoja_ruta').select('*').eq('alumno_id', id).order('orden')]);
   S.ficha.pres = pr.data || []; S.ficha.ruta = ru.data || []; if (S.ficha.srv) S.ficha.srv._bloques = bloquesDe(S.ficha.ruta);
@@ -1545,7 +1548,7 @@ function vBloqueActual(f, a) {
   const pr = f.progFull, P = proceso(f.srv), nom = (a.nombre || '').split(' ')[0];
   const cab = P && !P.antes && !P.fuera ? `${esc(nomCiclo(P.cc))} · semana ${P.semCiclo} de ${P.cc.sem}` : 'Programa activo';
   return `<section class="section"><div class="section-head"><h2>Bloque de entrenamiento actual</h2><button class="btn sm ghost" data-act="editarPrograma" data-id="${a.id}">${pr ? '✎ Editar' : 'Crear programa'}</button></div>
-    <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="asignarPlantilla" data-al="${a.id}">＋ Asignar plantilla</button>${pr ? `<button class="btn sm ghost" data-act="guardarPlantilla" data-id="${pr.id}">Guardar como plantilla</button>` : ''}</div>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="asignarPlantilla" data-al="${a.id}">＋ Asignar plantilla</button><button class="btn sm ghost" data-act="editarBloques">✎ Semanas de los bloques</button>${pr ? `<button class="btn sm ghost" data-act="guardarPlantilla" data-id="${pr.id}">Guardar como plantilla</button>` : ''}</div>
     ${pr ? `<div class="card stack"><div><span class="eyebrow">${cab}</span><h3>${esc(pr.nombre)}</h3><div class="small muted">${pr.dias.length} ${pr.dias.length === 1 ? 'entrenamiento' : 'entrenamientos'}${pr.dias_semana ? ` · ${pr.dias_semana} días por semana` : ''}</div></div>
       <div>${pr.dias.map(d => `<div class="line" data-act="verPlan" data-p="${pr.id}" data-d="${d.id}" style="cursor:pointer"><span class="pill gold num">${d.numero}</span><div class="grow"><b class="small">${esc(nomDia(d))}</b>${d.titulo ? ` <span class="small muted">· ${esc(d.nombre)}</span>` : ''}${d.foco ? ` <span class="small muted">· ${esc(d.foco)}</span>` : ''}<div class="small muted">${d.bloques_sesion.filter(b => b.tipo === 'fuerza').reduce((t, b) => t + b.ejercicios_sesion.length, 0)} ejercicios${d.bloques_sesion.some(b => b.tipo !== 'fuerza') ? ' · ' + [...new Set(d.bloques_sesion.filter(b => b.tipo !== 'fuerza').map(b => b.tipo))].join(' y ') : ''}</div></div><span class="small" style="color:var(--blue-text)">Ver ›</span></div>`).join('')}</div>
       <p class="note">Toca un día para ver su entrenamiento tal como lo ve ${esc(nom)}, sin empezar la sesión.</p></div>` : '<div class="card empty">Aún no tiene programa activo.</div>'}</section>`;
@@ -2335,6 +2338,8 @@ function vFicha() {
     <button class="plan-b" data-act="fichaSub" data-s="plan"><div class="grow"><h3>${esc(srv?.producto || 'Sin plan asignado')} <span style="color:var(--blue-text)">›</span></h3><div class="small" style="color:var(--blue-text)">Ver toda su planificación: entrenamiento, alimentación y hábitos</div></div></button>
     <div class="row"><div class="grow"><div class="small muted">${[f.prog && `${esc(f.prog.nombre)}${dpw ? ` · ${dpw} días por semana` : ''}`, srv?.modulo_nutricion && 'con nutrición', (srv?.modulo_presencial || srv?.sesiones_incluidas) && `${srv.sesiones_incluidas || ''} presenciales`.trim()].filter(Boolean).join(' · ') || 'Sin programa'}</div></div>${P && !P.sinFin ? `<b class="num" style="font-family:var(--display);font-size:24px">${P.pctTotal} %</b>` : ''}</div>
     ${P ? `<div class="track gordo"><i style="width:${P.pctTotal}%"></i></div><div class="row small muted"><span class="grow">${P.antes ? 'Empieza' : 'Inicio'} ${esc(fF(srv.inicio))}${!P.antes && !P.fuera ? ` · semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''}</span>${P.sinFin ? '' : `<span>Final ${esc(fF(P.ciclos[P.ciclos.length - 1].fin))}</span>`}</div>` : '<p class="small muted">Pon la fecha de inicio y la duración en "Editar".</p>'}
+    ${extensionesDe(srv).length ? `<div class="small">${extensionesDe(srv).map(x => `<span class="pill gold">${esc(x.nombre || 'Extensión')} · ${x.semanas} sem · desde ${esc(fCorta(x.desde))}</span>`).join(' ')}</div>` : ''}
+    ${(() => { const af = avisoFin(srv); return af ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>${af.terminado ? `Su proceso terminó el ${esc(fCorta(af.fin))}` : `Le quedan ${af.dias} días de proceso`}</b> (final ${esc(fF(af.fin))}). Si sigue contigo, añádele una extensión: continúa con sus bloques y su historial.</div><button class="btn sm gold" data-act="extension">＋ Añadir extensión</button></div>` : srv?.inicio ? '<button class="linkbtn small" data-act="extension" style="align-self:flex-start">＋ Añadir extensión del proceso</button>' : ''; })()}
     ${e.control ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>Toca su revisión mensual ${e.control.n}</b> (${esc(fCorta(e.control.fecha))}): llamada o videollamada de 10-15 minutos para ver cómo se siente, sus objetivos y su composición corporal.</div><button class="btn sm gold" data-act="revision" data-n="${e.control.n}">Registrar revisión</button></div>` : ''}
   </div></section>
   ${srv?.modulo_futbol ? vFutbolFicha(a) : ''}
@@ -2383,7 +2388,7 @@ function vFichaSub(f, a) {
     ${vLineaTiempo(srv, 'Ciclos de entrenamiento', true, progDeCiclo(f, P))}
     <section class="section"><div class="card stack chart"><h3>Entrenamientos por semana</h3>${barrasSemanas(f.todas, l => dpwEn(f.id, l, f.prog?.dias_semana || 0))}</div></section>
     ${vRevision(f)}
-    <section class="section"><h2>Todos los entrenamientos</h2><div class="card">${f.ses.map(linea).join('') || '<div class="empty">Sin entrenamientos registrados.</div>'}</div></section>`;
+    <section class="section"><h2>Todos los entrenamientos</h2><div class="card">${f.previas ? `<div class="line"><span class="pill gold">✓ ${f.previas}</span><div class="grow small">entrenos hechos antes de la app (marcados en Plan → Editar)</div></div>` : ''}${f.ses.map(linea).join('') || (f.previas ? '' : '<div class="empty">Sin entrenamientos registrados.</div>')}</div></section>`;
   }
   if (sub === 'temperamento') return cab('Perfil de temperamento') + Temperamento.vSub(f, a);
   if (sub === 'plan') return cab('Planificación') + vPlanificacion(f, a);
@@ -2634,6 +2639,15 @@ function proceso(srv, f = hoyISO()) {
   const pctTotal = antes ? 0 : Math.min(100, Math.round((dias + 1) / (total * 7) * 100));
   return { semana, total, ciclos, ciclo, semCiclo, cc, pctCiclo, pctTotal, antes, fuera, sinFin: !srv.duracion_semanas && !bl.length };
 }
+/* Fin del proceso, extensiones y aviso cuando queda un mes */
+const finProceso = P => P && !P.sinFin ? P.ciclos[P.ciclos.length - 1].fin : null;
+const extensionesDe = srv => Array.isArray(srv?.extensiones) ? srv.extensiones : [];
+const esExtension = c => /^extensi[oó]n/i.test(c?.nombre || '');
+function avisoFin(srv) {
+  const P = proceso(srv), fin = finProceso(P); if (!fin || P.antes) return null;
+  const dias = Math.round((fecha(fin) - fecha(hoyISO())) / 864e5);
+  return dias > 31 ? null : { fin, dias, terminado: dias < 0 };
+}
 /* Nº de entreno dentro del ciclo (contando la sesión de esa fecha) */
 function numEntreno(sesiones, srv, f, sesId, dpw, aid) {
   const P = proceso(srv, f); if (!P || P.antes) return null;
@@ -2655,7 +2669,7 @@ function vLineaTiempo(srv, titulo = 'Tu proceso', coach = false, prog = null) {
   const filas = P.ciclos.map(c => { const hecho = c.n < P.ciclo || P.fuera, act = c.n === P.ciclo && !P.fuera && !P.antes, pc = hecho ? 100 : act ? P.pctCiclo : 0;
     const pc2 = typeof prog === 'function' ? prog(c) : act ? prog : null;
     const sesiones = pc2?.dias?.length ? `<div class="stack" style="gap:6px;margin-top:8px"><span class="eyebrow">${coach ? esc(pc2.nombre) + ' · toca un día para verlo' : 'Tus entrenamientos de este bloque'}</span>${pc2.dias.map(d => `<div class="tl-ses" ${coach ? `data-act="verPlan" data-p="${pc2.id}" data-d="${d.id}" style="cursor:pointer"` : ''}><b class="small">${esc(nomDia(d))} · ${esc(d.foco || '')}${coach ? ' <span style="color:var(--blue-text)">›</span>' : ''}</b>${d.objetivo ? `<div class="small muted">${esc(d.objetivo)}</div>` : ''}<div class="small muted">${esc([d.volumen && 'Volumen ' + d.volumen.toLowerCase(), d.intensidad && 'intensidad ' + d.intensidad.toLowerCase()].filter(Boolean).join(' · '))}</div></div>`).join('')}</div>` : '';
-    const cab = `<div class="row"><span class="tl-dot ${hecho ? 'ok' : act ? 'now' : ''}"></span><div class="grow"><b>${esc(nomCiclo(c))}</b> <span class="small muted">· ${c.sem} semanas</span><div class="small muted">${fF(c.ini)} → ${fF(c.fin)}</div>${c.objetivo ? `<div class="small">🎯 ${esc(c.objetivo)}</div>` : ''}</div><span class="small ${act ? '' : 'muted'}">${hecho ? 'Completado' : act ? `<b>${P.pctCiclo} %</b>` : 'Empieza ' + fF(c.ini)}</span></div>
+    const cab = `<div class="row"><span class="tl-dot ${hecho ? 'ok' : act ? 'now' : ''}"></span><div class="grow"><b>${esc(nomCiclo(c))}</b>${esExtension(c) ? ' <span class="pill gold">Extensión</span>' : ''} <span class="small muted">· ${c.sem} semanas</span><div class="small muted">${fF(c.ini)} → ${fF(c.fin)}</div>${c.objetivo ? `<div class="small">🎯 ${esc(c.objetivo)}</div>` : ''}</div><span class="small ${act ? '' : 'muted'}">${hecho ? 'Completado' : act ? `<b>${P.pctCiclo} %</b>` : 'Empieza ' + fF(c.ini)}</span></div>
       <div class="track" style="margin:6px 0 0 22px"><i style="width:${pc}%;background:${hecho ? 'var(--gold)' : 'var(--blue)'}"></i></div>`;
     return sesiones ? `<details class="tl-row ${act ? 'now' : ''}"><summary>${cab}<div class="small" style="margin:6px 0 0 22px;color:var(--blue-text)">Toca para ver ${coach ? 'los' : 'tus'} entrenamientos de este bloque ›</div></summary>${sesiones}</details>` : `<div class="tl-row ${act ? 'now' : ''}">${cab}</div>`; }).join('');
   const cab = P.antes ? `Empieza el ${fF(srv.inicio)}` : P.fuera ? 'Proceso completado' : `${esc(nomCiclo(P.cc))} (${P.ciclo} de ${P.ciclos.length}) · Semana ${P.semCiclo} de ${P.cc.sem}`;
@@ -2706,6 +2720,21 @@ function vEstadisticas(f) {
   <div class="card stack chart"><h3>Entrenamientos por semana</h3>${barrasSemanas(f.todas, l => dpwEn(f.id, l, f.prog?.dias_semana || 0))}</div></section>
   ${graf ? `<section class="section"><h2>Composición corporal</h2>${vGraficaComp(med)}</section>` : ''}`;
 }
+/* Entrenos hechos antes de la app: filas en sesiones_hechas con previa = true, repartidas por semanas desde el inicio */
+async function fijarPrevias(aid, inicio, n) {
+  const { data: progs } = await sb.from('programas').select('id,dias_semana,dias(id,numero)').eq('alumno_id', aid).eq('activo', true).limit(1);
+  const pr = progs?.[0], dias = (pr?.dias || []).sort((a, b) => (a.numero || 0) - (b.numero || 0)), dpw = pr?.dias_semana || dias.length;
+  if (n && (!dias.length || !dpw)) return 'Para marcar entrenos ya hechos, asígnale antes un programa activo';
+  const del = await sb.from('sesiones_hechas').delete().eq('alumno_id', aid).eq('previa', true);
+  if (del.error) return /previa/.test(del.error.message || '') ? 'Para marcar entrenos ya hechos falta ejecutar el Bloque 50 en Supabase' : 'No se han podido marcar los entrenos ya hechos';
+  if (!n || !inicio) return null;
+  // Huecos posibles (dpw por semana, desde el inicio hasta la semana pasada) y se reparten los n de forma uniforme
+  const hoy = hoyISO(), huecos = [0, 2, 4, 1, 3, 5, 6].slice(0, Math.min(7, dpw)).sort((a, b) => a - b), todos = [];
+  for (let l = lunesDe(inicio); l < lunesDe(hoy); l = sumaDias(l, 7)) for (const h of huecos) { const f = sumaDias(l, h); if (f >= inicio) todos.push(f); }
+  const m = Math.min(n, todos.length), filas = [...Array(m)].map((_, i) => ({ alumno_id: aid, dia_id: dias[i % dias.length].id, fecha: todos[Math.floor(i * todos.length / m)], previa: true }));
+  if (filas.length) { const { error } = await sb.from('sesiones_hechas').insert(filas); if (error) return 'No se han podido marcar los entrenos ya hechos'; }
+  return filas.length < n ? `Solo caben ${filas.length} entrenos entre el inicio y la semana pasada: marcados ${filas.length}` : `${filas.length} entrenos marcados como ya realizados`;
+}
 function formServicio() {
   const s = S.ficha.srv || {};
   abrirSheet(`<form class="stack" id="f-srv"><h2>Servicio</h2>
@@ -2713,11 +2742,21 @@ function formServicio() {
     <datalist id="sv-prods">${[...new Set(['Plan Integral 3 meses', 'Plan Integral 6 meses', 'Plan Integral 10 meses', 'Plan Entrenamiento 3 meses', 'Plan Entrenamiento 6 meses', 'Bono 10 sesiones presenciales', 'Bono 15 sesiones presenciales', 'Zero to Fit · Integral', 'Élite Player', ...S.c.servicios.map(x => x.producto).filter(Boolean)])].map(v => `<option value="${esc(v)}">`).join('')}</datalist>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Inicio<input type="date" id="sv-ini" value="${s.inicio || hoyISO()}"></label><label class="f">Duración (semanas)<input type="number" id="sv-dur" min="1" max="104" value="${s.duracion_semanas || ''}" placeholder="Ej. 26"></label></div>
     <label class="f">Objetivo de pasos diarios<input type="number" id="sv-pasos" min="0" step="500" value="${s.objetivo_pasos || ''}" placeholder="${PASOS_DEF}"></label>
-    <label class="f">Comidas de su plan al día <span class="muted">(registro de comidas cumplidas)</span><input type="number" id="sv-com" min="1" max="8" value="${comidasDia(s)}"></label>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Hora de acostarse objetivo<input type="time" id="sv-dormir" value="${esc(s.sueno_dormir || '')}" placeholder="23:00"></label><label class="f">Hora de levantarse objetivo<input type="time" id="sv-levantar" value="${esc(s.sueno_levantar || '')}" placeholder="08:00"></label></div>
     <label class="f">Sesiones presenciales incluidas (bono)<input type="number" id="sv-pres" min="0" max="200" value="${s.sesiones_incluidas || ''}" placeholder="Ej. 15"></label>
-    <div class="stack" style="gap:8px">${[['entreno', 'Entrenamiento', s.modulo_entreno ?? true], ['nutricion', 'Nutrición', s.modulo_nutricion], ['presencial', 'Sesiones presenciales', s.modulo_presencial], ['futbol', 'Elite Player · seguimiento de futbolista (wellness, partidos y carga)', s.modulo_futbol]].map(([k, l, v]) => `<label class="row small"><input type="checkbox" id="sv-${k}" ${v ? 'checked' : ''} style="width:20px;height:20px"> ${l}</label>`).join('')}</div>
+    <div class="stack" style="gap:8px">${[['entreno', 'Entrenamiento', s.modulo_entreno ?? true], ['nutricion', 'Nutrición · plan de alimentación (pestaña Nutrición y registro de comidas)', s.modulo_nutricion], ['presencial', 'Sesiones presenciales', s.modulo_presencial], ['futbol', 'Elite Player · seguimiento de futbolista (wellness, partidos y carga)', s.modulo_futbol]].map(([k, l, v]) => `<label class="row small"><input type="checkbox" id="sv-${k}" ${v ? 'checked' : ''} style="width:20px;height:20px"> ${l}</label>`).join('')}</div>
+    <label class="f" id="sv-com-w" ${s.modulo_nutricion ? '' : 'hidden'}>Comidas de su plan al día <span class="muted">(registro de comidas cumplidas)</span><input type="number" id="sv-com" min="1" max="8" value="${comidasDia(s)}"></label>
+    <div class="card stack" id="sv-prev-w" style="padding:12px;gap:8px"><b class="small">✅ Entrenos ya realizados</b>
+      <p class="small muted" style="margin:0" id="sv-prev-txt"></p>
+      <label class="f">¿Cuántos de esos entrenos ya ha hecho?<input type="number" id="sv-prev" min="0" max="999" value="${S.ficha.previas ?? ''}" placeholder="0"></label>
+      <p class="small muted" style="margin:0">Quedan marcados como hechos en las semanas desde el inicio (sin series registradas), para que su cumplimiento y su número de entreno cuadren. Puedes cambiar el número cuando quieras.</p></div>
     <button class="btn full" type="submit">Guardar</button></form>`);
+  const dpwS = S.ficha.prog?.dias_semana || 0;
+  const prevTxt = () => { const ini = $('#sv-ini').value, dur = numero($('#sv-dur').value), sem = ini ? Math.max(0, Math.floor((fecha(lunesDe(hoyISO())) - fecha(lunesDe(ini))) / 6048e5)) : 0;
+    $('#sv-prev-txt').innerHTML = !dpwS ? 'Asígnale primero un programa con días por semana para calcular los entrenos incluidos.' : `Su programa incluye <b>${dpwS} entrenos por semana</b>${dur ? ` · <b>${dpwS * dur}</b> en las ${dur} semanas` : ''}. Desde el inicio hasta esta semana han pasado ${sem} ${sem === 1 ? 'semana' : 'semanas'}: hasta <b>${dpwS * sem}</b> entrenos.`;
+    $('#sv-prev').placeholder = dpwS && sem ? `Ej. ${dpwS * sem}` : '0'; };
+  prevTxt(); $('#sv-ini').addEventListener('input', prevTxt); $('#sv-dur').addEventListener('input', prevTxt);
+  $('#sv-nutricion').addEventListener('change', ev => { $('#sv-com-w').hidden = !ev.target.checked; });
   $('#f-srv').addEventListener('submit', async e => {
     e.preventDefault();
     const row = { alumno_id: S.ficha.id, producto: $('#sv-prod').value.trim() || 'Servicio', inicio: $('#sv-ini').value, duracion_semanas: numero($('#sv-dur').value), sesiones_incluidas: numero($('#sv-pres').value),
@@ -2726,7 +2765,7 @@ function formServicio() {
     if ($('#sv-dormir').value || s.sueno_dormir) row.sueno_dormir = $('#sv-dormir').value || null;
     if ($('#sv-levantar').value || s.sueno_levantar) row.sueno_levantar = $('#sv-levantar').value || null;
     const op = numero($('#sv-pasos').value); if (op) row.objetivo_pasos = op;
-    { const nc = numero($('#sv-com').value); if (nc && (nc !== comidasDia(s) || s.comidas_dia)) row.comidas_dia = Math.max(1, Math.min(8, nc)); }
+    if (row.modulo_nutricion) { const nc = numero($('#sv-com').value); if (nc && (nc !== comidasDia(s) || s.comidas_dia)) row.comidas_dia = Math.max(1, Math.min(8, nc)); }
     const guardar = r => s.id ? sb.from('servicios').update(r).eq('id', s.id) : sb.from('servicios').insert(r);
     let { error } = await guardar(row);
     if (!error && !s.id) await sb.from('perfiles').update({ activo: true }).eq('id', S.ficha.id);
@@ -2735,6 +2774,8 @@ function formServicio() {
     if (error && /comidas_dia/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 11 en Supabase.');
     if (error && /objetivo_pasos/.test(error.message || '')) { delete row.objetivo_pasos; ({ error } = await guardar(row)); toast('Para guardar el objetivo de pasos falta ejecutar el Bloque 10'); }
     if (error) return fallo(error);
+    const np = $('#sv-prev').value === '' ? null : Math.max(0, +$('#sv-prev').value || 0);
+    if (np != null && np !== (S.ficha.previas || 0)) { const m = await fijarPrevias(S.ficha.id, row.inicio, np); if (m) toast(m); }
     cerrarSheet(); toast('Servicio guardado'); await cargarCoach(); if (S.ficha.id === S.user.id) await cargarAlumno(S.user.id); abrirFicha(S.ficha.id);
   });
 }
@@ -3046,15 +3087,25 @@ function formBloquesProceso() {
     : [...Array(Math.max(1, Math.ceil((srv.duracion_semanas || 8) / SEM_CICLO)))].map((_, i) => ({ nombre: `Bloque ${i + 1}`, sem: Math.min(SEM_CICLO, (srv.duracion_semanas || 8) - i * SEM_CICLO) }));
   abrirSheet(`<form class="stack" id="f-bp"><h2>Bloques del proceso</h2>
     <label class="f">Objetivo general del proceso<textarea id="bp-og" rows="3" placeholder="Ej. Bajar al 20 % de grasa ganando 1 kg de músculo">${esc(objetivoDe(f.ruta))}</textarea></label>
-    <p class="small muted">Inicio del proceso: <b>${srv.inicio ? esc(fLarga(srv.inicio)) : 'sin fecha (ponla en Servicio)'}</b>. Cada bloque empieza cuando termina el anterior.</p>
     <div class="stack" id="bp-l" style="gap:8px">${iniciales.map(filaBloqueProc).join('')}</div>
     <button type="button" class="btn sm ghost" id="bp-add" style="align-self:flex-start">＋ Añadir bloque</button>
     <p class="small" id="bp-tot"></p>
+    <div class="card stack" style="padding:12px;gap:8px"><b class="small">📅 ¿Por dónde va ahora?</b>
+      <p class="small muted" style="margin:0">Para alumnos que ya entrenaban contigo antes de la app: elige en qué bloque y semana está hoy y la app calcula la fecha de inicio. Cada bloque empieza cuando termina el anterior.</p>
+      <div style="display:grid;grid-template-columns:1fr 90px;gap:8px;align-items:end"><label class="f">Bloque<select id="bp-cb"></select></label><label class="f">Semana<input type="number" id="bp-cs" min="1" max="52"></label></div>
+      <button type="button" class="btn sm" id="bp-calc" style="align-self:flex-start">Calcular la fecha de inicio</button>
+      <label class="f">Inicio del proceso<input type="date" id="bp-ini" value="${esc(srv.inicio || '')}"></label>
+      <p class="small" id="bp-hoy" style="margin:0"></p></div>
     <button class="btn full" type="submit">Guardar bloques</button></form>`);
   const L = $('#bp-l'), tot = () => { const t = [...L.querySelectorAll('[data-k="sem"]')].reduce((a, i) => a + (+i.value || 0), 0); $('#bp-tot').innerHTML = `Total: <b>${t} semanas</b>${srv.duracion_semanas && t !== srv.duracion_semanas ? ` (el servicio dice ${srv.duracion_semanas}; al guardar se actualiza)` : ''}`; };
-  tot(); L.addEventListener('input', tot);
-  L.addEventListener('click', ev => { const q = ev.target.closest('[data-quitar]'); if (q) { q.closest('[data-bp]').remove(); tot(); } });
-  $('#bp-add').addEventListener('click', () => { L.insertAdjacentHTML('beforeend', filaBloqueProc({ nombre: `Bloque ${L.children.length + 1}`, sem: SEM_CICLO })); tot(); });
+  const filasF = () => [...L.querySelectorAll('[data-bp]')].map((r, i) => ({ nombre: r.querySelector('[data-k="nombre"]').value.trim() || `Bloque ${i + 1}`, sem: Math.max(1, +r.querySelector('[data-k="sem"]').value || SEM_CICLO) }));
+  const hoyEn = () => { const ini = $('#bp-ini').value; if (!ini) return null; const sem = Math.floor((fecha(hoyISO()) - fecha(ini)) / 864e5 / 7) + 1; let w = 1; for (const [i, b] of filasF().entries()) { if (sem >= w && sem < w + b.sem) return { i, s: sem - w + 1, sem }; w += b.sem; } return { sem, fuera: sem >= w, antes: sem < 1 }; };
+  const pinta = () => { const fs = filasF(), cb = $('#bp-cb'), prev = cb.value, h = hoyEn(); cb.innerHTML = fs.map((b, i) => `<option value="${i}">${esc(b.nombre)} · ${b.sem} sem</option>`).join(''); cb.value = prev !== '' && +prev < fs.length ? prev : String(h && h.i != null ? h.i : 0); if (!$('#bp-cs').value && h?.s) $('#bp-cs').value = h.s;
+    $('#bp-hoy').innerHTML = !h ? 'Sin fecha de inicio.' : h.antes ? 'Con este inicio, el proceso aún no ha empezado.' : h.fuera ? `Con este inicio, hoy ya habría terminado (semana ${h.sem}). Añade semanas o una extensión.` : `Con este inicio, hoy va por <b>${esc(fs[h.i].nombre)} · semana ${h.s} de ${fs[h.i].sem}</b> (semana ${h.sem} del proceso).`; };
+  tot(); pinta(); L.addEventListener('input', () => { tot(); pinta(); }); $('#bp-ini').addEventListener('input', pinta);
+  $('#bp-calc').addEventListener('click', () => { const fs = filasF(), i = +$('#bp-cb').value, sm = Math.max(1, Math.min(fs[i].sem, +$('#bp-cs').value || 1)); const w = fs.slice(0, i).reduce((t, b) => t + b.sem, 0) + sm; $('#bp-cs').value = sm; $('#bp-ini').value = sumaDias(lunesDe(hoyISO()), -(w - 1) * 7); pinta(); });
+  L.addEventListener('click', ev => { const q = ev.target.closest('[data-quitar]'); if (q) { q.closest('[data-bp]').remove(); tot(); pinta(); } });
+  $('#bp-add').addEventListener('click', () => { L.insertAdjacentHTML('beforeend', filaBloqueProc({ nombre: `Bloque ${L.children.length + 1}`, sem: SEM_CICLO })); tot(); pinta(); });
   $('#f-bp').addEventListener('submit', async e => {
     e.preventDefault();
     const filas = [...L.querySelectorAll('[data-bp]')].map(r => ({ nombre: r.querySelector('[data-k="nombre"]').value.trim(), sem: Math.max(1, +r.querySelector('[data-k="sem"]').value || SEM_CICLO), obj: r.querySelector('[data-k="obj"]').value.trim() }));
@@ -3065,9 +3116,44 @@ function formBloquesProceso() {
     let r = todo.length ? await sb.from('hoja_ruta').insert(todo) : { error: null };
     if (r.error && /es_bloque/.test(r.error.message || '')) return fallo(r.error, 'Falta ejecutar el Bloque 8 en Supabase.');
     if (r.error) return fallo(r.error);
-    const total = w - 1;
-    if (srv.id && total && total !== srv.duracion_semanas) await sb.from('servicios').update({ duracion_semanas: total }).eq('id', srv.id);
-    cerrarSheet(); toast('Bloques guardados'); await cargarCoach(); if (f.id === S.user.id) await cargarAlumno(S.user.id); await abrirFicha(f.id); await abrirSub('entreno');
+    const total = w - 1, cambio = {}, ini = $('#bp-ini').value, sub = S.fichaSub;
+    if (total && total !== srv.duracion_semanas) cambio.duracion_semanas = total;
+    if (ini && ini !== srv.inicio) cambio.inicio = ini;
+    if (srv.id && Object.keys(cambio).length) { const r2 = await sb.from('servicios').update(cambio).eq('id', srv.id); if (r2.error) return fallo(r2.error); if (cambio.inicio && f.previas) await fijarPrevias(f.id, ini, f.previas); }
+    else if (!srv.id && ini) toast('Primero crea su servicio (Plan → Editar) para guardar la fecha de inicio');
+    cerrarSheet(); toast('Bloques guardados'); await cargarCoach(); if (f.id === S.user.id) await cargarAlumno(S.user.id); await abrirFicha(f.id); if (sub) await abrirSub(sub);
+  });
+}
+
+/* ---------- Extensión del proceso: sigue con sus bloques e historial, sin empezar de cero ---------- */
+function formExtension() {
+  const f = S.ficha, srv = f.srv; if (!srv?.id || !srv.inicio) return toast('Primero pon su servicio con fecha de inicio (Plan → Editar)');
+  const P = proceso(srv), total = P?.total || srv.duracion_semanas || 0, desde = sumaDias(srv.inicio, total * 7), n = extensionesDe(srv).length + 1;
+  abrirSheet(`<form class="stack" id="f-ext"><h2>Añadir extensión</h2>
+    <p class="small muted">Su proceso actual tiene ${total} semanas y termina el ${esc(fLarga(sumaDias(desde, -1)))}. La extensión empieza justo después y se añade como nuevos bloques al final, así que conserva todo su historial.</p>
+    <label class="f">Nombre<input type="text" id="ex-n" value="Extensión${n > 1 ? ' ' + n : ''}" required></label>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Semanas<input type="number" id="ex-s" min="1" max="104" value="12" required></label><label class="f">Bloques de<input type="number" id="ex-b" min="1" max="52" value="${SEM_CICLO}"><span class="small muted">semanas cada uno</span></label></div>
+    <label class="f">Objetivo de la extensión (opcional)<textarea id="ex-o" rows="2"></textarea></label>
+    <p class="small" id="ex-res"></p>
+    <button class="btn full" type="submit">Guardar extensión</button></form>`);
+  const res = () => { const s2 = Math.max(1, +$('#ex-s').value || 1); $('#ex-res').innerHTML = `Desde el <b>${esc(fCorta(desde))}</b> hasta el <b>${esc(fCorta(sumaDias(desde, s2 * 7 - 1)))}</b> · proceso total ${total + s2} semanas.`; };
+  res(); $('#ex-s').addEventListener('input', res);
+  $('#f-ext').addEventListener('submit', async e => {
+    e.preventDefault(); const bt = e.target.querySelector('[type=submit]'); if (bt.disabled) return; bt.disabled = true;
+    const nombre = $('#ex-n').value.trim() || 'Extensión', sem = Math.max(1, +$('#ex-s').value || 12), tb = Math.max(1, +$('#ex-b').value || SEM_CICLO), obj = $('#ex-o').value.trim();
+    const fallar = (err, m) => { bt.disabled = false; fallo(err, m); };
+    const ext = [...extensionesDe(srv), { nombre, semanas: sem, desde }];
+    let { error } = await sb.from('servicios').update({ duracion_semanas: total + sem, extensiones: ext }).eq('id', srv.id);
+    if (error) return fallar(error, /extensiones/.test(error.message || '') ? 'Falta ejecutar el Bloque 50 en Supabase.' : undefined);
+    // Bloques: si aún no tenía, se crean los del proceso original (como los ve ahora) y luego los de la extensión
+    const bl = bloquesDe(f.ruta), filas = [];
+    let orden = Math.max(1, ...(f.ruta || []).map(r => r.orden || 0));
+    if (!bl.length) P.ciclos.forEach(c => filas.push({ alumno_id: f.id, orden: ++orden, nombre: nomCiclo(c), semana_inicio: c.s0, semana_fin: c.s0 + c.sem - 1, objetivos: [], es_bloque: true }));
+    const nb = Math.ceil(sem / tb);
+    for (let k = 0; k < nb; k++) { const s0 = total + 1 + k * tb, s1 = Math.min(total + sem, s0 + tb - 1); filas.push({ alumno_id: f.id, orden: ++orden, nombre: nb > 1 ? `${nombre} · Bloque ${k + 1}` : nombre, semana_inicio: s0, semana_fin: s1, objetivos: obj ? [obj] : [], es_bloque: true }); }
+    ({ error } = await sb.from('hoja_ruta').insert(filas));
+    if (error) return fallar(error);
+    cerrarSheet(); toast('Extensión añadida'); const sub = S.fichaSub; await cargarCoach(); await abrirFicha(f.id); if (sub) await abrirSub(sub);
   });
 }
 
@@ -4367,6 +4453,7 @@ document.addEventListener('click', async e => {
     case 'confirmarCancelPres': await confirmarCancelPres(+b.dataset.id); break;
     case 'configCalendly': formCalendly(); break;
     case 'editarBloques': formBloquesProceso(); break;
+    case 'extension': formExtension(); break;
     case 'nuevaPres': formPres(); break;
     case 'editarPres': formPres(+b.dataset.id); break;
     case 'presVerSesion': cerrarSheet(); await verSesion(+b.dataset.id); break;
