@@ -2347,7 +2347,8 @@ function vFicha() {
   <section class="section"><div class="section-head"><h2>Composición corporal</h2><div class="row" style="gap:6px"><button class="btn sm ghost" data-act="objetivoComp">🎯 Objetivo</button><button class="btn sm ghost" data-act="nuevaMedicion">＋ Medición</button></div></div>
     ${vGraficaComp(f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), a, f.medObj) || '<div class="card empty">Sin mediciones todavía.</div>'}
     ${vObjetivoComp(f.medObj, f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), true)}
-    <button class="btn ghost full" data-act="fichaSub" data-s="composicion">Ver todas las medidas y tests ›</button></section>
+    <button class="btn ghost full" data-act="fichaSub" data-s="composicion">Ver todas las medidas ›</button></section>
+  ${vTestsFicha(f)}
   ${vBloqueActual(f, a)}
   ${vRevisionesFicha(a)}
   ${vPresenciales(srv, f.pres, true)}
