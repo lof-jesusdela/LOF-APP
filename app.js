@@ -88,6 +88,7 @@ function fallo(err, msg) {
 
 const IC = {
   hoy: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+  inicio: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   entreno: '<path d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12"/>',
   nutri: '<path d="M12 21c-4 0-7-3-7-7 0-5 4-8 7-8s7 3 7 8c0 4-3 7-7 7z"/><path d="M12 6c0-2 1-3 3-3"/>',
   progreso: '<path d="M4 19h16M6 15l4-4 3 3 5-6"/>',
@@ -107,7 +108,7 @@ const CHK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.
 
 /* ---------- Estado ---------- */
 const S = {
-  user: null, perfil: null, modo: 'alumno', tab: 'hoy', ctab: 'alumnos',
+  user: null, perfil: null, modo: 'alumno', tab: 'hoy', ctab: 'inicio',
   d: null,            // datos del alumno que se muestra (yo)
   dia: null,          // día de entreno abierto
   sesion: null,       // { id, regs: { 'esId-serie': regId } }
@@ -379,7 +380,7 @@ function vLateral(actual) {
   if (!S.c?.perfiles) return '';
   const orden = { bad: 0, warn: 1, ok: 2 };
   const als = S.c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach').map(a => ({ a, e: estadoAlumno(a) })).sort((x, y) => orden[x.e.nivel] - orden[y.e.nivel] || (x.a.nombre || '').localeCompare(y.a.nombre || ''));
-  const nav = [['alumnos', 'Alumnos'], ['plantillas', 'Plantillas'], ['ejercicios', 'Ejercicios'], ['pagos', 'Pagos']];
+  const nav = [['inicio', 'Tu día'], ['alumnos', 'Alumnos'], ['plantillas', 'Plantillas'], ['ejercicios', 'Ejercicios'], ['pagos', 'Economía']];
   return `<aside class="lateral" aria-label="Navegación del coach">
     <nav class="lat-nav">${nav.map(([k, l]) => `<button data-act="ctab" data-t="${k}" ${actual === k && !S.ficha && !S.reporte && !S.editor && !S.obj ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span></button>`).join('')}<button data-act="abrirReporte" ${S.reporte && !S.reporte.alumno ? 'aria-current="page"' : ''}>${svg('checkin')}<span>Reporting semanal</span></button></nav>
     <div class="eyebrow" style="margin:18px 12px 6px">Alumnos · ${als.length}</div>
@@ -396,10 +397,10 @@ function render() {
   const coach = S.modo === 'coach';
   if (S.tab === 'tests') S.tab = 'progreso';   // los tests viven ahora dentro de Progreso
   if (S.tab === 'checkin') S.tab = 'hoy';       // el check-in vive ahora al final de Hoy
-  const tabs = coach ? [['alumnos', 'Alumnos'], ['plantillas', 'Plantillas'], ['ejercicios', 'Ejercicios'], ['pagos', 'Pagos']] : tabsAlumno();
+  const tabs = coach ? [['inicio', 'Tu día'], ['alumnos', 'Alumnos'], ['plantillas', 'Plantillas'], ['ejercicios', 'Ejercicios'], ['pagos', 'Economía']] : tabsAlumno();
   const actual = coach ? S.ctab : S.tab;
   const esCoach = S.perfil.rol === 'coach';
-  const vistas = { hoy: vHoy, entreno: vEntreno, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, tests: vProgreso, coach: Acomp.vTuCoach, habitos: Habitos.vista, alumnos: vAlumnos, pagos: vPagos, ejercicios: vEjercicios, plantillas: vPlantillas };
+  const vistas = { hoy: vHoy, entreno: vEntreno, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, tests: vProgreso, coach: Acomp.vTuCoach, inicio: Negocio.vInicio, habitos: Habitos.vista, alumnos: vAlumnos, pagos: () => Negocio.vEconomia() + vPagos(), ejercicios: vEjercicios, plantillas: vPlantillas };
   $('#app').innerHTML = `<header class="top">
       <button type="button" class="badge" data-act="inicio" aria-label="Ir al inicio" style="background:none;border:0;padding:0;cursor:pointer;text-align:left;color:inherit;font:inherit"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : esc(S.perfil.metodologia || 'Tu proceso')}</strong></div></button>
       <div class="row" style="gap:8px">${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
@@ -1706,6 +1707,7 @@ async function cargarCoach() {
   await Casos.cargarCoach();
   { const r = await sb.from('cambios_peso').select('*').is('visto_at', null).order('created_at', { ascending: false }); S.c.cambiosPeso = r.data || []; }
   await Acomp.cargarCoach();
+  await Negocio.cargar();
   S.c.servicios.forEach(x => x._bloques = bloquesDe((rut.data || []).filter(r => r.alumno_id === x.alumno_id)));
   const [fa, ap] = await Promise.all([sb.from('facturas').select('*').order('numero', { ascending: false }), sb.from('ajustes_privados').select('*')]);
   await cargarPlantillas();
@@ -2374,7 +2376,7 @@ function vBarraYo() {
 }
 async function editarYo() {
   const id = S.user.id, tab = S.tab, sub = { nutri: 'alimentacion', habitos: 'habitos', progreso: 'composicion' }[tab];
-  S.modo = 'coach'; S.ctab = 'alumnos'; if (!S.c) await cargarCoach();
+  S.modo = 'coach'; S.ctab = 'inicio'; if (!S.c) await cargarCoach();
   if (!S.c.perfiles.some(x => x.id === id)) { S.modo = 'alumno'; render(); return toast('No encuentro tu perfil: cierra sesión y vuelve a entrar'); }
   if (tab === 'entreno') { await abrirFicha(id); return abrirEditor(id); }
   await abrirFicha(id); if (sub) await abrirSub(sub);
@@ -4986,7 +4988,7 @@ document.addEventListener('click', async e => {
     case 'bvVer': Bienvenida.abrir(0); break;
     case 'alResolver': { const enSheet = !!b.closest('#sheet'), on = b.dataset.on === '1', nota = on ? prompt('¿Cómo lo has atendido? (opcional, ej. «hablado por WhatsApp»)', 'Hablado por WhatsApp') : null; if (on && nota === null) break; await Alertas.resolver(b.dataset.id, b.dataset.m, on, nota); toast(b.dataset.on === '1' ? 'Marcado como solventado' : 'Vuelve a estar pendiente'); render(); if (enSheet) verAlertas(b.dataset.id); break; }
     case 'alFiltro': S.alF.k = S.alF.k === b.dataset.k ? '' : b.dataset.k; if (S.obj) await salirComo(); S.ficha = null; S.reporte = null; S.factura = null; S.editor = null; S.ctab = 'alumnos'; render(); if (S.alF.k) $('#al-lista')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
-    case 'inicio': if (S.modo === 'coach') { if (S.obj) await salirComo(); Object.assign(S, { reporte: null, factura: null, ficha: null, editor: null, verSes: null, verPlan: null, valEd: null, fichaSub: null, ctab: 'alumnos' }); } else if (!S.dia) S.tab = 'hoy'; cerrarSheet(); render(); window.scrollTo(0, 0); break;
+    case 'inicio': if (S.modo === 'coach') { if (S.obj) await salirComo(); Object.assign(S, { reporte: null, factura: null, ficha: null, editor: null, verSes: null, verPlan: null, valEd: null, fichaSub: null, ctab: 'inicio' }); } else if (!S.dia) S.tab = 'hoy'; cerrarSheet(); render(); window.scrollTo(0, 0); break;
     case 'cerrarFicha': S.ficha = null; S.verSes = null; S.verPlan = null; S.valEd = null; render(); break;
     case 'cerrarVerSesion': S.verSes = null; render(); window.scrollTo(0, 0); break;
     case 'verPlan': verPlan(+b.dataset.p, +b.dataset.d); break;
@@ -5054,6 +5056,19 @@ document.addEventListener('click', async e => {
     case 'vistaGuardar': await conmutarGuardado(); break;
     case 'cambiarClave': cerrarSheet(); vistaNuevaClave(); break;
     case 'cerrarSheet': cerrarSheet(); break;
+    case 'agHecha': await Negocio.hecha(b.dataset.k); if (!$('#sheet').hidden && $('#f-ci')) Negocio.formCierre(); break;
+    case 'agEstrella': await Negocio.estrella(b.dataset.k); break;
+    case 'agItem': Negocio.formItem(b.dataset.k); break;
+    case 'agTarea': Negocio.formTarea(); break;
+    case 'agAnt': await Negocio.decidirAnterior(+b.dataset.id, b.dataset.q); break;
+    case 'agCapacidad': Negocio.formCapacidad(); break;
+    case 'agCierre': Negocio.formCierre(); break;
+    case 'mjNueva': await Negocio.nuevaMejora(); break;
+    case 'mjEstado': await Negocio.estadoMejora(+b.dataset.id, b.dataset.v); break;
+    case 'ecoSaldo': Negocio.formSaldo(); break;
+    case 'ecoMov': Negocio.formMov(b.dataset.t, b.dataset.id ? +b.dataset.id : null); break;
+    case 'ecoReserva': Negocio.formReserva(b.dataset.id ? +b.dataset.id : null); break;
+    case 'ecoRevision': await Negocio.revisionHecha(); break;
     case 'guiaPaso': Guia.mover(+b.dataset.d); break;
     case 'guiaModo': Guia.cambiar(); break;
     case 'clipDia': Clip.copiarDia(+b.dataset.id); break;
