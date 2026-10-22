@@ -105,6 +105,7 @@ async function cargarPerfil() {
   avisoCheckin();
   if (S.modo === 'coach') await cargarCoach();
   render();
+  if (S.modo === 'alumno' && Bienvenida.reciente() && !Bienvenida.vista() && $('#sheet').hidden) Bienvenida.abrir(0);
 }
 
 function vistaLogin(msg = '') {
@@ -170,7 +171,7 @@ function vistaConsentimiento() {
   $('#c-btn').addEventListener('click', async () => {
     const { error } = await sb.from('perfiles').update({ consentimiento_at: new Date().toISOString() }).eq('id', S.user.id);
     if (error) return fallo(error);
-    await cargarPerfil();
+    await cargarPerfil(); Bienvenida.abrir(0);
   });
 }
 
@@ -391,11 +392,20 @@ function semana(iniISO) {
 }
 /* Alimentación por ingestas: comidas al día × 7. ≥85 % bien, 60–85 % regular, <60 % mal */
 const comidasDia = srv => srv?.comidas_dia || 3;
+/* Color de los entrenos de una semana solo cuando ya se puede juzgar: verde si cumple, neutro si aún hay
+   días para llegar o el proceso empezó esa semana, naranja si ya no da tiempo */
+function juzgaEntrenos(hechos, dpw, lunes, srv) {
+  if (!dpw) return '';
+  if (hechos >= dpw) return 'ok';
+  if (srv?.inicio && srv.inicio > lunes) return '';
+  const quedan = Math.max(0, Math.floor((fecha(sumaDias(lunes, 6)) - fecha(hoyISO())) / 864e5) + 1);
+  return hechos + quedan >= dpw ? '' : 'warn';
+}
 const evalNutri = pct => pct == null ? null : pct >= 85 ? ['ok', 'Bien'] : pct >= 60 ? ['warn', 'Regular'] : ['bad', 'Mal'];
 function ingestasSemana(reg, ini, srv) {
   const fin = sumaDias(ini, 6), n = comidasDia(srv), l = reg.filter(r => r.fecha >= ini && r.fecha <= fin && r.ingestas != null);
   const hechas = l.reduce((t, r) => t + Math.min(n, r.ingestas), 0), total = n * 7;
-  return { n, total, hechas, dias: l.length, pct: l.length ? Math.round(hechas / total * 100) : null, porDia: Object.fromEntries(l.map(r => [r.fecha, r.ingestas])) };
+  return { n, total, hechas, dias: l.length, pct: l.length ? Math.round(hechas / total * 100) : null, pctReg: l.length ? Math.round(hechas / (l.length * n) * 100) : null, porDia: Object.fromEntries(l.map(r => [r.fecha, r.ingestas])) };
 }
 /* Recordatorio del check-in: sábado por la tarde y domingo, si aún no se ha enviado */
 function tocaCheckin() {
@@ -412,12 +422,12 @@ async function avisoCheckin() {
    respecto a lo que podría llevar hasta hoy: verde ≥85 %, naranja 60–85 %, rojo <60 %. */
 function vBarraIngestas(diario, srv) {
   const lunes = lunesDe(hoyISO()), I = ingestasSemana(diario, lunes, srv), hoy = hoyISO();
-  const dias = Math.floor((fecha(hoy) - fecha(lunes)) / 864e5) + (I.porDia[hoy] != null ? 1 : 0), posibles = Math.max(1, dias) * I.n;
-  const ritmo = dias ? Math.round(I.hechas / posibles * 100) : null, ev = evalNutri(ritmo), ancho = Math.round(I.hechas / I.total * 100);
+  const pasados = Math.floor((fecha(hoy) - fecha(lunes)) / 864e5) + (I.porDia[hoy] != null ? 1 : 0), dias = I.dias, posibles = Math.max(1, dias) * I.n, sinReg = Math.max(0, pasados - Object.keys(I.porDia).filter(f => f < hoy).length - (I.porDia[hoy] != null ? 1 : 0));
+  const ritmo = dias ? Math.round(I.hechas / posibles * 100) : null, ev = dias >= 2 ? evalNutri(ritmo) : null, ancho = Math.round(I.hechas / I.total * 100);
   const col = { ok: 'var(--ok)', warn: 'var(--warn)', bad: 'var(--bad)' }[ev?.[0]] || 'var(--line)';
   return `<div class="stack" style="gap:8px"><div class="row"><span class="grow small">Alimentación esta semana</span>${ev ? `<span class="pill ${ev[0]}">${ev[1]}</span>` : ''}<b class="num" style="font-family:var(--display);font-size:20px">${I.hechas}/${I.total}</b></div>
     <div class="track gordo ing"><i style="width:${ancho}%;background:${col}"></i></div>
-    <div class="small muted">${dias ? `Llevas ${I.hechas} de ${posibles} comidas posibles hasta hoy (${ritmo} %). Objetivo: 85 % o más de las ${I.total} de la semana.` : `Cada comida saludable de tu plan suma. Objetivo: 85 % o más de las ${I.total} de la semana.`}</div></div>`;
+    <div class="small muted">${dias ? `En los días que has registrado llevas ${I.hechas} de ${posibles} comidas (${ritmo} %). Objetivo: 85 % o más.` : `Cada comida saludable de tu plan suma. Objetivo: 85 % o más de las ${I.total} de la semana.`}</div>${sinReg ? `<div class="small" style="color:var(--muted)">⚪ ${sinReg} ${sinReg === 1 ? 'día' : 'días'} sin registrar: no cuentan como fallo, rellénalos cuando puedas.</div>` : ''}</div>`;
 }
 function vProcesoGlobal(srv) {
   const P = proceso(srv); if (!P) return '';
@@ -442,6 +452,27 @@ function proximoDia() {
   const p = S.d.programa; if (!p) return null;
   for (let i = 1; i <= 7; i++) { const d = new Date(); d.setDate(d.getDate() + i); const n = norm(DIAS[d.getDay()]); const x = p.dias.find(z => esDia(z, n)); if (x) return x; }
   return null;
+}
+/* Estado de una sesión: completa, a medias (series hechas / total) u omitida. Las antiguas, sin estado, cuentan como completas */
+const esCompleta = x => !x?.estado || x.estado === 'completa';
+const pillSesion = x => !x ? '' : x.estado === 'parcial' ? `<span class="pill warn">A medias${x.series_total ? ` ${x.series_hechas || 0}/${x.series_total}` : ''}</span>` : x.estado === 'omitida' ? '<span class="pill">Omitida</span>' : '<span class="pill ok">Completa</span>';
+function conteoSeries(dia, z) {
+  const ejs = dia.bloques_sesion.filter(b => b.tipo === 'fuerza').flatMap(b => b.ejercicios_sesion), om = new Set((z.omitidos || []).map(o => o.es));
+  const total = ejs.reduce((t, e) => t + (+e.series || 0), 0);
+  const hechas = ejs.reduce((t, e) => t + (om.has(e.id) ? (+e.series || 0) : Math.min(+e.series || 0, Object.keys(z.regs || {}).filter(k => k.startsWith(e.id + '-')).length)), 0);
+  return { total, hechas };
+}
+/* Sesión a medias de las últimas 48 h para retomarla */
+const sesionARetomar = () => S.d.sesiones.filter(x => x.estado === 'parcial' && x.fecha >= sumaDias(hoyISO(), -2)).sort((a, b) => b.fecha.localeCompare(a.fecha) || (b.id || 0) - (a.id || 0))[0] || null;
+/* Programas por sesiones («Sesión 1, 2, 3»): ningún día lleva nombre de día de la semana */
+const esFlex = p => !!p?.dias?.length && !p.dias.some(d => DIAS.some(n => esDia(d, norm(n))));
+function semanaFlex(p) {
+  const l = lunesDe(hoyISO()), dias = p.dias.filter(d => d.bloques_sesion?.length).sort((a, b) => (a.numero || 0) - (b.numero || 0));
+  const hechas = new Set(S.d.sesiones.filter(x => x.fecha >= l && esCompleta(x)).map(x => x.dia_id));
+  const total = Math.min(p.dias_semana || dias.length, dias.length) || dias.length, n = dias.filter(d => hechas.has(d.id)).length;
+  const hoyD = S.d.sesiones.filter(x => x.fecha === hoyISO()).map(x => dias.find(d => d.id === x.dia_id)).find(Boolean);
+  const sig = hoyD && !hechas.has(hoyD.id) ? hoyD : dias.find(d => !hechas.has(d.id)) || null;
+  return { dias, hechas, total, n, sig, hoyD, completa: n >= total };
 }
 /* Hecha hoy o, en sesiones de varios días («Miércoles / Jueves»), ya hecha esta semana */
 function hechoHoy(diaId) { const l = lunesDe(hoyISO()); return S.d.sesiones.some(s => s.dia_id === diaId && (s.fecha === hoyISO() || s.fecha >= l)); }
@@ -618,6 +649,45 @@ function zonaFC(n, fut, mx) {
   abrirSheet(`<div class="stack"><span class="eyebrow">Zona ${n}</span><h2>${esc(z.nom)}</h2><div class="pill num" style="align-self:flex-start">${r[0]}–${r[1]} ppm · ${Math.round(z.desde * 100)}–${Math.round(z.hasta * 100)} % de la FC máxima</div><p class="small pre">${esc(z.desc)}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`);
 }
 const FRASE_DEF = 'Estar aquí y dar el paso ya es tu mayor logro. Ahora vamos juntos a hacerlo realidad.';
+/* ---------- Primer acceso guiado: 3 pantallas y tareas iniciales que se tachan solas ---------- */
+const Bienvenida = {
+  clave: () => 'lof-bienvenida-' + (S.user?.id || ''),
+  vista() { try { return !!localStorage.getItem(this.clave()); } catch (e) { return true; } },
+  reciente() { const c = S.perfil?.consentimiento_at; return !!c && c.slice(0, 10) >= sumaDias(hoyISO(), -28); },
+  pantallas() {
+    const s = S.d?.servicio || {}, P = proceso(s), p = S.d?.programaBase || S.d?.programa, dpw = p?.dias_semana || p?.dias?.length || 0, fF = iso => fecha(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' });
+    const mods = [(s.modulo_entreno ?? true) && 'entrenamiento personalizado', s.modulo_nutricion && 'plan de alimentación', (s.modulo_presencial || s.sesiones_incluidas) && `${s.sesiones_incluidas ? s.sesiones_incluidas + ' ' : ''}sesiones presenciales con Jesús`, s.modulo_futbol && 'seguimiento de futbolista (Élite Player)', 'hábitos'].filter(Boolean);
+    const fin = finProceso(P);
+    return [
+      ['🎯', 'Lo que has contratado', `<p><b>${esc(s.producto || 'Tu proceso de acompañamiento')}</b>${s.duracion_semanas ? ` · ${s.duracion_semanas} semanas` : ''}.</p>${s.inicio ? `<p class="small">Empieza el ${esc(fF(s.inicio))}${fin ? ` y termina el ${esc(fF(fin))}` : ''}${P && !P.antes && !P.fuera && !P.sinFin ? `. Ahora estás en la semana ${P.semana} de ${P.total}` : ''}.</p>` : ''}<p class="small">Incluye: ${esc(mods.join(', '))}.</p>${objetivoDe(S.d?.ruta) ? `<div class="aprox small"><b>Tu objetivo:</b> ${esc(objetivoDe(S.d.ruta))}</div>` : ''}`],
+      ['📅', 'Cómo funciona tu semana', `<ul class="small stack" style="gap:8px;padding-left:18px;margin:0">${dpw ? `<li><b>${dpw} ${dpw === 1 ? 'entreno' : 'entrenos'} a la semana.</b> En <b>Hoy</b> verás siempre el siguiente; el día lo eliges tú.</li>` : '<li>Jesús está preparando tu programa: aparecerá en <b>Hoy</b> y en <b>Entreno</b>.</li>'}<li><b>Cada día</b>, en Hoy: tus pasos${s.modulo_nutricion ? ' y las comidas de tu plan que has cumplido' : ''}. Menos de un minuto.</li><li><b>El fin de semana</b>, tu check-in: cómo ha ido la semana.</li><li><b>Una vez al mes</b>, revisión con Jesús: composición corporal y ajustes.</li></ul>`],
+      ['🤝', 'Quién te acompaña', `<p><b>Jesús</b> revisa tus entrenos, tus registros y tus check-ins, y ajusta tu plan.</p><p class="small">Para cualquier duda, escríbele desde la pestaña <b>Tu coach</b> (WhatsApp).${S.respuesta ? ` Te responde ${esc(S.respuesta)}.` : ''}</p><p class="small muted">Si un día no puedes registrar algo, no pasa nada: rellénalo cuando puedas.</p>`]
+    ];
+  },
+  abrir(i = 0) {
+    const L = this.pantallas(), [ico, t, cuerpo] = L[i], ult = i === L.length - 1;
+    abrirSheet(`<div class="stack" id="bv"><div class="row" style="gap:6px">${L.map((_, k) => `<span style="flex:1;height:4px;border-radius:2px;background:${k <= i ? 'var(--blue)' : 'var(--line)'}"></span>`).join('')}</div>
+      <span class="eyebrow">Bienvenida · ${i + 1} de ${L.length}</span><h2>${ico} ${t}</h2><div class="stack" style="gap:8px">${cuerpo}</div>
+      <div class="row" style="gap:8px">${i ? `<button class="btn ghost" data-act="bvIr" data-i="${i - 1}">Atrás</button>` : ''}<button class="btn grow" data-act="${ult ? 'bvFin' : 'bvIr'}" data-i="${i + 1}">${ult ? 'Empezar' : 'Siguiente'}</button></div></div>`);
+  },
+  fin() { try { localStorage.setItem(this.clave(), '1'); } catch (e) { } cerrarSheet(); render(); },
+  tareas() {
+    const s = S.d?.servicio || {}, D = S.d || {};
+    return [
+      ['Lee tu bienvenida', this.vista(), 'bvVer'],
+      [(s.modulo_entreno ?? true) && 'Haz tu primer entreno', (D.sesiones || []).some(x => !x.previa), 'tab:entreno'],
+      ['Registra tus pasos de hoy', (D.diario || []).some(r => r.pasos != null), null],
+      [!s.modulo_presencial && 'Añade tus medidas', (D.mediciones || []).length > 0, 'misMedidas'],
+      ['Rellena tu primer check-in', (D.checkins || []).length > 0, 'tab:checkin']
+    ].filter(x => x[0]);
+  },
+  tarjeta() {
+    if (!this.reciente() || S.vista || S.prueba) return '';
+    const l = this.tareas(), h = l.filter(x => x[1]).length; if (h === l.length) return '';
+    return `<section class="section"><div class="card stack"><div class="row"><b class="grow">Tus primeros pasos</b><span class="small muted">${h} de ${l.length}</span></div><div class="track"><i style="width:${Math.round(h / l.length * 100)}%"></i></div>
+      ${l.map(([t, ok, act]) => `<div class="row small" style="gap:10px">${ok ? '<span style="color:var(--ok);font-weight:700">✓</span>' : '<span class="muted">○</span>'}<span class="grow" style="${ok ? 'text-decoration:line-through;color:var(--muted)' : ''}">${esc(t)}</span>${!ok && act ? (act.startsWith('tab:') ? `<button class="linkbtn small" data-act="tab" data-t="${act.slice(4)}">Ir ›</button>` : `<button class="linkbtn small" data-act="${act}">Ir ›</button>`) : ''}</div>`).join('')}</div></section>`;
+  }
+};
 function vHoy() {
   const s = S.d.servicio || {}, p = S.d.programa, hoy = hoyISO();
   const d = diaDeHoy(), prox = proximoDia();
@@ -625,8 +695,15 @@ function vHoy() {
   const ini = sumaDias(hoy, -6), w = semana(ini);
   let toca = '';
   if (!p) toca = '<div class="empty">Jesús está preparando tu programa. Aparecerá aquí en cuanto esté listo.</div>';
-  else if (d && !(d.tipo_dia === 'descanso' && !d.bloques_sesion.length)) toca = `<div class="line"><div class="ico">${svg('entreno')}</div><div class="grow"><h3>${esc(nomDia(d))}${d.foco && d.foco !== d.titulo ? ' · ' + esc(d.foco) : ''}</h3><div class="small muted">${d.bloques_sesion.length} bloques · ${d.bloques_sesion.reduce((t, b) => t + b.ejercicios_sesion.length, 0)} ejercicios</div></div>${hechoHoy(d.id) ? '<span class="pill ok">Hecho</span>' : `<button class="btn sm" data-act="abrirDia" data-id="${d.id}">Empezar</button>`}</div>`;
+  else if (esFlex(p)) {
+    const F = semanaFlex(p), x = F.sig, sub = `<div class="small muted">${F.n} de ${F.total} ${F.total === 1 ? 'sesión hecha' : 'sesiones hechas'} esta semana</div>`;
+    toca = F.completa ? `<div class="line"><div class="ico">${svg('entreno')}</div><div class="grow"><h3>Semana completada ✓</h3>${sub}</div><button class="btn sm ghost" data-act="tab" data-t="entreno">Hacer otra</button></div>`
+      : `<div class="line"><div class="ico">${svg('entreno')}</div><div class="grow"><h3>${F.hoyD && x === F.hoyD ? 'Sigue con ' : 'Tu siguiente entreno: '}${esc(nomDia(x))}${x.foco && x.foco !== x.titulo ? ' · ' + esc(x.foco) : ''}</h3>${sub}<div class="track" style="margin-top:6px"><i style="width:${Math.round(F.n / F.total * 100)}%"></i></div></div><div class="stack" style="gap:6px;align-items:flex-end"><button class="btn sm" data-act="abrirDia" data-id="${x.id}">Empezar</button>${F.dias.length > 1 ? '<button class="linkbtn small" data-act="tab" data-t="entreno">Hacer otra</button>' : ''}</div></div>`;
+  }
+  else if (d && !(d.tipo_dia === 'descanso' && !d.bloques_sesion.length)) toca = `<div class="line"><div class="ico">${svg('entreno')}</div><div class="grow"><h3>${esc(nomDia(d))}${d.foco && d.foco !== d.titulo ? ' · ' + esc(d.foco) : ''}</h3><div class="small muted">${d.bloques_sesion.length} bloques · ${d.bloques_sesion.reduce((t, b) => t + b.ejercicios_sesion.length, 0)} ejercicios</div></div>${(() => { const l = lunesDe(hoyISO()), xs = S.d.sesiones.filter(z => z.dia_id === d.id && (z.fecha === hoyISO() || z.fecha >= l)), x = xs.find(esCompleta) || xs[xs.length - 1]; return x && esCompleta(x) ? pillSesion(x) : x ? `<div class="stack" style="gap:6px;align-items:flex-end">${pillSesion(x)}<button class="btn sm" data-act="retomar" data-id="${x.id}">Continuar</button></div>` : `<button class="btn sm" data-act="abrirDia" data-id="${d.id}">Empezar</button>`; })()}</div>`;
   else toca = `<div class="line"><div class="ico">${svg('cal')}</div><div class="grow"><h3>Hoy toca descanso</h3><div class="small muted">${prox ? `Próximo entreno: ${esc(nomDia(prox))}${prox.titulo ? ' (' + esc(prox.nombre.toLowerCase()) + ')' : ''}` : 'Aprovecha para moverte y cumplir tus pasos.'}</div></div></div>`;
+  { const rt = sesionARetomar(), dr = rt && [S.d.programa, S.d.programaBase, ...(S.d.contextos || [])].filter(Boolean).flatMap(q => q.dias || []).find(z => z.id === rt.dia_id);
+    if (rt && dr && !toca.includes(`data-id="${rt.id}"`)) toca = `<div class="line aprox" style="margin-bottom:8px"><div class="ico gold">${svg('entreno')}</div><div class="grow"><h3>Continuar donde lo dejaste</h3><div class="small muted">${esc(nomDia(dr))} · ${rt.fecha === hoyISO() ? 'hoy' : esc(fLarga(rt.fecha))} · ${rt.series_hechas || 0} de ${rt.series_total || '—'} series</div></div><button class="btn sm gold" data-act="retomar" data-id="${rt.id}">Continuar</button></div>` + toca; }
   const _ali = s.modulo_nutricion ? `<div class="stack" style="gap:8px"><span class="small muted">¿Cómo ha ido hoy la alimentación?</span><div class="choice" role="group">${[['si', 'Cumplido'], ['parcial', 'A medias'], ['no', 'No cumplido']].map(([v, l]) => `<button data-act="ali" data-v="${v}" aria-pressed="${r.alimentacion === v}">${l}</button>`).join('')}</div></div>` : '';
   const dur = s.duracion_semanas, semN = s.inicio ? Math.floor((fecha(hoy) - fecha(s.inicio)) / 6048e5) + 1 : null;
   return `<section class="card hero stack">
@@ -635,6 +712,7 @@ function vHoy() {
       <p class="frase-hoy">${esc(S.perfil.frase_motivacion || FRASE_DEF)}</p></div>${avatarDe(S.perfil, 72)}</div>
     ${objetivoDe(S.d.ruta) ? `<div style="border-top:1px solid rgba(255,255,255,.14);padding-top:12px" class="stack"><span class="eyebrow">Tu objetivo</span><div class="small">${esc(objetivoDe(S.d.ruta))}</div></div>` : ''}
   </section>
+  ${Bienvenida.tarjeta()}
   ${vProcesoGlobal(s)}
   ${vAvisoContexto()}
   <section class="section"><h2>Lo que toca hoy</h2><div class="card">${toca}</div></section>
@@ -668,10 +746,10 @@ function vEntreno() {
   if (S.dia) return vSesion();
   const como = S.obj ? `<div class="cerrada" style="margin-bottom:10px"><span class="pill gold">Entrenando a</span><span class="small grow">${esc(S.obj.nombre)} · ${S.obj.fecha && S.obj.fecha !== hoyISO() ? esc(fLarga(S.obj.fecha)) + ' · ' : ''}${S.obj.presencial ? 'canjea 1 sesión presencial al terminar' : 'lo que apuntes se guarda en su ficha'}</span><button class="btn sm ghost" data-act="editarProgramaObj" style="background:#fff">✎ Programa</button><button class="btn sm ghost" data-act="salirComo" style="background:#fff">Salir</button></div>` : '';
   const lunes = lunesDe(hoyISO()), hoyN = norm(DIAS[new Date().getDay()]);
-  const hechoSemana = id => S.d.sesiones.some(s => s.dia_id === id && s.fecha >= lunes);
+  const hechoSemana = id => { const l = S.d.sesiones.filter(s => s.dia_id === id && s.fecha >= lunes); return l.find(esCompleta) || l[l.length - 1] || null; };
   const P = proceso(S.d.servicio), Pn = P && !P.antes ? S.d.sesiones.filter(x => x.fecha >= P.cc.ini && x.fecha <= P.cc.fin).length : null;
   return como + `<section class="stack"><span class="eyebrow">${esc(p.nombre)}</span><h1>Entreno</h1>${P && !P.antes && !P.fuera ? `<div class="row" style="flex-wrap:wrap;gap:6px"><span class="pill blue">Ciclo ${P.ciclo}</span><span class="pill gold">Semana ${P.semCiclo} de ${P.cc.sem}</span><span class="pill">${Pn} ${(S.d.programaBase || p).dias_semana ? 'de ' + previstosCiclo(P.cc, S.d.uid, (S.d.programaBase || p).dias_semana) + ' ' : ''}entrenos del ciclo</span></div>` : ''}</section>
-  ${vAvisoContexto()}<section class="section"><div class="card">${p.dias.map(d => `<div class="wk ${esDia(d, hoyN) ? 'today' : ''}"><span class="d">${esc(d.nombre.slice(0, 3))}</span><div class="grow"><h3>${esc(d.titulo || d.foco || d.nombre)}</h3>${tipoDiaDe(d) ? `<span class="pill ${conPartido(d) ? 'gold' : ''}" style="margin:2px 0">${tipoDiaDe(d)[2]} ${tipoDiaDe(d)[1]}</span>` : ''}${conPartido(d) ? (() => { const pt = partidoDelDia(d, S.d.partidos); return pt ? `<div class="small"><b>vs ${esc(pt.rival || 'rival')}</b>${pt.hora ? ' · ' + esc(String(pt.hora).slice(0, 5)) : ''}${pt.lugar ? ' · ' + esc(pt.lugar) : ''}</div>` : ''; })() : ''}<div class="small muted">${d.volumen || d.intensidad ? `${esc(d.volumen || '')} volumen · ${esc(d.intensidad || '')} intensidad` : ''}</div></div>${hechoSemana(d.id) ? '<span class="pill ok">Hecho</span>' : ''}${d.tipo_dia === 'descanso' && !d.bloques_sesion.length ? '' : `<button class="btn sm ${esDia(d, hoyN) ? '' : 'ghost'}" data-act="abrirDia" data-id="${d.id}">Abrir</button>`}</div>`).join('')}</div></section>
+  ${vAvisoContexto()}<section class="section"><div class="card">${p.dias.map(d => `<div class="wk ${esDia(d, hoyN) ? 'today' : ''}"><span class="d">${esc(d.nombre.slice(0, 3))}</span><div class="grow"><h3>${esc(d.titulo || d.foco || d.nombre)}</h3>${tipoDiaDe(d) ? `<span class="pill ${conPartido(d) ? 'gold' : ''}" style="margin:2px 0">${tipoDiaDe(d)[2]} ${tipoDiaDe(d)[1]}</span>` : ''}${conPartido(d) ? (() => { const pt = partidoDelDia(d, S.d.partidos); return pt ? `<div class="small"><b>vs ${esc(pt.rival || 'rival')}</b>${pt.hora ? ' · ' + esc(String(pt.hora).slice(0, 5)) : ''}${pt.lugar ? ' · ' + esc(pt.lugar) : ''}</div>` : ''; })() : ''}<div class="small muted">${d.volumen || d.intensidad ? `${esc(d.volumen || '')} volumen · ${esc(d.intensidad || '')} intensidad` : ''}</div></div>${pillSesion(hechoSemana(d.id))}${d.tipo_dia === 'descanso' && !d.bloques_sesion.length ? '' : `<button class="btn sm ${esDia(d, hoyN) ? '' : 'ghost'}" data-act="abrirDia" data-id="${d.id}">Abrir</button>`}</div>`).join('')}</div></section>
   ${vZonasFC()}${vRitmosVAM()}
   ${vLineaTiempo(S.d.servicio, 'Tus ciclos de entrenamiento', false, p)}
   ${vCalendarioPres()}`;
@@ -1018,7 +1096,13 @@ function vBloque(b, cont, ro) {
     return `<div class="superserie"><div class="ss-cab"><b>Superserie · ejercicios ${n0} a ${cont.n}</b><span class="small">Hazlos seguidos, sin descanso entre ellos. Al terminar el último, descansa ${d ? seg(d) : 'lo justo'} y repite la secuencia.</span></div>${cards}</div>`;
   }).join('')}</div>`;
 }
-function cicloSesion() {
+function cicloSesion() { return cicloSesion0() + avisoRetomada(); }
+function avisoRetomada() {
+  const z = S.sesion, x = z?.id && !z.editar && S.d?.sesiones?.find(q => q.id === z.id); if (!x || x.estado !== 'parcial') return '';
+  const c = conteoSeries(S.dia, z);
+  return `<div class="aprox small" style="margin-top:8px">↩️ <b>Continúas donde lo dejaste</b>${x.fecha !== hoyISO() ? ' (sesión del ' + esc(fLarga(x.fecha)) + ')' : ''}: ${c.hechas} de ${c.total} series hechas. Las marcadas ya están guardadas.</div>`;
+}
+function cicloSesion0() {
   const x = numEntreno(S.d.sesiones, S.d.servicio, S.sesion?.fecha || hoyISO(), S.sesion?.id, (S.d.programaBase || S.d.programa)?.dias_semana, S.d.uid);
   return x && !x.fuera ? `<div class="row" style="flex-wrap:wrap;gap:6px"><span class="pill blue">Ciclo ${x.ciclo}</span><span class="pill gold">Semana ${x.semCiclo} de ${x.cc.sem}</span><span class="pill">Entreno ${x.n}${x.previstos ? ' de ' + x.previstos : ''} del ciclo</span></div>` : '';
 }
@@ -1065,7 +1149,9 @@ async function abrirDia(id, op = {}) {
   if (!editar) try { const v = +localStorage.getItem(claveCrono()); if (v) S.sesion.inicio = v; } catch (e) { }
   S.tab = 'entreno'; window.scrollTo(0, 0);
   const ids = S.dia.bloques_sesion.flatMap(b => b.ejercicios_sesion.map(e => e.id));
-  const hoyS = op.sesionId ? (S.d.sesiones.find(s => s.id === op.sesionId) || { id: op.sesionId, fecha: fechaS, dia_id: id }) : S.d.sesiones.find(s => s.fecha === fechaS && s.dia_id === id);
+  const hoyS = op.sesionId ? (S.d.sesiones.find(s => s.id === op.sesionId) || { id: op.sesionId, fecha: fechaS, dia_id: id }) : S.d.sesiones.find(s => s.fecha === fechaS && s.dia_id === id)
+    || (!editar && !S.obj ? S.d.sesiones.filter(s => s.dia_id === id && s.estado === 'parcial' && s.fecha < fechaS && s.fecha >= sumaDias(fechaS, -2)).sort((a, b) => b.fecha.localeCompare(a.fecha))[0] : null);
+  if (hoyS && hoyS.fecha && hoyS.fecha !== fechaS && !op.sesionId) { S.sesion.fecha = hoyS.fecha; S.sesion.retomada = true; }
   const fechaDe = sid => (S.d.sesiones.find(s => s.id === sid) || {}).fecha;
   if (hoyS) { S.sesion.omitidos = hoyS.omitidos || []; S.sesion.comentarios = hoyS.comentarios || [];
     S.sesion.id = hoyS.id; if (!S.sesion.inicio && hoyS.inicio_at) S.sesion.inicio = new Date(hoyS.inicio_at).getTime(); }
@@ -1078,10 +1164,11 @@ async function abrirDia(id, op = {}) {
       else if (!S.sesion.ultimos[k] && !(editar && (fechaDe(r.sesion_id) || '9') >= fechaS)) S.sesion.ultimos[k] = r;
     });
   }
-  render();
+  Cola.leer().filter(x => x.ses.dia_id === S.dia.id && x.ses.fecha === S.sesion.fecha).forEach(x => { S.sesion.regs[x.fila] ||= []; x.rows.forEach((r, k) => { S.sesion.valores[`${x.fila}-${k}`] = r; }); });
+  render(); Cola.pintar();
 }
 function rellenarSesion() {
-  const z = S.sesion; if (!z) return;
+  const z = S.sesion; if (!z) return; setTimeout(() => Cola.pintar(), 0);
   document.querySelectorAll('.chk[data-act="serie"]').forEach(b => {
     const fila = `${b.dataset.es}-${b.dataset.n}`, T = +b.dataset.t;
     for (let k = 0; k < T; k++) {
@@ -1101,16 +1188,18 @@ function marcar(b, fila, on) {
 }
 async function asegurarSesion() {
   if (S.sesion.id) return S.sesion.id;
-  const fila = { alumno_id: uidSes(), dia_id: S.dia.id, fecha: S.sesion.fecha || hoyISO() };
+  const fila = { alumno_id: uidSes(), dia_id: S.dia.id, fecha: S.sesion.fecha || hoyISO(), estado: 'parcial', series_hechas: 0, series_total: conteoSeries(S.dia, S.sesion).total };
   if (S.sesion.inicio) fila.inicio_at = new Date(S.sesion.inicio).toISOString();
   const { data, error } = await conRespaldo(() => sb.from('sesiones_hechas').insert(fila).select().single(),
-    () => { delete fila.inicio_at; return sb.from('sesiones_hechas').insert(fila).select().single(); });
+    () => conRespaldo(() => { delete fila.estado; delete fila.series_hechas; delete fila.series_total; return sb.from('sesiones_hechas').insert(fila).select().single(); },
+      () => { delete fila.inicio_at; return sb.from('sesiones_hechas').insert(fila).select().single(); }));
   if (error) throw error;
   S.sesion.id = data.id; S.d.sesiones.push(data); return data.id;
 }
 async function toggleSerie(b) {
   const es = +b.dataset.es, n = +b.dataset.n, T = +b.dataset.t, fila = `${es}-${n}`, z = S.sesion;
   if (b.classList.contains('on')) {
+    if (Cola.quitar(S.dia.id, z.fecha, fila)) { marcar(b, fila, false); b.classList.remove('pend'); return; }
     const ids = z.regs[fila] || []; marcar(b, fila, false); delete z.regs[fila];
     if (ids.length) { const { error } = await sb.from('registros_series').delete().in('id', ids); if (error) fallo(error); }
     return;
@@ -1132,14 +1221,58 @@ async function toggleSerie(b) {
       () => sb.from('registros_series').insert(rows.map(({ tramo, ...x }) => x)).select('id'));
     if (error) throw error;
     z.regs[fila] = data.map(x => x.id);
+    if (!z.editar) { const c = conteoSeries(S.dia, z), est = { series_hechas: c.hechas, series_total: c.total }; sb.from('sesiones_hechas').update(est).eq('id', sid).then(r => { if (!r.error) Object.assign(S.d.sesiones.find(x => x.id === sid) || {}, est); }); }
     rows.forEach((r, k) => {
       r.id = data[k]?.id; z.valores[`${fila}-${k}`] = r;
       const kg = document.getElementById(`kg-${fila}-${k}`), rp = document.getElementById(`rp-${fila}-${k}`);
       if (kg && r.kg != null && !kg.value) kg.value = fmtNum(r.kg, 2);
       if (r.repeticiones != null && !rp.value) rp.value = r.repeticiones;
     });
-  } catch (err) { marcar(b, fila, false); fallo(err, 'No se ha guardado la serie. Revisa tu conexión.'); }
+  } catch (err) {
+    if (!sinRed(err)) { marcar(b, fila, false); return fallo(err, 'No se ha guardado la serie. Inténtalo de nuevo.'); }
+    // Sin conexión: la serie queda marcada y se guarda en el móvil hasta que vuelva la red
+    Cola.anadir({ uid: Date.now() + '-' + fila, fila, sid: z.id || null, ses: { alumno_id: uidSes(), dia_id: S.dia.id, fecha: z.fecha || hoyISO(), estado: 'parcial' }, rows: rows.map(({ sesion_id, ...r }) => r) });
+    rows.forEach((r, k) => { z.valores[`${fila}-${k}`] = r; });
+    toast('Sin conexión: la serie queda guardada en tu móvil y se enviará sola');
+  }
 }
+/* ---------- Series sin conexión: cola en el móvil que se envía al volver la red ---------- */
+const sinRed = err => !navigator.onLine || err instanceof TypeError || /fetch|network|conexi|Load failed/i.test(err?.message || '');
+const Cola = {
+  k: 'lof-cola-series',
+  leer() { try { return JSON.parse(localStorage.getItem(this.k) || '[]'); } catch (e) { return []; } },
+  escribir(l) { try { localStorage.setItem(this.k, JSON.stringify(l)); } catch (e) { } },
+  anadir(it) { const l = this.leer().filter(x => !(x.ses.dia_id === it.ses.dia_id && x.ses.fecha === it.ses.fecha && x.fila === it.fila)); l.push(it); this.escribir(l); this.pintar(); },
+  quitar(dia, f, fila) { const l = this.leer(), r = l.filter(x => !(x.ses.dia_id === dia && x.ses.fecha === f && x.fila === fila)); if (r.length === l.length) return false; this.escribir(r); this.pintar(); return true; },
+  pintar() {
+    const l = this.leer(), z = S.sesion, mias = z && S.dia ? l.filter(x => x.ses.dia_id === S.dia.id && x.ses.fecha === z.fecha) : [];
+    document.querySelectorAll('.chk[data-act="serie"]').forEach(b => b.classList.toggle('pend', mias.some(x => x.fila === `${b.dataset.es}-${b.dataset.n}`)));
+    let el = document.getElementById('cola-aviso');
+    if (!l.length) { el?.remove(); return; }
+    if (!el) { el = document.createElement('div'); el.id = 'cola-aviso'; document.body.appendChild(el); }
+    el.innerHTML = `⏳ ${l.length} ${l.length === 1 ? 'serie pendiente' : 'series pendientes'} de enviar · se guardan solas al volver la conexión <button type="button" onclick="Cola.enviar(true)">Reintentar</button>`;
+  },
+  async enviar(manual) {
+    if (this.enviando) return; let l = this.leer(); if (!l.length) return; this.enviando = true; const sids = {}, n0 = l.length;
+    for (const it of [...l]) {
+      try {
+        const kk = it.ses.dia_id + '|' + it.ses.fecha; let sid = it.sid || sids[kk];
+        if (!sid) { const ya = (S.d?.sesiones || []).find(x => x.dia_id === it.ses.dia_id && x.fecha === it.ses.fecha); if (ya) sid = ya.id; else { const { data, error } = await sb.from('sesiones_hechas').insert(it.ses).select().single(); if (error) throw error; sid = data.id; S.d?.sesiones?.push(data); } }
+        sids[kk] = sid;
+        const filas = it.rows.map(r => ({ ...r, sesion_id: sid }));
+        const { data, error } = await conRespaldo(() => sb.from('registros_series').insert(filas).select('id'), () => sb.from('registros_series').insert(filas.map(({ tramo, ...x }) => x)).select('id'));
+        if (error) throw error;
+        if (S.sesion && S.dia?.id === it.ses.dia_id && S.sesion.fecha === it.ses.fecha) { S.sesion.id = S.sesion.id || sid; S.sesion.regs[it.fila] = (data || []).map(x => x.id); }
+        l = l.filter(x => x.uid !== it.uid); this.escribir(l);
+      } catch (e) { break; }
+    }
+    this.enviando = false; this.pintar();
+    if (!l.length) toast(n0 === 1 ? 'Serie pendiente enviada ✓' : `${n0} series pendientes enviadas ✓`); else if (manual) toast('Sigue sin conexión: lo intentaremos de nuevo');
+  }
+};
+window.Cola = Cola;
+window.addEventListener('online', () => Cola.enviar());
+setInterval(() => { if (navigator.onLine && Cola.leer().length) Cola.enviar(); }, 20000);
 function terminar() {
   if (S.obj && S.sesion?.editar) return guardarSesion();
   const min = S.sesion?.inicio ? Math.max(1, Math.round((Date.now() - S.sesion.inicio) / 60000)) : null;
@@ -1166,6 +1299,8 @@ async function guardarSesion() {
       else Object.assign(S.d.sesiones.find(s => s.id === id) || {}, extra);
     }
     if (Object.keys(cambios).length) { const { error } = await conRespaldo(() => sb.from('sesiones_hechas').update(cambios).eq('id', id), () => sb.from('sesiones_hechas').update({ nota: cambios.nota ?? null }).eq('id', id)); if (error) throw error; Object.assign(S.d.sesiones.find(s => s.id === id) || {}, cambios); }
+    { const c = conteoSeries(S.dia, S.sesion), est = { estado: !c.total || c.hechas >= c.total ? 'completa' : 'parcial', series_hechas: c.hechas, series_total: c.total };
+      const r = await sb.from('sesiones_hechas').update(est).eq('id', id); if (!r.error) Object.assign(S.d.sesiones.find(x => x.id === id) || {}, est); }
     try { localStorage.removeItem(claveCrono()); } catch (e) { }
     if (S.obj) { const canj = S.obj.presencial; await registrarPresencial(id); cerrarSheet(); stopTimer(); await salirComo(); toast(canj ? 'Sesión guardada y presencial canjeada' : 'Sesión guardada en su ficha'); await verSesion(id); return; }
     cerrarSheet(); stopTimer(); S.dia = null; S.sesion = null; S.tab = 'hoy'; toast('Sesión guardada. ¡Buen trabajo!'); render(); window.scrollTo(0, 0);
@@ -1311,7 +1446,7 @@ function vUltimos7() {
   return `  <section class="section"><div class="section-head"><h2>Últimos 7 días</h2><span class="small muted">${esc(fCorta(ini))} – ${esc(fCorta(hoy))}</span></div><div class="card stack" style="gap:18px">
     ${(s.modulo_entreno ?? true) ? `<div class="stack" style="gap:8px"><div class="row"><span class="grow small">Entrenamientos</span><b class="num" style="font-family:var(--display);font-size:20px">${w.entrenos}${p?.dias_semana ? ' / ' + p.dias_semana : ''}</b></div>${tira(ini, x => w.diasEntreno.has(x) ? 'ok' : '')}</div>` : ''}
     ${s.modulo_nutricion ? vBarraIngestas(S.d.diario, s) : ''}
-    <div class="stack" style="gap:8px"><div class="row"><span class="grow small">Pasos (media · objetivo ${fmtNum(objPasos(s), 0)})</span><b class="num" style="font-family:var(--display);font-size:20px;color:${w.pasosMedia == null ? 'inherit' : w.pasosMedia >= objPasos(s) ? 'var(--ok)' : 'var(--warn)'}">${w.pasosMedia == null ? '—' : fmtNum(w.pasosMedia, 0)}</b></div>${tira(ini, x => w.diasPasos.has(x) ? 'ok' : '')}</div>
+    <div class="stack" style="gap:8px"><div class="row"><span class="grow small">Pasos (media · objetivo ${fmtNum(objPasos(s), 0)})</span><b class="num" style="font-family:var(--display);font-size:20px;color:${w.pasosMedia == null || w.diasPasos.size < 3 ? 'inherit' : w.pasosMedia >= objPasos(s) ? 'var(--ok)' : 'var(--warn)'}">${w.pasosMedia == null ? '—' : fmtNum(w.pasosMedia, 0)}</b></div>${tira(ini, x => w.diasPasos.has(x) ? 'ok' : '')}</div>
   </div></section>`;
 }
 function vProgreso() {
@@ -1337,11 +1472,11 @@ function vCheckin(enHoy) {
   const etiquetas = ['Viaje', 'Turnos de trabajo', 'Evento social', 'Enfermedad', 'Semana tranquila'];
   return `<section class="stack"><span class="eyebrow">Semana del ${esc(fCorta(lunes))} al ${esc(fCorta(sumaDias(lunes, 6)))}</span>${enHoy ? '<h2 style="margin:0">Check-in semanal · resumen de tu semana</h2>' : '<h1>Check-in</h1>'}<p class="small muted">${c ? 'Ya lo enviaste esta semana. Puedes corregirlo si algo ha cambiado.' : 'Lo que registras cada día se rellena solo. Aquí solo te pregunto lo que falta.'}</p></section>
   <section class="section"><div class="card stack"><span class="eyebrow">Tu semana en datos</span>
-    ${(s.modulo_entreno ?? true) ? `<div class="row small"><span class="grow">Entrenamientos</span><span class="pill ${p && w.entrenos >= p.dias_semana ? 'ok' : 'warn'} num">${w.entrenos}${p ? ' de ' + p.dias_semana : ''}</span></div>` : ''}
+    ${(s.modulo_entreno ?? true) ? `<div class="row small"><span class="grow">Entrenamientos</span><span class="pill ${juzgaEntrenos(w.entrenos, p?.dias_semana, lunes, s)} num">${w.entrenos}${p ? ' de ' + p.dias_semana : ''}</span></div>` : ''}
 
     <div class="row small"><span class="grow">Pasos (media)</span><span class="pill num">${w.pasosMedia == null ? 'Sin registros' : fmtNum(w.pasosMedia, 0)}</span></div>
   </div>
-  ${s.modulo_nutricion ? `<div class="card stack">${(() => { const I = ingestasSemana(S.d.diario, lunes, s), ev = evalNutri(I.pct); return `<div class="row small"><span class="grow">Alimentación: ${I.hechas} de ${I.total} ingestas</span><span class="pill ${ev ? ev[0] : ''} num">${I.pct == null ? 'Sin registros' : I.pct + ' % · ' + ev[1]}</span></div>`; })()}
+  ${s.modulo_nutricion ? `<div class="card stack">${(() => { const I = ingestasSemana(S.d.diario, lunes, s), ev = evalNutri(I.pct); return `<div class="row small"><span class="grow">Alimentación: ${I.hechas} de ${I.total} ingestas</span>${(() => { const e2 = I.dias >= 2 ? evalNutri(I.pctReg) : null; return `<span class="pill ${e2 ? e2[0] : ''} num">${I.pctReg == null ? 'Sin registrar' : I.pctReg + ' %' + (e2 ? ' · ' + e2[1] : '') + (I.dias < 7 ? ` · ${I.dias} ${I.dias === 1 ? 'día registrado' : 'días registrados'}` : '')}</span>`; })()}</div>`; })()}
     <label class="f">Comidas o situaciones a destacar (opcional)<textarea id="k-nali" placeholder="Ej. cena fuera el sábado, semana de vacaciones con la familia…">${esc(c?.nota_alimentacion || '')}</textarea></label></div>` : ''}
   <div class="card stack"><label class="f">¿Qué te ha dificultado aplicar el plan esta semana?<textarea id="k-dif" placeholder="Cambios de horario, comidas fuera, cansancio…">${esc(c?.dificultades || '')}</textarea></label></div>
   <div class="card stack"><span class="small muted">¿Cómo se presenta la semana que viene?</span>
@@ -1525,7 +1660,6 @@ function vAlumnos() {
   <section class="section"><div class="kpis"><button class="kpi kpi-b" data-act="alFiltro" data-k="todos" aria-pressed="${S.alF.k === 'todos'}"><div class="v num">${als.length}</div><div class="l">perfiles activos ›</div></button><button class="kpi kpi-b" data-act="alFiltro" data-k="alerta" aria-pressed="${S.alF.k === 'alerta'}"><div class="v num" style="color:var(--bad)">${est.filter(x => x.e.nivel !== 'ok').length}</div><div class="l">necesitan atención ›</div></button><button class="kpi kpi-b" data-act="alFiltro" data-k="vencidos" aria-pressed="${S.alF.k === 'vencidos'}"><div class="v num" style="color:${venc.length ? 'var(--bad)' : 'var(--ok)'}">${venc.length}</div><div class="l">pagos vencidos ›</div></button></div></section>
   <section class="section"><button class="card reporte-b" data-act="abrirReporte"><div class="ico gold">${svg('checkin')}</div><div class="grow" style="text-align:left"><b>Reporting semanal</b><div class="small muted">Semana del ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -7)))} al ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -1)))} · todos tus alumnos de un vistazo</div></div><span class="small" style="color:var(--blue-text)">Abrir ›</span></button></section>
   ${vFutbolCoach()}
-  ${Temperamento.resumenCoach()}
   ${Habitos.resumenCoach()}
   ${vResumenCoach(est)}
   ${vAntiguos()}
@@ -3340,19 +3474,21 @@ async function cargarPres() {
   S.ficha.pres = data || []; render();
 }
 /* Reserva con Calendly: el alumno elige hueco (llega a Google Calendar de Jesús) y la app lo apunta */
-async function cargarAjustes() { try { const { data } = await sb.from('ajustes').select('*'); S.calendly = (data || []).find(x => x.clave === 'calendly')?.valor || window.LOF_CONFIG?.calendly || ''; S.whatsapp = (data || []).find(x => x.clave === 'whatsapp')?.valor || ''; } catch (e) { } }
+async function cargarAjustes() { try { const { data } = await sb.from('ajustes').select('*'); S.calendly = (data || []).find(x => x.clave === 'calendly')?.valor || window.LOF_CONFIG?.calendly || ''; S.whatsapp = (data || []).find(x => x.clave === 'whatsapp')?.valor || ''; S.respuesta = (data || []).find(x => x.clave === 'respuesta')?.valor || ''; } catch (e) { } }
 function formCalendly() {
   abrirSheet(`<form class="stack" id="f-cal"><h2>Calendly</h2>
     <p class="small">Pega el enlace de tu evento de Calendly para los entrenamientos presenciales (el que conectas a tu Google Calendar).</p>
     <label class="f">Enlace<input type="url" id="cal-u" value="${esc(S.calendly || '')}" placeholder="https://calendly.com/tu-usuario/entrenamiento-presencial"></label>
     <label class="f">Tu WhatsApp: pega el enlace a tu chat (o tu número con prefijo)<input type="text" id="cal-w" value="${esc(S.whatsapp || '')}" placeholder="https://wa.me/34600111222"></label>
+    <label class="f">Cuándo respondes a tus alumnos (lo ven en su bienvenida y en «Tu coach»)<input type="text" id="cal-r" value="${esc(S.respuesta || '')}" placeholder="Ej. en menos de 24 h, de lunes a viernes"></label>
     <p class="note">Cuando un alumno toque un recuadro libre se abrirá tu Calendly con su nombre y email ya puestos. Calendly te avisa y lo añade a tu Google Calendar; la app guarda la reserva en su bono.</p>
     <button class="btn full" type="submit">Guardar</button></form>`);
   $('#f-cal').addEventListener('submit', async e => {
     e.preventDefault(); const v = $('#cal-u').value.trim();
     const w = $('#cal-w').value.trim();
-    const { error } = await sb.from('ajustes').upsert([{ clave: 'calendly', valor: v }, { clave: 'whatsapp', valor: w }], { onConflict: 'clave' });
-    S.whatsapp = w;
+    const rsp = $('#cal-r').value.trim();
+    const { error } = await sb.from('ajustes').upsert([{ clave: 'calendly', valor: v }, { clave: 'whatsapp', valor: w }, { clave: 'respuesta', valor: rsp }], { onConflict: 'clave' });
+    S.whatsapp = w; S.respuesta = rsp;
     if (error) return fallo(error, 'Falta ejecutar el Bloque 8 en Supabase.');
     S.calendly = v; cerrarSheet(); toast('Calendly guardado'); render();
   });
@@ -4494,6 +4630,7 @@ document.addEventListener('click', async e => {
     case 'aprox': b.classList.add('on'); if (b.dataset.j === '2') startTimer(60, 'Descanso tras la aproximación 6·3·1'); else toast(b.dataset.j === '0' ? 'Ahora 3 repeticiones con tu peso objetivo' : 'Ahora 1 repetición por encima del objetivo'); break;
     case 'metodo': { const n = b.dataset.n; abrirSheet(`<div class="stack"><span class="eyebrow">Método</span><h2>${esc(n)}</h2><p class="pre">${esc((S.d?.metodos || {})[n] || 'Pregúntale a Jesús por este método.')}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`); break; }
     case 'terminar': terminar(); break;
+    case 'retomar': { const x = S.d.sesiones.find(z => z.id === +b.dataset.id); if (x) await abrirDia(x.dia_id, { sesionId: x.id, fecha: x.fecha, dia: [S.d.programa, S.d.programaBase, ...(S.d.contextos || [])].filter(Boolean).flatMap(q => q.dias || []).find(z => z.id === x.dia_id) }); break; }
     case 'guardarSesion': await guardarSesion(); break;
     case 'guardarDiario': await guardarDiario(); break;
     case 'ingestas': await guardarDiario({ ingestas: +b.dataset.v }); break;
@@ -4503,6 +4640,9 @@ document.addEventListener('click', async e => {
     case 'enviarCheckin': await enviarCheckin(); break;
     case 'ficha': cerrarSheet(); await abrirFicha(b.dataset.id); break;
     case 'verAlertas': verAlertas(b.dataset.id); break;
+    case 'bvIr': Bienvenida.abrir(+b.dataset.i); break;
+    case 'bvFin': Bienvenida.fin(); break;
+    case 'bvVer': Bienvenida.abrir(0); break;
     case 'alResolver': { const enSheet = !!b.closest('#sheet'); await Alertas.resolver(b.dataset.id, b.dataset.m, b.dataset.on === '1'); toast(b.dataset.on === '1' ? 'Marcado como solventado' : 'Vuelve a estar pendiente'); render(); if (enSheet) verAlertas(b.dataset.id); break; }
     case 'alFiltro': S.alF.k = S.alF.k === b.dataset.k ? '' : b.dataset.k; if (S.obj) await salirComo(); S.ficha = null; S.reporte = null; S.factura = null; S.editor = null; S.ctab = 'alumnos'; render(); if (S.alF.k) $('#al-lista')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
     case 'cerrarFicha': S.ficha = null; S.verSes = null; S.verPlan = null; S.valEd = null; render(); break;
