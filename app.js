@@ -515,10 +515,18 @@ function vZonasFC(o = {}) {
     <p class="small muted">${fut ? '5 zonas para futbolista. ' : ''}Toca una zona para saber qué significa.</p></div></section>`;
 }
 /* Cardio: máquinas con foto propia (se guarda en la biblioteca como «Cardio · Cinta»…) y FC por zonas */
-const MAQUINAS = ['Cinta', 'Stepper', 'Bicicleta', 'Elíptica', 'Remo'];
+const MAQUINAS = ['Correr', 'Cinta', 'Stepper', 'Bicicleta', 'Elíptica', 'Remo'];
+/* Correr: modalidades (se pueden combinar) y su foto */
+const CORRER = [['Aire libre', 'img/correr-aire.jpg', /aire|rodaje|campo|calle/], ['Pista de atletismo', 'img/correr-pista.jpg', /pista/], ['Escaleras', 'img/correr-escaleras.jpg', /escaler/], ['Cuestas', 'img/correr-cuestas.jpg', /cuesta/], ['Cinta', 'img/correr-cinta.jpg', /cinta/]];
+const modosCorrer = maq => { const n = normaliza(maq || ''); return CORRER.filter(c => c[2].test(n)); };
+const esCorrer = maq => /^correr/.test(normaliza(maq || '')) || modosCorrer(maq).length > 0;
+/* Fotos de un bloque de cardio según la actividad: cada modalidad de correr con la suya */
+const fotosCardio = b => { if (b.tipo !== 'cardio' || !b.maquina) return []; const m = modosCorrer(b.maquina); return m.length ? m.map(c => c[1]) : esCorrer(b.maquina) ? ['img/correr-pista.jpg'] : []; };
 const fotoMaquina = m => m && (S.c?.ejercicios || []).find(x => normaliza(x.nombre) === normaliza('Cardio · ' + m))?.imagen_url || null;
 /* «Zona 2» → «Zona 2 · 141–159 ppm» con la FC máxima de la persona (si se conoce) */
 function fcTexto(t, o = {}) {
+  const pc = /^\s*(\d{2,3})(?:\s*[-–]\s*(\d{2,3}))?\s*%/.exec(t || '');
+  if (pc) { const mx = 'mx' in o ? o.mx : fcMaxDe(o.vals, o.perfil), a = +pc[1], z = pc[2] ? +pc[2] : null; return `${a}${z ? '–' + z : ''} % FC máx.${mx ? ` · ${Math.round(mx * a / 100)}${z ? '–' + Math.round(mx * z / 100) : ''} ppm` : ''}`; }
   const m = /^\s*zona\s*(\d)\s*$/i.exec(t || ''); if (!m) return t || '';
   const fut = o.fut ?? !!S.d?.servicio?.modulo_futbol, z = zonasDe(fut).find(x => x.n === +m[1]), mx = 'mx' in o ? o.mx : fcMaxDe(o.vals, o.perfil);
   return !z ? `Zona ${m[1]}` : mx ? `Zona ${z.n} · ${Math.round(mx * z.desde)}–${Math.round(mx * z.hasta)} ppm` : `Zona ${z.n} · ${Math.round(z.desde * 100)}–${Math.round(z.hasta * 100)} % FC máx.`;
@@ -890,6 +898,8 @@ const ILU = {
 const miniYoutube = url => { const m = String(url || '').match(/(?:youtu\.be\/|v=|shorts\/|embed\/)([\w-]{11})/); return m ? `https://i.ytimg.com/vi/${m[1]}/hqdefault.jpg` : null; };
 function imgBloque(b) {
   const ilu = (ILU[b.tipo] || '').replace('<svg', '<svg class="ilu"');
+  const fc = !b.imagen_url ? fotosCardio(b) : [];
+  if (fc.length) return `<div class="row" style="gap:8px;flex-wrap:wrap">${fc.map(u => `<button class="img" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver imagen" style="flex:1 1 140px"><img src="${esc(u)}" alt="${esc(b.maquina || '')}" loading="lazy" style="width:100%;height:160px;object-fit:cover;border-radius:12px;display:block"></button>`).join('')}</div>`;
   const u = b.imagen_url || miniYoutube(b.video_url);
   if (!u) return ilu;
   return `<div class="bimg"><button class="img" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver imagen"><img src="${esc(u)}" alt="${esc(b.nombre)}" loading="lazy" onerror="this.closest('.bimg').classList.add('roto')"></button>${ilu}</div>`;
@@ -3523,7 +3533,7 @@ function vEditor() {
       <div class="row" style="flex-wrap:wrap"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}${b.variante ? ` <span class="pill blue">${esc(b.variante)}</span>` : ''}</h3>${(() => { const k = d.bloques_sesion.indexOf(b), pr = d.bloques_sesion[k - 1]; return b.tipo === 'fuerza' && pr?.tipo === 'fuerza' ? `<button class="btn sm ghost" data-act="unirBloque" data-id="${b.id}" title="Pasa sus ejercicios al bloque ${esc(pr.letra)}">⤒ Unir con ${esc(pr.letra)}</button>` : ''; })()}<button class="btn sm ghost" data-act="dupBloque" data-id="${b.id}">⧉ Duplicar</button><button class="btn sm ghost" data-act="edBloque" data-id="${b.id}">✎ Editar bloque</button></div>
       ${b.agrupacion ? `<div class="small muted">${esc(b.agrupacion)}</div>` : ''}
       ${b.tipo === 'fuerza' ? `${b.ejercicios_sesion.map((e, i) => `<div class="ed-ej">${(() => { const u = e.imagen_url || (S.c.ejercicios || []).find(x => x.id === e.ejercicio_id)?.imagen_url; return u ? `<img class="ed-mini" src="${esc(u)}" alt="" loading="lazy" data-act="edEj" data-id="${e.id}">` : `<span class="ed-mini ed-sin" data-act="edEj" data-id="${e.id}" title="Sin foto: toca para añadirla">📷</span>`; })()}<div class="grow" data-act="edEj" data-id="${e.id}" style="cursor:pointer;min-width:0"><b class="small">${i + 1}. ${esc(e.nombre || e.ejercicios?.nombre || '')}</b><div class="small muted">${resumen(e)}</div></div>${i > 0 ? `<button class="mini" data-act="separarEj" data-id="${e.id}" aria-label="Separar en un bloque nuevo desde este ejercicio" title="Separar en un bloque nuevo desde aquí">✂</button>` : ''}<button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="-1" aria-label="Subir" ${i === 0 ? 'disabled' : ''}>↑</button><button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="1" aria-label="Bajar" ${i === b.ejercicios_sesion.length - 1 ? 'disabled' : ''}>↓</button></div>`).join('')}
-        <button class="btn sm ghost" data-act="edEj" data-bloque="${b.id}" style="align-self:flex-start">+ Añadir ejercicio</button>` : `<div class="row" style="gap:10px">${(b.imagen_url || miniYoutube(b.video_url)) ? `<img class="ed-mini" src="${esc(b.imagen_url || miniYoutube(b.video_url))}" alt="" loading="lazy" data-act="verImagen" data-src="${esc(b.imagen_url)}" onerror="this.outerHTML='<span class=&quot;ed-mini ed-sin&quot;>⚠</span>'">` : ''}<div class="small muted">${esc(b.tipo === 'cardio' ? [b.duracion, fcTexto(b.fc_objetivo, fcEditor()), b.maquina].filter(Boolean).join(' · ') : 'Movilidad')}</div></div>`}
+        <button class="btn sm ghost" data-act="edEj" data-bloque="${b.id}" style="align-self:flex-start">+ Añadir ejercicio</button>` : `<div class="row" style="gap:10px">${(b.imagen_url || miniYoutube(b.video_url) || fotosCardio(b)[0]) ? `<img class="ed-mini" src="${esc(b.imagen_url || miniYoutube(b.video_url) || fotosCardio(b)[0])}" alt="" loading="lazy" data-act="verImagen" data-src="${esc(b.imagen_url)}" onerror="this.outerHTML='<span class=&quot;ed-mini ed-sin&quot;>⚠</span>'">` : ''}<div class="small muted">${esc(b.tipo === 'cardio' ? [b.duracion, fcTexto(b.fc_objetivo, fcEditor()), b.maquina].filter(Boolean).join(' · ') : 'Movilidad')}</div></div>`}
     </div>`).join('')}
     <button class="btn sm ghost" data-act="edBloque" data-dia="${d.id}" style="align-self:flex-start">+ Añadir bloque</button>
   </div></section>`).join('') : '<div class="section card empty">Crea el programa para empezar a añadir días.</div>'}`;
@@ -3574,8 +3584,8 @@ function editorEsFutbol() {
 function formBloque(id, diaId) {
   const p = S.editor.prog, dia = p.dias.find(d => d.id === diaId) || p.dias.find(d => d.bloques_sesion.some(b => b.id === id)), b = id ? dia.bloques_sesion.find(x => x.id === id) : null;
   const sig = String.fromCharCode(65 + (dia?.bloques_sesion.length || 0));
-  const FC = fcEditor(), zonas = zonasDe(FC.fut), fcZ = /^\s*zona\s*(\d)\s*$/i.exec(b?.fc_objetivo || '')?.[1] || '', fcOtra = !fcZ && !!b?.fc_objetivo;
-  const maqL = MAQUINAS.find(m => normaliza(m) === normaliza(b?.maquina || '')) || '', maqOtra = !maqL && !!b?.maquina;
+  const FC = fcEditor(), zonas = zonasDe(FC.fut), fcPc = /^\s*(\d{2,3}(?:\s*[-–]\s*\d{2,3})?)\s*%/.exec(b?.fc_objetivo || '')?.[1] || '', fcZ = /^\s*zona\s*(\d)\s*$/i.exec(b?.fc_objetivo || '')?.[1] || (fcPc ? 'pc' : ''), fcOtra = !fcZ && !!b?.fc_objetivo;
+  const corrB = esCorrer(b?.maquina) && !/^cinta$/i.test((b?.maquina || '').trim()), maqL = corrB ? 'Correr' : MAQUINAS.find(m => normaliza(m) === normaliza(b?.maquina || '')) || '', maqOtra = !maqL && !!b?.maquina, modosB = modosCorrer(b?.maquina).map(c => c[0]);
   abrirSheet(`<form class="stack" id="f-blq"><h2>${b ? 'Editar bloque' : 'Nuevo bloque'}</h2>
     <div style="display:grid;grid-template-columns:70px 1fr;gap:8px"><label class="f">Letra<input type="text" id="b-l" maxlength="2" value="${esc(b?.letra || sig)}"></label><label class="f">Nombre<input type="text" id="b-n" value="${esc(b?.nombre || '')}" placeholder="Ej. Tren inferior" required></label></div>
     <label class="f">Tipo<select id="b-t">${[['fuerza', 'Fuerza (ejercicios con series)'], ['cardio', 'Cardio'], ['movilidad', 'Movilidad']].map(([v, l]) => `<option value="${v}" ${b?.tipo === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
@@ -3583,10 +3593,12 @@ ${editorEsFutbol() || b?.momento ? `    <label class="f">Momento (día de partid
     <label class="f">Indicación del bloque (superserie, circuito…)<input type="text" id="b-ag" value="${esc(b?.agrupacion || '')}" placeholder="Ej. 1 y 2 juntos (superserie). Descanso 1 minuto."></label>
     <div class="stack" id="b-cardio" style="gap:12px" ${(b?.tipo || 'fuerza') === 'cardio' ? '' : 'hidden'}>
       <label class="f">Máquina<select id="b-mq"><option value="">Sin indicar</option>${MAQUINAS.map(m => `<option ${m === maqL ? 'selected' : ''}>${m}</option>`).join('')}<option value="otra" ${maqOtra ? 'selected' : ''}>Otra…</option></select></label>
+      <div class="stack" id="b-co" style="gap:6px" ${maqL === 'Correr' ? '' : 'hidden'}><span class="small muted">¿Dónde corre? Puedes marcar varias</span><div class="chips">${CORRER.map(c => `<label class="row small" style="gap:6px"><input type="checkbox" name="b-cor" value="${esc(c[0])}" ${modosB.includes(c[0]) ? 'checked' : ''} style="width:20px;height:20px"> ${esc(c[0])}</label>`).join('')}</div></div>
       <input type="text" id="b-ma" value="${esc(maqOtra ? b.maquina : '')}" placeholder="Escribe la máquina o actividad" ${maqOtra ? '' : 'hidden'}>
       <div id="b-mqf"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="f">Duración<input type="text" id="b-du" value="${esc(b?.duracion || '')}" placeholder="30 min"></label>
-        <label class="f">Frecuencia cardiaca<select id="b-fz"><option value="">Sin indicar</option>${zonas.map(z => `<option value="${z.n}" ${String(z.n) === fcZ ? 'selected' : ''}>Zona ${z.n} · ${esc(z.corto)}</option>`).join('')}<option value="otra" ${fcOtra ? 'selected' : ''}>Otra…</option></select></label></div>
+        <label class="f">Frecuencia cardiaca<select id="b-fz"><option value="">Sin indicar</option>${zonas.map(z => `<option value="${z.n}" ${String(z.n) === fcZ ? 'selected' : ''}>Zona ${z.n} · ${esc(z.corto)}</option>`).join('')}<option value="pc" ${fcZ === 'pc' ? 'selected' : ''}>% de la FC máxima…</option><option value="otra" ${fcOtra ? 'selected' : ''}>Otra…</option></select></label></div>
+      <input type="text" id="b-pc" inputmode="numeric" value="${esc(fcPc)}" placeholder="% de su FC máxima: 60 o 60-70" ${fcZ === 'pc' ? '' : 'hidden'}>
       <input type="text" id="b-fc" value="${esc(fcOtra ? b.fc_objetivo : '')}" placeholder="Ej. 135–145 ppm" ${fcOtra ? '' : 'hidden'}>
       <div class="small" id="b-fzt" style="color:var(--bad);font-weight:700"></div></div>
     <label class="f">Opción para alternar <span class="muted">(opcional)</span><input type="text" id="b-va" value="${esc(b?.variante || '')}" placeholder="Ej. Tipo A"></label>
@@ -3597,26 +3609,26 @@ ${editorEsFutbol() || b?.momento ? `    <label class="f">Momento (día de partid
     <label class="f">Imagen ilustrativa (cardio y movilidad)<input type="file" id="b-img" accept="image/*"></label>
     <label class="row small" id="b-mqg" hidden style="gap:8px"><input type="checkbox" id="b-mqs" checked style="width:20px;height:20px"> <span>Usar esta foto siempre para <b id="b-mqn"></b></span></label>
     <p class="err" id="b-err"></p><button class="btn full" type="submit" id="b-btn">Guardar</button>${b ? '<button class="btn ghost full" type="button" id="b-del" style="color:var(--bad)">Eliminar bloque</button>' : ''}</form>`);
-  const maqSel = () => { const v = $('#b-mq').value; return v === 'otra' ? ($('#b-ma').value.trim() || null) : v || null; };
+  const maqSel = () => { const v = $('#b-mq').value; if (v === 'Correr') { const m = [...document.querySelectorAll('input[name="b-cor"]:checked')].map(x => x.value); return m.length ? 'Correr · ' + m.join(' + ') : 'Correr'; } return v === 'otra' ? ($('#b-ma').value.trim() || null) : v || null; };
   const pintarCardio = () => {
     $('#b-cardio').hidden = $('#b-t').value !== 'cardio';
-    $('#b-ma').hidden = $('#b-mq').value !== 'otra'; $('#b-fc').hidden = $('#b-fz').value !== 'otra';
-    const zv = $('#b-fz').value; $('#b-fzt').textContent = zv && zv !== 'otra' ? fcTexto('Zona ' + zv, FC) + (FC.mx ? '' : ' (pon su FC máxima o su fecha de nacimiento para ver las pulsaciones)') : '';
+    $('#b-ma').hidden = $('#b-mq').value !== 'otra'; $('#b-fc').hidden = $('#b-fz').value !== 'otra'; $('#b-co').hidden = $('#b-mq').value !== 'Correr'; $('#b-pc').hidden = $('#b-fz').value !== 'pc';
+    const zv = $('#b-fz').value; $('#b-fzt').textContent = zv === 'pc' ? ($('#b-pc').value.trim() ? fcTexto($('#b-pc').value.trim().replace(/%?$/, ' %'), FC) + (FC.mx ? '' : ' (pon su FC máxima o su fecha de nacimiento para ver las pulsaciones)') : '') : zv && zv !== 'otra' ? fcTexto('Zona ' + zv, FC) + (FC.mx ? '' : ' (pon su FC máxima o su fecha de nacimiento para ver las pulsaciones)') : '';
     const m = $('#b-mq').value !== 'otra' ? $('#b-mq').value : '', u = fotoMaquina(m), cardio = $('#b-t').value === 'cardio';
     const act = b?.imagen_url, nueva = $('#b-img').files[0];
     const prev = (src, txt, extra = '') => `<div class="es-prev"><img src="${esc(src)}" alt="${esc(m || 'Foto del bloque')}" onerror="this.outerHTML='<span class=&quot;es-sin&quot;>No carga</span>'"><div class="grow stack" style="gap:6px"><span class="small muted">${txt}</span>${extra}</div></div>`;
-    $('#b-mqf').innerHTML = !cardio ? '' : nueva ? '' : u ? prev(u, `Foto de ${esc(m)}: se pone sola en el bloque${act && act !== u ? ' (sustituye a la actual)' : ''}.`)
+    $('#b-mqf').innerHTML = !cardio ? '' : nueva ? '' : m === 'Correr' ? '<p class="small muted" style="margin:0">Se pone sola la foto de cada modalidad que marques.</p>' : u ? prev(u, `Foto de ${esc(m)}: se pone sola en el bloque${act && act !== u ? ' (sustituye a la actual)' : ''}.`)
       : act ? prev(act, m ? `Esta es la foto actual del bloque. Aún no tienes foto de ${esc(m)}.` : 'Esta es la foto actual del bloque.', m ? `<label class="row small" style="gap:8px"><input type="checkbox" id="b-adopta" checked style="width:20px;height:20px"> <span>Usarla siempre para <b>${esc(m)}</b></span></label>` : '')
       : m ? `<p class="small muted" style="margin:0">Aún no tienes foto de ${esc(m)}: súbela abajo y se usará siempre para esta máquina.</p>` : '';
     $('#b-mqg').hidden = !(cardio && m && nueva); $('#b-mqn').textContent = m;
   };
-  ['#b-t', '#b-mq', '#b-fz', '#b-img'].forEach(k => $(k).addEventListener('change', pintarCardio)); pintarCardio();
+  ['#b-t', '#b-mq', '#b-fz', '#b-img'].forEach(k => $(k).addEventListener('change', pintarCardio)); $('#b-pc').addEventListener('input', pintarCardio); pintarCardio();
   $('#f-blq').addEventListener('submit', async e => {
     e.preventDefault(); const btn = $('#b-btn'); btn.disabled = true; btn.textContent = 'Guardando…';
     const mal = t => { btn.disabled = false; btn.textContent = 'Guardar'; $('#b-err').textContent = t; };
     const v = k => $(k).value.trim() || null;
     const fz = $('#b-fz').value, maq = maqSel(), mStd = MAQUINAS.includes($('#b-mq').value) ? $('#b-mq').value : null;
-    const row = { letra: v('#b-l') || sig, nombre: v('#b-n') || 'Bloque', tipo: $('#b-t').value, agrupacion: v('#b-ag'), duracion: v('#b-du'), fc_objetivo: fz === 'otra' ? v('#b-fc') : fz ? 'Zona ' + fz : null, maquina: maq, detalle: v('#b-de'), video_url: v('#b-vi') };
+    const row = { letra: v('#b-l') || sig, nombre: v('#b-n') || 'Bloque', tipo: $('#b-t').value, agrupacion: v('#b-ag'), duracion: v('#b-du'), fc_objetivo: fz === 'otra' ? v('#b-fc') : fz === 'pc' ? (v('#b-pc') ? v('#b-pc').replace(/\s*%?\s*$/, ' %') : null) : fz ? 'Zona ' + fz : null, maquina: maq, detalle: v('#b-de'), video_url: v('#b-vi') };
     if (row.tipo === 'cardio' && mStd && fotoMaquina(mStd) && !$('#b-img').files[0]) row.imagen_url = fotoMaquina(mStd);
     else if (row.tipo === 'cardio' && mStd && b?.imagen_url && !$('#b-img').files[0] && $('#b-adopta')?.checked) {
       const nom = 'Cardio · ' + mStd, ya = (S.c.ejercicios || []).find(x => normaliza(x.nombre) === normaliza(nom));
@@ -3624,6 +3636,7 @@ ${editorEsFutbol() || b?.momento ? `    <label class="f">Momento (día de partid
       if (!r.error && r.data) { if (ya) Object.assign(ya, r.data); else S.c.ejercicios.push(r.data); }
     }
     if (v('#b-va') || b?.variante) row.variante = v('#b-va');
+    if (row.tipo === 'cardio' && $('#b-mq').value === 'Correr' && !$('#b-img').files[0] && b?.imagen_url) row.imagen_url = null;   // correr: fotos de cada modalidad
     if ($('#b-mo')?.value || b?.momento) row.momento = $('#b-mo')?.value || null;
     const file = $('#b-img').files[0];
     if (file) {
