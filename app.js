@@ -2641,10 +2641,10 @@ function formServicio() {
 /* ---------- Biblioteca de ejercicios (coach) ---------- */
 function vEjercicios() {
   const l = S.c.ejercicios.filter(x => !x.privado), filtro = norm(S.filtroEj || '');
-  const vis = l.filter(x => !filtro || norm(x.nombre + ' ' + (x.musculo || '')).includes(filtro));
-  const sinV = l.filter(x => !x.video_url).length, sinF = l.filter(x => !x.imagen_url).length;
+  const esCardio = x => /^cardio ·/i.test(x.nombre || ''), vis = l.filter(x => (!filtro || norm(x.nombre + ' ' + (x.musculo || '')).includes(filtro)) && (S.ejFalta === 'mus' ? !esCardio(x) && !x.musculo_img_url : S.ejFalta === 'foto' ? !esCardio(x) && !x.imagen_url : true));
+  const fuerza = l.filter(x => !/^cardio ·/i.test(x.nombre || '')), sinV = l.filter(x => !x.video_url).length, sinF = fuerza.filter(x => !x.imagen_url).length, sinM = fuerza.filter(x => !x.musculo_img_url).length;
   return `<section class="stack"><span class="eyebrow">Tu biblioteca</span><h1>Ejercicios</h1><p class="small muted">Lo que cambies aquí se ve al instante en los entrenos de todos tus alumnos.</p></section>
-  <section class="section"><div class="kpis"><div class="kpi"><div class="v num">${l.length}</div><div class="l">ejercicios</div></div><div class="kpi"><div class="v num" style="color:${sinV ? 'var(--warn)' : 'var(--ok)'}">${sinV}</div><div class="l">sin vídeo</div></div><div class="kpi"><div class="v num" style="color:${sinF ? 'var(--warn)' : 'var(--ok)'}">${sinF}</div><div class="l">sin foto</div></div></div>
+  <section class="section"><div class="kpis"><div class="kpi"><div class="v num">${l.length}</div><div class="l">ejercicios</div></div><div class="kpi"><div class="v num" style="color:${sinV ? 'var(--warn)' : 'var(--ok)'}">${sinV}</div><div class="l">sin vídeo</div></div><button class="kpi" data-act="ejFalta" data-v="foto" aria-pressed="${S.ejFalta === 'foto'}"><div class="v num" style="color:${sinF ? 'var(--warn)' : 'var(--ok)'}">${sinF}</div><div class="l">sin foto</div></button><button class="kpi" data-act="ejFalta" data-v="mus" aria-pressed="${S.ejFalta === 'mus'}"><div class="v num" style="color:${sinM ? 'var(--warn)' : 'var(--ok)'}">${sinM}</div><div class="l">sin músculo</div></button></div>${S.ejFalta ? `<p class="small">Mostrando solo los que no tienen ${S.ejFalta === 'mus' ? 'imagen del músculo' : 'foto'}. <button class="linkbtn small" data-act="ejFalta" data-v="">Ver todos</button></p>` : ''}
   <button class="btn full" data-act="importarImagenes">Actualizar imágenes desde tus hojas</button><p class="note">Pone la imagen del ejercicio, la del músculo y las de cardio y movilidad que tenías en tus hojas, y repara las que no cargan.</p>
   <input type="text" id="ej-buscar" placeholder="Buscar por nombre o músculo" value="${esc(S.filtroEj || '')}">
   <div class="card">${vis.map(x => `<div class="line" data-act="editarEjercicio" data-id="${x.id}" style="cursor:pointer">${x.imagen_url ? `<img src="${esc(x.imagen_url)}" alt="" style="width:48px;height:48px;border-radius:10px;object-fit:cover;flex:none" onerror="this.outerHTML='<span class=&quot;pill bad&quot;>Foto rota</span>'">` : `<div class="ico">${svg('ejercicios')}</div>`}<div class="grow"><h3>${esc(x.nombre)}</h3><div class="small muted">${esc(x.musculo || 'Sin músculo')}</div></div><div class="stack" style="gap:4px;align-items:flex-end"><span class="pill ${x.video_url ? 'ok' : 'warn'}">${x.video_url ? 'Vídeo' : 'Sin vídeo'}</span><span class="pill ${x.imagen_url ? 'ok' : 'warn'}">${x.imagen_url ? 'Foto' : 'Sin foto'}</span>${x.musculo_img_url ? '' : '<span class="pill warn">Sin músculo</span>'}</div></div>`).join('') || '<div class="empty">No hay ejercicios con ese nombre.</div>'}</div></section>`;
@@ -4080,6 +4080,7 @@ document.addEventListener('click', async e => {
     case 'fichaSub': await abrirSub(b.dataset.s); break;
     case 'cerrarSub': S.fichaSub = null; render(); window.scrollTo(0, 0); break;
     case 'editarComidas': formComidas(); break;
+    case 'ejFalta': S.ejFalta = S.ejFalta === b.dataset.v ? '' : b.dataset.v; render(); break;
     case 'opcBloque': (S.opc ||= {})[b.dataset.k] = +b.dataset.i; render(); if (S.dia) rellenarSesion(); break;
     case 'nuevaFactura': formFactura(b.dataset.id ? +b.dataset.id : null); break;
     case 'verFactura': verFactura(+b.dataset.id); break;
