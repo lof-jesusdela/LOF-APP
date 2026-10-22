@@ -655,8 +655,10 @@ function pautaEfectiva(e) {
     return trocear(t, met === 'Topset' ? (/''|´´|seg/.test(t.r || '') ? 'Rest-pause' : 'Dropset') : met, forzar);
   });
 }
+/* Datos del ejercicio: lo puesto solo en este programa (foto, nombre, vídeo, músculo) manda sobre la biblioteca */
+const ejDe = e => { const b = e.ejercicios || {}, o = {}; ['imagen_url', 'nombre', 'video_url', 'musculo_img_url'].forEach(k => { if (e[k]) o[k] = e[k]; }); return Object.keys(o).length ? { ...b, ...o } : b; };
 function vEjercicio(e, i, ro) {
-  const grupos = gruposDe(pautaEfectiva(e)), sp = esSinPeso(e), ej = e.imagen_url ? { ...(e.ejercicios || {}), imagen_url: e.imagen_url } : (e.ejercicios || {}), plan = ro?.plan;
+  const grupos = gruposDe(pautaEfectiva(e)), sp = esSinPeso(e), ej = ejDe(e), plan = ro?.plan;
   const kg0 = kgDe(grupos[0]?.tramos[0]) || kgDe({ kg: e.peso_ref });
   let n = 0;
   const filas = grupos.map(g => {
@@ -3494,8 +3496,8 @@ function formPrueba(id) {
 
 /* ---------- Editor de programas (coach) ---------- */
 const SEL_EDITOR = 'id,nombre,dias_semana,alumno_id,dias(*,bloques_sesion(*,ejercicios_sesion(*,ejercicios(nombre))))';
-async function abrirEditor(alumnoId, progId = null) {
-  S.editor = { alumnoId, progId, cargando: true }; render(); window.scrollTo(0, 0);
+async function abrirEditor(alumnoId, progId = null, quieto = false) {
+  if (!quieto) { S.editor = { alumnoId, progId, cargando: true }; render(); window.scrollTo(0, 0); }
   const [prog, met] = await Promise.all([
     progId ? conRespaldo(() => sb.from('programas').select('categoria,' + SEL_EDITOR).eq('id', progId).limit(1), () => sb.from('programas').select(SEL_EDITOR).eq('id', progId).limit(1))
       : sb.from('programas').select(SEL_EDITOR).eq('alumno_id', alumnoId).eq('activo', true).order('id', { ascending: false }).limit(1),
@@ -3505,7 +3507,7 @@ async function abrirEditor(alumnoId, progId = null) {
   if (p) { (p.dias ||= []).sort((a, b) => a.numero - b.numero); p.dias.forEach(d => { d.bloques_sesion.sort(ordBloque); d.bloques_sesion.forEach(b => b.ejercicios_sesion.sort((a, b) => a.orden - b.orden)); }); }
   S.editor = { alumnoId, progId, plantilla: !!progId && !alumnoId, prog: p, metodos: met.data || [], ctx: p ? [...(S.ficha?.contextos || []), ...(S.c?.contextos || [])].find(x => x.id === p.id) || null : null }; render();
 }
-async function refrescarEditor() { const id = S.editor.alumnoId, pid = S.editor.progId; await abrirEditor(id, pid); if (id && id === S.user.id) await cargarAlumno(S.user.id); if (!id) await cargarPlantillas(); }
+async function refrescarEditor() { const id = S.editor.alumnoId, pid = S.editor.progId, y = window.scrollY, dia = S.editor.dia; await abrirEditor(id, pid, true); S.editor.dia = dia; if (id && id === S.user.id) await cargarAlumno(S.user.id); if (!id) await cargarPlantillas(); render(); window.scrollTo(0, y); requestAnimationFrame(() => window.scrollTo(0, y)); }
 function vEditor() {
   const E = S.editor, a = S.c.perfiles.find(x => x.id === E.alumnoId) || {};
   if (E.cargando) return '<div class="empty">Cargando programa…</div>';
@@ -3514,12 +3516,13 @@ function vEditor() {
   return `<section class="stack"><button class="btn sm ghost" data-act="cerrarEditor" style="align-self:flex-start">← Volver</button><span class="eyebrow">${E.plantilla ? 'Plantilla · ' + esc(p?.categoria || 'sin categoría') : E.ctx ? `Contexto temporal de ${esc(a.nombre || '')} · ${esc(fCtx(E.ctx))} · ${E.ctx.dias_semana} entrenos/semana` : 'Programa de ' + esc(a.nombre || '')}</span><h1>${p ? esc(p.nombre) : 'Sin programa'}</h1>
     <div class="row" style="gap:8px;flex-wrap:wrap">${p ? `<button class="btn sm ghost" data-act="nuevoPrograma">Cambiar nombre</button><button class="btn sm" data-act="edDia">Añadir día</button>${E.plantilla ? `<button class="btn sm gold" data-act="probarPlantilla" data-id="${p.id}">👁 Ver como alumno de prueba</button>` : E.ctx ? '' : '<button class="btn sm gold" data-act="nuevoCiclo">Nuevo ciclo (copiar)</button>'}` : `<button class="btn sm" data-act="nuevoPrograma">Crear programa</button>`}</div>
     <p class="note">${E.plantilla ? 'Toca cualquier elemento para editarlo. Los cambios solo afectan a la plantilla: los alumnos que ya la tienen asignada conservan su copia.' : 'Toca cualquier elemento para editarlo. Los cambios los ve el alumno en cuanto vuelve a abrir la app.'}</p></section>
-  ${p ? p.dias.map(d => `<section class="section"><div class="card stack">
+  ${p && !E.dia ? `<section class="section"><div class="card">${p.dias.map(d => `<div class="line" data-act="edAbrirDia" data-id="${d.id}" style="cursor:pointer"><span class="pill gold">${d.numero}</span><div class="grow" style="min-width:0"><b>${esc(nomDia(d))}</b><div class="small muted">${d.bloques_sesion.length} bloques · ${d.bloques_sesion.reduce((t, b) => t + b.ejercicios_sesion.length, 0)} ejercicios${d.foco ? ' · ' + esc(d.foco) : ''}</div></div><button class="btn sm" data-act="edAbrirDia" data-id="${d.id}">Editar</button></div>`).join('')}</div></section>` : ''}
+  ${p ? p.dias.filter(d => d.id === E.dia).map(d => `<section class="section"><button class="btn sm ghost" data-act="edAbrirDia" data-id="" style="margin-bottom:8px">← Todos los días</button><div class="card stack">
     <div class="row"><div class="grow"><span class="eyebrow">Día ${d.numero}${d.titulo ? ' · ' + esc(d.nombre) : ''}</span><h2>${esc(nomDia(d))}</h2><div class="small muted">${esc([d.foco, d.volumen && 'vol. ' + d.volumen, d.intensidad && 'int. ' + d.intensidad].filter(Boolean).join(' · '))}</div></div><button class="btn sm ghost" data-act="edDia" data-id="${d.id}">Editar día</button></div>
     ${d.bloques_sesion.map(b => `<div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:10px">
       <div class="row" style="flex-wrap:wrap"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}${b.variante ? ` <span class="pill blue">${esc(b.variante)}</span>` : ''}</h3>${(() => { const k = d.bloques_sesion.indexOf(b), pr = d.bloques_sesion[k - 1]; return b.tipo === 'fuerza' && pr?.tipo === 'fuerza' ? `<button class="btn sm ghost" data-act="unirBloque" data-id="${b.id}" title="Pasa sus ejercicios al bloque ${esc(pr.letra)}">⤒ Unir con ${esc(pr.letra)}</button>` : ''; })()}<button class="btn sm ghost" data-act="dupBloque" data-id="${b.id}">⧉ Duplicar</button><button class="btn sm ghost" data-act="edBloque" data-id="${b.id}">✎ Editar bloque</button></div>
       ${b.agrupacion ? `<div class="small muted">${esc(b.agrupacion)}</div>` : ''}
-      ${b.tipo === 'fuerza' ? `${b.ejercicios_sesion.map((e, i) => `<div class="ed-ej">${(() => { const u = e.imagen_url || (S.c.ejercicios || []).find(x => x.id === e.ejercicio_id)?.imagen_url; return u ? `<img class="ed-mini" src="${esc(u)}" alt="" loading="lazy" data-act="edEj" data-id="${e.id}">` : `<span class="ed-mini ed-sin" data-act="edEj" data-id="${e.id}" title="Sin foto: toca para añadirla">📷</span>`; })()}<div class="grow" data-act="edEj" data-id="${e.id}" style="cursor:pointer;min-width:0"><b class="small">${i + 1}. ${esc(e.ejercicios?.nombre || '')}</b><div class="small muted">${resumen(e)}</div></div>${i > 0 ? `<button class="mini" data-act="separarEj" data-id="${e.id}" aria-label="Separar en un bloque nuevo desde este ejercicio" title="Separar en un bloque nuevo desde aquí">✂</button>` : ''}<button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="-1" aria-label="Subir" ${i === 0 ? 'disabled' : ''}>↑</button><button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="1" aria-label="Bajar" ${i === b.ejercicios_sesion.length - 1 ? 'disabled' : ''}>↓</button></div>`).join('')}
+      ${b.tipo === 'fuerza' ? `${b.ejercicios_sesion.map((e, i) => `<div class="ed-ej">${(() => { const u = e.imagen_url || (S.c.ejercicios || []).find(x => x.id === e.ejercicio_id)?.imagen_url; return u ? `<img class="ed-mini" src="${esc(u)}" alt="" loading="lazy" data-act="edEj" data-id="${e.id}">` : `<span class="ed-mini ed-sin" data-act="edEj" data-id="${e.id}" title="Sin foto: toca para añadirla">📷</span>`; })()}<div class="grow" data-act="edEj" data-id="${e.id}" style="cursor:pointer;min-width:0"><b class="small">${i + 1}. ${esc(e.nombre || e.ejercicios?.nombre || '')}</b><div class="small muted">${resumen(e)}</div></div>${i > 0 ? `<button class="mini" data-act="separarEj" data-id="${e.id}" aria-label="Separar en un bloque nuevo desde este ejercicio" title="Separar en un bloque nuevo desde aquí">✂</button>` : ''}<button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="-1" aria-label="Subir" ${i === 0 ? 'disabled' : ''}>↑</button><button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="1" aria-label="Bajar" ${i === b.ejercicios_sesion.length - 1 ? 'disabled' : ''}>↓</button></div>`).join('')}
         <button class="btn sm ghost" data-act="edEj" data-bloque="${b.id}" style="align-self:flex-start">+ Añadir ejercicio</button>` : `<div class="row" style="gap:10px">${(b.imagen_url || miniYoutube(b.video_url)) ? `<img class="ed-mini" src="${esc(b.imagen_url || miniYoutube(b.video_url))}" alt="" loading="lazy" data-act="verImagen" data-src="${esc(b.imagen_url)}" onerror="this.outerHTML='<span class=&quot;ed-mini ed-sin&quot;>⚠</span>'">` : ''}<div class="small muted">${esc(b.tipo === 'cardio' ? [b.duracion, fcTexto(b.fc_objetivo, fcEditor()), b.maquina].filter(Boolean).join(' · ') : 'Movilidad')}</div></div>`}
     </div>`).join('')}
     <button class="btn sm ghost" data-act="edBloque" data-dia="${d.id}" style="align-self:flex-start">+ Añadir bloque</button>
@@ -3657,15 +3660,21 @@ function formEjSesion(id, bloqueId) {
   const lib = S.c.ejercicios.filter(x => !x.privado).sort((x, y) => x.nombre.localeCompare(y.nombre, 'es')), todosEj = S.c.ejercicios;
   const opts = q => { const n = normaliza(q || ''); return lib.filter(x => !n || normaliza(x.nombre).includes(n)).map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join(''); };
   const dia = p.dias.find(d => d.bloques_sesion.includes(blq)), hermanos = (dia?.bloques_sesion || []).filter(x => x.tipo === 'fuerza');
-  const st = { foto: null, nfoto: null, mimg: null, mquitar: false };
+  const st = { foto: null, nfoto: null, mimg: null, mquitar: false, mus: null };
   const libEj = e ? (S.c.ejercicios || []).find(x => x.id === e.ejercicio_id) : null;
   abrirSheet(`<form class="stack" id="f-ejs"><h2>${e ? 'Editar ejercicio' : 'Añadir ejercicio'}</h2>
     <div class="stack" style="gap:6px"><span class="small muted">Ejercicio</span><input type="search" id="es-bus" placeholder="Buscar en tu biblioteca…" autocomplete="off">
       <select id="es-ej" aria-label="Ejercicio"><option value="">— Elige de tu biblioteca —</option><option value="nuevo">＋ Crear un ejercicio nuevo…</option>${opts('')}</select></div>
     <div id="es-prev"></div>
-    <div class="stack" id="es-foto-o" style="gap:6px" hidden>
-      <label class="row small" style="gap:8px;align-items:flex-start"><input type="radio" name="es-fa" value="solo" style="width:20px;height:20px;margin-top:1px"><span><b>Foto solo en este ejercicio</b><br><span class="muted">Solo en este programa o plantilla</span></span></label>
-      <label class="row small" style="gap:8px;align-items:flex-start"><input type="radio" name="es-fa" value="todos" style="width:20px;height:20px;margin-top:1px"><span><b>En todos los <span id="es-foto-n"></span></b><br><span class="muted">Cambia la foto de tu biblioteca: se verá en todos los programas y plantillas que lo usen, salvo donde le hayas puesto una propia</span></span></label></div>
+    <div class="stack" id="es-datos" style="gap:10px" hidden>
+      <label class="f">Nombre del ejercicio<input type="text" id="es-dn"></label>
+      <label class="f">Vídeo<input type="text" id="es-dv" inputmode="url" placeholder="https://youtu.be/…"></label>
+      <div id="es-dmw"></div>
+    </div>
+    <div class="stack" id="es-foto-o" style="gap:6px;padding:12px;border:1px solid var(--line);border-radius:12px" hidden>
+      <span class="small"><b>¿Dónde aplico este cambio?</b> <span class="muted" id="es-cambia"></span></span>
+      <label class="row small" style="gap:8px;align-items:flex-start"><input type="radio" name="es-fa" value="solo" style="width:20px;height:20px;margin-top:1px"><span><b>Solo en este ejercicio</b><br><span class="muted">Solo en este programa o plantilla</span></span></label>
+      <label class="row small" style="gap:8px;align-items:flex-start"><input type="radio" name="es-fa" value="todos" style="width:20px;height:20px;margin-top:1px"><span><b>En todos los <span id="es-foto-n"></span></b><br><span class="muted">Cambia tu biblioteca de ejercicios: se verá en todos los programas y plantillas que lo usen, salvo donde le hayas puesto algo propio</span></span></label></div>
     <div class="stack es-nuevo" id="es-nuevo-w" hidden><b class="small">Ejercicio nuevo</b>
       <div class="stack" style="gap:6px">
         <label class="row small" style="gap:8px;align-items:flex-start"><input type="radio" name="es-nal" value="todos" checked style="width:20px;height:20px;margin-top:1px"><span><b>Guardarlo en mi biblioteca</b><br><span class="muted">Podrás usarlo con todos tus alumnos y plantillas</span></span></label>
@@ -3695,10 +3704,23 @@ function formEjSesion(id, bloqueId) {
   const pintarPrev = () => {
     const x = todosEj.find(z => z.id === +sel.value), propia = e && +sel.value === e.ejercicio_id ? e.imagen_url : null, u = st.foto ? URL.createObjectURL(st.foto) : (propia || x?.imagen_url);
     $('#es-nuevo-w').hidden = sel.value !== 'nuevo';
-    const fo = $('#es-foto-o'); fo.hidden = !(x && st.foto);
-    if (!fo.hidden) { $('#es-foto-n').textContent = `«${x.nombre}»`; if (!fo.querySelector('input:checked')) fo.querySelector(`input[value="${x.imagen_url && !x.privado ? 'solo' : 'todos'}"]`).checked = true; }
+    alcanceDatos();
     $('#es-prev').innerHTML = x ? `<div class="es-prev">${u ? `<img src="${esc(u)}" alt="${esc(x.nombre)}" id="es-img" title="Toca para ampliar">` : `<span class="es-sin">Sin foto</span>`}<div class="grow stack" style="gap:4px;min-width:0"><b class="small">${esc(x.nombre)}</b>${x.musculo ? `<span class="small muted">${esc(x.musculo)}</span>` : ''}<label class="btn sm ghost" style="align-self:flex-start"><input type="file" id="es-foto" accept="image/*" hidden>📷 ${u ? 'Cambiar foto' : 'Añadir foto'}</label>${st.foto ? '<span class="small" style="color:var(--blue-text)">Se guarda al pulsar Guardar</span>' : ''}</div></div>` : '';
   };
+  const mismo = () => e && +sel.value === e.ejercicio_id;
+  const actual = () => { const x = todosEj.find(z => z.id === +sel.value) || {}, m = mismo(); return { nombre: (m && e.nombre) || x.nombre || '', video: (m && e.video_url) || x.video_url || '', mus: (m && e.musculo_img_url) || x.musculo_img_url || '' }; };
+  const cambiosDatos = () => { const x = todosEj.find(z => z.id === +sel.value); if (!x || $('#es-datos').hidden) return []; const a = actual(), l = [];
+    if (st.foto) l.push('foto'); if ($('#es-dn').value.trim() && $('#es-dn').value.trim() !== a.nombre) l.push('nombre'); if ($('#es-dv').value.trim() !== a.video) l.push('vídeo'); if (st.mus) l.push('músculo'); return l; };
+  function alcanceDatos() {
+    const x = todosEj.find(z => z.id === +sel.value), fo = $('#es-foto-o'), l = x ? cambiosDatos() : []; fo.hidden = !l.length;
+    if (!fo.hidden) { $('#es-foto-n').textContent = `«${x.nombre}»`; $('#es-cambia').textContent = '(' + l.join(', ') + ')'; if (!fo.querySelector('input:checked')) fo.querySelector(`input[value="${x.privado ? 'todos' : 'solo'}"]`).checked = true; }
+  }
+  const pintarDatos = () => {
+    const x = todosEj.find(z => z.id === +sel.value); $('#es-datos').hidden = !x; if (!x) return alcanceDatos();
+    const a = actual(); $('#es-dn').value = a.nombre; $('#es-dv').value = a.video; st.mus = null; pintarMus(); alcanceDatos();
+  };
+  const pintarMus = () => { const u = st.mus ? URL.createObjectURL(st.mus) : actual().mus;
+    $('#es-dmw').innerHTML = `<div class="es-prev">${u ? `<img src="${esc(u)}" alt="Músculo">` : '<span class="es-sin">Sin músculo</span>'}<div class="grow stack" style="gap:6px"><span class="small muted">Imagen del músculo que se trabaja</span><label class="btn sm ghost" style="align-self:flex-start"><input type="file" id="es-dm" accept="image/*" hidden>📷 ${u ? 'Cambiar' : 'Añadir'}</label></div></div>`; };
   /* Imagen del material: la de este ejercicio en el programa manda sobre la de la biblioteca ('' = sin imagen aquí) */
   const mimgActual = () => { if (st.mquitar) return null; if (st.mimg) return URL.createObjectURL(st.mimg); const x = lib.find(z => z.id === +sel.value), u = e?.material_img_url ?? x?.material_img_url; return u || null; };
   const alcance = () => { const x = lib.find(z => z.id === +sel.value), v = $('#es-mat').value.trim(), cambia = v !== (e?.material ?? x?.material ?? ''); $('#es-mat-o').hidden = !(x && ((v && cambia) || st.mimg || st.mquitar)); $('#es-mat-n').textContent = x ? `«${x.nombre}»` : 'ejercicios iguales'; };
@@ -3711,8 +3733,10 @@ function formEjSesion(id, bloqueId) {
   $('#es-mimg').addEventListener('click', ev => { if (ev.target.id === 'es-mquita') { st.mimg = null; st.mquitar = true; pintarMat(); } });
   $('#es-mat').addEventListener('input', alcance); sel.addEventListener('change', () => { st.mimg = null; st.mquitar = false; pintarMat(); });
   if (e?.ejercicio_id) { if (![...sel.options].some(o => +o.value === e.ejercicio_id)) sel.insertAdjacentHTML('beforeend', `<option value="${e.ejercicio_id}">${esc(e.ejercicios?.nombre || 'Ejercicio')}</option>`); sel.value = String(e.ejercicio_id); }
-  pintarPrev(); pintarMat();
-  sel.addEventListener('change', () => { st.foto = null; pintarPrev(); if (sel.value === 'nuevo') { $('#es-nuevo').value = $('#es-bus').value.trim(); $('#es-nuevo').focus(); } });
+  pintarPrev(); pintarMat(); pintarDatos();
+  $('#es-dn').addEventListener('input', alcanceDatos); $('#es-dv').addEventListener('input', alcanceDatos);
+  $('#es-dmw').addEventListener('change', ev => { if (ev.target.id === 'es-dm' && ev.target.files[0]) { st.mus = ev.target.files[0]; pintarMus(); alcanceDatos(); } });
+  sel.addEventListener('change', () => { st.foto = null; pintarPrev(); pintarDatos(); if (sel.value === 'nuevo') { $('#es-nuevo').value = $('#es-bus').value.trim(); $('#es-nuevo').focus(); } });
   $('#es-bus').addEventListener('input', ev => {
     const v = sel.value, q = ev.target.value; sel.innerHTML = `<option value="">— ${q ? 'Elige entre los resultados' : 'Elige de tu biblioteca'} —</option><option value="nuevo">＋ Crear ${q ? `«${esc(q)}»` : 'un ejercicio nuevo'}…</option>${opts(q)}`;
     if (v && v !== 'nuevo' && [...sel.options].some(o => o.value === v)) sel.value = v; else if (sel.options.length === 3) sel.value = sel.options[2].value; else if (v === 'nuevo') sel.value = 'nuevo';
@@ -3740,13 +3764,21 @@ function formEjSesion(id, bloqueId) {
         }
       }
       if (!ejId) return toast('Elige un ejercicio');
-      let fotoPropia;
-      if (st.foto) {
+      /* Foto, nombre, vídeo y músculo: solo en este ejercicio (columnas propias) o en la biblioteca para todos */
+      const datos = {}, cam = cambiosDatos();
+      if (cam.length) {
         const soloAqui = document.querySelector('input[name="es-fa"]:checked')?.value === 'solo';
         try {
-          if (soloAqui) fotoPropia = await subirImagenEj(st.foto, `ejs-${ejId}-${Date.now()}`);
-          else { const u = await subirImagenEj(st.foto, `ej-${ejId}`); const r = await sb.from('ejercicios').update({ imagen_url: u }).eq('id', +ejId); if (r.error) throw r.error; const x = S.c.ejercicios.find(z => z.id === +ejId); if (x) x.imagen_url = u; fotoPropia = null; }
+          if (cam.includes('nombre')) datos.nombre = $('#es-dn').value.trim();
+          if (cam.includes('vídeo')) datos.video_url = $('#es-dv').value.trim() || null;
+          if (st.foto) datos.imagen_url = await subirImagenEj(st.foto, soloAqui ? `ejs-${ejId}-${Date.now()}` : `ej-${ejId}`);
+          if (st.mus) datos.musculo_img_url = await subirImagenEj(st.mus, soloAqui ? `muss-${ejId}-${Date.now()}` : `mus-${ejId}`, 900);
         } catch (err) { console.error(err); return toast(motivoImg(err)); }
+        if (!soloAqui) {
+          const r = await sb.from('ejercicios').update(datos).eq('id', +ejId); if (r.error) throw r.error;
+          const x = S.c.ejercicios.find(z => z.id === +ejId); if (x) Object.assign(x, datos);
+          Object.keys(datos).forEach(k => { datos[k] = e?.[k] ? null : undefined; });   // quita lo propio de aquí para que se vea lo de la biblioteca
+        }
       }
       let destino = blq; const vb = $('#es-blq')?.value;
       if (vb === 'nuevo') destino = await nuevoBloqueTras(dia, blq);
@@ -3777,13 +3809,13 @@ function formEjSesion(id, bloqueId) {
         if (urlMat) row.material_img_url = urlMat; else if (st.mquitar) row.material_img_url = libX?.material_img_url && !(e?.material_img_url) ? '' : null;
       }
       if (nota || (e && e.nota != null)) row.nota = nota || null;
-      if (fotoPropia !== undefined) { if (fotoPropia || (e && e.imagen_url)) row.imagen_url = fotoPropia; }
-      else if (e && e.imagen_url && +ejId !== e.ejercicio_id) row.imagen_url = null;
+      Object.entries(datos).forEach(([k, v]) => { if (v !== undefined) row[k] = v; });
+      if (e && +ejId !== e.ejercicio_id) ['imagen_url', 'nombre', 'video_url', 'musculo_img_url'].forEach(k => { if (e[k]) row[k] = null; });
       if (destino !== blq || !e) { row.bloque_id = destino.id; row.orden = Math.max(0, ...destino.ejercicios_sesion.map(x => x.orden)) + 1; }
       const { error } = e ? await sb.from('ejercicios_sesion').update(row).eq('id', e.id) : await sb.from('ejercicios_sesion').insert(row);
       if (error) throw error;
       cerrarSheet(); toast('Ejercicio guardado'); refrescarEditor();
-    } catch (err) { fallo(err, /privado|imagen_url/i.test(err.message || '') ? 'Falta ejecutar el Bloque 43 en Supabase para guardar fotos o ejercicios solo de este programa.' : /material|nota|column/i.test(err.message || '') ? 'Falta ejecutar el Bloque 39 en Supabase para guardar el material y la descripción.' : /bucket|row-level|security/i.test(err.message || '') ? 'Supabase no deja subir imágenes: ejecuta el Bloque 38.' : undefined); }
+    } catch (err) { fallo(err, /nombre|video_url|musculo_img_url/i.test(err.message || '') ? 'Falta ejecutar el Bloque 46 en Supabase para guardar nombre, vídeo o músculo solo en este programa.' : /privado|imagen_url/i.test(err.message || '') ? 'Falta ejecutar el Bloque 43 en Supabase para guardar fotos o ejercicios solo de este programa.' : /material|nota|column/i.test(err.message || '') ? 'Falta ejecutar el Bloque 39 en Supabase para guardar el material y la descripción.' : /bucket|row-level|security/i.test(err.message || '') ? 'Supabase no deja subir imágenes: ejecuta el Bloque 38.' : undefined); }
   });
   $('#es-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para quitarlo'; return; } const { error } = await sb.from('ejercicios_sesion').delete().eq('id', e.id); if (error) return fallo(error, 'No se puede quitar: ya tiene series registradas. Puedes cambiarlo por otro ejercicio.'); cerrarSheet(); toast('Ejercicio quitado'); refrescarEditor(); });
 }
@@ -3822,7 +3854,7 @@ function formDuplicar(id) {
       const nuevo = { ...data, ejercicios_sesion: [] };
       for (const [i, x] of blq.ejercicios_sesion.entries()) {
         const f = { bloque_id: data.id, orden: i + 1 };
-        ['ejercicio_id', 'series', 'repeticiones', 'rir', 'peso_ref', 'descanso_seg', 'metodo_id', 'ajustes', 'aproximacion_631', 'grupo', 'pauta', 'material', 'material_img_url', 'nota', 'imagen_url'].forEach(k => { if (x[k] != null) f[k] = x[k]; });
+        ['ejercicio_id', 'series', 'repeticiones', 'rir', 'peso_ref', 'descanso_seg', 'metodo_id', 'ajustes', 'aproximacion_631', 'grupo', 'pauta', 'material', 'material_img_url', 'nota', 'imagen_url', 'nombre', 'video_url', 'musculo_img_url'].forEach(k => { if (x[k] != null) f[k] = x[k]; });
         const r = await sb.from('ejercicios_sesion').insert(f); if (r.error) throw r.error;
       }
       dia.bloques_sesion.splice(pos, 0, nuevo); await reletrar(dia);
@@ -4081,6 +4113,7 @@ document.addEventListener('click', async e => {
     case 'cerrarSub': S.fichaSub = null; render(); window.scrollTo(0, 0); break;
     case 'editarComidas': formComidas(); break;
     case 'ejFalta': S.ejFalta = S.ejFalta === b.dataset.v ? '' : b.dataset.v; render(); break;
+    case 'edAbrirDia': S.editor.dia = +b.dataset.id || null; render(); window.scrollTo(0, 0); break;
     case 'opcBloque': (S.opc ||= {})[b.dataset.k] = +b.dataset.i; render(); if (S.dia) rellenarSesion(); break;
     case 'nuevaFactura': formFactura(b.dataset.id ? +b.dataset.id : null); break;
     case 'verFactura': verFactura(+b.dataset.id); break;
