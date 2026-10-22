@@ -46,10 +46,45 @@ const numero = v => { const n = parseFloat(String(v ?? '').replace(',', '.')); r
 const seg = s => s >= 60 ? (s % 60 ? `${Math.floor(s / 60)}' ${s % 60}''` : `${s / 60}'`) : `${s}''`;
 
 function toast(t) { const el = $('#toast'); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 2600); }
-function abrirSheet(html) { $('#sheet-in').innerHTML = html; $('#sheet').hidden = false; }
-function cerrarSheet() { $('#sheet').hidden = true; $('#sheet-in').innerHTML = ''; }
-$('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') cerrarSheet(); });
-function fallo(err, msg) { console.error(err); if (err?.message === 'vista_alumno') return toast(TXT_VISTA); toast(msg || 'No se ha podido guardar. Revisa tu conexión e inténtalo de nuevo.'); }
+/* ---------- Hojas (formularios): salida visible, Escape, cambios sin guardar y estado del guardado ---------- */
+function abrirSheet(html) {
+  $('#sheet-in').innerHTML = `<div class="sheet-top"><span class="sheet-est" id="sheet-est" aria-live="polite"></span><button type="button" class="sheet-x" data-act="cerrarSheetPide" aria-label="Cerrar">Cerrar ✕</button></div>` + html;
+  $('#sheet').hidden = false; S.sheetSucio = false; $('#sheet-in').scrollTop = 0;
+}
+function cerrarSheet() { $('#sheet').hidden = true; $('#sheet-in').innerHTML = ''; S.sheetSucio = false; }
+function pedirCerrarSheet() {
+  if (!S.sheetSucio) return cerrarSheet();
+  if ($('#sheet-aviso')) return;
+  $('#sheet-in').querySelector('.sheet-top').insertAdjacentHTML('afterend', `<div class="aprox small row" id="sheet-aviso" role="alert" style="gap:8px;flex-wrap:wrap;margin-bottom:10px"><b class="grow">Tienes cambios sin guardar.</b><button type="button" class="btn sm" data-act="sheetSeguir">Seguir editando</button><button type="button" class="btn sm ghost" data-act="sheetDescartar" style="color:var(--bad)">Descartar cambios</button></div>`);
+  $('#sheet-in').scrollTop = 0;
+}
+const estadoSheet = (t, cls) => { const el = $('#sheet-est'); if (el) { el.textContent = t || ''; el.className = 'sheet-est ' + (cls || ''); } };
+$('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') pedirCerrarSheet(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#sheet').hidden) { e.preventDefault(); pedirCerrarSheet(); } });
+const marcaSucio = e => { if (!e.target.closest?.('#sheet-in') || e.target.closest('#sheet-aviso')) return; if (!S.sheetSucio) { S.sheetSucio = true; estadoSheet('Cambios sin guardar', 'pend'); } };
+document.addEventListener('input', marcaSucio, true); document.addEventListener('change', marcaSucio, true);
+/* Peticiones en curso: el botón dice «Guardando…» y, si la hoja sigue abierta al terminar, vuelve a su texto */
+let EN_CURSO = 0;
+{ const f0 = window.fetch.bind(window); window.fetch = async (...a) => { EN_CURSO++; try { return await f0(...a); } finally { EN_CURSO--; } }; }
+document.addEventListener('submit', e => {
+  const F = e.target; if (!F.closest?.('#sheet-in')) return;
+  const bt = F.querySelector('[type=submit]'); if (!bt || bt.dataset.guardando) return;
+  bt.dataset.txt = bt.textContent; bt.dataset.guardando = '1'; estadoSheet('Guardando…', 'run');
+  setTimeout(() => { if (bt.isConnected && bt.dataset.guardando && !bt.disabled) bt.textContent = 'Guardando…'; }, 0);
+  const t0 = Date.now(), mira = () => {
+    if (!bt.isConnected) return; // la hoja se cerró: guardado
+    if (EN_CURSO > 0 && Date.now() - t0 < 30000) return setTimeout(mira, 150);
+    delete bt.dataset.guardando; if (bt.textContent === 'Guardando…') bt.textContent = bt.dataset.txt; bt.disabled = false;
+    if (!$('#sheet-est')?.classList.contains('err')) estadoSheet(S.sheetSucio ? 'Cambios sin guardar' : '', S.sheetSucio ? 'pend' : '');
+  };
+  setTimeout(mira, 250);
+}, true);
+function fallo(err, msg) {
+  console.error(err); if (err?.message === 'vista_alumno') return toast(TXT_VISTA);
+  const m = msg || 'No se ha podido guardar. Revisa tu conexión e inténtalo de nuevo.';
+  if (!$('#sheet').hidden) { estadoSheet('No se ha podido guardar', 'err'); const v = $('#sheet-err'); const html = `<div class="small" id="sheet-err" role="alert" style="color:var(--bad);background:rgba(229,72,77,.08);border-radius:10px;padding:8px 10px;margin-bottom:10px">⚠️ ${esc(m)} Tus datos siguen aquí.</div>`; v ? v.outerHTML = html : $('#sheet-in').querySelector('.sheet-top')?.insertAdjacentHTML('afterend', html); $('#sheet-in').querySelectorAll('[data-guardando]').forEach(b => { b.textContent = b.dataset.txt; delete b.dataset.guardando; b.disabled = false; }); }
+  toast(m);
+}
 
 const IC = {
   hoy: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
@@ -368,7 +403,7 @@ function render() {
       <div class="badge"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : esc(S.perfil.metodologia || 'Tu proceso')}</strong></div></div>
       <div class="row" style="gap:8px">${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
       <button class="avatar" data-act="cuenta" aria-label="Mi cuenta">${esCoach ? '<img src="icons/coach.jpg" alt="">' : S.perfil.foto_url ? `<img src="${esc(S.perfil.foto_url)}" alt="">` : esc((S.perfil.nombre || '?').slice(0, 2).toUpperCase())}</button></div>
-    </header>${S.prueba ? vBannerPrueba() : S.vista ? vBannerVista() : vBarraYo()}${coach && ANCHO.matches ? vLateral(actual) : ''}<main id="main" class="${coach ? claseMain() : ''}">${(S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : (!coach && Temperamento.activo()) ? seguro(Temperamento.vista) : seguro(vistas[actual])}</main>`;
+    </header>${S.prueba ? vBannerPrueba() : S.vista ? vBannerVista() : vBarraYo()}${coach && ANCHO.matches ? vLateral(actual) : ''}<main id="main" class="${coach ? claseMain() : ''}">${(S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : (!coach && Temperamento.activo()) ? seguro(Temperamento.vista) : seguro(vistas[actual])}</main>${coach ? Clip.barra() : ''}`;
   document.body.classList.toggle('modo-coach', coach);
   if (coach) aplicarFiltroAl();
   $('#tabs').hidden = false;
@@ -540,7 +575,7 @@ function vRegistroDia(s) {
   const hoy = hoyISO(), sel = ventanaRegistro().includes(S.regDia) ? S.regDia : hoy;
   const r = S.d.diario.find(x => x.fecha === sel) || {}, esHoy = sel === hoy, rutas = r.fotos || [];
   if (rutas.some(p => !(p in FOTOS))) pedirFotos(rutas);
-  return `<section class="section"><div class="section-head"><h2>Registro del día</h2><span class="small muted">${esHoy ? 'Hoy' : esc(fLarga(sel))}</span></div><div class="card stack">
+  return `<section class="section" id="registro"><div class="section-head"><h2>Registro del día</h2><span class="small muted">${esHoy ? 'Hoy' : esc(fLarga(sel))}</span></div><div class="card stack">
     <div class="stack" style="gap:6px"><span class="small muted">Puedes rellenar los días de esta semana; los lunes, también los de la semana anterior.</span>
       <div class="reg-dias" role="group" aria-label="Día a registrar" style="--n:${Math.max(7, ventanaRegistro().length)}">${ventanaRegistro().map(f => { const x = S.d.diario.find(y => y.fecha === f), hecho = !!x && (x.pasos != null || x.ingestas != null || !!x.alimentacion); return `<button type="button" data-act="regDia" data-f="${f}" aria-pressed="${f === sel}" class="${hecho ? 'hecho' : ''}"><small>${DIA3[fecha(f).getDay()]}</small><b class="num">${fecha(f).getDate()}</b></button>`; }).join('')}</div></div>
     ${(() => { const l = S.d.sesiones.filter(x => x.fecha === sel), todos = [S.d.programaBase, S.d.programa, ...(S.d.contextos || [])].filter(Boolean).flatMap(p => p.dias || []), dd = esHoy ? diaDeHoy() : null;
@@ -731,6 +766,42 @@ const Bienvenida = {
       ${l.map(([t, ok, act]) => `<div class="row small" style="gap:10px">${ok ? '<span style="color:var(--ok);font-weight:700">✓</span>' : '<span class="muted">○</span>'}<span class="grow" style="${ok ? 'text-decoration:line-through;color:var(--muted)' : ''}">${esc(t)}</span>${!ok && act ? (act.startsWith('tab:') ? `<button class="linkbtn small" data-act="tab" data-t="${act.slice(4)}">Ir ›</button>` : `<button class="linkbtn small" data-act="${act}">Ir ›</button>`) : ''}</div>`).join('')}</div></section>`;
   }
 };
+/* ---------- Hoy: lo pendiente en un solo sitio (sin repetir lo que ya está en «Lo que toca hoy») ---------- */
+function vPendientesHoy(s) {
+  const hoy = hoyISO(), r = S.d.diario.find(x => x.fecha === hoy), lineas = [];
+  const fase = Nutricion.fase(S.d);
+  const regHoy = !!r && (r.pasos != null || r.ingestas != null || !!r.observacion);
+  const queReg = [conPasos(s) && 'tus pasos', s.modulo_nutricion && fase === 'activo' && 'las comidas del plan'].filter(Boolean);
+  if (!s.modulo_futbol && !regHoy && queReg.length && Acomp.estado(s).k !== 'pausado') lineas.push(['📝', `Registro de hoy: ${queReg.join(' y ')}`, 'Aún sin registrar · tarda 10 segundos', 'irRegistro', 'Registrar']);
+  if (s.modulo_nutricion && fase === 'recogida') lineas.push(['🍽', 'Registro de 7 días de comidas', 'Jesús te lo ha pedido para preparar tu plan', 'tab:nutri', 'Apuntar']);
+  if (tocaCheckin()) lineas.push(['✅', 'Check-in semanal', 'Toca este fin de semana · hasta el domingo', 'abrirCheckin', 'Rellenar']);
+  const tarjetas = [Acomp.tarjetaDevolucionHoy(), Casos.lineaHoy(), Casos.tarjetaHoy(true), Bienvenida.tarjeta()].join('');
+  if (!lineas.length && !tarjetas.trim()) return '';
+  return `${lineas.length ? `<section class="section"><h2>Pendiente</h2><div class="card">${lineas.map(([ic, t, d, act, b]) => `<div class="line"><span style="font-size:20px;width:28px;text-align:center">${ic}</span><div class="grow"><b class="small">${t}</b><div class="small muted">${d}</div></div><button class="btn sm" ${act.startsWith('tab:') ? `data-act="tab" data-t="${act.slice(4)}"` : `data-act="${act}"`}>${b}</button></div>`).join('')}</div></section>` : ''}${tarjetas}`;
+}
+/* Próximamente: revisión mensual, entrenos con Jesús (saldo, próxima reserva y un solo botón) */
+function vProximamente(s) {
+  const ev = vEventos(s, []).replace('<h2>Próximos eventos</h2>', '<h2>Próximamente</h2>');
+  return ev + vPresResumen(s, S.d.presenciales);
+}
+function vPresResumen(srv, lista) {
+  lista = lista || [];
+  if (!srv?.modulo_presencial && !srv?.sesiones_incluidas && !lista.length) return '';
+  const D = datosPres(srv, lista), sig = D.prox[0];
+  return `<section class="section"><div class="card stack"><div class="row"><div class="grow"><span class="eyebrow">Tus entrenamientos con Jesús</span>
+      ${D.total ? `<div class="small"><b class="num" style="font-family:var(--display);font-size:22px">${D.quedan}</b> ${D.quedan === 1 ? 'sesión disponible' : 'sesiones disponibles'} <span class="muted">· ${D.hechas.length} de ${D.total} hechas${D.prox.length ? ` · ${D.prox.length} ${D.prox.length === 1 ? 'reservada' : 'reservadas'}` : ''}</span></div>` : ''}</div></div>
+    ${sig ? `<div class="line" data-act="verPres" data-id="${sig.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">Próxima: ${esc(fLargaP(sig))}${sig.hora ? ' · ' + hhmm(sig.hora) : ''}</b>${D.prox.length > 1 ? `<div class="small muted">y ${D.prox.length - 1} más reservada${D.prox.length > 2 ? 's' : ''}</div>` : ''}</div><span class="small muted">Ver ›</span></div>` : '<div class="small muted">No tienes ninguna sesión reservada.</div>'}
+    ${D.total && D.quedan > 0 ? '<button class="btn full" data-act="reservarPres">Reservar entrenamiento con Jesús</button>' : D.total ? '<div class="small muted">Has usado todas las sesiones de tu bono.</div>' : ''}
+    <details class="small"><summary>Historial y gestión de reservas</summary><div class="stack" style="gap:8px;margin-top:8px">${vPresenciales(srv, lista, false).replace(/<button class="btn full" data-act="reservarPres">[^<]*<\/button>/, '').replace('<section class="section">', '<div>').replace(/<\/section>$/, '</div>')}</div></details>
+  </div></section>`;
+}
+/* Check-in semanal como tarjeta con estado y fecha; el formulario se despliega al ir a completarlo */
+function vCheckinTarjeta() {
+  const lunes = lunesDe(hoyISO()), c = S.d.checkins.find(x => x.semana_inicio === lunes), sab = sumaDias(lunes, 5), dom = sumaDias(lunes, 6), toca = tocaCheckin();
+  if (S.chkAbierto) return `<section class="section chk-hoy" id="checkin">${vCheckin(true)}<button class="btn ghost full" data-act="cerrarCheckin" style="margin-top:8px">Cerrar sin enviar</button></section>`;
+  const est = c ? `<span class="pill ok">✓ Enviado el ${esc(fCorta((c.created_at || c.actualizado_at || lunes).slice(0, 10)))}</span>` : toca ? '<span class="pill gold">Toca ahora</span>' : `<span class="pill">Se abre el sábado ${esc(fCorta(sab))}</span>`;
+  return `<section class="section" id="checkin"><div class="card row" style="gap:10px;align-items:center"><div class="ico ${toca && !c ? 'gold' : ''}">${svg('checkin')}</div><div class="grow stack" style="gap:4px"><b class="small">Check-in semanal · semana del ${esc(fCorta(lunes))}</b><div>${est}</div><div class="small muted">${c ? 'Puedes modificarlo hasta el domingo.' : `Hasta el domingo ${esc(fCorta(dom))}. Lo que registras cada día se rellena solo.`}</div></div><button class="btn sm ${c ? 'ghost' : ''}" data-act="abrirCheckin">${c ? 'Modificar' : toca ? 'Rellenar' : 'Rellenar ya'}</button></div></section>`;
+}
 function vHoy() {
   const s = S.d.servicio || {}, p = S.d.programa, hoy = hoyISO();
   const d = diaDeHoy(), prox = proximoDia();
@@ -757,21 +828,17 @@ function vHoy() {
     ${objetivoDe(S.d.ruta) ? `<div style="border-top:1px solid rgba(255,255,255,.14);padding-top:12px" class="stack"><span class="eyebrow">Tu objetivo</span><div class="small">${esc(objetivoDe(S.d.ruta))}</div></div>` : ''}
   </section>
   ${Acomp.tarjetaEstadoHoy()}
-  ${Bienvenida.tarjeta()}
-  ${Casos.lineaHoy()}
-  ${Acomp.tarjetaDevolucionHoy()}
-  ${vProcesoGlobal(s)}
   ${vAvisoContexto()}
-  ${Casos.tarjetaHoy(true)}
   <section class="section"><h2>Lo que toca hoy</h2><div class="card">${toca}</div></section>
-  ${Casos.tarjetaHoy(false)}
+  ${vPendientesHoy(s)}
+  ${Acomp.ultimaIndicacion()}
+  ${vProximamente(s)}
   ${s.modulo_futbol ? vFutbolHoy() + vSemanaFutbol(ini, w, p) + Habitos.tarjetaHoy(false) : vRegistroDia(s)}
-  ${tocaCheckin() ? `<section class="section"><div class="card aviso-chk stack"><div class="row"><div class="ico gold">${svg('checkin')}</div><div class="grow"><b>Toca rellenar tu check-in</b><div class="small muted">Es fin de semana: cuéntale a Jesús cómo ha ido tu semana.</div></div></div><button class="btn full" data-act="tab" data-t="checkin">Rellenar check-in</button>${'Notification' in window && Notification.permission === 'default' ? '<button class="btn ghost full" data-act="permisoAvisos">Activar avisos en el móvil</button>' : ''}</div></section>` : ''}
+  ${vCheckinTarjeta()}
+  ${vProcesoGlobal(s)}
+  ${Casos.tarjetaHoy(false)}
   ${Temperamento.tarjetaHoy()}
   ${s.modulo_futbol ? '' : Habitos.tarjetaHoy(true)}
-  ${vEventos(s, S.d.presenciales)}
-  ${vPresenciales(S.d.servicio, S.d.presenciales, false)}
-  <section class="section chk-hoy" id="checkin">${vCheckin(true)}</section>
   `;
 }
 
@@ -1548,7 +1615,7 @@ async function enviarCheckin() {
   if (error) return fallo(error);
   S.d.checkins = [data, ...S.d.checkins.filter(x => x.semana_inicio !== row.semana_inicio)];
   { const ln = sumaDias(row.semana_inicio, 7); if (usaPlan() && S.planSel?.[ln]?.size) await guardarPlanSemana(ln, [...S.planSel[ln]]); }
-  toast('Check-in enviado a Jesús'); S.tab = 'hoy'; render(); window.scrollTo(0, 0);
+  S.chkAbierto = false; toast('Check-in enviado a Jesús'); S.tab = 'hoy'; render(); window.scrollTo(0, 0);
 }
 
 /* =====================================================================
@@ -3625,6 +3692,67 @@ async function registrarPresencial(sesId) {
   if (r.error) { console.error(r.error); toast('Sesión guardada, pero la presencial no: ' + motivoPres(r.error)); }
 }
 /* Nuevo ciclo: copia el programa activo para editarlo sin perder el historial del anterior */
+/* ---------- Copiar y pegar entrenamientos entre alumnos (y plantillas): días o programas completos ---------- */
+const Clip = {
+  k: 'lof-portapapeles',
+  hay() { try { return JSON.parse(localStorage.getItem(this.k) || 'null'); } catch (e) { return null; } },
+  poner(c) { try { localStorage.setItem(this.k, JSON.stringify(c)); } catch (e) { return toast('No se ha podido copiar (memoria del navegador llena)'); } render(); },
+  quitar() { try { localStorage.removeItem(this.k); } catch (e) { } render(); },
+  origen() { const E = S.editor, a = S.c.perfiles.find(x => x.id === (E.prog?.alumno_id || E.alumnoId)); return a ? a.nombre : E.plantilla ? 'plantilla «' + (E.prog?.nombre || '') + '»' : ''; },
+  copiarDia(id) { const d = S.editor?.prog?.dias.find(x => x.id === id); if (!d) return; this.poner({ tipo: 'dia', nombre: nomDia(d), origen: this.origen(), dias_semana: null, dias: [JSON.parse(JSON.stringify(d))] }); toast(`Copiado: ${nomDia(d)}. Ve al programa de otro alumno y pulsa «Pegar»`); },
+  copiarProg() { const p = S.editor?.prog; if (!p) return; this.poner({ tipo: 'programa', nombre: p.nombre, origen: this.origen(), dias_semana: p.dias_semana, dias: JSON.parse(JSON.stringify(p.dias)) }); toast(`Copiado el programa «${p.nombre}». Pégalo en otro alumno`); },
+  barra() {
+    const c = this.hay(); if (!c || S.modo !== 'coach' || S.vista || S.prueba) return '';
+    return `<div id="clip-barra"><span class="grow">📋 <b>${esc(c.tipo === 'dia' ? c.nombre : 'Programa «' + c.nombre + '»')}</b>${c.origen ? ' · de ' + esc(c.origen) : ''}</span><button type="button" data-act="clipPegar">Pegar en…</button><button type="button" data-act="clipQuitar" aria-label="Vaciar portapapeles">✕</button></div>`;
+  },
+  /* Inserta días (con bloques y ejercicios) en un programa; renombra según sea futbolista o no */
+  async insertarDias(dias, progId, desde, futbol) {
+    let n = desde;
+    for (const d of dias) {
+      const { id, bloques_sesion, programa_id, ...dd } = d; n++;
+      if (!futbol) { if (!dd.titulo && !/^d[ií]a \d+/i.test(dd.nombre || '') && !DIAS.some(x => norm(x) === norm(dd.nombre))) dd.titulo = dd.nombre; dd.nombre = 'Día ' + n; delete dd.tipo_dia; }
+      const { data: nd, error: e1 } = await sb.from('dias').insert({ ...dd, numero: n, programa_id: progId }).select().single(); if (e1) throw e1;
+      for (const b of bloques_sesion || []) {
+        const { id: bid, ejercicios_sesion, dia_id, ...bb } = b;
+        const { data: nb, error: e2 } = await sb.from('bloques_sesion').insert({ ...bb, dia_id: nd.id }).select().single(); if (e2) throw e2;
+        if ((ejercicios_sesion || []).length) { const { error: e3 } = await sb.from('ejercicios_sesion').insert(ejercicios_sesion.map(({ id: _e, ejercicios, bloque_id, ...x }) => ({ ...x, bloque_id: nb.id }))); if (e3) throw e3; }
+      }
+    }
+  },
+  formPegar() {
+    const c = this.hay(); if (!c) return;
+    const E = S.editor, enEditor = !!E?.prog, aidEd = E?.prog?.alumno_id || E?.alumnoId || S.ficha?.id || '';
+    const als = S.c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach');
+    abrirSheet(`<form class="stack" id="f-clip"><h2>Pegar ${c.tipo === 'dia' ? 'entrenamiento' : 'programa'}</h2>
+      <p class="small"><b>${esc(c.tipo === 'dia' ? c.nombre : c.nombre)}</b>${c.origen ? ' · de ' + esc(c.origen) : ''} · ${c.dias.length} ${c.dias.length === 1 ? 'día' : 'días'}. Se copia todo: bloques, ejercicios, pautas, vídeos, fotos y opciones. El original no cambia.</p>
+      ${enEditor ? `<label class="row small" style="gap:8px"><input type="radio" name="cl-d" value="aqui" checked style="width:20px;height:20px"> Añadir ${c.tipo === 'dia' ? 'como día nuevo' : 'sus días'} a este programa (${esc(E.prog.nombre)})</label>` : ''}
+      <label class="row small" style="gap:8px"><input type="radio" name="cl-d" value="alumno" ${enEditor ? '' : 'checked'} style="width:20px;height:20px"> En otro alumno</label>
+      <div class="stack" id="cl-alw" style="gap:8px" ${enEditor ? 'hidden' : ''}><label class="f">Alumno<select id="cl-al">${als.map(a => `<option value="${a.id}" ${a.id === aidEd ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('')}</select></label>
+        ${c.tipo === 'programa' ? `<label class="row small" style="gap:8px"><input type="radio" name="cl-m" value="nuevo" checked style="width:20px;height:20px"> Como programa nuevo (pasa a ser su programa activo; el anterior queda guardado)</label><label class="row small" style="gap:8px"><input type="radio" name="cl-m" value="anadir" style="width:20px;height:20px"> Añadir sus días a su programa activo</label><label class="f">Nombre<input type="text" id="cl-n" value="${esc(c.nombre)}"></label>` : '<p class="small muted">Se añade como día nuevo a su programa activo (si no tiene, se le crea uno).</p>'}</div>
+      <button class="btn full" type="submit">Pegar</button></form>`);
+    $('#f-clip').addEventListener('change', () => { $('#cl-alw').hidden = document.querySelector('[name=cl-d]:checked').value !== 'alumno'; });
+    $('#f-clip').addEventListener('submit', async e => {
+      e.preventDefault(); const bt = e.target.querySelector('[type=submit]'); if (bt.disabled) return; bt.disabled = true; bt.textContent = 'Copiando…';
+      try {
+        const dest = document.querySelector('[name=cl-d]:checked').value;
+        if (dest === 'aqui') {
+          const p = E.prog; await this.insertarDias(c.dias, p.id, Math.max(0, ...p.dias.map(x => x.numero || 0)), editorEsFutbol());
+          cerrarSheet(); toast('Pegado en este programa'); refrescarEditor(); return;
+        }
+        const aid = $('#cl-al').value, fut = !!S.c.servicios.find(x => x.alumno_id === aid)?.modulo_futbol, nom = (S.c.perfiles.find(x => x.id === aid) || {}).nombre || '';
+        const modo = c.tipo === 'programa' ? document.querySelector('[name=cl-m]:checked').value : 'anadir';
+        let { data: act } = await sb.from('programas').select('id,dias(numero)').eq('alumno_id', aid).eq('activo', true).is('contexto_nombre', null).limit(1);
+        act = act?.[0];
+        if (modo === 'nuevo' || !act) {
+          if (act && modo === 'nuevo') await sb.from('programas').update({ activo: false }).eq('id', act.id);
+          const { data: np, error } = await sb.from('programas').insert({ alumno_id: aid, nombre: ($('#cl-n')?.value || '').trim() || (c.tipo === 'programa' ? c.nombre : 'Programa') || 'Programa', dias_semana: c.dias_semana || c.dias.length, activo: true }).select().single(); if (error) throw error;
+          await this.insertarDias(c.dias, np.id, 0, fut);
+        } else await this.insertarDias(c.dias, act.id, Math.max(0, ...(act.dias || []).map(x => x.numero || 0)), fut);
+        cerrarSheet(); toast(`Pegado en ${nom}`); await cargarCoach(); if (S.editor) refrescarEditor(); else if (S.ficha?.id === aid) await abrirFicha(aid);
+      } catch (err) { bt.disabled = false; bt.textContent = 'Pegar'; fallo(err, 'No se ha podido pegar.'); }
+    });
+  }
+};
 function formNuevoCiclo() {
   const p = S.editor.prog; if (!p) return;
   const m = String(p.nombre).match(/ciclo\s*(\d+)/i), sug = m ? `Ciclo ${+m[1] + 1}` : 'Ciclo 2';
@@ -3947,10 +4075,10 @@ function vEditor() {
   const p = E.prog;
   const resumen = e => { const g = gruposDe(e.pauta); return `${e.series} × ${esc(e.repeticiones)}${e.rir != null ? ' · RIR ' + e.rir : ''}${e.peso_ref ? ' · ' + esc(e.peso_ref) : ''} · desc. ${e.descanso_seg ? seg(e.descanso_seg) : 'no'}${g.some(x => x.tramos.length > 1) ? ' · tramos' : ''}`; };
   return `<section class="stack"><button class="btn sm ghost" data-act="cerrarEditor" style="align-self:flex-start">← Volver</button><span class="eyebrow">${E.plantilla ? 'Plantilla · ' + esc(p?.categoria || 'sin categoría') : E.ctx ? `Contexto temporal de ${esc(a.nombre || '')} · ${esc(fCtx(E.ctx))} · ${E.ctx.dias_semana} entrenos/semana` : 'Programa de ' + esc(a.nombre || '')}</span><h1>${p ? esc(p.nombre) : 'Sin programa'}</h1>
-    <div class="row" style="gap:8px;flex-wrap:wrap">${p ? `<button class="btn sm ghost" data-act="nuevoPrograma">Cambiar nombre</button><button class="btn sm" data-act="edDia">Añadir día</button>${editorEsFutbol() && p.dias.length < 7 ? '<button class="btn sm ghost" data-act="semanaCompleta">📅 Completar semana (lunes a domingo)</button>' : ''}${E.plantilla ? `<button class="btn sm gold" data-act="probarPlantilla" data-id="${p.id}">👁 Ver como alumno de prueba</button>` : E.ctx ? '' : '<button class="btn sm gold" data-act="nuevoCiclo">Nuevo ciclo (copiar)</button>'}` : `<button class="btn sm" data-act="nuevoPrograma">Crear programa</button>`}</div>
+    <div class="row" style="gap:8px;flex-wrap:wrap">${p ? `<button class="btn sm ghost" data-act="nuevoPrograma">Cambiar nombre</button><button class="btn sm" data-act="edDia">Añadir día</button>${p.dias.length ? '<button class="btn sm ghost" data-act="clipProg">📋 Copiar programa</button>' : ''}${Clip.hay() ? `<button class="btn sm gold" data-act="clipPegar">📥 Pegar ${Clip.hay().tipo === 'dia' ? 'día' : 'programa'}</button>` : ''}${editorEsFutbol() && p.dias.length < 7 ? '<button class="btn sm ghost" data-act="semanaCompleta">📅 Completar semana (lunes a domingo)</button>' : ''}${E.plantilla ? `<button class="btn sm gold" data-act="probarPlantilla" data-id="${p.id}">👁 Ver como alumno de prueba</button>` : E.ctx ? '' : '<button class="btn sm gold" data-act="nuevoCiclo">Nuevo ciclo (copiar)</button>'}` : `<button class="btn sm" data-act="nuevoPrograma">Crear programa</button>`}</div>
     ${p && !editorEsFutbol() && !esFlex(p) && p.dias.length ? `<div class="aprox small row" style="gap:8px;flex-wrap:wrap"><span class="grow">Este programa usa días de la semana. Para alumnos que no son futbolistas, mejor <b>Día 1, Día 2…</b>: el alumno elige cuándo los hace.</span><button class="btn sm" data-act="aDiasN">Pasar a Día 1, 2, 3…</button></div>` : ''}
     <p class="note">${E.plantilla ? 'Toca cualquier elemento para editarlo. Los cambios solo afectan a la plantilla: los alumnos que ya la tienen asignada conservan su copia.' : 'Toca cualquier elemento para editarlo. Los cambios los ve el alumno en cuanto vuelve a abrir la app.'}</p></section>
-  ${p && !E.dia ? `<section class="section"><div class="row" style="margin-bottom:8px"><span class="grow small muted">Edita un día o todo el bloque a la vez</span><button class="btn sm" data-act="edAbrirDia" data-id="todos">✎ Editar todos los días</button></div><div class="card">${p.dias.map(d => `<div class="line" data-act="edAbrirDia" data-id="${d.id}" style="cursor:pointer"><span class="pill gold">${d.numero}</span><div class="grow" style="min-width:0"><b>${esc(nomDia(d))}</b>${tipoDiaDe(d) ? ` <span class="pill ${conPartido(d) ? 'gold' : ''}">${tipoDiaDe(d)[2]} ${tipoDiaDe(d)[1]}</span>` : ''}<div class="small muted">${d.bloques_sesion.length} bloques · ${d.bloques_sesion.reduce((t, b) => t + b.ejercicios_sesion.length, 0)} ejercicios${d.foco ? ' · ' + esc(d.foco) : ''}</div></div><button class="btn sm" data-act="edAbrirDia" data-id="${d.id}">Editar</button></div>`).join('')}</div></section>` : ''}
+  ${p && !E.dia ? `<section class="section"><div class="row" style="margin-bottom:8px"><span class="grow small muted">Edita un día o todo el bloque a la vez</span><button class="btn sm" data-act="edAbrirDia" data-id="todos">✎ Editar todos los días</button></div><div class="card">${p.dias.map(d => `<div class="line" data-act="edAbrirDia" data-id="${d.id}" style="cursor:pointer"><span class="pill gold">${d.numero}</span><div class="grow" style="min-width:0"><b>${esc(nomDia(d))}</b>${tipoDiaDe(d) ? ` <span class="pill ${conPartido(d) ? 'gold' : ''}">${tipoDiaDe(d)[2]} ${tipoDiaDe(d)[1]}</span>` : ''}<div class="small muted">${d.bloques_sesion.length} bloques · ${d.bloques_sesion.reduce((t, b) => t + b.ejercicios_sesion.length, 0)} ejercicios${d.foco ? ' · ' + esc(d.foco) : ''}</div></div><button class="btn sm ghost" data-act="clipDia" data-id="${d.id}" aria-label="Copiar este día" title="Copiar este día">📋</button><button class="btn sm" data-act="edAbrirDia" data-id="${d.id}">Editar</button></div>`).join('')}</div></section>` : ''}
   ${p ? p.dias.filter(d => E.dia === 'todos' || d.id === E.dia).map((d, i) => `<section class="section">${i === 0 ? `<button class="btn sm ghost" data-act="edAbrirDia" data-id="" style="margin-bottom:8px">← Lista de días</button>` : ''}<div class="card stack">
     <div class="row"><div class="grow"><span class="eyebrow">Día ${d.numero}${d.titulo ? ' · ' + esc(d.nombre) : ''}</span><h2>${esc(nomDia(d))}</h2>${tipoDiaDe(d) ? `<span class="pill ${conPartido(d) ? 'gold' : ''}">${tipoDiaDe(d)[2]} ${tipoDiaDe(d)[1]}</span>` : ''}<div class="small muted">${esc([d.foco, d.volumen && 'vol. ' + d.volumen, d.intensidad && 'int. ' + d.intensidad].filter(Boolean).join(' · '))}</div></div><button class="btn sm ghost" data-act="edDia" data-id="${d.id}">Editar día</button></div>
     ${conPartido(d) && E.alumnoId ? (() => { const pt = partidoDelDia(d, (S.c.partidos || []).filter(x => x.alumno_id === E.alumnoId)); return `<div class="aprox stack" style="gap:6px">${pt ? vPartidoMini(pt, `<button class="btn sm ghost" data-act="partido" data-al="${E.alumnoId}" data-id="${pt.id}">Editar</button>`) : `<div class="row small"><span class="grow">🏟️ Aún no hay partido apuntado para este ${esc(DIAS.find(x => esDia(d, norm(x))) || 'día').toLowerCase()}</span><button class="btn sm" data-act="partido" data-al="${E.alumnoId}" data-f="${fechaDiaSemana(d, lunesDe(hoyISO())) >= hoyISO() ? fechaDiaSemana(d, lunesDe(hoyISO())) : sumaDias(fechaDiaSemana(d, lunesDe(hoyISO())) || hoyISO(), 7)}">＋ Partido</button></div>`}</div>`; })() : ''}
@@ -4789,6 +4917,16 @@ document.addEventListener('click', async e => {
     case 'vistaGuardar': await conmutarGuardado(); break;
     case 'cambiarClave': cerrarSheet(); vistaNuevaClave(); break;
     case 'cerrarSheet': cerrarSheet(); break;
+    case 'clipDia': Clip.copiarDia(+b.dataset.id); break;
+    case 'clipProg': Clip.copiarProg(); break;
+    case 'clipPegar': Clip.formPegar(); break;
+    case 'clipQuitar': Clip.quitar(); break;
+    case 'cerrarSheetPide': pedirCerrarSheet(); break;
+    case 'abrirCheckin': S.chkAbierto = true; if (S.tab !== 'hoy') S.tab = 'hoy'; render(); setTimeout(() => document.getElementById('checkin')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); break;
+    case 'cerrarCheckin': S.chkAbierto = false; render(); break;
+    case 'irRegistro': document.getElementById('registro')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => $('#r-pasos')?.focus(), 400); break;
+    case 'sheetSeguir': $('#sheet-aviso')?.remove(); break;
+    case 'sheetDescartar': cerrarSheet(); break;
     case 'aDiasN': await pasarADiasN(); break;
     case 'planDia': { const k = +b.dataset.k, l = b.dataset.l; S.planSel ||= {}; const st = S.planSel[l] ||= new Set(); st.has(k) ? st.delete(k) : st.add(k); b.setAttribute('aria-pressed', st.has(k)); break; }
     case 'planGuardar': await guardarPlanSemana(b.dataset.l, [...(S.planSel?.[b.dataset.l] || [])]); break;

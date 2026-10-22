@@ -58,10 +58,17 @@ const Nutricion = (() => {
     const fotos = f.comidas.map(x => x.foto).filter(Boolean); if (fotos.length) pedirFotos(fotos);
   }
   async function cargarCoach(c) {
-    const r = await sb.from('comidas_registro').select('id,alumno_id').eq('compartido', true).is('coach_estado', null);
+    const [r, pl] = await Promise.all([sb.from('comidas_registro').select('id,alumno_id').eq('compartido', true).is('coach_estado', null), sb.from('planificacion').select('alumno_id,visible,contenido,imagenes').eq('seccion', 'alimentacion')]);
     c.creacionesNuevas = r.error ? [] : (r.data || []);
+    c.conPlanNutri = new Set((pl.data || []).filter(x => x.visible !== false && (x.contenido || (x.imagenes || []).length)).map(x => x.alumno_id));
   }
   const nuevasDe = aid => (S.c?.creacionesNuevas || []).filter(x => x.alumno_id === aid).length;
+  /* Fase de la alimentación: la que fije Jesús en el servicio o, si no, «activo» cuando hay plan visible y «preparación» si no */
+  const FASES = { recogida: ['Recogida de información', 'blue'], preparacion: ['Plan en preparación', ''], activo: ['Plan activo', 'ok'], revision: ['Revisión del plan', 'gold'] };
+  function faseDe(srv, tienePlan) { if (!srv?.modulo_nutricion) return null; if (FASES[srv.nutri_fase]) return srv.nutri_fase; return tienePlan ? 'activo' : 'preparacion'; }
+  const fase = d => faseDe(d?.servicio, (d?.nutri?.plan || []).some(tiene));
+  const mide = f => f === 'activo' || f === 'revision';
+  const faseCoach = aid => { const srv = (S.c?.servicios || []).find(x => x.alumno_id === aid); return faseDe(srv, (S.c?.conPlanNutri || new Set()).has(aid)); };
 
   /* ---------- Utilidades de vista ---------- */
   const docDe = (n, k) => n.plan.find(x => x.clave === k);
@@ -97,7 +104,17 @@ const Nutricion = (() => {
     const docs = [...DOCS.map(([k, t, s, ic]) => ({ x: docDe(n, k), k, t, s, ic })).filter(o => tiene(o.x)),
       ...n.plan.filter(x => !DOCS.some(([k]) => k === x.clave) && tiene(x)).map(x => ({ x, k: x.clave, t: x.titulo, s: '', ic: '📌' }))];
     const cab = prev ? '' : `<section class="stack"><span class="eyebrow">Tu plan de alimentación</span><h1>Nutrición</h1><p class="small muted">Tu guía para comer bien sin pensarlo demasiado. Vuelve aquí siempre que tengas una duda.</p></section>`;
-    return cab + vHoyCtx(n, d) + vDocs(docs) + (prev ? '' : vDiario(n));
+    return cab + vFase(d) + vHoyCtx(n, d) + vDocs(docs) + (prev ? '' : vDiario(n, d));
+  }
+  function vFase(d) {
+    const f = fase(d); if (!f) return '';
+    const txt = {
+      recogida: ['Fase 1 · Conocer tu semana real', 'Durante 7 días apunta en tu diario todo lo que comes y bebes, sin cambiar nada y sin pesar. Sirve para que Jesús vea tu día a día y prepare tu plan. <b>No se evalúa:</b> cuanto más real, mejor.'],
+      preparacion: ['Tu plan está en preparación', 'Todavía no hay un plan que cumplir, así que no se mide nada. Si quieres, puedes apuntar comidas en tu diario: es opcional.'],
+      activo: ['Tu plan está activo', 'Cada día marcas en Hoy cuántas comidas de tu plan has cumplido: eso es la <b>aplicación del plan</b>. El diario es aparte y opcional: sirve para ver qué comes y si encaja con tu plan.'],
+      revision: ['Estamos revisando tu plan', 'Sigue con tu plan actual hasta que Jesús te pase los cambios. Si algo no te encaja, cuéntaselo en tu check-in.']
+    }[f];
+    return `<section class="section"><div class="card stack" style="gap:6px"><div class="row"><span class="eyebrow grow">${txt[0]}</span><span class="pill ${FASES[f][1]}">${FASES[f][0]}</span></div><p class="small" style="margin:0">${txt[1]}</p></div></section>`;
   }
   function vMacros(c, ing) {
     const pc = v => ing > 1 && v ? `<small>≈ ${fmtNum(v / ing, 0)} g por comida</small>` : '';
@@ -113,7 +130,7 @@ const Nutricion = (() => {
       <div class="row" style="gap:8px;flex-wrap:wrap">${ir('menus', '🍽️ Ver mis menús')}${ir('equivalencias', '✋ Equivalencias')}${ir('platos', '🥗 Montar un plato')}</div></div></section>`;
   }
   function vDocs(docs) {
-    if (!docs.length) return `<section class="section"><div class="card stack"><b>Tu plan está en camino</b><p class="small muted" style="margin:0">Jesús está preparando tu plan. Aquí tendrás tu contexto, tus menús, las equivalencias visuales, cómo construir tus platos y tu suplementación.</p></div></section>`;
+    if (!docs.length) return S.d && fase(S.d) ? '' : `<section class="section"><div class="card stack"><b>Tu plan está en camino</b><p class="small muted" style="margin:0">Jesús está preparando tu plan. Aquí tendrás tu contexto, tus menús, las equivalencias visuales, cómo construir tus platos y tu suplementación.</p></div></section>`;
     return `<section class="section"><div class="section-head"><h2>Tu plan</h2></div><div class="nu-docs">${docs.map(o => `<button class="card nu-doc" data-act="nuDoc" data-k="${esc(o.k)}"><span class="nu-ic" aria-hidden="true">${o.ic}</span><span class="grow"><b>${esc(o.t)}</b>${o.s ? `<small>${esc(o.s)}</small>` : ''}</span><span class="nu-fl" aria-hidden="true">›</span></button>`).join('')}</div>
       <p class="note">Consejo de Jesús: imprime tu tabla de contextos y la de equivalencias y tenlas a mano en la cocina.</p></section>`;
   }
@@ -147,19 +164,20 @@ const Nutricion = (() => {
       ${alimentosTxt(x) ? `<span class="small muted">${esc(alimentosTxt(x))}</span>` : ''}${x.nota ? `<span class="small muted">«${esc(x.nota)}»</span>` : ''}</div>${coach ? pillEnc(x) : pillEncA(x)}</div>`;
   }
   function estadoCreacion(x) {
-    return x.coach_estado === 'anadido' ? '<span class="pill ok">Añadida a tus contextos</span>' : x.coach_estado === 'visto' ? '<span class="pill blue">Jesús la ha visto</span>' : '<span class="pill">Enviada a Jesús</span>';
+    return x.coach_estado === 'anadido' ? '<span class="pill ok">✓ Añadida a tus menús</span>' : x.coach_estado === 'visto' ? '<span class="pill blue">Revisada por Jesús</span>' : '<span class="pill">Enviada · pendiente de revisión</span>';
   }
-  function vDiario(n) {
+  function vDiario(n, d) {
+    const f = fase(d || S.d);
     const dias = ventana(), sel = dias.includes(S.nDia) ? S.nDia : hoyISO(), l = n.comidas.filter(x => x.fecha === sel).sort(ordMom), mias = n.comidas.filter(x => x.compartido);
     if (n.comErr) return `<section class="section" id="nu-diario"><div class="section-head"><h2>Tu diario de comidas</h2></div><div class="card small muted">${S.perfil?.rol === 'coach' ? AVISO : 'El diario de comidas estará disponible muy pronto.'}</div></section>`;
-    return `<section class="section" id="nu-diario"><div class="section-head"><h2>Tu diario de comidas</h2><span class="pill">Opcional</span></div><div class="card stack">
-      <p class="small muted" style="margin:0">No es obligatorio. Apunta lo que comes cuando te ayude a ser consciente o cuando tengas dudas: con una foto, marcando alimentos o las dos cosas. Jesús lo ve para ayudarte a ajustar.</p>
+    return `<section class="section" id="nu-diario"><div class="section-head"><h2>Tu diario de comidas</h2><span class="pill ${f === 'recogida' ? 'blue' : ''}">${f === 'recogida' ? 'Pedido por Jesús · 7 días' : 'Opcional'}</span></div><div class="card stack">
+      <p class="small muted" style="margin:0">${f === 'recogida' ? `Apunta cada comida con una foto, marcando alimentos o las dos cosas. Llevas <b>${new Set(n.comidas.filter(x => x.fecha >= sumaDias(hoyISO(), -6)).map(x => x.fecha)).size} de 7 días</b> con algo apuntado.` : 'No es obligatorio y no cuenta como cumplimiento. Apunta lo que comes cuando te ayude a ser consciente o tengas dudas. En cada comida puedes marcar si encaja con tu plan: así Jesús ve la calidad, no solo la cantidad.'}</p>
       <div class="reg-dias" role="group" aria-label="Día" style="--n:7">${dias.map(f => `<button type="button" data-act="nuDia" data-f="${f}" aria-pressed="${f === sel}" class="${n.comidas.some(x => x.fecha === f) ? 'hecho' : ''}"><small>${DIA3[fecha(f).getDay()]}</small><b class="num">${fecha(f).getDate()}</b></button>`).join('')}</div>
       ${l.length ? `<div>${l.map(x => lineaComida(x, false)).join('')}</div>` : `<p class="small muted" style="margin:0">${sel === hoyISO() ? 'Hoy' : 'Ese día'} no has apuntado nada.</p>`}
       <button class="btn" data-act="nuNueva">＋ Apuntar una comida</button></div></section>
       <section class="section"><div class="section-head"><h2>Tus creaciones</h2></div><div class="card stack">
         ${mias.length ? `<div>${mias.slice().reverse().map(x => `<div class="line" style="align-items:flex-start" data-act="nuEditar" data-id="${x.id}"><div class="grow stack" style="gap:2px"><span class="small"><b>${esc(x.plato || 'Plato sin nombre')}</b> <span class="muted">· ${esc(fCorta(x.fecha))}</span></span>${alimentosTxt(x) ? `<span class="small muted">${esc(alimentosTxt(x))}</span>` : ''}${x.coach_nota ? `<span class="small"><b>Jesús:</b> ${esc(x.coach_nota)}</span>` : ''}</div>${estadoCreacion(x)}</div>`).join('')}</div>` : ''}
-        <p class="small muted" style="margin:0">¿Has inventado un plato que encaja con tu plan? Apúntalo y marca «Es una creación mía»: Jesús lo revisa y lo añade a tus menús y contextos.</p></div></section>`;
+        <p class="small muted" style="margin:0">¿Has inventado un plato que encaja con tu plan? Apúntalo y marca «Es una creación mía». Jesús la revisará y, si encaja con tu plan, puede añadirla a tus menús. Verás aquí en qué punto está.</p></div></section>`;
   }
   function momentoSugerido(dia) {
     if (dia !== hoyISO()) return 'Comida';
@@ -306,5 +324,5 @@ const Nutricion = (() => {
   });
 
   const aislar = fn => (...args) => { try { return fn(...args); } catch (err) { console.error(err); return `<section class="section"><div class="card small muted">No se ha podido mostrar esta parte de Nutrición. Cierra y vuelve a abrir la app.</div></section>`; } };
-  return { vista: aislar(vista), vCoach: aislar(vCoach), cargar, cargarFicha, cargarCoach, datosPrevia, nuevasDe, DOCS, esPdf, ctxDe };
+  return { fase, faseDe, faseCoach, mide, FASES, vista: aislar(vista), vCoach: aislar(vCoach), cargar, cargarFicha, cargarCoach, datosPrevia, nuevasDe, DOCS, esPdf, ctxDe };
 })();
