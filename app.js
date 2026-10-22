@@ -4732,6 +4732,8 @@ document.addEventListener('click', async e => {
     case 'casoResp': await Casos.responder(+b.dataset.id, b.dataset.ok === '1'); break;
     case 'casoNuevo': Casos.formNuevo(b.dataset.ts ? +b.dataset.ts : null); break;
     case 'casoBorrar': await Casos.borrarCaso(+b.dataset.id); break;
+    case 'canjear': await Casos.canjear(b.dataset.k); break;
+    case 'canjeRes': await Casos.resolverCanje(+b.dataset.id, b.dataset.ok === '1'); break;
     case 'salir': cerrarSheet(); stopTimer(); await sb.auth.signOut(); break;
   }
 });

@@ -69,6 +69,8 @@ const Casos = (() => {
       sb.from('casos_exito').select('*').eq('alumno_id', uid).order('created_at', { ascending: false })
     ]);
     dst.consent = c.data?.[0] || null; dst.fotosProg = f.data || []; dst.casos = k.data || []; dst.casosErr = !!(c.error || f.error);
+    const [ts, cj] = await Promise.all([sb.from('testimonios').select('*').eq('alumno_id', uid).order('fecha', { ascending: false }), sb.from('canjes').select('*').eq('alumno_id', uid).order('created_at', { ascending: false })]);
+    dst.testimonios = ts.data || []; dst.canjes = cj.data || []; dst.puntosErr = !!(ts.error || cj.error);
   }
   const porFecha = l => { const m = {}; (l || []).forEach(x => (m[x.fecha] ||= []).push(x)); return Object.entries(m).sort((a, b) => b[0].localeCompare(a[0])); };
 
@@ -85,10 +87,62 @@ const Casos = (() => {
     return comp + `<div class="card stack">${g.map(([f, l]) => `<div class="stack" style="gap:6px"><div class="row"><b class="small grow">${esc(fLarga(f))}</b>${coach ? '' : `<button class="linkbtn small" data-act="fpBorrar" data-f="${f}" style="color:var(--bad)">Borrar</button>`}</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">${VISTAS.map(([v]) => img(l.find(x => x.vista === v))).join('')}</div></div>`).join('<hr style="border:0;border-top:1px solid var(--line);margin:4px 0">')}</div>`;
   }
   /* Sección al final de Progreso */
+  /* ---------- Puntos del mes: premian el hábito privado (foto + reflexión), nunca el permiso para publicar ---------- */
+  const PREMIOS = [['nutri', '20 % de descuento en alimentación y suplementación', 200, '🥗'], ['pt', 'Un entrenamiento personal con Jesús', 350, '🏋️'], ['mes', 'Un mes de acompañamiento gratis', 550, '🏆']];
+  const PTS = { foto: 50, reflexion: 50, ambos: 20, racha: 100 };
+  /* Momentos: inicio del proceso (mes 0) y cada control mensual; ventana de ±7 días alrededor */
+  function meses(srv, fotos, tests, hasta = hoyISO()) {
+    if (!srv?.inicio) return [];
+    const ms = [{ n: 0, fecha: srv.inicio }, ...controlesMensuales(srv, sumaDias(hasta, 7)).map(c => ({ n: c.n, fecha: c.fecha }))];
+    let seguidos = 0;
+    return ms.map(m => {
+      const ini = sumaDias(m.fecha, -7), fin = sumaDias(m.fecha, 7), dentro = x => x.fecha >= ini && x.fecha <= fin;
+      const vistas = new Set((fotos || []).filter(dentro).map(x => x.vista)), foto = ['frente', 'perfil', 'espalda'].every(v => vistas.has(v)), refl = (tests || []).some(dentro);
+      const abierto = hasta >= ini && hasta <= fin, futuro = hasta < ini, completo = foto && refl;
+      if (completo) seguidos++; else if (!abierto && !futuro) seguidos = 0;
+      const racha = completo && seguidos % 3 === 0;
+      const pts = (foto ? PTS.foto : 0) + (refl ? PTS.reflexion : 0) + (completo ? PTS.ambos : 0) + (racha ? PTS.racha : 0);
+      return { ...m, ini, fin, foto, refl, completo, racha, pts, abierto, futuro, vistas: vistas.size };
+    }).filter(m => !m.futuro);
+  }
+  function saldo(srv, fotos, tests, canjes) {
+    const ms = meses(srv, fotos, tests), ganados = ms.reduce((t, m) => t + m.pts, 0), gastados = (canjes || []).filter(c => c.estado !== 'rechazado').reduce((t, c) => t + c.puntos, 0);
+    return { ms, ganados, gastados, saldo: Math.max(0, ganados - gastados) };
+  }
+  function vPuntos(P, coach, canjes, srv) {
+    const sig = PREMIOS.find(p => p[2] > P.saldo) || null, prev = PREMIOS.filter(p => p[2] <= P.saldo).slice(-1)[0], base = 0, top = sig ? sig[2] : PREMIOS[PREMIOS.length - 1][2];
+    const pct = Math.min(100, Math.round((P.saldo - base) / top * 100)), act = P.ms.find(m => m.abierto), pend = (canjes || []).filter(c => c.estado === 'pendiente');
+    const chk = (ok, t) => `<span class="small" style="${ok ? 'color:var(--ok);font-weight:700' : 'color:var(--muted)'}">${ok ? '✓' : '○'} ${t}</span>`;
+    return `<div class="card stack" style="border:2px solid var(--gold)"><div class="row"><div class="grow"><span class="eyebrow">${coach ? 'Sus puntos' : 'Tus puntos del mes'}</span><h3 style="margin:0"><b class="num" style="font-family:var(--display);font-size:30px">${P.saldo}</b> puntos</h3></div>${prev ? `<span class="pill gold">${prev[3]} ¡Ya puedes canjear!</span>` : ''}</div>
+      <div class="track gordo"><i style="width:${pct}%;background:var(--gold)"></i></div>
+      <div class="small">${sig ? `Te faltan <b>${sig[2] - P.saldo} puntos</b> para ${sig[3]} ${esc(sig[1].toLowerCase())}.` : '🏆 Tienes puntos para el premio más alto. ¡Sigue sumando!'}</div>
+      ${act ? `<div class="aprox small stack" style="gap:4px"><b>Este mes (control ${act.n ? act.n : 'de inicio'} · hasta el ${esc(fCorta(act.fin))})</b><div class="row" style="gap:12px;flex-wrap:wrap">${chk(act.foto, `Fotos ${act.vistas}/3 · +${PTS.foto}`)}${chk(act.refl, `Reflexión del mes · +${PTS.reflexion}`)}${chk(act.completo, `Las dos · +${PTS.ambos}`)}</div></div>` : (() => { const pr = controlesMensuales(srv, sumaDias(hoyISO(), 40)).find(c => sumaDias(c.fecha, -7) > hoyISO()); return pr ? `<div class="small muted">Próxima ventana: del ${esc(fCorta(sumaDias(pr.fecha, -7)))} al ${esc(fCorta(sumaDias(pr.fecha, 7)))} (control ${pr.n}).</div>` : ''; })()}
+      <div class="stack" style="gap:6px">${PREMIOS.map(([k, t, pts, ic]) => `<div class="row small" style="gap:8px"><span>${ic}</span><span class="grow">${esc(t)} <span class="muted">· ${pts} puntos</span></span>${coach ? '' : P.saldo >= pts ? `<button class="btn sm gold" data-act="canjear" data-k="${k}">Canjear</button>` : `<span class="muted">${Math.max(0, pts - P.saldo)} más</span>`}</div>`).join('')}</div>
+      ${pend.length ? `<div class="small">⏳ ${coach ? 'Quiere canjear' : 'Canje pedido'}: ${pend.map(c => esc((PREMIOS.find(p => p[0] === c.premio) || [])[1] || c.premio)).join(', ')}${coach ? '' : ' · Jesús te confirmará cómo aplicarlo.'}</div>` : ''}
+      <details class="small"><summary>${coach ? 'Cómo los ha ganado' : 'Cómo se ganan'}</summary><div class="stack" style="gap:4px;margin-top:6px">
+        <div class="muted">En la semana de cada control (7 días antes y después): fotos de frente, perfil y espalda (+${PTS.foto}), tu reflexión del mes (+${PTS.reflexion}) y, si haces las dos, +${PTS.ambos}. Cada 3 meses completos seguidos, +${PTS.racha}. Un mes que falles no borra lo ganado.</div>
+        ${P.ms.slice().reverse().map(m => `<div class="row" style="gap:8px"><span class="grow">${m.n ? 'Control ' + m.n : 'Inicio'} · ${esc(fCorta(m.fecha))}${m.abierto ? ' (en curso)' : ''}</span>${m.foto ? '📸' : ''}${m.refl ? '✍️' : ''}${m.racha ? '🔥' : ''}<b class="num">+${m.pts}</b></div>`).join('')}
+        ${(canjes || []).filter(c => c.estado !== 'rechazado').map(c => `<div class="row" style="gap:8px"><span class="grow">Canje · ${esc((PREMIOS.find(p => p[0] === c.premio) || [])[1] || c.premio)} (${c.estado === 'aplicado' ? 'aplicado' : 'pendiente'})</span><b class="num" style="color:var(--bad)">−${c.puntos}</b></div>`).join('')}</div></details>
+      ${coach ? '' : '<p class="small muted" style="margin:0">🔒 Tus fotos y tu reflexión son privadas: solo las veis tú y Jesús. Ganas los mismos puntos compartas o no tu caso.</p>'}</div>`;
+  }
+  async function canjear(k) {
+    const pr = PREMIOS.find(p => p[0] === k); if (!pr) return;
+    const P = saldo(S.d.servicio, S.d.fotosProg, S.d.testimonios, S.d.canjes); if (P.saldo < pr[2]) return toast('Aún no tienes puntos suficientes');
+    if (!confirm(`¿Canjear ${pr[2]} puntos por: ${pr[1]}?`)) return;
+    const { error } = await sb.from('canjes').insert({ alumno_id: S.user.id, premio: k, puntos: pr[2], estado: 'pendiente' });
+    if (error) return fallo(error, 'Falta ejecutar el Bloque 54 en Supabase.');
+    await cargar(S.user.id, S.d); toast('¡Canje pedido! Jesús te dirá cómo aplicarlo'); render();
+  }
+  async function resolverCanje(id, ok) {
+    const { error } = await sb.from('canjes').update({ estado: ok ? 'aplicado' : 'rechazado', resuelto_at: new Date().toISOString() }).eq('id', id);
+    if (error) return fallo(error); S.ficha.fotosProg = null; await cargarCoach(); toast(ok ? 'Canje aplicado' : 'Canje rechazado: se le devuelven los puntos'); render();
+  }
   function vSeccionAlumno() {
     const D = S.d; if (!D) return '';
     if (D.casosErr) return '';
-    return `<section class="section"><div class="section-head"><h2>Fotos de progreso</h2><button class="btn sm" data-act="fpSubir">＋ Añadir fotos</button></div>
+    const P = D.puntosErr ? null : saldo(D.servicio, D.fotosProg, D.testimonios, D.canjes);
+    return `<section class="section"><div class="section-head"><h2>Fotos y reflexión del mes</h2><button class="btn sm" data-act="fpSubir">＋ Añadir</button></div>
+      ${P ? vPuntos(P, false, D.canjes, D.servicio) : ''}
       <p class="small muted">Solo las ves tú y Jesús. Lo ideal: una vez al mes, en tu control, con la misma luz, ropa y postura.</p>
       ${vGaleria(D.fotosProg || [], false, S.fpSel || {})}
       <button class="linkbtn small" data-act="permisos" style="margin-top:10px">🔒 Privacidad y permisos ›</button></section>`;
@@ -185,6 +239,7 @@ const Casos = (() => {
     ]);
     const ult = {}, n = {}; (c.data || []).forEach(x => { n[x.alumno_id] = (n[x.alumno_id] || 0) + 1; if (!ult[x.alumno_id]) ult[x.alumno_id] = x; }); 
     const ts = await sb.from('testimonios').select('alumno_id,fecha').gte('fecha', sumaDias(hoyISO(), -14)); S.c.testimonios = ts.data || [];
+    const cj = await sb.from('canjes').select('id,alumno_id,premio,puntos,estado').eq('estado', 'pendiente'); S.c.canjes = cj.data || [];
     S.c.consent = ult; S.c.consentN = n; S.c.fotosProg = f.data || []; S.c.casos = k.data || []; S.c.casosErr = !!(c.error || f.error);
   }
   /* Alerta: pasó la semana del control mensual y no hay fotos de progreso cerca de esa fecha */
@@ -195,7 +250,8 @@ const Casos = (() => {
     return hay ? null : `Fotos de progreso del control mensual ${c.n} (${fCorta(c.fecha)}) sin subir`;
   }
   async function cargarFicha(f) {
-    const ts = await sb.from('testimonios').select('*').eq('alumno_id', f.id).order('fecha', { ascending: false }); f.testimonios = ts.data || [];
+    const [ts, cj] = await Promise.all([sb.from('testimonios').select('*').eq('alumno_id', f.id).order('fecha', { ascending: false }), sb.from('canjes').select('*').eq('alumno_id', f.id).order('created_at', { ascending: false })]);
+    f.testimonios = ts.data || []; f.canjes = cj.data || []; f.puntosErr = !!cj.error;
     const [c, fp, k] = await Promise.all([
       sb.from('consentimientos').select('*').eq('alumno_id', f.id).order('created_at', { ascending: false }),
       sb.from('fotos_progreso').select('*').eq('alumno_id', f.id).order('fecha', { ascending: false }),
@@ -210,7 +266,9 @@ const Casos = (() => {
     if (f.casosErr) return `<section class="section"><div class="card small muted">${AVISO}</div></section>`;
     const c = f.consentHist[0], nom = (a.nombre || '').split(' ')[0];
     pide(f.casos.flatMap(x => x.rutas || []));
-    return `<section class="section"><div class="section-head"><h2>Fotos de progreso</h2></div>${vGaleria(f.fotosProg, true, S.fpSel || {})}</section>
+    const P = f.puntosErr ? null : saldo(f.srv, f.fotosProg, f.testimonios, f.canjes), pc = (f.canjes || []).filter(x => x.estado === 'pendiente');
+    return `${P ? `<section class="section"><h2>Puntos</h2>${vPuntos(P, true, f.canjes, f.srv)}${pc.map(x => `<div class="card row small" style="gap:8px;margin-top:8px"><span class="grow">Canje pedido el ${esc(fCorta((x.created_at || hoyISO()).slice(0, 10)))}: <b>${esc((PREMIOS.find(p => p[0] === x.premio) || [])[1] || x.premio)}</b> (${x.puntos} puntos)</span><button class="btn sm ghost" data-act="canjeRes" data-id="${x.id}" data-ok="0">Rechazar</button><button class="btn sm" data-act="canjeRes" data-id="${x.id}" data-ok="1">✓ Aplicado</button></div>`).join('')}</section>` : ''}
+      <section class="section"><div class="section-head"><h2>Fotos de progreso</h2></div>${vGaleria(f.fotosProg, true, S.fpSel || {})}</section>
       <section class="section"><div class="section-head"><h2>Caso de éxito</h2>${c && (c.testimonio || c.fotos) ? `<button class="btn sm" data-act="casoNuevo">＋ Proponer publicación</button>` : ''}</div><div class="card stack">
         <div class="small">${resumenPermiso(c)}</div>
         ${c ? `<p class="small muted" style="margin:0">Decidido el ${esc(fLarga(c.created_at.slice(0, 10)))} · versión del texto ${esc(c.version || '')}.</p>` : `<p class="small muted" style="margin:0">${esc(nom)} aún no ha decidido. Le sale en su app.</p>`}
@@ -261,8 +319,9 @@ const Casos = (() => {
       perm.push(`${(S.c.consentN?.[aid] || 1) > 1 ? 'Ha cambiado' : 'Ha rellenado'} sus permisos de imagen y privacidad (${cuando}): testimonio ${c.testimonio ? 'sí' : 'no'} · fotos sin cara ${c.fotos ? 'sí' : 'no'} · ${(IDENT[c.identificacion] || '').toLowerCase()}`);
     }
     (S.c?.testimonios || []).filter(x => x.alumno_id === aid && x.fecha >= sumaDias(hoyISO(), -7)).slice(0, 1).forEach(x => perm.push(`Nuevo testimonio mensual (${fCorta(x.fecha)}): léelo en Medidas, fotos y caso de éxito`));
+    (S.c?.canjes || []).filter(x => x.alumno_id === aid).forEach(x => perm.push(`Quiere canjear ${x.puntos} puntos por: ${(PREMIOS.find(p => p[0] === x.premio) || [])[1] || x.premio}`));
     return perm.concat((S.c?.casos || []).filter(x => x.alumno_id === aid && x.estado !== 'pendiente' && x.respondido_at && x.respondido_at.slice(0, 10) >= sumaDias(hoyISO(), -7)).map(x => x.estado === 'aprobado' ? 'Ha aprobado que compartas su caso de éxito' : 'No quiere que se publique la propuesta de caso de éxito'));
   }
 
-  return { campoTestimonio, guardarTestimonio, VERSION, vistaInicial, cargar, cargarCoach, vSeccionAlumno, camposFotos, subirDesde, formSubir, borrarFecha, formPermisos, avisoNovedad, lineaHoy, responder, alertaFotos, vFicha, formNuevo, borrarCaso, resumenCoach, avisosCoach, cargarFicha };
+  return { canjear, resolverCanje, saldo, campoTestimonio, guardarTestimonio, VERSION, vistaInicial, cargar, cargarCoach, vSeccionAlumno, camposFotos, subirDesde, formSubir, borrarFecha, formPermisos, avisoNovedad, lineaHoy, responder, alertaFotos, vFicha, formNuevo, borrarCaso, resumenCoach, avisosCoach, cargarFicha };
 })();
