@@ -65,7 +65,7 @@ const Acomp = (() => {
     const w = semanaDatos(a.id, lunes, src), dpw = dpwEn(a.id, lunes, f.prog?.dias_semana || 0), obj = objPasos(srv);
     const av = [], prio = [];
     if (dpw) { av.push(`${w.entrenos} de ${dpw} entrenos${w.entrenos >= dpw ? ' ✅' : ''}`); if (w.entrenos < dpw) prio.push(`llegar a los ${dpw} entrenos de la semana`); }
-    if (w.pasosMedia != null) { av.push(`${fmtNum(w.pasosMedia, 0)} pasos de media${w.pasosMedia >= obj ? ' ✅' : ` (objetivo ${fmtNum(obj, 0)})`}`); if (w.pasosMedia < obj) prio.push(`subir los pasos hacia ${fmtNum(obj, 0)} al día`); }
+    if (conPasos(srv) && w.pasosMedia != null) { av.push(`${fmtNum(w.pasosMedia, 0)} pasos de media${w.pasosMedia >= obj ? ' ✅' : ` (objetivo ${fmtNum(obj, 0)})`}`); if (w.pasosMedia < obj) prio.push(`subir los pasos hacia ${fmtNum(obj, 0)} al día`); }
     if (srv?.modulo_nutricion && w.ing?.dias) { av.push(`alimentación al ${w.ing.pctReg ?? w.nutri} % en los días registrados`); if ((w.ing.pctReg ?? 100) < 85) prio.push('cumplir las comidas del plan, sobre todo entre semana'); }
     if (chk.motivacion != null) av.push(`motivación ${chk.motivacion}/10`);
     const med = (f.med || []).slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), dl = med.length > 1 ? med[med.length - 1].peso - med[med.length - 2].peso : null;
@@ -82,7 +82,7 @@ const Acomp = (() => {
     const f = S.ficha, a = S.c.perfiles.find(p => p.id === f.id) || {}, chk = (S.c.checkins || []).find(k => k.alumno_id === f.id && k.semana_inicio === semana) || { semana_inicio: semana };
     const ya = (f.devoluciones || []).find(d => d.semana_inicio === semana), v = ya || borrador(a, chk, f);
     abrirSheet(`<form class="stack" id="f-dev"><h2>Devolución · semana del ${esc(fCorta(semana))}</h2>
-      ${ya ? `<p class="small muted">${ya.leida_at ? '✓ Leída el ' + esc(fLarga(ya.leida_at.slice(0, 10))) : 'Enviada, aún sin leer'}.</p>` : '<p class="small muted">Borrador preparado con sus datos y su check-in. Edítalo y envíalo: lo leerá en su Hoy y en «Tu coach».</p>'}
+      ${ya ? `<p class="small muted">${ya.leida_at ? '✓ Leída el ' + esc(fLarga(ya.leida_at.slice(0, 10))) : 'Enviada, aún sin leer'}.</p>` : '<p class="small muted">Borrador preparado con sus datos y su check-in. Edítalo y envíalo: lo leerá en su Hoy.</p>'}
       ${chk.dificultades || chk.motivacion != null ? `<div class="aprox small">Su check-in: motivación ${chk.motivacion ?? '—'}/10 · implicación ${chk.implicacion ?? '—'}/10${chk.dificultades ? `<br>«${esc(chk.dificultades)}»` : ''}</div>` : ''}
       ${[['avance', 'Avance observado'], ['dificultad', 'Dificultad'], ['ajuste', 'Ajuste acordado'], ['prioridad', 'Prioridad para la semana que viene']].map(([k, l]) => `<label class="f">${l}<textarea data-dv="${k}" rows="${k === 'avance' ? 3 : 2}">${esc(v[k] || '')}</textarea></label>`).join('')}
       <button class="btn full" type="submit">${ya ? 'Guardar cambios' : 'Enviar devolución'}</button></form>`);
@@ -107,7 +107,7 @@ const Acomp = (() => {
   const bloqueDev = d => `<div class="stack" style="gap:8px">${[['📈', 'Lo que he visto', d.avance], ['🧗', 'La dificultad', d.dificultad], ['🔧', 'Lo que ajustamos', d.ajuste], ['🎯', 'Tu prioridad', d.prioridad]].filter(x => x[2]).map(([i, t, v]) => `<div><div class="small muted">${i} ${t}</div><div class="small pre">${esc(v)}</div></div>`).join('')}</div>`;
   function tarjetaDevolucionHoy() {
     const d = (S.d?.devoluciones || []).find(x => !x.leida_at); if (!d || S.vista || S.prueba) return '';
-    return `<section class="section"><div class="card stack" style="border:2px solid var(--blue)"><span class="eyebrow">Tu devolución semanal · semana del ${esc(fCorta(d.semana_inicio))}</span>${bloqueDev(d)}<button class="btn" data-act="devLeida" data-id="${d.id}" style="align-self:flex-start">Entendido ✓</button></div></section>`;
+    return `<section class="section"><div class="card stack" style="border:2px solid var(--blue)"><span class="eyebrow">Jesús sobre tu semana · ${esc(fCorta(d.semana_inicio))}</span>${bloqueDev(d)}<button class="btn" data-act="devLeida" data-id="${d.id}" style="align-self:flex-start">Entendido ✓</button></div></section>`;
   }
   async function marcarLeida(id) {
     const d = (S.d.devoluciones || []).find(x => x.id === id); if (d) d.leida_at = new Date().toISOString(); render();
@@ -145,19 +145,18 @@ const Acomp = (() => {
   /* Próxima acción vencida → alerta */
   function alertaProxima(aid) { const s = S.c?.seguimiento?.[aid]; return s?.proxima_accion && s.proxima_fecha && s.proxima_fecha <= hoyISO() ? `Próxima acción para hoy o pasada: ${s.proxima_accion}` : null; }
 
-  /* ---------- Pantalla «Tu coach» del alumno ---------- */
-  const MOTIVOS = [['duda', '❓ Tengo una duda', 'Hola Jesús, tengo una duda: '], ['molestia', '🩹 Molestia o dolor', 'Hola Jesús, tengo una molestia: '], ['semana', '📅 Cambio en mi semana', 'Hola Jesús, esta semana cambia algo: '], ['otro', '💬 Otra cosa', 'Hola Jesús, ']];
+  /* ---------- Pantalla «Tu coach» del alumno: WhatsApp directo, próxima revisión y próximos entrenos con Jesús ---------- */
   function vTuCoach() {
-    const D = S.d || {}, s = D.servicio, prox = controlesMensuales(s, sumaDias(hoyISO(), 45)).find(c => c.fecha >= hoyISO()), devs = D.devoluciones || [], rev = (D.revisiones || [])[0];
-    const acuerdos = devs.filter(d => d.ajuste).slice(0, 4);
+    const D = S.d || {}, s = D.servicio, hoy = hoyISO(), prox = controlesMensuales(s, sumaDias(hoy, 45)).find(c => c.fecha >= hoy);
+    const pres = (D.presenciales || []).filter(p => p.estado === 'programada' && (!p.fecha || p.fecha >= hoy)).sort(ordPres).slice(0, 4);
+    const wa = S.whatsapp ? waJesus('Hola Jesús') : null;
     return `<section class="stack"><span class="eyebrow">Tu acompañamiento</span><h1>Tu coach</h1></section>
-      <section class="section"><div class="card stack"><div class="row" style="gap:12px;align-items:center"><img src="icons/coach.jpg" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover" onerror="this.remove()"><div class="grow"><b>Jesús de la Obra</b><div class="small muted">${S.respuesta ? 'Te responde ' + esc(S.respuesta) : 'Te responde por WhatsApp'}</div></div></div>
-        <span class="small muted">¿De qué quieres hablar?</span>
-        <div class="stack" style="gap:6px">${MOTIVOS.map(([k, t, m]) => waJesus(m) && S.whatsapp ? `<a class="btn ghost full" href="${esc(waJesus(m))}" target="_blank" rel="noopener" style="justify-content:flex-start">${t}</a>` : '').join('') || '<p class="small muted">Jesús aún no ha puesto su WhatsApp en la app.</p>'}</div></div></section>
-      ${prox ? `<section class="section"><div class="card row" style="gap:10px"><span style="font-size:22px">📅</span><div class="grow"><b class="small">Próxima revisión mensual</b><div class="small muted">Control ${prox.n} · semana del ${esc(fCorta(prox.lunes))}. Llamada o videollamada de 10-15 minutos.</div></div></div></section>` : ''}
-      ${acuerdos.length ? `<section class="section"><h2>Lo que hemos acordado</h2><div class="card">${acuerdos.map(d => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(d.semana_inicio))}</span><div class="small grow pre">${esc(d.ajuste)}</div></div>`).join('')}</div></section>` : ''}
-      ${rev?.resumen ? `<section class="section"><h2>Tu última revisión</h2><div class="card stack"><span class="small muted">${esc(fLarga(rev.fecha))}</span><div class="small pre">${esc(rev.resumen)}</div></div></section>` : ''}
-      <section class="section"><h2>Tus devoluciones semanales</h2>${devs.length ? devs.map(d => `<details class="card" ${d === devs[0] ? 'open' : ''} style="margin-bottom:8px"><summary><b class="small">Semana del ${esc(fCorta(d.semana_inicio))}</b>${d.leida_at ? '' : ' <span class="pill blue">Nueva</span>'}</summary><div style="margin-top:8px">${bloqueDev(d)}</div></details>`).join('') : '<div class="card empty">Cuando envíes tu check-in del fin de semana, Jesús te dejará aquí su devolución.</div>'}</section>`;
+      <section class="section"><div class="card stack"><div class="row" style="gap:12px;align-items:center"><img src="icons/coach.jpg" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover" onerror="this.remove()"><div class="grow"><b>Jesús de la Obra</b>${S.respuesta ? `<div class="small muted">Te responde ${esc(S.respuesta)}</div>` : ''}</div></div>
+        ${wa ? `<a class="btn full" href="${esc(wa)}" target="_blank" rel="noopener">💬 Habla con Jesús por WhatsApp</a>` : '<p class="small muted" style="margin:0">Jesús aún no ha puesto su WhatsApp en la app.</p>'}</div></section>
+      <section class="section"><h2>Próximamente</h2><div class="card">
+        ${prox ? `<div class="line"><div class="ico gold">${svg('progreso')}</div><div class="grow"><b class="small">Revisión mensual</b><div class="small muted">Control ${prox.n} · semana del ${esc(fCorta(prox.lunes))}. Llamada o videollamada de 10-15 minutos.</div></div></div>` : ''}
+        ${pres.map(p => `<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">Entrenamiento personal con Jesús</b><div class="small muted">${esc(fLargaP(p))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</div></div><span class="small muted">›</span></div>`).join('')}
+        ${!prox && !pres.length ? '<div class="empty">Sin citas próximas.</div>' : ''}</div></section>`;
   }
   const sinLeer = () => (S.d?.devoluciones || []).filter(d => !d.leida_at).length;
 
