@@ -1197,7 +1197,8 @@ function vBloquesDia(d, cont, ro) {
   return l.map((b, i) => {
     if (b.variante && i > 0 && l[i - 1].letra === b.letra && l[i - 1].variante) return '';
     const m = MOMENTOS[b.momento] ? b.momento : null, cab = m && m !== act ? `<div class="momento ${m}"><b>${MOMENTOS[m][0]}</b><span class="small">${MOMENTOS[m][1]}</span></div>` : '';
-    act = m || act; const g = grupoOpc(l, i); return cab + (g.length > 1 ? vOpciones(g, d, cont, ro) : vBloque(b, cont, ro));
+    act = m || act; const g = grupoOpc(l, i), html = cab + (g.length > 1 ? vOpciones(g, d, cont, ro) : vBloque(b, cont, ro));
+    return ro ? html : `<div class="paso">${b.tipo === 'fuerza' && g.length < 2 ? html : `<div class="paso-u" data-paso-n="${esc(b.letra || '')}" data-paso-t="${esc(b.nombre || '')}">${html}</div>`}</div>`;
   }).join('');
 }
 function vBloque(b, cont, ro) {
@@ -1211,10 +1212,11 @@ function vBloque(b, cont, ro) {
   }
   const grupos = cadenasDe(b.ejercicios_sesion);
   return `<div class="stack"><div class="row"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}</h3></div>${grupos.length === b.ejercicios_sesion.length && b.agrupacion ? `<p class="note">${esc(b.agrupacion)}</p>` : ''}${grupos.map(g => {
-    if (g.length === 1) return vEjercicio(g[0], ++cont.n, ro);
+    const pu = h => ro ? h : `<div class="paso-u" data-paso-n="${esc(b.letra || '')}" data-paso-t="${esc(g.map(e => ejDe(e).nombre || '').join(' + '))}">${h}</div>`;
+    if (g.length === 1) return pu(vEjercicio(g[0], ++cont.n, ro));
     const ult = g[g.length - 1], d = ult.descanso_seg ?? 60, n0 = cont.n + 1;
     const cards = g.map((e, k) => vEjercicio(e, ++cont.n, ro) + (k < g.length - 1 ? '<div class="ss-sig">↓ Sin descanso, sigue con el siguiente</div>' : '')).join('');
-    return `<div class="superserie"><div class="ss-cab"><b>Superserie · ejercicios ${n0} a ${cont.n}</b><span class="small">Hazlos seguidos, sin descanso entre ellos. Al terminar el último, descansa ${d ? seg(d) : 'lo justo'} y repite la secuencia.</span></div>${cards}</div>`;
+    return pu(`<div class="superserie"><div class="ss-cab"><b>Superserie · ejercicios ${n0} a ${cont.n}</b><span class="small">Hazlos seguidos, sin descanso entre ellos. Al terminar el último, descansa ${d ? seg(d) : 'lo justo'} y repite la secuencia.</span></div>${cards}</div>`);
   }).join('')}</div>`;
 }
 function cicloSesion() { return cicloSesion0() + avisoRetomada(); }
@@ -1227,6 +1229,24 @@ function cicloSesion0() {
   const x = numEntreno(S.d.sesiones, S.d.servicio, S.sesion?.fecha || hoyISO(), S.sesion?.id, (S.d.programaBase || S.d.programa)?.dias_semana, S.d.uid);
   return x && !x.fuera ? `<div class="row" style="flex-wrap:wrap;gap:6px"><span class="pill blue">Ciclo ${x.ciclo}</span><span class="pill gold">Semana ${x.semCiclo} de ${x.cc.sem}</span><span class="pill">Entreno ${x.n}${x.previstos ? ' de ' + x.previstos : ''} del ciclo</span></div>` : '';
 }
+/* ---------- Vista guiada del entreno: un bloque (ejercicio o superserie) cada vez, con la sesión completa a un toque ---------- */
+const Guia = {
+  activo() { try { return localStorage.getItem('lof-guia') !== 'completa'; } catch (e) { return true; } },
+  cambiar() { try { localStorage.setItem('lof-guia', this.activo() ? 'completa' : 'guiada'); } catch (e) { } S.paso = null; render(); },
+  barra() { return `<div class="guia-barra row" id="guia-barra"><span class="small grow" id="guia-txt"></span><button class="linkbtn small" data-act="guiaModo">${this.activo() ? 'Ver sesión completa' : 'Ver paso a paso'}</button></div>`; },
+  pasos() { return [...document.querySelectorAll('#ses-pasos .paso-u')]; },
+  hecho(el) { const c = el.querySelectorAll('.chk[data-act="serie"]'); return c.length ? [...c].every(x => x.classList.contains('on')) : false; },
+  pintar() {
+    const P = this.pasos(), txt = document.getElementById('guia-txt'); if (!P.length) return;
+    if (S.paso == null || S.paso >= P.length) { const i = P.findIndex(x => !this.hecho(x)); S.paso = i < 0 ? 0 : i; }
+    if (this.activo()) { P.forEach((x, i) => x.classList.toggle('actual', i === S.paso)); document.querySelectorAll('#ses-pasos > .paso').forEach(x => x.classList.toggle('con-actual', !!x.querySelector('.paso-u.actual'))); }
+    document.querySelector('.guia-nav')?.toggleAttribute('hidden', P.length < 2);
+    const hechos = P.filter(x => this.hecho(x)).length, el = P[S.paso];
+    if (txt) txt.innerHTML = this.activo() ? `<b>Paso ${S.paso + 1} de ${P.length}</b> · ${esc(el.dataset.pasoN)} ${esc(el.dataset.pasoT)} <span class="muted">· ${hechos} completados</span>` : `${P.length} bloques · ${hechos} completados`;
+    const sig = document.getElementById('guia-sig'); if (sig) { sig.textContent = S.paso === P.length - 1 ? 'Último paso ✓' : this.hecho(el) ? 'Siguiente ▶ (hecho)' : 'Siguiente ▶'; sig.disabled = S.paso === P.length - 1; sig.classList.toggle('gold', this.hecho(el)); }
+  },
+  mover(d) { const P = this.pasos(); S.paso = Math.max(0, Math.min(P.length - 1, (S.paso || 0) + d)); this.pintar(); document.getElementById('guia-barra')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+};
 function vSesion() {
   const d = S.dia, cont = { n: 0 };
   prepararNavegacion(d);
@@ -1243,7 +1263,9 @@ function vSesion() {
     ${conPartido(d) ? (() => { const pt = (S.d.partidos || []).find(x => x.fecha === S.sesion?.fecha) || partidoDelDia(d, S.d.partidos); return pt ? `<div class="card stack md-card"><span class="eyebrow">🏟️ Día de partido</span>${vPartidoMini(pt)}${pt.descripcion ? `<p class="small" style="margin:0">${esc(pt.descripcion)}</p>` : ''}${pt.imagen_url ? `<button class="img" data-act="verImagen" data-src="${esc(pt.imagen_url)}" aria-label="Ver imagen del partido" style="align-self:flex-start"><img src="${esc(pt.imagen_url)}" alt="" style="max-height:160px;border-radius:12px"></button>` : ''}</div>` : ''; })() : ''}
     <div class="card stack"><span class="eyebrow">Objetivo de hoy</span><div class="small">${esc(d.objetivo || '')}</div>
     <div class="kpis"><div class="kpi"><div class="l">Volumen</div><b>${esc(d.volumen || '—')}</b></div><div class="kpi"><div class="l">Intensidad</div><b>${esc(d.intensidad || '—')}</b></div><div class="kpi"><div class="l">Foco</div><b>${esc(d.foco || '—')}</b></div></div></div></section>
-  <section class="section">${vBloquesDia(d, cont)}
+  ${Guia.barra()}
+  <section class="section ${Guia.activo() ? 'guiado' : ''}" id="ses-pasos">${vBloquesDia(d, cont)}
+  ${Guia.activo() ? '<div class="row guia-nav" style="gap:8px;margin:4px 0 12px"><button class="btn ghost grow" data-act="guiaPaso" data-d="-1">◀ Anterior</button><button class="btn grow" data-act="guiaPaso" data-d="1" id="guia-sig">Siguiente ▶</button></div>' : ''}
   <button class="btn full dark" data-act="terminar">Terminar sesión</button></section>`;
 }
 
@@ -1266,7 +1288,7 @@ setInterval(() => { const t = $('#crono-t'); if (t && S.sesion?.inicio) t.textCo
 async function abrirDia(id, op = {}) {
   S.dia = op.dia || S.d.programa.dias.find(d => d.id === id);
   const fechaS = op.fecha || S.obj?.fecha || hoyISO(), editar = !!op.editar;
-  S.sesion = { id: null, regs: {}, valores: {}, ultimos: {}, inicio: null, fecha: fechaS, editar };
+  S.sesion = { id: null, regs: {}, valores: {}, ultimos: {}, inicio: null, fecha: fechaS, editar }; S.paso = null;
   if (!editar) try { const v = +localStorage.getItem(claveCrono()); if (v) S.sesion.inicio = v; } catch (e) { }
   S.tab = 'entreno'; window.scrollTo(0, 0);
   const ids = S.dia.bloques_sesion.flatMap(b => b.ejercicios_sesion.map(e => e.id));
@@ -1289,7 +1311,7 @@ async function abrirDia(id, op = {}) {
   render(); Cola.pintar();
 }
 function rellenarSesion() {
-  const z = S.sesion; if (!z) return; setTimeout(() => Cola.pintar(), 0);
+  const z = S.sesion; if (!z) return; setTimeout(() => { Cola.pintar(); Guia.pintar(); }, 0);
   document.querySelectorAll('.chk[data-act="serie"]').forEach(b => {
     const fila = `${b.dataset.es}-${b.dataset.n}`, T = +b.dataset.t;
     for (let k = 0; k < T; k++) {
@@ -1332,7 +1354,7 @@ async function toggleSerie(b) {
       kg: kg ? (numero(kg.value) ?? valPh(kg) ?? u.kg ?? null) : null, repeticiones: numero(rp.value) ?? valPh(rp) ?? u.repeticiones ?? null,
       rir: (() => { const ri = document.getElementById(`ri-${fila}-${k}`); return ri ? numero(ri.value) ?? valPh(ri) ?? u.rir ?? null : null; })() };
   });
-  marcar(b, fila, true);
+  marcar(b, fila, true); setTimeout(() => Guia.pintar(), 0);
   const d = z.editar ? 0 : +b.dataset.d;
   if (z.editar) { } else if (d > 0) startTimer(d, 'Descanso · ' + b.dataset.lbl); else toast('Sin descanso: sigue con el siguiente');
   const sig = siguienteFila(es, n); if (sig) enfocarFila(sig[0], sig[1]);
@@ -3700,6 +3722,22 @@ async function registrarPresencial(sesId) {
   if (r.error) { console.error(r.error); toast('Sesión guardada, pero la presencial no: ' + motivoPres(r.error)); }
 }
 /* Nuevo ciclo: copia el programa activo para editarlo sin perder el historial del anterior */
+/* Orden patrón de los días (lo fija el coach): renumera y, si no es futbolista, renombra a «Día N» */
+async function renumerarDias(dias, futbol) {
+  for (const [i, d] of dias.entries()) {
+    const row = { numero: i + 1 };
+    if (!futbol && (/^d[ií]a \d+/i.test(d.nombre || '') || !DIAS.some(n => norm(n) === norm(d.nombre)))) { if (!d.titulo && !/^d[ií]a \d+/i.test(d.nombre || '')) row.titulo = d.nombre; row.nombre = 'Día ' + (i + 1); }
+    if (d.numero === row.numero && (!row.nombre || row.nombre === d.nombre)) continue;
+    const { error } = await sb.from('dias').update(row).eq('id', d.id); if (error) throw error;
+  }
+}
+async function moverDia(id, dir) {
+  const p = S.editor?.prog; if (!p) return;
+  const l = p.dias.slice(), i = l.findIndex(d => d.id === id), j = i + dir; if (i < 0 || j < 0 || j >= l.length) return;
+  [l[i], l[j]] = [l[j], l[i]];
+  try { await renumerarDias(l, editorEsFutbol()); } catch (err) { return fallo(err, 'No se ha podido cambiar el orden.'); }
+  refrescarEditor();
+}
 /* ---------- Copiar y pegar entrenamientos entre alumnos (y plantillas): días o programas completos ---------- */
 const Clip = {
   k: 'lof-portapapeles',
@@ -3714,6 +3752,16 @@ const Clip = {
     return `<div id="clip-barra"><span class="grow">📋 <b>${esc(c.tipo === 'dia' ? c.nombre : 'Programa «' + c.nombre + '»')}</b>${c.origen ? ' · de ' + esc(c.origen) : ''}</span><button type="button" data-act="clipPegar">Pegar en…</button><button type="button" data-act="clipQuitar" aria-label="Vaciar portapapeles">✕</button></div>`;
   },
   /* Inserta días (con bloques y ejercicios) en un programa; renombra según sea futbolista o no */
+  /* Inserta en la posición pos (1 = primero; null = al final) y renumera el bloque */
+  async pegarEn(dias, progId, pos, futbol) {
+    const { data: ex } = await sb.from('dias').select('id,numero,nombre,titulo').eq('programa_id', progId).order('numero');
+    const l = ex || [], antes = Math.max(0, ...l.map(x => x.numero || 0));
+    await this.insertarDias(dias, progId, antes, futbol);
+    if (pos == null || pos > l.length) return;
+    const { data: todos } = await sb.from('dias').select('id,numero,nombre,titulo').eq('programa_id', progId).order('numero');
+    const nuevos = (todos || []).filter(x => x.numero > antes), viejos = (todos || []).filter(x => x.numero <= antes);
+    await renumerarDias([...viejos.slice(0, pos - 1), ...nuevos, ...viejos.slice(pos - 1)], futbol);
+  },
   async insertarDias(dias, progId, desde, futbol) {
     let n = desde;
     for (const d of dias) {
@@ -3737,14 +3785,26 @@ const Clip = {
       <label class="row small" style="gap:8px"><input type="radio" name="cl-d" value="alumno" ${enEditor ? '' : 'checked'} style="width:20px;height:20px"> En otro alumno</label>
       <div class="stack" id="cl-alw" style="gap:8px" ${enEditor ? 'hidden' : ''}><label class="f">Alumno<select id="cl-al">${als.map(a => `<option value="${a.id}" ${a.id === aidEd ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('')}</select></label>
         ${c.tipo === 'programa' ? `<label class="row small" style="gap:8px"><input type="radio" name="cl-m" value="nuevo" checked style="width:20px;height:20px"> Como programa nuevo (pasa a ser su programa activo; el anterior queda guardado)</label><label class="row small" style="gap:8px"><input type="radio" name="cl-m" value="anadir" style="width:20px;height:20px"> Añadir sus días a su programa activo</label><label class="f">Nombre<input type="text" id="cl-n" value="${esc(c.nombre)}"></label>` : '<p class="small muted">Se añade como día nuevo a su programa activo (si no tiene, se le crea uno).</p>'}</div>
+      <div id="cl-opc" class="stack" style="gap:8px"></div>
       <button class="btn full" type="submit">Pegar</button></form>`);
-    $('#f-clip').addEventListener('change', () => { $('#cl-alw').hidden = document.querySelector('[name=cl-d]:checked').value !== 'alumno'; });
+    const destAid = () => document.querySelector('[name=cl-d]:checked').value === 'aqui' ? null : $('#cl-al')?.value;
+    const pintaOpc = async () => {
+      const aqui = document.querySelector('[name=cl-d]:checked').value === 'aqui', modo = c.tipo === 'programa' && !aqui ? document.querySelector('[name=cl-m]:checked')?.value : 'anadir';
+      let dias = [], fut = false, srv = null;
+      if (aqui) { dias = E.prog.dias; fut = editorEsFutbol(); }
+      else { const aid = destAid(); srv = S.c.servicios.find(x => x.alumno_id === aid); fut = !!srv?.modulo_futbol; if (modo !== 'nuevo') { const { data } = await sb.from('programas').select('id,dias(id,numero,nombre,titulo)').eq('alumno_id', aid).eq('activo', true).is('contexto_nombre', null).limit(1); dias = (data?.[0]?.dias || []).sort((a, b) => a.numero - b.numero); } }
+      const P = srv ? proceso(srv) : null;
+      $('#cl-opc').innerHTML = (modo === 'nuevo' ? (P?.ciclos?.length ? `<label class="f">Bloque del proceso<select id="cl-c">${P.ciclos.map(x => `<option value="${x.n}" ${x.n === P.ciclo ? 'selected' : ''}>${esc(nomCiclo(x))} · ${esc(fCorta(x.ini))} – ${esc(fCorta(x.fin))}</option>`).join('')}</select></label>` : '')
+        : !fut && dias.length ? `<label class="f">¿En qué posición del bloque?<select id="cl-pos">${dias.map((d, i) => `<option value="${i + 1}">Como Día ${i + 1} (antes de «${esc(etiquetaFlex(d))}»)</option>`).join('')}<option value="" selected>Al final (Día ${dias.length + 1}${c.dias.length > 1 ? '…' : ''})</option></select></label>` : fut ? '<p class="small muted">Futbolista: los días conservan su día de la semana; ordénalos después en su programa.</p>' : '');
+    };
+    pintaOpc();
+    $('#f-clip').addEventListener('change', ev => { $('#cl-alw').hidden = document.querySelector('[name=cl-d]:checked').value !== 'alumno'; if (ev.target.id !== 'cl-pos' && ev.target.id !== 'cl-c' && ev.target.id !== 'cl-n') pintaOpc(); });
     $('#f-clip').addEventListener('submit', async e => {
       e.preventDefault(); const bt = e.target.querySelector('[type=submit]'); if (bt.disabled) return; bt.disabled = true; bt.textContent = 'Copiando…';
       try {
         const dest = document.querySelector('[name=cl-d]:checked').value;
         if (dest === 'aqui') {
-          const p = E.prog; await this.insertarDias(c.dias, p.id, Math.max(0, ...p.dias.map(x => x.numero || 0)), editorEsFutbol());
+          const p = E.prog; await this.pegarEn(c.dias, p.id, $('#cl-pos')?.value ? +$('#cl-pos').value : null, editorEsFutbol());
           cerrarSheet(); toast('Pegado en este programa'); refrescarEditor(); return;
         }
         const aid = $('#cl-al').value, fut = !!S.c.servicios.find(x => x.alumno_id === aid)?.modulo_futbol, nom = (S.c.perfiles.find(x => x.id === aid) || {}).nombre || '';
@@ -3755,7 +3815,8 @@ const Clip = {
           if (act && modo === 'nuevo') await sb.from('programas').update({ activo: false }).eq('id', act.id);
           const { data: np, error } = await sb.from('programas').insert({ alumno_id: aid, nombre: ($('#cl-n')?.value || '').trim() || (c.tipo === 'programa' ? c.nombre : 'Programa') || 'Programa', dias_semana: c.dias_semana || c.dias.length, activo: true }).select().single(); if (error) throw error;
           await this.insertarDias(c.dias, np.id, 0, fut);
-        } else await this.insertarDias(c.dias, act.id, Math.max(0, ...(act.dias || []).map(x => x.numero || 0)), fut);
+          if ($('#cl-c')?.value) await sb.from('programas').update({ ciclo: +$('#cl-c').value }).eq('id', np.id);
+        } else await this.pegarEn(c.dias, act.id, $('#cl-pos')?.value ? +$('#cl-pos').value : null, fut);
         cerrarSheet(); toast(`Pegado en ${nom}`); await cargarCoach(); if (S.editor) refrescarEditor(); else if (S.ficha?.id === aid) await abrirFicha(aid);
       } catch (err) { bt.disabled = false; bt.textContent = 'Pegar'; fallo(err, 'No se ha podido pegar.'); }
     });
@@ -4086,7 +4147,7 @@ function vEditor() {
     <div class="row" style="gap:8px;flex-wrap:wrap">${p ? `<button class="btn sm ghost" data-act="nuevoPrograma">Cambiar nombre</button><button class="btn sm" data-act="edDia">Añadir día</button>${p.dias.length ? '<button class="btn sm ghost" data-act="clipProg">📋 Copiar programa</button>' : ''}${Clip.hay() ? `<button class="btn sm gold" data-act="clipPegar">📥 Pegar ${Clip.hay().tipo === 'dia' ? 'día' : 'programa'}</button>` : ''}${editorEsFutbol() && p.dias.length < 7 ? '<button class="btn sm ghost" data-act="semanaCompleta">📅 Completar semana (lunes a domingo)</button>' : ''}${E.plantilla ? `<button class="btn sm gold" data-act="probarPlantilla" data-id="${p.id}">👁 Ver como alumno de prueba</button>` : E.ctx ? '' : '<button class="btn sm gold" data-act="nuevoCiclo">Nuevo ciclo (copiar)</button>'}` : `<button class="btn sm" data-act="nuevoPrograma">Crear programa</button>`}</div>
     ${p && !editorEsFutbol() && !esFlex(p) && p.dias.length ? `<div class="aprox small row" style="gap:8px;flex-wrap:wrap"><span class="grow">Este programa usa días de la semana. Para alumnos que no son futbolistas, mejor <b>Día 1, Día 2…</b>: el alumno elige cuándo los hace.</span><button class="btn sm" data-act="aDiasN">Pasar a Día 1, 2, 3…</button></div>` : ''}
     <p class="note">${E.plantilla ? 'Toca cualquier elemento para editarlo. Los cambios solo afectan a la plantilla: los alumnos que ya la tienen asignada conservan su copia.' : 'Toca cualquier elemento para editarlo. Los cambios los ve el alumno en cuanto vuelve a abrir la app.'}</p></section>
-  ${p && !E.dia ? `<section class="section"><div class="row" style="margin-bottom:8px"><span class="grow small muted">Edita un día o todo el bloque a la vez</span><button class="btn sm" data-act="edAbrirDia" data-id="todos">✎ Editar todos los días</button></div><div class="card">${p.dias.map(d => `<div class="line" data-act="edAbrirDia" data-id="${d.id}" style="cursor:pointer"><span class="pill gold">${d.numero}</span><div class="grow" style="min-width:0"><b>${esc(nomDia(d))}</b>${tipoDiaDe(d) ? ` <span class="pill ${conPartido(d) ? 'gold' : ''}">${tipoDiaDe(d)[2]} ${tipoDiaDe(d)[1]}</span>` : ''}<div class="small muted">${d.bloques_sesion.length} bloques · ${d.bloques_sesion.reduce((t, b) => t + b.ejercicios_sesion.length, 0)} ejercicios${d.foco ? ' · ' + esc(d.foco) : ''}</div></div><button class="btn sm ghost" data-act="clipDia" data-id="${d.id}" aria-label="Copiar este día" title="Copiar este día">📋</button><button class="btn sm" data-act="edAbrirDia" data-id="${d.id}">Editar</button></div>`).join('')}</div></section>` : ''}
+  ${p && !E.dia ? `<section class="section"><div class="row" style="margin-bottom:8px"><span class="grow small muted">Edita un día o todo el bloque a la vez${!editorEsFutbol() && p.dias.length > 1 ? ' · ▲▼ fija el orden del bloque (Día 1, Día 2…); la distribución en la semana la decide el alumno contigo' : ''}</span><button class="btn sm" data-act="edAbrirDia" data-id="todos">✎ Editar todos los días</button></div><div class="card">${p.dias.map(d => `<div class="line" data-act="edAbrirDia" data-id="${d.id}" style="cursor:pointer"><span class="pill gold">${d.numero}</span><div class="grow" style="min-width:0"><b>${esc(nomDia(d))}</b>${tipoDiaDe(d) ? ` <span class="pill ${conPartido(d) ? 'gold' : ''}">${tipoDiaDe(d)[2]} ${tipoDiaDe(d)[1]}</span>` : ''}<div class="small muted">${d.bloques_sesion.length} bloques · ${d.bloques_sesion.reduce((t, b) => t + b.ejercicios_sesion.length, 0)} ejercicios${d.foco ? ' · ' + esc(d.foco) : ''}</div></div>${!editorEsFutbol() && p.dias.length > 1 ? `<span class="stack" style="gap:2px"><button class="btn sm ghost" data-act="moverDia" data-id="${d.id}" data-dir="-1" aria-label="Subir día" ${p.dias[0] === d ? 'disabled' : ''} style="padding:2px 10px">▲</button><button class="btn sm ghost" data-act="moverDia" data-id="${d.id}" data-dir="1" aria-label="Bajar día" ${p.dias[p.dias.length - 1] === d ? 'disabled' : ''} style="padding:2px 10px">▼</button></span>` : ''}<button class="btn sm ghost" data-act="clipDia" data-id="${d.id}" aria-label="Copiar este día" title="Copiar este día">📋</button><button class="btn sm" data-act="edAbrirDia" data-id="${d.id}">Editar</button></div>`).join('')}</div></section>` : ''}
   ${p ? p.dias.filter(d => E.dia === 'todos' || d.id === E.dia).map((d, i) => `<section class="section">${i === 0 ? `<button class="btn sm ghost" data-act="edAbrirDia" data-id="" style="margin-bottom:8px">← Lista de días</button>` : ''}<div class="card stack">
     <div class="row"><div class="grow"><span class="eyebrow">Día ${d.numero}${d.titulo ? ' · ' + esc(d.nombre) : ''}</span><h2>${esc(nomDia(d))}</h2>${tipoDiaDe(d) ? `<span class="pill ${conPartido(d) ? 'gold' : ''}">${tipoDiaDe(d)[2]} ${tipoDiaDe(d)[1]}</span>` : ''}<div class="small muted">${esc([d.foco, d.volumen && 'vol. ' + d.volumen, d.intensidad && 'int. ' + d.intensidad].filter(Boolean).join(' · '))}</div></div><button class="btn sm ghost" data-act="edDia" data-id="${d.id}">Editar día</button></div>
     ${conPartido(d) && E.alumnoId ? (() => { const pt = partidoDelDia(d, (S.c.partidos || []).filter(x => x.alumno_id === E.alumnoId)); return `<div class="aprox stack" style="gap:6px">${pt ? vPartidoMini(pt, `<button class="btn sm ghost" data-act="partido" data-al="${E.alumnoId}" data-id="${pt.id}">Editar</button>`) : `<div class="row small"><span class="grow">🏟️ Aún no hay partido apuntado para este ${esc(DIAS.find(x => esDia(d, norm(x))) || 'día').toLowerCase()}</span><button class="btn sm" data-act="partido" data-al="${E.alumnoId}" data-f="${fechaDiaSemana(d, lunesDe(hoyISO())) >= hoyISO() ? fechaDiaSemana(d, lunesDe(hoyISO())) : sumaDias(fechaDiaSemana(d, lunesDe(hoyISO())) || hoyISO(), 7)}">＋ Partido</button></div>`}</div>`; })() : ''}
@@ -4121,7 +4182,7 @@ function formDia(id) {
   abrirSheet(`<form class="stack" id="f-dia"><h2>${d ? 'Editar día' : 'Nuevo día'}</h2>
     <label class="f">Nombre del entreno<input type="text" id="d-t" value="${esc(d?.titulo || '')}" placeholder="Ej. Pierna y glúteo, Día A, Fuerza total…" maxlength="60"></label>
     ${editorEsFutbol() ? `<label class="f">Día de la semana<select id="d-n">${DS.map(x => `<option ${norm(x) === norm(d?.nombre) ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
-    <p class="small muted" style="margin-top:-6px">El día de la semana decide cuándo le aparece al alumno en «Hoy». Si dejas el nombre en blanco, se llamará como el día.</p>` : `<p class="small muted" style="margin-top:-6px"><b>${esc(d && /^d[ií]a \d+/i.test(d.nombre || '') ? d.nombre : 'Día ' + ((d ? p.dias.indexOf(d) : p.dias.length) + 1))}</b> · Al alumno le aparecen en orden (Día 1, Día 2…) y él decide qué días de la semana los hace.</p>`}
+    <p class="small muted" style="margin-top:-6px">El día de la semana decide cuándo le aparece al alumno en «Hoy». Si dejas el nombre en blanco, se llamará como el día.</p>` : `<p class="small muted" style="margin-top:-6px"><b>${esc(d && /^d[ií]a \d+/i.test(d.nombre || '') ? d.nombre : 'Día ' + ((d ? p.dias.indexOf(d) : p.dias.length) + 1))}</b> · El orden del bloque lo fijas tú con ▲▼ en la lista de días; el alumno decide contigo qué días de la semana los hace.</p>`}
     ${editorEsFutbol() || d?.tipo_dia ? `<div class="stack" style="gap:6px"><span class="small muted">Tipo de día</span><div class="chips" id="d-td">${TIPOS_DIA.map(([k, l, e]) => `<button type="button" data-v="${k}" aria-pressed="${(d?.tipo_dia || 'entreno') === k}">${e} ${l}</button>`).join('')}</div></div>` : ''}
     <label class="f">Objetivo del día<textarea id="d-obj">${esc(d?.objetivo || '')}</textarea></label>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><label class="f">Volumen<input type="text" id="d-vol" value="${esc(d?.volumen || '')}" placeholder="Alto"></label><label class="f">Intensidad<input type="text" id="d-int" value="${esc(d?.intensidad || '')}" placeholder="Alta"></label><label class="f">Foco<input type="text" id="d-foco" value="${esc(d?.foco || '')}" placeholder="Fuerza"></label></div>
@@ -4925,7 +4986,10 @@ document.addEventListener('click', async e => {
     case 'vistaGuardar': await conmutarGuardado(); break;
     case 'cambiarClave': cerrarSheet(); vistaNuevaClave(); break;
     case 'cerrarSheet': cerrarSheet(); break;
+    case 'guiaPaso': Guia.mover(+b.dataset.d); break;
+    case 'guiaModo': Guia.cambiar(); break;
     case 'clipDia': Clip.copiarDia(+b.dataset.id); break;
+    case 'moverDia': await moverDia(+b.dataset.id, +b.dataset.dir); break;
     case 'clipProg': Clip.copiarProg(); break;
     case 'clipPegar': Clip.formPegar(); break;
     case 'clipQuitar': Clip.quitar(); break;
