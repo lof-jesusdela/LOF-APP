@@ -170,6 +170,8 @@ const SEL_PROGRAMA = 'id,nombre,dias_semana,dias(*,bloques_sesion(*,ejercicios_s
    Se guarda como un programa del alumno no activo con contexto_desde (lunes), contexto_hasta (domingo) y contexto_nombre. */
 const CTX_COLS = 'contexto_desde,contexto_hasta,contexto_nombre,';
 const esContexto = p => !!p?.contexto_desde;
+/* Contexto guardado: preparado pero sin fechas; el coach lo aplica cuando quiera eligiendo el intervalo */
+const esGuardado = p => !p?.contexto_desde && !!p?.contexto_nombre;
 function contextosDe(aid) {
   if (S.d?.uid === aid && S.d.contextos) return S.d.contextos;
   if (S.ficha?.id === aid && S.ficha.contextos) return S.ficha.contextos;
@@ -196,34 +198,36 @@ function vContextos(f, a) {
   const est = c => c.contexto_hasta < hoy ? ['', 'Terminado'] : c.contexto_desde <= lunes ? ['gold', 'Activo esta semana'] : ['blue', 'Programado'];
   return `<section class="section"><div class="section-head"><h2>Contextos temporales</h2><button class="btn sm" data-act="nuevoContexto">＋ Nuevo contexto</button></div>
     <div class="card">${l.map(c => `<div class="line" style="flex-wrap:wrap"><div class="grow" style="min-width:180px"><b>${esc(c.contexto_nombre || 'Contexto')}</b><div class="small muted">${esc(fCtx(c))} · ${semanasCtx(c)} ${semanasCtx(c) === 1 ? 'semana' : 'semanas'} · ${c.dias_semana} ${c.dias_semana === 1 ? 'entreno' : 'entrenos'}/semana${c.dias ? ` · ${c.dias.length} ${c.dias.length === 1 ? 'sesión' : 'sesiones'}` : ''}</div></div><span class="pill ${est(c)[0]}">${est(c)[1]}</span><div class="row" style="gap:6px"><button class="btn sm ghost" data-act="sesionesContexto" data-id="${c.id}">✎ Sesiones</button><button class="btn sm ghost" data-act="editarContexto" data-id="${c.id}">Datos</button></div></div>`).join('') || '<div class="empty small">Sin contextos. Úsalos cuando sepas que unas semanas no podrá seguir su plan (vacaciones, viaje, lesión…): le preparas un plan para esas semanas y se mide contra él.</div>'}</div>
+    ${(f.guardados || []).length ? `<div class="section-head" style="margin-top:14px"><h3>Guardados para aplicar cuando quieras</h3></div><div class="card">${f.guardados.map(c => `<div class="line" style="flex-wrap:wrap"><div class="grow" style="min-width:180px"><b>${esc(c.contexto_nombre)}</b><div class="small muted">Sin fechas · ${c.dias_semana} ${c.dias_semana === 1 ? 'entreno' : 'entrenos'}/semana${c.dias ? ` · ${c.dias.length} ${c.dias.length === 1 ? 'sesión' : 'sesiones'}` : ''}</div></div><span class="pill">Sin aplicar</span><div class="row" style="gap:6px"><button class="btn sm" data-act="editarContexto" data-id="${c.id}">Aplicar</button><button class="btn sm ghost" data-act="sesionesContexto" data-id="${c.id}">✎ Sesiones</button></div></div>`).join('')}</div>` : ''}
     <p class="note">Durante esas semanas entrena las sesiones del contexto y su cumplimiento se calcula con ellas (por ejemplo, 2 de 2 = 100 %). El ciclo se adapta y al terminar vuelve solo a su programa.</p></section>`;
 }
 function formContexto(id) {
-  const f = S.ficha, a = S.c.perfiles.find(p => p.id === f.id) || {}, c = id ? (f.contextos || []).find(x => x.id === id) : null, base = f.progFull, hoy = hoyISO();
+  const f = S.ficha, a = S.c.perfiles.find(p => p.id === f.id) || {}, c = id ? [...(f.contextos || []), ...(f.guardados || [])].find(x => x.id === id) : null, base = f.progFull, hoy = hoyISO(), guardado = esGuardado(c);
   const lunesSig = sumaDias(lunesDe(hoy), 7);
-  abrirSheet(`<form class="stack" id="f-ctx"><h2>${c ? 'Editar contexto' : 'Nuevo contexto temporal'}</h2>
+  abrirSheet(`<form class="stack" id="f-ctx"><h2>${guardado ? 'Aplicar contexto' : c ? 'Editar contexto' : 'Nuevo contexto temporal'}</h2>${guardado ? '<p class="small muted">Elige desde qué semana y cuántas semanas lo aplicas. Mientras dure, entrenará estas sesiones.</p>' : ''}
     <label class="f">Nombre (lo ve ${esc((a.nombre || 'el alumno').split(' ')[0])})<input type="text" id="cx-n" value="${esc(c?.contexto_nombre || '')}" placeholder="Ej. Vacaciones en la playa, Viaje de trabajo, Rodilla" required></label>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><label class="f">Semana que empieza<input type="date" id="cx-d" value="${c?.contexto_desde || lunesSig}" required></label><label class="f">Semanas<input type="number" id="cx-s" min="1" max="12" value="${c ? semanasCtx(c) : 1}" required></label><label class="f">Entrenos/semana<input type="number" id="cx-e" min="1" max="7" value="${c?.dias_semana || 2}" required></label></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><label class="f">Semana que empieza<input type="date" id="cx-d" value="${c?.contexto_desde || lunesSig}" required></label><label class="f">Semanas<input type="number" id="cx-s" min="1" max="12" value="${c?.contexto_desde ? semanasCtx(c) : 1}" required></label><label class="f">Entrenos/semana<input type="number" id="cx-e" min="1" max="7" value="${c?.dias_semana || 2}" required></label></div>
     <p class="small muted" id="cx-r"></p>
     ${c ? '' : base?.dias?.length ? `<div class="stack" style="gap:6px"><span class="small"><b>Sesiones de partida</b> · se copian de su programa y luego puedes recortarlas o añadir nuevas</span>${base.dias.map(d => `<label class="row small"><input type="checkbox" data-cxd="${d.id}" style="width:20px;height:20px"> ${esc(nomDia(d))}${d.foco && d.foco !== nomDia(d) ? ` <span class="muted">· ${esc(d.foco)}</span>` : ''}</label>`).join('')}<span class="small muted">Sin marcar ninguna empiezas con el contexto vacío y creas las sesiones desde cero.</span></div>` : '<p class="small muted">Empezarás con el contexto vacío y crearás las sesiones en el editor.</p>'}
+    ${guardado ? '' : `<label class="row small" style="gap:8px"><input type="checkbox" id="cx-g" style="width:20px;height:20px" ${c ? '' : ''}> <span>Guardar sin fechas: queda en su programa para aplicarlo cuando yo quiera</span></label>`}
     <p class="small" id="cx-err" style="color:var(--bad)"></p>
-    <button class="btn full" type="submit">${c ? 'Guardar' : 'Crear y preparar sesiones'}</button>${c ? '<button class="btn ghost full" type="button" id="cx-del" style="color:var(--bad)">Eliminar contexto</button>' : ''}</form>`);
+    <button class="btn full" type="submit">${guardado ? 'Aplicar en esas fechas' : c ? 'Guardar' : 'Crear y preparar sesiones'}</button>${c ? '<button class="btn ghost full" type="button" id="cx-del" style="color:var(--bad)">Eliminar contexto</button>' : ''}</form>`);
   const rango = () => { const d = $('#cx-d').value; if (!d) return null; const ini = lunesDe(d), n = Math.max(1, Math.min(12, +$('#cx-s').value || 1)); return { ini, fin: sumaDias(ini, n * 7 - 1) }; };
   const pinta = () => { const r = rango(); $('#cx-r').textContent = r ? `De lunes ${fCorta(r.ini)} a domingo ${fCorta(r.fin)} (semanas completas).` : ''; };
   pinta(); $('#cx-d').addEventListener('change', pinta); $('#cx-s').addEventListener('input', pinta);
   $('#f-ctx').addEventListener('submit', async e => {
     e.preventDefault();
     const bt = $('#f-ctx [type=submit]'); if (bt.disabled) return;
-    const r = rango(), nombre = $('#cx-n').value.trim(), n = Math.max(1, Math.min(7, +$('#cx-e').value || 1));
+    const sinFechas = !!$('#cx-g')?.checked, r = sinFechas ? { ini: null, fin: null } : rango(), nombre = $('#cx-n').value.trim(), n = Math.max(1, Math.min(7, +$('#cx-e').value || 1));
     if (!r || !nombre) return;
-    const cruce = (f.contextos || []).find(x => x.id !== c?.id && x.contexto_desde <= r.fin && x.contexto_hasta >= r.ini);
+    const cruce = !sinFechas && (f.contextos || []).find(x => x.id !== c?.id && x.contexto_desde <= r.fin && x.contexto_hasta >= r.ini);
     if (cruce) return $('#cx-err').textContent = `Se cruza con "${cruce.contexto_nombre}" (${fCtx(cruce)}). Cambia las fechas.`;
     bt.disabled = true; bt.textContent = 'Guardando…';
     const row = { nombre: `Contexto · ${nombre}`, dias_semana: n, contexto_desde: r.ini, contexto_hasta: r.fin, contexto_nombre: nombre };
     try {
       if (c) {
         const { error } = await sb.from('programas').update(row).eq('id', c.id); if (error) throw error;
-        cerrarSheet(); toast('Contexto guardado'); await cargarProgramasFicha(f); await recargarContextosCoach(); render(); return;
+        cerrarSheet(); toast(guardado && !sinFechas ? 'Contexto aplicado' : 'Contexto guardado'); await cargarProgramasFicha(f); await recargarContextosCoach(); render(); return;
       }
       const { data: np, error } = await sb.from('programas').insert({ ...row, alumno_id: f.id, activo: false }).select().single(); if (error) throw error;
       const elegidos = [...document.querySelectorAll('#f-ctx [data-cxd]:checked')].map(x => +x.dataset.cxd);
@@ -1420,7 +1424,8 @@ async function cargarProgramasFicha(f) {
   const l = r.data || [];
   l.forEach(p => { (p.dias ||= []).sort((a, b) => a.numero - b.numero); p.dias.forEach(ordenarDia); });
   f.contextos = l.filter(esContexto).sort((a, b) => a.contexto_desde.localeCompare(b.contexto_desde));
-  f.programas = l.filter(p => !esContexto(p)); f.progFull = f.programas.filter(p => p.activo !== false).pop() || null;
+  f.guardados = l.filter(esGuardado);
+  f.programas = l.filter(p => !esContexto(p) && !esGuardado(p)); f.progFull = f.programas.filter(p => p.activo !== false).pop() || null;
 }
 /* Programa de cada bloque del proceso: el marcado con ese nº de ciclo o, en el bloque en curso, el activo */
 const progDeCiclo = (f, P) => c => {
