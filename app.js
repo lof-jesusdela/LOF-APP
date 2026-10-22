@@ -18,6 +18,8 @@ const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', '
 /* Nombre que se muestra de un día de entreno: el título libre (Bloque 31) o, si no hay, el día de la semana */
 const nomDia = d => d?.titulo || d?.nombre || '';
 const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+/* ¿La sesión corresponde a ese día? Acepta «Lunes», «Miércoles / Jueves», «Viernes · Sábado», «Domingo (partido)»… */
+const esDia = (d, n) => norm(d?.nombre).split(/\s*(?:\/|·|,|\by\b)\s*/).some(x => x.split(/[\s(]/)[0] === n);
 const fCorta = iso => fecha(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
 const fLarga = iso => fecha(iso).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
 const fmtNum = (n, d = 1) => n == null ? '—' : Number(n).toLocaleString('es-ES', { maximumFractionDigits: d });
@@ -415,14 +417,15 @@ function tira(iniISO, claseDe) {
 function diaDeHoy() {
   const p = S.d.programa; if (!p) return null;
   const n = norm(DIAS[new Date().getDay()]);
-  return p.dias.find(d => norm(d.nombre) === n) || null;
+  return p.dias.find(d => esDia(d, n)) || null;
 }
 function proximoDia() {
   const p = S.d.programa; if (!p) return null;
-  for (let i = 1; i <= 7; i++) { const d = new Date(); d.setDate(d.getDate() + i); const n = norm(DIAS[d.getDay()]); const x = p.dias.find(z => norm(z.nombre) === n); if (x) return x; }
+  for (let i = 1; i <= 7; i++) { const d = new Date(); d.setDate(d.getDate() + i); const n = norm(DIAS[d.getDay()]); const x = p.dias.find(z => esDia(z, n)); if (x) return x; }
   return null;
 }
-function hechoHoy(diaId) { return S.d.sesiones.some(s => s.fecha === hoyISO() && s.dia_id === diaId); }
+/* Hecha hoy o, en sesiones de varios días («Miércoles / Jueves»), ya hecha esta semana */
+function hechoHoy(diaId) { const l = lunesDe(hoyISO()); return S.d.sesiones.some(s => s.dia_id === diaId && (s.fecha === hoyISO() || s.fecha >= l)); }
 
 /* ---------- Registro de los últimos 7 días (pasos y comidas), con fotos opcionales ---------- */
 const DIA3 = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
@@ -585,7 +588,7 @@ function vEntreno() {
   const hechoSemana = id => S.d.sesiones.some(s => s.dia_id === id && s.fecha >= lunes);
   const P = proceso(S.d.servicio), Pn = P && !P.antes ? S.d.sesiones.filter(x => x.fecha >= P.cc.ini && x.fecha <= P.cc.fin).length : null;
   return como + `<section class="stack"><span class="eyebrow">${esc(p.nombre)}</span><h1>Entreno</h1>${P && !P.antes && !P.fuera ? `<div class="row" style="flex-wrap:wrap;gap:6px"><span class="pill blue">Ciclo ${P.ciclo}</span><span class="pill gold">Semana ${P.semCiclo} de ${P.cc.sem}</span><span class="pill">${Pn} ${(S.d.programaBase || p).dias_semana ? 'de ' + previstosCiclo(P.cc, S.d.uid, (S.d.programaBase || p).dias_semana) + ' ' : ''}entrenos del ciclo</span></div>` : ''}</section>
-  ${vAvisoContexto()}${vZonasFC()}<section class="section"><div class="card">${p.dias.map(d => `<div class="wk ${norm(d.nombre) === hoyN ? 'today' : ''}"><span class="d">${esc(d.nombre.slice(0, 3))}</span><div class="grow"><h3>${esc(d.titulo || d.foco || d.nombre)}</h3><div class="small muted">${esc(d.volumen || '')} volumen · ${esc(d.intensidad || '')} intensidad</div></div>${hechoSemana(d.id) ? '<span class="pill ok">Hecho</span>' : ''}<button class="btn sm ${norm(d.nombre) === hoyN ? '' : 'ghost'}" data-act="abrirDia" data-id="${d.id}">Abrir</button></div>`).join('')}</div></section>
+  ${vAvisoContexto()}${vZonasFC()}<section class="section"><div class="card">${p.dias.map(d => `<div class="wk ${esDia(d, hoyN) ? 'today' : ''}"><span class="d">${esc(d.nombre.slice(0, 3))}</span><div class="grow"><h3>${esc(d.titulo || d.foco || d.nombre)}</h3><div class="small muted">${esc(d.volumen || '')} volumen · ${esc(d.intensidad || '')} intensidad</div></div>${hechoSemana(d.id) ? '<span class="pill ok">Hecho</span>' : ''}<button class="btn sm ${esDia(d, hoyN) ? '' : 'ghost'}" data-act="abrirDia" data-id="${d.id}">Abrir</button></div>`).join('')}</div></section>
   ${vLineaTiempo(S.d.servicio, 'Tus ciclos de entrenamiento', false, p)}
   ${vCalendarioPres()}`;
 }
@@ -2595,6 +2598,7 @@ function formServicio() {
     <datalist id="sv-prods">${[...new Set(['Plan Integral 3 meses', 'Plan Integral 6 meses', 'Plan Integral 10 meses', 'Plan Entrenamiento 3 meses', 'Plan Entrenamiento 6 meses', 'Bono 10 sesiones presenciales', 'Bono 15 sesiones presenciales', 'Zero to Fit · Integral', 'Élite Player', ...S.c.servicios.map(x => x.producto).filter(Boolean)])].map(v => `<option value="${esc(v)}">`).join('')}</datalist>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Inicio<input type="date" id="sv-ini" value="${s.inicio || hoyISO()}"></label><label class="f">Duración (semanas)<input type="number" id="sv-dur" min="1" max="104" value="${s.duracion_semanas || ''}" placeholder="Ej. 26"></label></div>
     <label class="f">Objetivo de pasos diarios<input type="number" id="sv-pasos" min="0" step="500" value="${s.objetivo_pasos || ''}" placeholder="${PASOS_DEF}"></label>
+    <label class="f">Comidas de su plan al día <span class="muted">(registro de comidas cumplidas)</span><input type="number" id="sv-com" min="1" max="8" value="${comidasDia(s)}"></label>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Hora de acostarse objetivo<input type="time" id="sv-dormir" value="${esc(s.sueno_dormir || '')}" placeholder="23:00"></label><label class="f">Hora de levantarse objetivo<input type="time" id="sv-levantar" value="${esc(s.sueno_levantar || '')}" placeholder="08:00"></label></div>
     <label class="f">Sesiones presenciales incluidas (bono)<input type="number" id="sv-pres" min="0" max="200" value="${s.sesiones_incluidas || ''}" placeholder="Ej. 15"></label>
     <div class="stack" style="gap:8px">${[['entreno', 'Entrenamiento', s.modulo_entreno ?? true], ['nutricion', 'Nutrición', s.modulo_nutricion], ['presencial', 'Sesiones presenciales', s.modulo_presencial], ['futbol', 'Elite Player · seguimiento de futbolista (wellness, partidos y carga)', s.modulo_futbol]].map(([k, l, v]) => `<label class="row small"><input type="checkbox" id="sv-${k}" ${v ? 'checked' : ''} style="width:20px;height:20px"> ${l}</label>`).join('')}</div>
@@ -2607,11 +2611,13 @@ function formServicio() {
     if ($('#sv-dormir').value || s.sueno_dormir) row.sueno_dormir = $('#sv-dormir').value || null;
     if ($('#sv-levantar').value || s.sueno_levantar) row.sueno_levantar = $('#sv-levantar').value || null;
     const op = numero($('#sv-pasos').value); if (op) row.objetivo_pasos = op;
+    { const nc = numero($('#sv-com').value); if (nc && (nc !== comidasDia(s) || s.comidas_dia)) row.comidas_dia = Math.max(1, Math.min(8, nc)); }
     const guardar = r => s.id ? sb.from('servicios').update(r).eq('id', s.id) : sb.from('servicios').insert(r);
     let { error } = await guardar(row);
     if (!error && !s.id) await sb.from('perfiles').update({ activo: true }).eq('id', S.ficha.id);
     if (error && /modulo_futbol/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 21 en Supabase.');
     if (error && /sueno_/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 24 en Supabase.');
+    if (error && /comidas_dia/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 11 en Supabase.');
     if (error && /objetivo_pasos/.test(error.message || '')) { delete row.objetivo_pasos; ({ error } = await guardar(row)); toast('Para guardar el objetivo de pasos falta ejecutar el Bloque 10'); }
     if (error) return fallo(error);
     cerrarSheet(); toast('Servicio guardado'); await cargarCoach(); if (S.ficha.id === S.user.id) await cargarAlumno(S.user.id); abrirFicha(S.ficha.id);
@@ -3057,6 +3063,16 @@ function vCalendarioPres() {
   </div></section>`;
 }
 const etiquetaDia = d => `${d.nombre}${d.foco ? ' · ' + d.foco : ''}`;
+/* Motivo real de un fallo al guardar una presencial (antes todo se atribuía al Bloque 8) */
+function motivoPres(err) {
+  const m = String(err?.message || err || ''), c = err?.code || '';
+  if (c === '42P01' || /relation .*presenciales.* does not exist/i.test(m)) return 'Falta ejecutar el Bloque 8 en Supabase.';
+  if (c === '42501' || /row-level security|permission denied/i.test(m)) return 'Supabase no deja guardarla (permisos): ejecuta el Bloque 44.';
+  if (c === '23514' || /check constraint/i.test(m)) return 'Supabase no acepta ese estado: ejecuta el Bloque 44.';
+  if (c === '42703' || /column .* does not exist|schema cache/i.test(m)) return 'Falta una columna en presenciales: ejecuta el Bloque 44.';
+  if (c === '23505' || /duplicate key/i.test(m)) return 'Esa sesión ya estaba apuntada.';
+  return 'No se ha podido guardar la presencial: ' + m.slice(0, 160);
+}
 function formPres(id) {
   const p = id ? S.ficha.pres.find(x => x.id === id) : null;
   const sesDia = f => S.ficha.ses.filter(s => s.fecha === f);
@@ -3077,7 +3093,7 @@ function formPres(id) {
     const guardar = r => p ? sb.from('presenciales').update(r).eq('id', p.id) : sb.from('presenciales').insert({ ...r, alumno_id: S.ficha.id });
     let { error } = await guardar(row), aviso = null;
     if (error && /tipo/.test(error.message || '') && row.tipo) { delete row.tipo; ({ error } = await guardar(row)); aviso = 'Guardado, pero el tipo no: ejecuta el Bloque 28 en Supabase'; }
-    if (error) return fallo(error, /presenciales/.test(error.message || '') ? 'Falta ejecutar el Bloque 8 en Supabase.' : undefined);
+    if (error) return fallo(error, motivoPres(error));
     cerrarSheet(); toast(aviso || 'Guardado'); await cargarPres();
   });
   $('#pr-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para eliminarla'; return; } const { error } = await sb.from('presenciales').delete().eq('id', p.id); if (error) return fallo(error); cerrarSheet(); toast('Eliminada'); await cargarPres(); });
@@ -3157,7 +3173,7 @@ async function registrarPresencial(sesId) {
   const o = S.obj; if (!o?.presencial) return;
   const fila = { estado: 'dada', sesion_id: sesId };
   const r = o.presProg ? await sb.from('presenciales').update(fila).eq('id', o.presProg) : await sb.from('presenciales').insert({ ...fila, alumno_id: o.id, fecha: o.fecha || hoyISO() });
-  if (r.error) toast('Sesión guardada, pero no se ha podido canjear la presencial (¿falta el Bloque 8?)');
+  if (r.error) { console.error(r.error); toast('Sesión guardada, pero la presencial no: ' + motivoPres(r.error)); }
 }
 /* Nuevo ciclo: copia el programa activo para editarlo sin perder el historial del anterior */
 function formNuevoCiclo() {
