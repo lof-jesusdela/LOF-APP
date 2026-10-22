@@ -97,6 +97,11 @@ const Casos = (() => {
   const camposFotos = () => `<div class="stack" style="gap:8px"><span class="small"><b>Fotos de progreso</b> <span class="muted">(opcional · solo las veis tú y Jesús)</span></span>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${VISTAS.map(([v, l]) => `<label class="f small">${l}<input type="file" accept="image/*" data-fpv="${v}"></label>`).join('')}</div>
     <p class="small muted" style="margin:0">Mismo sitio, misma luz y ropa ajustada. Puedes taparte la cara si quieres.</p></div>`;
+  const campoTestimonio = () => `<label class="f">¿Cómo te estás sintiendo y qué opinas del servicio? <span class="muted" style="font-weight:400">(tu testimonio de este mes)</span><textarea id="ts-t" rows="4" placeholder="Cómo te ves y te sientes, qué ha cambiado, qué te está gustando y qué mejorarías…"></textarea></label>`;
+  async function guardarTestimonio(form, fechaF) {
+    const t = form.querySelector('#ts-t')?.value.trim(); if (!t) return false;
+    const { error } = await sb.from('testimonios').insert({ alumno_id: S.user.id, fecha: fechaF, texto: t }); if (error) throw error; return true;
+  }
   async function subirDesde(form, fechaF) {
     const ins = [...form.querySelectorAll('[data-fpv]')].filter(i => i.files?.[0]); if (!ins.length) return 0;
     const filas = [];
@@ -111,11 +116,11 @@ const Casos = (() => {
     return filas.length;
   }
   function formSubir() {
-    abrirSheet(`<form class="stack" id="f-fp"><h2>Fotos de progreso</h2><label class="f">Fecha<input type="date" id="fp-f" value="${hoyISO()}" max="${hoyISO()}"></label>${camposFotos()}<button class="btn full" type="submit">Guardar fotos</button></form>`);
+    abrirSheet(`<form class="stack" id="f-fp"><h2>Fotos de progreso</h2><label class="f">Fecha<input type="date" id="fp-f" value="${hoyISO()}" max="${hoyISO()}"></label>${camposFotos()}${campoTestimonio()}<button class="btn full" type="submit">Guardar</button></form>`);
     $('#f-fp').addEventListener('submit', async e => {
       e.preventDefault(); const bt = e.target.querySelector('[type=submit]'); if (bt.disabled) return; bt.disabled = true; bt.textContent = 'Subiendo…';
-      try { const n = await subirDesde($('#f-fp'), $('#fp-f').value || hoyISO()); if (!n) { bt.disabled = false; bt.textContent = 'Guardar fotos'; return toast('Elige al menos una foto'); } }
-      catch (err) { bt.disabled = false; bt.textContent = 'Guardar fotos'; return fallo(err, /bucket|not found|relation|fotos_progreso/i.test(err.message || '') ? AVISO : 'No se han podido subir las fotos.'); }
+      try { const ff = $('#fp-f').value || hoyISO(), n = await subirDesde($('#f-fp'), ff), t = await guardarTestimonio($('#f-fp'), ff); if (!n && !t) { bt.disabled = false; bt.textContent = 'Guardar'; return toast('Elige una foto o escribe tu testimonio'); } }
+      catch (err) { bt.disabled = false; bt.textContent = 'Guardar'; return fallo(err, /bucket|not found|relation|fotos_progreso/i.test(err.message || '') ? AVISO : 'No se han podido subir las fotos.'); }
       cerrarSheet(); toast('Fotos guardadas'); await cargar(S.user.id, S.d); render();
     });
   }
@@ -179,6 +184,7 @@ const Casos = (() => {
       sb.from('casos_exito').select('id,alumno_id,estado,tipo,created_at,respondido_at')
     ]);
     const ult = {}, n = {}; (c.data || []).forEach(x => { n[x.alumno_id] = (n[x.alumno_id] || 0) + 1; if (!ult[x.alumno_id]) ult[x.alumno_id] = x; }); 
+    const ts = await sb.from('testimonios').select('alumno_id,fecha').gte('fecha', sumaDias(hoyISO(), -14)); S.c.testimonios = ts.data || [];
     S.c.consent = ult; S.c.consentN = n; S.c.fotosProg = f.data || []; S.c.casos = k.data || []; S.c.casosErr = !!(c.error || f.error);
   }
   /* Alerta: pasó la semana del control mensual y no hay fotos de progreso cerca de esa fecha */
@@ -189,6 +195,7 @@ const Casos = (() => {
     return hay ? null : `Fotos de progreso del control mensual ${c.n} (${fCorta(c.fecha)}) sin subir`;
   }
   async function cargarFicha(f) {
+    const ts = await sb.from('testimonios').select('*').eq('alumno_id', f.id).order('fecha', { ascending: false }); f.testimonios = ts.data || [];
     const [c, fp, k] = await Promise.all([
       sb.from('consentimientos').select('*').eq('alumno_id', f.id).order('created_at', { ascending: false }),
       sb.from('fotos_progreso').select('*').eq('alumno_id', f.id).order('fecha', { ascending: false }),
@@ -209,14 +216,15 @@ const Casos = (() => {
         ${c ? `<p class="small muted" style="margin:0">Decidido el ${esc(fLarga(c.created_at.slice(0, 10)))} · versión del texto ${esc(c.version || '')}.</p>` : `<p class="small muted" style="margin:0">${esc(nom)} aún no ha decidido. Le sale en su app.</p>`}
         ${c && !c.testimonio && !c.fotos ? `<p class="small muted" style="margin:0">No ha dado permiso para compartir nada: respétalo, puede cambiarlo cuando quiera desde su app.</p>` : ''}
         ${f.casos.map(x => `<div class="line" style="align-items:flex-start"><div class="grow stack" style="gap:4px"><div class="small"><b>${x.tipo === 'testimonio' ? 'Testimonio' : x.tipo === 'fotos' ? 'Antes y después' : 'Testimonio + fotos'}</b> · ${esc(fCorta((x.created_at || hoyISO()).slice(0, 10)))} <span class="pill ${EST[x.estado][0]}">${EST[x.estado][1]}</span></div>${x.texto ? `<div class="small muted">${esc(x.texto.slice(0, 120))}${x.texto.length > 120 ? '…' : ''}</div>` : ''}${x.nota_alumno ? `<div class="small">💬 ${esc(x.nota_alumno)}</div>` : ''}${(x.rutas || []).length ? `<div class="plan-imgs">${x.rutas.map(p => url(p) ? `<button class="img" data-act="verImagen" data-src="${esc(url(p))}"><img src="${esc(url(p))}" alt=""></button>` : '').join('')}</div>` : ''}</div>${x.estado !== 'aprobado' ? `<button class="linkbtn small" data-act="casoBorrar" data-id="${x.id}" style="color:var(--bad)">Quitar</button>` : ''}</div>`).join('')}
-      </div></section>`;
+      </div></section>
+      <section class="section"><h2>Testimonios mensuales</h2><div class="card stack">${(f.testimonios || []).map(x => `<div class="stack" style="gap:4px"><div class="row"><b class="small grow">${esc(fLarga(x.fecha))}</b>${c?.testimonio ? `<button class="linkbtn small" data-act="casoNuevo" data-ts="${x.id}">Proponer publicarlo ›</button>` : ''}</div><div class="small pre">${esc(x.texto)}</div></div>`).join('<hr style="border:0;border-top:1px solid var(--line);margin:4px 0">') || '<div class="small muted">Aún no ha escrito ningún testimonio. Se le pide en cada control mensual.</div>'}</div></section>`;
   }
-  function formNuevo() {
+  function formNuevo(tsId) {
     const f = S.ficha, c = f.consentHist?.[0] || {}, a = S.c.perfiles.find(p => p.id === f.id) || {};
     abrirSheet(`<form class="stack" id="f-cx"><h2>Proponer publicación</h2>
       <p class="small">${esc((a.nombre || '').split(' ')[0])} lo verá en su Hoy y solo podrás compartirlo si lo aprueba. Aparecerá: <b>${esc(IDENT[c.identificacion] || IDENT.pila)}</b>.</p>
       ${c.fotos ? `<label class="f">Imágenes a publicar (ya editadas, <b>sin la cara</b>)<input type="file" id="cx-img" accept="image/*" multiple></label><p class="small muted" style="margin:0">Prepara el montaje antes/después en tu móvil (puedes partir de sus fotos de progreso) y súbelo aquí tal cual se publicará.</p>` : '<p class="small muted">No ha autorizado fotos: solo puedes proponer su testimonio.</p>'}
-      ${c.testimonio ? `<label class="f">Testimonio (sus palabras)<textarea id="cx-t" rows="5" placeholder="Copia aquí su testimonio tal y como se publicaría"></textarea></label>` : '<p class="small muted">No ha autorizado testimonio: solo puedes proponer fotos.</p>'}
+      ${c.testimonio ? `<label class="f">Testimonio (sus palabras)<textarea id="cx-t" rows="5" placeholder="Copia aquí su testimonio tal y como se publicaría">${esc((f.testimonios || []).find(x => x.id === tsId)?.texto || '')}</textarea></label>` : '<p class="small muted">No ha autorizado testimonio: solo puedes proponer fotos.</p>'}
       <label class="f">Dónde se publicará (opcional)<input type="text" id="cx-d" placeholder="Ej. Instagram y web"></label>
       <button class="btn full" type="submit">Enviar para que lo apruebe</button></form>`);
     $('#f-cx').addEventListener('submit', async e => {
@@ -252,8 +260,9 @@ const Casos = (() => {
       const cuando = new Date(c.created_at).toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
       perm.push(`${(S.c.consentN?.[aid] || 1) > 1 ? 'Ha cambiado' : 'Ha rellenado'} sus permisos de imagen y privacidad (${cuando}): testimonio ${c.testimonio ? 'sí' : 'no'} · fotos sin cara ${c.fotos ? 'sí' : 'no'} · ${(IDENT[c.identificacion] || '').toLowerCase()}`);
     }
+    (S.c?.testimonios || []).filter(x => x.alumno_id === aid && x.fecha >= sumaDias(hoyISO(), -7)).slice(0, 1).forEach(x => perm.push(`Nuevo testimonio mensual (${fCorta(x.fecha)}): léelo en Medidas, fotos y caso de éxito`));
     return perm.concat((S.c?.casos || []).filter(x => x.alumno_id === aid && x.estado !== 'pendiente' && x.respondido_at && x.respondido_at.slice(0, 10) >= sumaDias(hoyISO(), -7)).map(x => x.estado === 'aprobado' ? 'Ha aprobado que compartas su caso de éxito' : 'No quiere que se publique la propuesta de caso de éxito'));
   }
 
-  return { VERSION, vistaInicial, cargar, cargarCoach, vSeccionAlumno, camposFotos, subirDesde, formSubir, borrarFecha, formPermisos, avisoNovedad, lineaHoy, responder, alertaFotos, vFicha, formNuevo, borrarCaso, resumenCoach, avisosCoach, cargarFicha };
+  return { campoTestimonio, guardarTestimonio, VERSION, vistaInicial, cargar, cargarCoach, vSeccionAlumno, camposFotos, subirDesde, formSubir, borrarFecha, formPermisos, avisoNovedad, lineaHoy, responder, alertaFotos, vFicha, formNuevo, borrarCaso, resumenCoach, avisosCoach, cargarFicha };
 })();

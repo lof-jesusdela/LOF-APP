@@ -2652,7 +2652,7 @@ function formMisMedidas() {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${MEDIDAS_ALUMNO.map(([k, l, h]) => `<label class="f">${l} <span class="muted" style="font-weight:400">· ${h}</span><input type="text" inputmode="decimal" data-campo="${k}" placeholder="cm"></label>`).join('')}</div>
     <label class="f">Peso (si tienes báscula)<input type="text" inputmode="decimal" data-campo="peso" placeholder="kg"></label>
     <div class="calc-grasa card" style="padding:12px"></div>
-    ${S.d?.casosErr ? '' : Casos.camposFotos()}
+    ${S.d?.casosErr ? '' : Casos.camposFotos() + Casos.campoTestimonio()}
     <button class="btn full" type="submit">Guardar mis medidas</button></form>`);
   enganchaCalcGrasa($('#f-mm'), S.perfil);
   $('#f-mm').addEventListener('submit', async e => {
@@ -2661,6 +2661,7 @@ function formMisMedidas() {
     const row = { alumno_id: S.user.id, fecha: $('#mm-f').value || hoyISO() };
     document.querySelectorAll('#f-mm [data-campo]').forEach(i => { const v = numero(i.value); if (v != null) row[i.dataset.campo] = v; });
     const conFotos = [...document.querySelectorAll('#f-mm [data-fpv]')].some(i => i.files?.[0]);
+    try { if (await Casos.guardarTestimonio($('#f-mm'), row.fecha) && Object.keys(row).length < 3 && !conFotos) { cerrarSheet(); toast('Testimonio guardado. ¡Gracias!'); return; } } catch (err) { console.warn(err); }
     if (Object.keys(row).length < 3 && conFotos) { try { await Casos.subirDesde($('#f-mm'), row.fecha); } catch (err) { bt.disabled = false; return fallo(err, 'No se han podido subir las fotos.'); } cerrarSheet(); toast('Fotos guardadas'); await cargarAlumno(S.user.id); return render(); }
     if (Object.keys(row).length < 3) { bt.disabled = false; return toast('Escribe al menos una medida'); }
     await guardarDatosPerfil($('#f-mm'), S.user.id, S.perfil);
@@ -4729,7 +4730,7 @@ document.addEventListener('click', async e => {
     case 'fpBorrar': await Casos.borrarFecha(b.dataset.f); break;
     case 'permisos': Casos.formPermisos(); break;
     case 'casoResp': await Casos.responder(+b.dataset.id, b.dataset.ok === '1'); break;
-    case 'casoNuevo': Casos.formNuevo(); break;
+    case 'casoNuevo': Casos.formNuevo(b.dataset.ts ? +b.dataset.ts : null); break;
     case 'casoBorrar': await Casos.borrarCaso(+b.dataset.id); break;
     case 'salir': cerrarSheet(); stopTimer(); await sb.auth.signOut(); break;
   }
