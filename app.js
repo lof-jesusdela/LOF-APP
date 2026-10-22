@@ -3099,13 +3099,15 @@ function motivoPres(err) {
   if (c === '23505' || /duplicate key/i.test(m)) return 'Esa sesión ya estaba apuntada.';
   return 'No se ha podido guardar la presencial: ' + m.slice(0, 160);
 }
-function formPres(id) {
+async function formPres(id) {
   const p = id ? S.ficha.pres.find(x => x.id === id) : null;
   const sesDia = f => S.ficha.ses.filter(s => s.fecha === f);
-  const dias = S.ficha.prog?.dias || [];
+  let dias = S.ficha.prog?.dias || (S.ficha.programas || []).find(x => x.activo)?.dias || [];
+  if (!dias.length) { const r = await sb.from('programas').select('id,activo,dias(id,numero,nombre,foco)').eq('alumno_id', S.ficha.id).eq('activo', true).order('id', { ascending: false }).limit(1); dias = (r.data?.[0]?.dias || []).sort((a, b) => a.numero - b.numero); }
   abrirSheet(`<form class="stack" id="f-pres"><h2>${p ? 'Editar sesión presencial' : 'Sesión presencial'}</h2>
     <div style="display:grid;grid-template-columns:1fr 110px;gap:8px"><label class="f">Fecha<input type="date" id="pr-f" value="${p?.fecha || hoyISO()}"></label><label class="f">Hora<input type="time" id="pr-h" value="${hhmm(p?.hora)}"></label></div>
     <label class="f">Estado<select id="pr-e">${Object.entries(PRES_EST).map(([k, l]) => `<option value="${k}" ${(p?.estado || 'programada') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    ${dias.length ? `<label class="f">Entrenamiento de su programa<select id="pr-dia"><option value="">— Otro (escríbelo abajo) —</option>${dias.map(d => `<option value="${d.id}" ${p?.dia_id === d.id || (!p?.dia_id && p?.tipo === etiquetaDia(d)) ? 'selected' : ''}>${esc(etiquetaDia(d))}</option>`).join('')}</select></label>` : ''}
     <label class="f">Título del entrenamiento<input type="text" id="pr-tt" list="pr-dl" value="${esc(p?.tipo || '')}" placeholder="Escríbelo tú, p. ej. Complementario: core y movilidad"><datalist id="pr-dl">${dias.map(d => `<option value="${esc(etiquetaDia(d))}"></option>`).join('')}</datalist></label>
     <label class="f">Sesión hecha ese día (opcional, para vincularla)<select id="pr-s"><option value="">— Ninguna —</option></select></label>
     <label class="f">Nota (la ve el alumno)<input type="text" id="pr-n" value="${esc(p?.nota || '')}" placeholder="Ej. Trabajo de técnica en sentadilla"></label>
@@ -3113,11 +3115,14 @@ function formPres(id) {
     <button class="btn full" type="submit">Guardar</button>${p ? '<button class="btn ghost full" type="button" id="pr-del" style="color:var(--bad)">Eliminar</button>' : ''}</form>`);
   const llenar = () => { const f = $('#pr-f').value; $('#pr-s').innerHTML = '<option value="">— Ninguno —</option>' + sesDia(f).map(s => `<option value="${s.id}" ${p?.sesion_id === s.id ? 'selected' : ''}>${esc(nomDia(s.dias) + ' · ' + (s.dias?.foco || ''))}</option>`).join(''); };
   llenar(); $('#pr-f').addEventListener('change', llenar);
+  $('#pr-dia')?.addEventListener('change', ev => { const d = dias.find(x => x.id === +ev.target.value); if (d) $('#pr-tt').value = etiquetaDia(d); });
   $('#f-pres').addEventListener('submit', async e => {
     e.preventDefault();
     const row = { fecha: $('#pr-f').value || hoyISO(), hora: $('#pr-h').value || null, estado: $('#pr-e').value, sesion_id: +$('#pr-s').value || null, nota: $('#pr-n').value.trim() || null, tipo: $('#pr-tt').value.trim() || null };
+    if ($('#pr-dia')?.value || p?.dia_id) row.dia_id = +$('#pr-dia').value || null;
     const guardar = r => p ? sb.from('presenciales').update(r).eq('id', p.id) : sb.from('presenciales').insert({ ...r, alumno_id: S.ficha.id });
     let { error } = await guardar(row), aviso = null;
+    if (error && /dia_id/.test(error.message || '')) { delete row.dia_id; ({ error } = await guardar(row)); }
     if (error && /tipo/.test(error.message || '') && row.tipo) { delete row.tipo; ({ error } = await guardar(row)); aviso = 'Guardado, pero el tipo no: ejecuta el Bloque 28 en Supabase'; }
     if (error) return fallo(error, motivoPres(error));
     cerrarSheet(); toast(aviso || 'Guardado'); await cargarPres();
@@ -3526,8 +3531,8 @@ function vEditor() {
   return `<section class="stack"><button class="btn sm ghost" data-act="cerrarEditor" style="align-self:flex-start">← Volver</button><span class="eyebrow">${E.plantilla ? 'Plantilla · ' + esc(p?.categoria || 'sin categoría') : E.ctx ? `Contexto temporal de ${esc(a.nombre || '')} · ${esc(fCtx(E.ctx))} · ${E.ctx.dias_semana} entrenos/semana` : 'Programa de ' + esc(a.nombre || '')}</span><h1>${p ? esc(p.nombre) : 'Sin programa'}</h1>
     <div class="row" style="gap:8px;flex-wrap:wrap">${p ? `<button class="btn sm ghost" data-act="nuevoPrograma">Cambiar nombre</button><button class="btn sm" data-act="edDia">Añadir día</button>${E.plantilla ? `<button class="btn sm gold" data-act="probarPlantilla" data-id="${p.id}">👁 Ver como alumno de prueba</button>` : E.ctx ? '' : '<button class="btn sm gold" data-act="nuevoCiclo">Nuevo ciclo (copiar)</button>'}` : `<button class="btn sm" data-act="nuevoPrograma">Crear programa</button>`}</div>
     <p class="note">${E.plantilla ? 'Toca cualquier elemento para editarlo. Los cambios solo afectan a la plantilla: los alumnos que ya la tienen asignada conservan su copia.' : 'Toca cualquier elemento para editarlo. Los cambios los ve el alumno en cuanto vuelve a abrir la app.'}</p></section>
-  ${p && !E.dia ? `<section class="section"><div class="card">${p.dias.map(d => `<div class="line" data-act="edAbrirDia" data-id="${d.id}" style="cursor:pointer"><span class="pill gold">${d.numero}</span><div class="grow" style="min-width:0"><b>${esc(nomDia(d))}</b><div class="small muted">${d.bloques_sesion.length} bloques · ${d.bloques_sesion.reduce((t, b) => t + b.ejercicios_sesion.length, 0)} ejercicios${d.foco ? ' · ' + esc(d.foco) : ''}</div></div><button class="btn sm" data-act="edAbrirDia" data-id="${d.id}">Editar</button></div>`).join('')}</div></section>` : ''}
-  ${p ? p.dias.filter(d => d.id === E.dia).map(d => `<section class="section"><button class="btn sm ghost" data-act="edAbrirDia" data-id="" style="margin-bottom:8px">← Todos los días</button><div class="card stack">
+  ${p && !E.dia ? `<section class="section"><div class="row" style="margin-bottom:8px"><span class="grow small muted">Edita un día o todo el bloque a la vez</span><button class="btn sm" data-act="edAbrirDia" data-id="todos">✎ Editar todos los días</button></div><div class="card">${p.dias.map(d => `<div class="line" data-act="edAbrirDia" data-id="${d.id}" style="cursor:pointer"><span class="pill gold">${d.numero}</span><div class="grow" style="min-width:0"><b>${esc(nomDia(d))}</b><div class="small muted">${d.bloques_sesion.length} bloques · ${d.bloques_sesion.reduce((t, b) => t + b.ejercicios_sesion.length, 0)} ejercicios${d.foco ? ' · ' + esc(d.foco) : ''}</div></div><button class="btn sm" data-act="edAbrirDia" data-id="${d.id}">Editar</button></div>`).join('')}</div></section>` : ''}
+  ${p ? p.dias.filter(d => E.dia === 'todos' || d.id === E.dia).map((d, i) => `<section class="section">${i === 0 ? `<button class="btn sm ghost" data-act="edAbrirDia" data-id="" style="margin-bottom:8px">← Lista de días</button>` : ''}<div class="card stack">
     <div class="row"><div class="grow"><span class="eyebrow">Día ${d.numero}${d.titulo ? ' · ' + esc(d.nombre) : ''}</span><h2>${esc(nomDia(d))}</h2><div class="small muted">${esc([d.foco, d.volumen && 'vol. ' + d.volumen, d.intensidad && 'int. ' + d.intensidad].filter(Boolean).join(' · '))}</div></div><button class="btn sm ghost" data-act="edDia" data-id="${d.id}">Editar día</button></div>
     ${d.bloques_sesion.map(b => `<div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:10px">
       <div class="row" style="flex-wrap:wrap"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}${b.variante ? ` <span class="pill blue">${esc(b.variante)}</span>` : ''}</h3>${(() => { const k = d.bloques_sesion.indexOf(b), pr = d.bloques_sesion[k - 1]; return b.tipo === 'fuerza' && pr?.tipo === 'fuerza' ? `<button class="btn sm ghost" data-act="unirBloque" data-id="${b.id}" title="Pasa sus ejercicios al bloque ${esc(pr.letra)}">⤒ Unir con ${esc(pr.letra)}</button>` : ''; })()}<button class="btn sm ghost" data-act="dupBloque" data-id="${b.id}">⧉ Duplicar</button><button class="btn sm ghost" data-act="edBloque" data-id="${b.id}">✎ Editar bloque</button></div>
@@ -4126,7 +4131,7 @@ document.addEventListener('click', async e => {
     case 'cerrarSub': S.fichaSub = null; render(); window.scrollTo(0, 0); break;
     case 'editarComidas': formComidas(); break;
     case 'ejFalta': S.ejFalta = S.ejFalta === b.dataset.v ? '' : b.dataset.v; render(); break;
-    case 'edAbrirDia': S.editor.dia = +b.dataset.id || null; render(); window.scrollTo(0, 0); break;
+    case 'edAbrirDia': S.editor.dia = b.dataset.id === 'todos' ? 'todos' : +b.dataset.id || null; render(); window.scrollTo(0, 0); break;
     case 'opcBloque': (S.opc ||= {})[b.dataset.k] = +b.dataset.i; render(); if (S.dia) rellenarSesion(); break;
     case 'nuevaFactura': formFactura(b.dataset.id ? +b.dataset.id : null); break;
     case 'verFactura': verFactura(+b.dataset.id); break;

@@ -30,3 +30,7 @@ drop policy if exists presenciales_alumno_ve on public.presenciales;
 create policy presenciales_alumno_ve on public.presenciales for select using (alumno_id = auth.uid());
 
 notify pgrst, 'reload schema';
+
+-- 4) Entrenamiento del programa asignado a la sesión presencial
+alter table public.presenciales add column if not exists dia_id bigint;
+notify pgrst, 'reload schema';
