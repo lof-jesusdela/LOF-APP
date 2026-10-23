@@ -405,7 +405,7 @@ function render() {
       <button type="button" class="badge" data-act="inicio" aria-label="Ir al inicio" style="background:none;border:0;padding:0;cursor:pointer;text-align:left;color:inherit;font:inherit"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : esc(S.perfil.metodologia || 'Tu proceso')}</strong></div></button>
       <div class="row" style="gap:8px">${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
       <button class="avatar" data-act="cuenta" aria-label="Mi cuenta">${esCoach ? '<img src="icons/coach.jpg" alt="">' : S.perfil.foto_url ? `<img src="${esc(S.perfil.foto_url)}" alt="">` : esc((S.perfil.nombre || '?').slice(0, 2).toUpperCase())}</button></div>
-    </header>${S.prueba ? vBannerPrueba() : S.vista ? vBannerVista() : vBarraYo()}${coach && ANCHO.matches ? vLateral(actual) : ''}<main id="main" class="${coach ? claseMain() : ''}">${(S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : (!coach && Temperamento.activo()) ? seguro(Temperamento.vista) : seguro(vistas[actual])}</main>${coach ? Clip.barra() : ''}`;
+    </header>${S.prueba ? vBannerPrueba() : S.vista ? vBannerVista() : vBarraYo()}${coach && ANCHO.matches ? vLateral(actual) : ''}<main id="main" class="${coach ? claseMain() : ''}">${(S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : (!coach && Temperamento.activo()) ? seguro(Temperamento.vista) : seguro(vistas[actual])}</main>${coach ? Clip.barra() : ''}${vBarraEntreno()}`;
   document.body.classList.toggle('modo-coach', coach);
   if (coach) aplicarFiltroAl();
   $('#tabs').hidden = false;
@@ -1106,6 +1106,31 @@ async function salirComo() {
   const ficha = S.obj.ficha; stopTimer();
   Object.assign(S, { d: S.propio.d, dia: S.propio.dia, sesion: S.propio.sesion, tab: S.propio.tab, obj: null, propio: null, verSes: null });
   await cargarCoach(); await abrirFicha(ficha.id);
+}
+/* Salir del entreno con un alumno sin terminarlo: queda aparcado y se retoma desde la barra «Volver al entreno» */
+async function aparcarOSalir() {
+  if (!S.obj) return;
+  if (!S.dia || S.sesion?.editar) return salirComo();
+  S.aparcado = { obj: S.obj, d: S.d, dia: S.dia, sesion: S.sesion };
+  stopTimer();
+  Object.assign(S, { d: S.propio.d, dia: S.propio.dia, sesion: S.propio.sesion, tab: S.propio.tab, obj: null, propio: null, verSes: null });
+  toast(`Entreno con ${S.aparcado.obj.nombre.split(' ')[0]} en pausa: vuelve desde la barra de abajo`);
+}
+async function volverEntreno() {
+  const a = S.aparcado;
+  if (a) {
+    if (S.obj) await aparcarOSalir();
+    S.propio = { d: S.d, dia: S.dia, sesion: S.sesion, tab: S.tab };
+    Object.assign(S, { obj: a.obj, d: a.d, dia: a.dia, sesion: a.sesion, aparcado: null, modo: 'coach', ficha: null, editor: null, reporte: null, factura: null, verSes: null, verPlan: null });
+  } else if (S.dia) { if (S.obj) await aparcarOSalir(); S.modo = S.perfil.rol === 'coach' && S.modo === 'coach' ? 'alumno' : S.modo; S.tab = 'entreno'; }
+  cerrarSheet(); render(); window.scrollTo(0, 0);
+}
+function vBarraEntreno() {
+  if (S.vista || S.prueba) return '';
+  let t = '';
+  if (S.aparcado && !S.obj) t = `🏋️ Entrenando con <b>${esc(S.aparcado.obj.nombre.split(' ')[0])}</b> · ${esc(S.aparcado.dia?.titulo || S.aparcado.dia?.nombre || '')}`;
+  else if (!S.obj && S.dia && !S.sesion?.editar && ((S.modo === 'coach') || (S.modo === 'alumno' && S.tab !== 'entreno'))) t = `🏋️ ${S.modo === 'coach' ? 'Tu entreno' : 'Entreno'} en curso · ${esc(S.dia.titulo || S.dia.nombre || '')}`;
+  return t ? `<div id="entreno-barra"><span class="grow">${t}</span><button type="button" data-act="volverEntreno">Volver al entreno ▶</button></div>` : '';
 }
 async function editarSesionCerrada() {
   const v = S.verSes; await entrarComo(S.ficha.id);
@@ -4926,11 +4951,12 @@ document.addEventListener('click', async e => {
     case 'tab': if (b.dataset.t === 'checkin') { S.tab = 'hoy'; S.dia = null; render(); $('#checkin')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break; }
       S.tab = b.dataset.t; S.dia = null; S.chipsCargados = false; render(); window.scrollTo(0, 0); break;
     case 'sinWhatsapp': toast('Jesús aún no ha puesto su WhatsApp en la app'); break;
-    case 'ctab': if (S.obj) await salirComo(); S.reporte = null; S.factura = null; S.ctab = b.dataset.t; S.ficha = null; S.editor = null; render(); window.scrollTo(0, 0); break;
-    case 'modo': if (S.obj) await salirComo(); S.modo = b.dataset.v; S.ficha = null; S.editor = null; S.fichaSub = null; if (S.modo === 'coach') await cargarCoach(); else if (S.perfil?.rol === 'coach' && !S.prueba && !S.vista) await cargarAlumno(S.user.id); render(); window.scrollTo(0, 0); break;
+    case 'ctab': if (S.obj) await aparcarOSalir(); S.reporte = null; S.factura = null; S.ctab = b.dataset.t; S.ficha = null; S.editor = null; render(); window.scrollTo(0, 0); break;
+    case 'modo': if (S.obj) await aparcarOSalir(); S.modo = b.dataset.v; S.ficha = null; S.editor = null; S.fichaSub = null; if (S.modo === 'coach') await cargarCoach(); else if (S.perfil?.rol === 'coach' && !S.prueba && !S.vista) await cargarAlumno(S.user.id); render(); window.scrollTo(0, 0); break;
     case 'abrirDia': await abrirDia(+b.dataset.id); break;
     case 'cerrarDia': S.dia = null; S.sesion = null; render(); break;
     case 'salirComo': await salirComo(); break;
+    case 'volverEntreno': await volverEntreno(); break;
     case 'verValoracion': S.valSel = +b.dataset.id; render(); break;
     case 'nuevaValoracion': formValoracion(); break;
     case 'abrirValoracion': S.valEd = +b.dataset.id; render(); window.scrollTo(0, 0); break;
@@ -4996,14 +5022,14 @@ document.addEventListener('click', async e => {
     case 'ali': await guardarDiario({ alimentacion: b.dataset.v }); break;
     case 'chip': { const v = b.dataset.v; S.chips.has(v) ? S.chips.delete(v) : S.chips.add(v); b.setAttribute('aria-pressed', S.chips.has(v)); break; }
     case 'enviarCheckin': await enviarCheckin(); break;
-    case 'ficha': cerrarSheet(); await abrirFicha(b.dataset.id); break;
+    case 'ficha': cerrarSheet(); if (S.obj) await aparcarOSalir(); await abrirFicha(b.dataset.id); break;
     case 'verAlertas': verAlertas(b.dataset.id); break;
     case 'bvIr': Bienvenida.abrir(+b.dataset.i); break;
     case 'bvFin': Bienvenida.fin(); break;
     case 'bvVer': Bienvenida.abrir(0); break;
     case 'alResolver': { const enSheet = !!b.closest('#sheet'), on = b.dataset.on === '1', nota = on ? prompt('¿Cómo lo has atendido? (opcional, ej. «hablado por WhatsApp»)', 'Hablado por WhatsApp') : null; if (on && nota === null) break; await Alertas.resolver(b.dataset.id, b.dataset.m, on, nota); toast(b.dataset.on === '1' ? 'Marcado como solventado' : 'Vuelve a estar pendiente'); render(); if (enSheet) verAlertas(b.dataset.id); break; }
-    case 'alFiltro': S.alF.k = S.alF.k === b.dataset.k ? '' : b.dataset.k; if (S.obj) await salirComo(); S.ficha = null; S.reporte = null; S.factura = null; S.editor = null; S.ctab = 'alumnos'; render(); if (S.alF.k) $('#al-lista')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
-    case 'inicio': if (S.modo === 'coach') { if (S.obj) await salirComo(); Object.assign(S, { reporte: null, factura: null, ficha: null, editor: null, verSes: null, verPlan: null, valEd: null, fichaSub: null, ctab: 'inicio' }); } else if (!S.dia) S.tab = 'hoy'; cerrarSheet(); render(); window.scrollTo(0, 0); break;
+    case 'alFiltro': S.alF.k = S.alF.k === b.dataset.k ? '' : b.dataset.k; if (S.obj) await aparcarOSalir(); S.ficha = null; S.reporte = null; S.factura = null; S.editor = null; S.ctab = 'alumnos'; render(); if (S.alF.k) $('#al-lista')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
+    case 'inicio': if (S.modo === 'coach') { if (S.obj) await aparcarOSalir(); Object.assign(S, { reporte: null, factura: null, ficha: null, editor: null, verSes: null, verPlan: null, valEd: null, fichaSub: null, ctab: 'inicio' }); } else if (!S.dia) S.tab = 'hoy'; cerrarSheet(); render(); window.scrollTo(0, 0); break;
     case 'cerrarFicha': S.ficha = null; S.verSes = null; S.verPlan = null; S.valEd = null; render(); break;
     case 'cerrarVerSesion': S.verSes = null; render(); window.scrollTo(0, 0); break;
     case 'verPlan': verPlan(+b.dataset.p, +b.dataset.d); break;
