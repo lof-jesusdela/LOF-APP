@@ -257,7 +257,7 @@ function vContextos(f, a) {
   const est = c => c.contexto_hasta < hoy ? ['', 'Terminado'] : c.contexto_desde <= lunes ? ['gold', 'Activo esta semana'] : ['blue', 'Programado'];
   return `<section class="section"><div class="section-head"><h2>Contextos temporales</h2><button class="btn sm" data-act="nuevoContexto">＋ Nuevo contexto</button></div>
     <div class="card">${l.map(c => `<div class="line" style="flex-wrap:wrap"><div class="grow" style="min-width:180px"><b>${esc(c.contexto_nombre || 'Contexto')}</b><div class="small muted">${esc(fCtx(c))} · ${semanasCtx(c)} ${semanasCtx(c) === 1 ? 'semana' : 'semanas'} · ${c.dias_semana} ${c.dias_semana === 1 ? 'entreno' : 'entrenos'}/semana${c.dias ? ` · ${c.dias.length} ${c.dias.length === 1 ? 'sesión' : 'sesiones'}` : ''}</div></div><span class="pill ${est(c)[0]}">${est(c)[1]}</span><div class="row" style="gap:6px"><button class="btn sm ghost" data-act="sesionesContexto" data-id="${c.id}">✎ Sesiones</button><button class="btn sm ghost" data-act="editarContexto" data-id="${c.id}">Datos</button></div></div>`).join('') || '<div class="empty small">Sin contextos. Úsalos cuando sepas que unas semanas no podrá seguir su plan (vacaciones, viaje, lesión…): le preparas un plan para esas semanas y se mide contra él.</div>'}</div>
-    ${(f.guardados || []).length ? `<div class="section-head" style="margin-top:14px"><h3>Guardados para aplicar cuando quieras</h3></div><div class="card">${f.guardados.map(c => `<div class="line" style="flex-wrap:wrap"><div class="grow" style="min-width:180px"><b>${esc(c.contexto_nombre)}</b><div class="small muted">Sin fechas · ${c.dias_semana} ${c.dias_semana === 1 ? 'entreno' : 'entrenos'}/semana${c.dias ? ` · ${c.dias.length} ${c.dias.length === 1 ? 'sesión' : 'sesiones'}` : ''}</div></div><span class="pill">Sin aplicar</span><div class="row" style="gap:6px"><button class="btn sm" data-act="editarContexto" data-id="${c.id}">Aplicar</button><button class="btn sm ghost" data-act="sesionesContexto" data-id="${c.id}">✎ Sesiones</button></div></div>`).join('')}</div>` : ''}
+    ${(f.guardados || []).length ? `<div class="section-head" style="margin-top:14px"><h3>Guardados para aplicar cuando quieras</h3></div><div class="card">${f.guardados.map(c => `<div class="line" style="flex-wrap:wrap"><div class="grow" style="min-width:180px"><b>${esc(c.contexto_nombre)}</b><div class="small muted">Sin fechas · ${c.dias_semana} ${c.dias_semana === 1 ? 'entreno' : 'entrenos'}/semana${c.dias ? ` · ${c.dias.length} ${c.dias.length === 1 ? 'sesión' : 'sesiones'}` : ''}</div></div>${c.alternativo ? '<span class="pill gold">Alternativo · siempre visible</span>' : '<span class="pill">Sin aplicar</span>'}<button class="btn sm ${c.alternativo ? 'ghost' : ''}" data-act="altToggle" data-id="${c.id}" data-v="${c.alternativo ? 0 : 1}">${c.alternativo ? 'Quitar como alternativo' : 'Usar como alternativo'}</button><div class="row" style="gap:6px"><button class="btn sm" data-act="editarContexto" data-id="${c.id}">Aplicar</button><button class="btn sm ghost" data-act="sesionesContexto" data-id="${c.id}">✎ Sesiones</button></div></div>`).join('')}</div>` : ''}
     <p class="note">Durante esas semanas entrena las sesiones del contexto y su cumplimiento se calcula con ellas (por ejemplo, 2 de 2 = 100 %). El ciclo se adapta y al terminar vuelve solo a su programa.</p></section>`;
 }
 function formContexto(id) {
@@ -358,6 +358,8 @@ async function cargarAlumno(uid) {
   await Nutricion.cargar(uid, S.d);
   await Casos.cargar(uid, S.d);
   await Acomp.cargarAlumno(uid, S.d);
+  { const r = await sb.from('programas').select('contexto_nombre,alternativo,' + SEL_PROGRAMA).eq('alumno_id', uid).eq('alternativo', true).order('id');
+    S.d.alternativos = r.error ? [] : (r.data || []).map(x => { ordSemana(x.dias ||= []); x.dias.forEach(ordenarDia); return x; }); }
   { const r = await sb.from('plan_semana').select('*').eq('alumno_id', uid).gte('semana_inicio', sumaDias(lunesDe(hoyISO()), -56)); S.d.planes = r.data || []; }
 }
 
@@ -514,7 +516,8 @@ const etiquetaFlex = d => { const n = d?.nombre || '', t = d?.titulo; return t &
 function semanaFlex(p) {
   const l = lunesDe(hoyISO()), dias = p.dias.filter(d => d.bloques_sesion?.length).sort((a, b) => (a.numero || 0) - (b.numero || 0));
   const hechas = new Set(S.d.sesiones.filter(x => x.fecha >= l && esCompleta(x)).map(x => x.dia_id));
-  const total = Math.min(p.dias_semana || dias.length, dias.length) || dias.length, n = dias.filter(d => hechas.has(d.id)).length;
+  const altIds = new Set((S.d.alternativos || []).flatMap(c => c.dias.map(d => d.id))), altN = new Set(S.d.sesiones.filter(x => x.fecha >= l && esCompleta(x) && altIds.has(x.dia_id)).map(x => x.fecha + x.dia_id)).size;
+  const total = Math.min(p.dias_semana || dias.length, dias.length) || dias.length, n = Math.min(total, dias.filter(d => hechas.has(d.id)).length + altN);
   const hoyD = S.d.sesiones.filter(x => x.fecha === hoyISO()).map(x => dias.find(d => d.id === x.dia_id)).find(Boolean);
   const sig = hoyD && !hechas.has(hoyD.id) ? hoyD : dias.find(d => !hechas.has(d.id)) || null;
   return { dias, hechas, total, n, sig, hoyD, completa: n >= total };
@@ -583,7 +586,7 @@ function vRegistroDia(s) {
   return `<section class="section" id="registro"><div class="section-head"><h2>Registro del día</h2><span class="small muted">${esHoy ? 'Hoy' : esc(fLarga(sel))}</span></div><div class="card stack">
     <div class="stack" style="gap:6px"><span class="small muted">Puedes rellenar los días de esta semana; los lunes, también los de la semana anterior.</span>
       <div class="reg-dias" role="group" aria-label="Día a registrar" style="--n:${Math.max(7, ventanaRegistro().length)}">${ventanaRegistro().map(f => { const x = S.d.diario.find(y => y.fecha === f), hecho = !!x && (x.pasos != null || x.ingestas != null || !!x.alimentacion); return `<button type="button" data-act="regDia" data-f="${f}" aria-pressed="${f === sel}" class="${hecho ? 'hecho' : ''}"><small>${DIA3[fecha(f).getDay()]}</small><b class="num">${fecha(f).getDate()}</b></button>`; }).join('')}</div></div>
-    ${(() => { const l = S.d.sesiones.filter(x => x.fecha === sel), todos = [S.d.programaBase, S.d.programa, ...(S.d.contextos || [])].filter(Boolean).flatMap(p => p.dias || []), dd = esHoy ? diaDeHoy() : null;
+    ${(() => { const l = S.d.sesiones.filter(x => x.fecha === sel), todos = [S.d.programaBase, S.d.programa, ...(S.d.contextos || []), ...(S.d.alternativos || [])].filter(Boolean).flatMap(p => p.dias || []), dd = esHoy ? diaDeHoy() : null;
       const nom = x => nomDia(todos.find(d => d.id === x.dia_id)) || 'Entreno';
       return `<div class="row"><div class="ico">${svg('entreno')}</div><div class="grow"><span class="small"><b>Entrenamiento</b></span><div class="small ${l.length ? '' : 'muted'}">${l.length ? `<span style="color:var(--ok);font-weight:700">✓ Completado</span> · ${esc([...new Set(l.map(nom))].join(' · '))}` : dd ? `Hoy toca ${esc(nomDia(dd))}: empiézalo en «Lo que toca hoy»` : esHoy && esFlex(S.d.programaBase || S.d.programa) ? 'Aún no has entrenado hoy' : esHoy ? 'Hoy no toca entrenar' : 'Sin entreno registrado ese día'}</div></div></div>`; })()}
     ${conPasos(s) ? '' : '<!--'}<div class="row"><div class="ico">${svg('pasos')}</div><label class="f grow">Pasos${objPasos(s) ? ` <span class="muted">(objetivo ${fmtNum(objPasos(s), 0)})</span>` : ''}<input id="r-pasos" type="number" inputmode="numeric" min="0" value="${r.pasos ?? ''}" placeholder="Ej. 8500"></label></div>${conPasos(s) ? '' : '-->'}
@@ -823,7 +826,7 @@ function vHoy() {
   }
   else if (d && !(d.tipo_dia === 'descanso' && !d.bloques_sesion.length)) toca = `<div class="line"><div class="ico">${svg('entreno')}</div><div class="grow"><h3>${esc(nomDia(d))}${d.foco && d.foco !== d.titulo ? ' · ' + esc(d.foco) : ''}</h3><div class="small muted">${d.bloques_sesion.length} bloques · ${d.bloques_sesion.reduce((t, b) => t + b.ejercicios_sesion.length, 0)} ejercicios</div></div>${(() => { const l = lunesDe(hoyISO()), xs = S.d.sesiones.filter(z => z.dia_id === d.id && (z.fecha === hoyISO() || z.fecha >= l)), x = xs.find(esCompleta) || xs[xs.length - 1]; return x && esCompleta(x) ? pillSesion(x) : x ? `<div class="stack" style="gap:6px;align-items:flex-end">${pillSesion(x)}<button class="btn sm" data-act="retomar" data-id="${x.id}">Continuar</button></div>` : `<button class="btn sm" data-act="abrirDia" data-id="${d.id}">Empezar</button>`; })()}</div>`;
   else toca = `<div class="line"><div class="ico">${svg('cal')}</div><div class="grow"><h3>Hoy toca descanso</h3><div class="small muted">${prox ? `Próximo entreno: ${esc(nomDia(prox))}${prox.titulo ? ' (' + esc(prox.nombre.toLowerCase()) + ')' : ''}` : (conPasos(s) ? 'Aprovecha para moverte y cumplir tus pasos.' : 'Aprovecha para descansar y recuperar.')}</div></div></div>`;
-  { const rt = sesionARetomar(), dr = rt && [S.d.programa, S.d.programaBase, ...(S.d.contextos || [])].filter(Boolean).flatMap(q => q.dias || []).find(z => z.id === rt.dia_id);
+  { const rt = sesionARetomar(), dr = rt && [S.d.programa, S.d.programaBase, ...(S.d.contextos || []), ...(S.d.alternativos || [])].filter(Boolean).flatMap(q => q.dias || []).find(z => z.id === rt.dia_id);
     if (rt && dr && !toca.includes(`data-id="${rt.id}"`)) toca = `<div class="line aprox" style="margin-bottom:8px"><div class="ico gold">${svg('entreno')}</div><div class="grow"><h3>Continuar donde lo dejaste</h3><div class="small muted">${esc(nomDia(dr))} · ${rt.fecha === hoyISO() ? 'hoy' : esc(fLarga(rt.fecha))} · ${rt.series_hechas || 0} de ${rt.series_total || '—'} series</div></div><button class="btn sm gold" data-act="retomar" data-id="${rt.id}">Continuar</button></div>` + toca; }
   const _ali = s.modulo_nutricion ? `<div class="stack" style="gap:8px"><span class="small muted">¿Cómo ha ido hoy la alimentación?</span><div class="choice" role="group">${[['si', 'Cumplido'], ['parcial', 'A medias'], ['no', 'No cumplido']].map(([v, l]) => `<button data-act="ali" data-v="${v}" aria-pressed="${r.alimentacion === v}">${l}</button>`).join('')}</div></div>` : '';
   const dur = s.duracion_semanas, semN = s.inicio ? Math.floor((fecha(hoy) - fecha(s.inicio)) / 6048e5) + 1 : null;
@@ -872,11 +875,20 @@ function vEntreno() {
   const P = proceso(S.d.servicio), Pn = P && !P.antes ? S.d.sesiones.filter(x => x.fecha >= P.cc.ini && x.fecha <= P.cc.fin).length : null;
   return como + `<section class="stack"><span class="eyebrow">${esc(p.nombre)}</span><h1>Entreno</h1>${P && !P.antes && !P.fuera ? `<div class="row" style="flex-wrap:wrap;gap:6px"><span class="pill blue">Ciclo ${P.ciclo}</span><span class="pill gold">Semana ${P.semCiclo} de ${P.cc.sem}</span><span class="pill">${Pn} ${(S.d.programaBase || p).dias_semana ? 'de ' + previstosCiclo(P.cc, S.d.uid, (S.d.programaBase || p).dias_semana) + ' ' : ''}entrenos del ciclo</span></div>` : ''}</section>
   ${vAvisoContexto()}<section class="section"><div class="card">${p.dias.map(d => `<div class="wk ${esDia(d, hoyN) ? 'today' : ''}"><span class="d">${esc(/^d[ií]a (\d+)/i.test(d.nombre || '') ? 'D' + d.nombre.match(/\d+/)[0] : d.nombre.slice(0, 3))}</span><div class="grow"><h3>${esc(d.titulo || d.foco || d.nombre)}</h3>${tipoDiaDe(d) ? `<span class="pill ${conPartido(d) ? 'gold' : ''}" style="margin:2px 0">${tipoDiaDe(d)[2]} ${tipoDiaDe(d)[1]}</span>` : ''}${conPartido(d) ? (() => { const pt = partidoDelDia(d, S.d.partidos); return pt ? `<div class="small"><b>vs ${esc(pt.rival || 'rival')}</b>${pt.hora ? ' · ' + esc(String(pt.hora).slice(0, 5)) : ''}${pt.lugar ? ' · ' + esc(pt.lugar) : ''}</div>` : ''; })() : ''}<div class="small muted">${d.volumen || d.intensidad ? `${esc(d.volumen || '')} volumen · ${esc(d.intensidad || '')} intensidad` : ''}</div></div>${pillSesion(hechoSemana(d.id))}${d.tipo_dia === 'descanso' && !d.bloques_sesion.length ? '' : `<button class="btn sm ${esDia(d, hoyN) ? '' : 'ghost'}" data-act="abrirDia" data-id="${d.id}">Abrir</button>`}</div>`).join('')}</div></section>
+  ${vAlternativos(hechoSemana)}
   ${vZonasFC()}${vRitmosVAM()}
   ${vLineaTiempo(S.d.servicio, 'Tus ciclos de entrenamiento', false, p)}
   ${vCalendarioPres()}`;
 }
 
+/* Contexto alternativo: entrenos para cuando no puede seguir su bloque (p. ej. en casa sin gimnasio). Siempre visible;
+   lo que haga aquí cuenta como entreno de la semana (convalida uno del bloque). */
+function vAlternativos(hechoSemana) {
+  const l = S.d.alternativos || []; if (!l.length) return '';
+  return l.map(c => `<section class="section"><div class="section-head"><h2>Contexto alternativo</h2><span class="pill gold">${esc(c.contexto_nombre || c.nombre)}</span></div>
+    <p class="small muted">¿Hoy no puedes hacer el de tu bloque? Haz uno de estos: cuenta igual como entreno de tu semana.</p>
+    <div class="card">${c.dias.map(d => `<div class="wk"><span class="d">${esc(/^d[ií]a (\d+)/i.test(d.nombre || '') ? 'D' + d.nombre.match(/\d+/)[0] : (d.nombre || '').slice(0, 3))}</span><div class="grow"><h3>${esc(d.titulo || d.foco || d.nombre)}</h3><div class="small muted">${d.bloques_sesion.reduce((t, b) => t + b.ejercicios_sesion.length, 0)} ejercicios</div></div>${pillSesion(hechoSemana(d.id))}<button class="btn sm ghost" data-act="abrirDiaAlt" data-p="${c.id}" data-id="${d.id}">Abrir</button></div>`).join('')}</div></section>`).join('');
+}
 function gruposDe(pauta) {
   const g = [];
   (pauta || []).forEach(t => { if (t.s || !g.length) g.push({ s: t.s || 1, tramos: [t] }); else g[g.length - 1].tramos.push(t); });
@@ -1918,6 +1930,11 @@ async function abrirFicha(id) {
   { const a = S.c?.perfiles?.find(x => x.id === id); if (a && S.ficha === f) { const it = estadoAlumno(a).items; f.recien = new Set(it.filter(x => x.nueva).map(x => x.k)); await Alertas.verTodas(id, it.map(x => x.m)); } }
   if (S.ficha === f && !S.verSes && !S.fichaSub) render();
 }
+async function altToggle(id, on) {
+  const { error } = await sb.from('programas').update({ alternativo: on }).eq('id', id);
+  if (error) return fallo(error, /alternativo/.test(error.message || '') ? 'Falta ejecutar el Bloque 61 en Supabase.' : undefined);
+  toast(on ? 'Le aparece siempre en Entreno como contexto alternativo' : 'Ya no le aparece como alternativo'); await cargarProgramasFicha(S.ficha); render();
+}
 /* Todos los programas del alumno (con días y ejercicios); el activo es su bloque actual */
 async function cargarProgramasFicha(f) {
   const q = sel => () => sb.from('programas').select(sel).eq('alumno_id', f.id).order('id');
@@ -1926,6 +1943,7 @@ async function cargarProgramasFicha(f) {
   l.forEach(p => { ordSemana(p.dias ||= []); p.dias.forEach(ordenarDia); });
   f.contextos = l.filter(esContexto).sort((a, b) => a.contexto_desde.localeCompare(b.contexto_desde));
   f.guardados = l.filter(esGuardado);
+  { const r = await sb.from('programas').select('id').eq('alumno_id', f.id).eq('alternativo', true); const ids = new Set((r.data || []).map(x => x.id)); f.guardados.forEach(g => { g.alternativo = ids.has(g.id); }); }
   f.programas = l.filter(p => !esContexto(p) && !esGuardado(p)); f.progFull = f.programas.filter(p => p.activo !== false).pop() || null;
 }
 /* Programa de cada bloque del proceso: el marcado con ese nº de ciclo o, en el bloque en curso, el activo */
@@ -4957,6 +4975,8 @@ document.addEventListener('click', async e => {
     case 'cerrarDia': S.dia = null; S.sesion = null; render(); break;
     case 'salirComo': await salirComo(); break;
     case 'volverEntreno': await volverEntreno(); break;
+    case 'abrirDiaAlt': { const c = (S.d.alternativos || []).find(x => x.id === +b.dataset.p), d = c?.dias.find(x => x.id === +b.dataset.id); if (d) await abrirDia(d.id, { dia: d }); break; }
+    case 'altToggle': await altToggle(+b.dataset.id, b.dataset.v === '1'); break;
     case 'verValoracion': S.valSel = +b.dataset.id; render(); break;
     case 'nuevaValoracion': formValoracion(); break;
     case 'abrirValoracion': S.valEd = +b.dataset.id; render(); window.scrollTo(0, 0); break;
@@ -5014,7 +5034,7 @@ document.addEventListener('click', async e => {
     case 'aprox': b.classList.add('on'); if (b.dataset.j === '2') startTimer(60, 'Descanso tras la aproximación 6·3·1'); else toast(b.dataset.j === '0' ? 'Ahora 3 repeticiones con tu peso objetivo' : 'Ahora 1 repetición por encima del objetivo'); break;
     case 'metodo': { const n = b.dataset.n; abrirSheet(`<div class="stack"><span class="eyebrow">Método</span><h2>${esc(n)}</h2><p class="pre">${esc((S.d?.metodos || {})[n] || 'Pregúntale a Jesús por este método.')}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`); break; }
     case 'terminar': terminar(); break;
-    case 'retomar': { const x = S.d.sesiones.find(z => z.id === +b.dataset.id); if (x) await abrirDia(x.dia_id, { sesionId: x.id, fecha: x.fecha, dia: [S.d.programa, S.d.programaBase, ...(S.d.contextos || [])].filter(Boolean).flatMap(q => q.dias || []).find(z => z.id === x.dia_id) }); break; }
+    case 'retomar': { const x = S.d.sesiones.find(z => z.id === +b.dataset.id); if (x) await abrirDia(x.dia_id, { sesionId: x.id, fecha: x.fecha, dia: [S.d.programa, S.d.programaBase, ...(S.d.contextos || []), ...(S.d.alternativos || [])].filter(Boolean).flatMap(q => q.dias || []).find(z => z.id === x.dia_id) }); break; }
     case 'guardarSesion': await guardarSesion(); break;
     case 'guardarDiario': await guardarDiario(); break;
     case 'ingestas': await guardarDiario({ ingestas: +b.dataset.v }); break;
