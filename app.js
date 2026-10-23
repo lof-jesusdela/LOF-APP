@@ -4892,8 +4892,33 @@ const fmtT = ms => { const t = Math.max(0, Math.ceil(ms / 1000)); return Math.fl
 function audio() {
   try {
     if (navigator.audioSession) navigator.audioSession.type = 'transient'; // iPhone: suena aunque haya música, bajándola un momento
-    T.ctx = T.ctx || new (window.AudioContext || window.webkitAudioContext)(); if (T.ctx.state === 'suspended') T.ctx.resume();
+    if (!T.ctx || T.ctx.state === 'closed') T.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (T.ctx.state !== 'running') T.ctx.resume(); // iPhone deja el audio «interrupted» tras bloquear o una llamada
   } catch (e) { }
+  desbloquearEl();
+}
+/* Respaldo: el mismo sonido grabado en un audio normal, desbloqueado con el toque del alumno.
+   Suena aunque el contexto de audio del navegador se haya quedado parado. */
+function wavTriangulo() {
+  const sr = 22050, dur = 2.4, n = Math.floor(sr * dur), d = new Float32Array(n), parc = [[1, .5, 1.6], [2.76, .22, 1.1], [5.40, .12, .8], [8.93, .06, .5]];
+  [0, .55, 1.1].forEach(t0 => parc.forEach(([m, vol, du]) => { const f = 1850 * m; for (let i = Math.floor(t0 * sr), e = Math.min(n, Math.floor((t0 + du) * sr)); i < e; i++) { const t = i / sr - t0; d[i] += vol * Math.exp(-5 * t / du) * Math.min(1, t / .004) * Math.sin(2 * Math.PI * f * t); } }));
+  const buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf), w = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, d[i] * .8)) * 32767, true);
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+}
+function desbloquearEl() {
+  try {
+    if (!T.el) { T.el = new Audio(wavTriangulo()); T.el.preload = 'auto'; }
+    if (!T.elOk) { T.el.muted = true; const p = T.el.play(); if (p && p.then) p.then(() => { T.el.pause(); T.el.currentTime = 0; T.el.muted = false; T.elOk = true; }).catch(() => { T.el.muted = false; }); }
+  } catch (e) { }
+}
+function sonarFin() {
+  const c = T.ctx;
+  if (c && c.state === 'running') return tresToques();
+  try { if (c) c.resume(); } catch (e) { }
+  try { if (T.el) { T.el.muted = false; T.el.currentTime = 0; T.el.play().catch(() => tresToques()); return; } } catch (e) { }
+  tresToques();
 }
 /* Un toque de triángulo: golpe seco y resonancia metálica larga (parciales inarmónicos que se apagan poco a poco) */
 function triangulo(c, t0) {
@@ -4908,7 +4933,7 @@ function triangulo(c, t0) {
 function tresToques() {
   try { const c = T.ctx; if (!c) return; if (c.state === 'suspended') c.resume(); T.voces = []; [0, .55, 1.1].forEach(d => triangulo(c, c.currentTime + .05 + d)); } catch (e) { }
 }
-function callar() { T.voces.forEach(o => { try { o.stop(); } catch (e) { } }); T.voces = []; try { navigator.vibrate && navigator.vibrate(0); } catch (e) { } }
+function callar() { try { T.el && T.el.pause(); } catch (e) { } T.voces.forEach(o => { try { o.stop(); } catch (e) { } }); T.voces = []; try { navigator.vibrate && navigator.vibrate(0); } catch (e) { } }
 function beep() { tresToques(); }
 async function pedirAvisos() {
   try {
@@ -4944,15 +4969,18 @@ function finTimer(left) {
   if (left < -60000) return; // volvió a la app mucho después: sin alarma, solo el aviso en la barra
   const ov = $('#alarma'); ov.hidden = false; $('#al-lbl').textContent = T.lbl.replace(/^Descanso · /, '');
   const m = ov.querySelector('[data-silenciar]'); m.setAttribute('aria-pressed', 'false'); m.textContent = '🔇 Silenciar';
-  tresToques(); try { navigator.vibrate && navigator.vibrate([300, 250, 300, 250, 300]); } catch (e) { }
+  sonarFin(); try { navigator.vibrate && navigator.vibrate([300, 250, 300, 250, 300]); } catch (e) { }
 }
 function pararAlarma() { callar(); const ov = $('#alarma'); if (ov) ov.hidden = true; }
 function stopTimer() { clearInterval(T.iv); T.iv = null; T.fin = true; pararAlarma(); $('#timer').hidden = true; try { T.lock?.release(); } catch (e) { } T.lock = null; }
 /* Bloquear la pantalla o salir de la app para la alarma al momento */
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') { callar(); return; }
+  try { if (T.ctx && T.ctx.state !== 'running' && !$('#timer').hidden) T.ctx.resume(); } catch (e) { }
   if (!$('#timer').hidden && T.iv) tick();
 });
+/* Cualquier toque reactiva el audio si el navegador lo había parado (para que el fin del descanso suene) */
+document.addEventListener('touchend', () => { try { if (T.ctx && T.ctx.state !== 'running') T.ctx.resume(); } catch (e) { } }, { passive: true });
 
 /* ---------- Eventos ---------- */
 document.addEventListener('click', async e => {
