@@ -1413,7 +1413,7 @@ async function toggleSerie(b) {
       () => sb.from('registros_series').insert(rows.map(({ tramo, ...x }) => x)).select('id'));
     if (error) throw error;
     z.regs[fila] = data.map(x => x.id);
-    if (!z.editar && !S.obj) Peso.revisar(es, fila, T, sid);
+    if (!z.editar) Peso.revisar(es, fila, T, sid);
     if (!z.editar) { const c = conteoSeries(S.dia, z), est = { series_hechas: c.hechas, series_total: c.total }; sb.from('sesiones_hechas').update(est).eq('id', sid).then(r => { if (!r.error) Object.assign(S.d.sesiones.find(x => x.id === sid) || {}, est); }); }
     rows.forEach((r, k) => {
       r.id = data[k]?.id; z.valores[`${fila}-${k}`] = r;
@@ -1468,15 +1468,20 @@ window.addEventListener('online', () => Cola.enviar());
 setInterval(() => { if (navigator.onLine && Cola.leer().length) Cola.enviar(); }, 20000);
 /* ---------- Cambio de peso: el alumno decide si el peso que ha usado pasa a ser su pauta ---------- */
 const Peso = {
+  /* Al terminar el ejercicio (todas sus series marcadas): si se usó un peso distinto al pautado, ¿se queda para las próximas semanas o fue algo temporal? */
   revisar(es, fila, T, sid) {
     const z = S.sesion; z.pesoPreg ||= {}; if (z.pesoPreg[es]) return;
     const e = S.dia.bloques_sesion.flatMap(b => b.ejercicios_sesion).find(x => x.id === es); if (!e || esSinPeso(e)) return;
+    const series = +e.series || 0, hechas = Object.keys(z.regs || {}).filter(k => k.startsWith(es + '-')).length;
+    if (series && hechas < series) return;   // aún no ha terminado el ejercicio
     let antes = null, despues = null;
-    for (let k = 0; k < T; k++) { const i = document.getElementById(`kg-${fila}-${k}`); if (!i || !i.value.trim()) continue; const v = numero(i.value), ph = numero(i.placeholder); if (v != null && ph != null && v !== ph) { antes = ph; despues = v; break; } }
+    document.querySelectorAll(`input[id^="kg-${es}-"]`).forEach(i => { if (!i.value.trim()) return; const v = numero(i.value), ph = numero(i.placeholder); if (v != null && ph != null && v !== ph) { antes = ph; despues = v; } });
     if (despues == null) return;
     z.pesoPreg[es] = { antes, despues, sid };
     const ex = document.getElementById('ex-' + es); if (!ex || ex.querySelector('.peso-preg')) return;
-    ex.querySelector('.sets')?.insertAdjacentHTML('afterend', `<div class="peso-preg aprox stack" style="gap:8px;margin-top:8px"><b class="small">Has usado ${fmtNum(despues, 2)} kg (pauta: ${fmtNum(antes, 2)} kg). ¿Quieres que ${fmtNum(despues, 2)} kg sea tu peso a partir de ahora?</b><span class="small muted">Se cambiará en tus próximos entrenamientos de este ejercicio y Jesús lo verá en tu seguimiento.</span><div class="row" style="gap:8px"><button class="btn sm" data-act="pesoSi" data-es="${es}">Sí, usar ${fmtNum(despues, 2)} kg</button><button class="btn sm ghost" data-act="pesoNo" data-es="${es}">Solo hoy</button></div></div>`);
+    const su = S.obj ? 'su' : 'tu';
+    ex.querySelector('.sets')?.insertAdjacentHTML('afterend', `<div class="peso-preg aprox stack" style="gap:8px;margin-top:8px"><b class="small">Ejercicio terminado con ${fmtNum(despues, 2)} kg (pauta: ${fmtNum(antes, 2)} kg). ¿Queda como ${su} peso para las próximas semanas?</b><span class="small muted">${S.obj ? 'Se cambiará en su programa.' : 'Se cambiará en tus próximos entrenamientos de este ejercicio y Jesús lo verá en tu seguimiento.'}</span><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="pesoSi" data-es="${es}">Sí, actualizar a ${fmtNum(despues, 2)} kg</button><button class="btn sm ghost" data-act="pesoNo" data-es="${es}">No, solo hoy (temporal)</button></div></div>`);
+    ex.querySelector('.peso-preg')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   },
   descartar(es) { document.querySelector(`#ex-${es} .peso-preg`)?.remove(); },
   async aplicar(es) {
@@ -1487,11 +1492,13 @@ const Peso = {
     const pauta = (e.pauta || []).map(t => kgDe(t) && igual(t.kg) ? (tocado = true, { ...t, kg: conKg(t.kg) }) : t);
     const peso = e.peso_ref && numero(kgDe({ kg: e.peso_ref })) === x.antes ? conKg(e.peso_ref) : (!tocado ? String(x.despues).replace('.', ',') + ' kg' : null);
     const nombre = ejDe(e).nombre || '';
-    const { error } = await sb.rpc('ajustar_peso', { es, pauta_nueva: tocado ? pauta : null, peso_nuevo: peso, antes: fmtNum(x.antes, 2) + ' kg', despues: fmtNum(x.despues, 2) + ' kg', sesion: x.sid || z.id || null, nombre });
+    const cambio = {}; if (tocado) cambio.pauta = pauta; if (peso) cambio.peso_ref = peso;
+    const { error } = S.obj ? await sb.from('ejercicios_sesion').update(cambio).eq('id', es)
+      : await sb.rpc('ajustar_peso', { es, pauta_nueva: tocado ? pauta : null, peso_nuevo: peso, antes: fmtNum(x.antes, 2) + ' kg', despues: fmtNum(x.despues, 2) + ' kg', sesion: x.sid || z.id || null, nombre });
     if (error) return fallo(error, /ajustar_peso|function/i.test(error.message || '') ? 'Falta ejecutar el Bloque 59 en Supabase.' : 'No se ha podido cambiar el peso.');
     if (tocado) e.pauta = pauta; if (peso) e.peso_ref = peso;
-    const pr = document.querySelector(`#ex-${es} .peso-preg`); if (pr) pr.outerHTML = `<div class="small" style="color:var(--ok);font-weight:700;margin-top:8px">✓ Desde ahora tu peso en este ejercicio es ${fmtNum(x.despues, 2)} kg</div>`;
-    toast('Peso actualizado para tus próximos entrenamientos');
+    const pr = document.querySelector(`#ex-${es} .peso-preg`); if (pr) pr.outerHTML = `<div class="small" style="color:var(--ok);font-weight:700;margin-top:8px">✓ Desde ahora ${S.obj ? 'su' : 'tu'} peso en este ejercicio es ${fmtNum(x.despues, 2)} kg</div>`;
+    toast(S.obj ? 'Peso actualizado en su programa' : 'Peso actualizado para tus próximos entrenamientos');
   }
 };
 function terminar() {
