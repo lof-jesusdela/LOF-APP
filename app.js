@@ -1860,9 +1860,7 @@ function vAlumnos() {
   <section class="section"><div class="kpis"><button class="kpi kpi-b" data-act="alFiltro" data-k="todos" aria-pressed="${S.alF.k === 'todos'}"><div class="v num">${als.length}</div><div class="l">perfiles activos ›</div></button><button class="kpi kpi-b" data-act="alFiltro" data-k="alerta" aria-pressed="${S.alF.k === 'alerta'}"><div class="v num" style="color:var(--bad)">${est.filter(x => x.e.nivel !== 'ok').length}</div><div class="l">necesitan atención ›</div></button><button class="kpi kpi-b" data-act="alFiltro" data-k="vencidos" aria-pressed="${S.alF.k === 'vencidos'}"><div class="v num" style="color:${venc.length ? 'var(--bad)' : 'var(--ok)'}">${venc.length}</div><div class="l">pagos vencidos ›</div></button></div></section>
   <section class="section"><button class="card reporte-b" data-act="abrirReporte"><div class="ico gold">${svg('checkin')}</div><div class="grow" style="text-align:left"><b>Reporting semanal</b><div class="small muted">Semana del ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -7)))} al ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -1)))} · todos tus alumnos de un vistazo</div></div><span class="small" style="color:var(--blue-text)">Abrir ›</span></button></section>
   ${vFutbolCoach()}
-  ${Habitos.resumenCoach()}
-  ${Casos.resumenCoach()}
-  ${vResumenCoach(est)}
+  ${''/* Hábitos, casos de éxito y gráficas de resumen ocultos del panel a petición de Jesús (demasiada información) */}
   ${vAntiguos()}
   <section class="section" id="al-lista"><div class="section-head"><h2>Alumnos</h2><span class="small muted" id="al-cuenta"></span></div>
     <div class="al-filtros"><input type="search" id="al-busca" placeholder="Buscar por nombre…" value="${esc(S.alF.q)}" aria-label="Buscar alumno por nombre" autocomplete="off">
