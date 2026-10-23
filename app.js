@@ -954,7 +954,7 @@ function pautaEfectiva(e) {
 /* Datos del ejercicio: lo puesto solo en este programa (foto, nombre, vídeo, músculo) manda sobre la biblioteca */
 const ejDe = e => { const b = e.ejercicios || {}, o = {}; ['imagen_url', 'nombre', 'video_url', 'musculo_img_url'].forEach(k => { if (e[k]) o[k] = e[k]; }); return Object.keys(o).length ? { ...b, ...o } : b; };
 function vEjercicio(e, i, ro) {
-  const grupos = gruposDe(pautaEfectiva(e)), sp = esSinPeso(e), ej = ejDe(e), plan = ro?.plan;
+  const grupos = gruposDe(pautaEfectiva(e)), sp = esSinPeso(e), ej = ejDe(e), plan = ro?.plan, tandas = !ro && Tandas.usa(e);
   const kg0 = kgDe(grupos[0]?.tramos[0]) || kgDe({ kg: e.peso_ref });
   let n = 0;
   const filas = grupos.map(g => {
@@ -986,14 +986,15 @@ function vEjercicio(e, i, ro) {
     ${om ? bannerOmitido(om, !ro) : ''}
     ${ej.imagen_url || ej.musculo_img_url ? `<div class="imgs">${ej.imagen_url ? `<button class="img" data-act="verImagen" data-src="${esc(ej.imagen_url)}" aria-label="Ver imagen del ejercicio"><img src="${esc(ej.imagen_url)}" alt="${esc(ej.nombre)}" loading="lazy" onerror="this.parentNode.hidden=true"><span>Ejercicio</span></button>` : ''}${ej.musculo_img_url ? `<button class="img" data-act="verImagen" data-src="${esc(ej.musculo_img_url)}" aria-label="Ver músculo trabajado"><img src="${esc(ej.musculo_img_url)}" alt="Músculo trabajado" loading="lazy" onerror="this.parentNode.hidden=true"><span>Músculo</span></button>` : ''}</div>` : ''}
     <div class="row" style="align-items:flex-start"><span class="exn num">${i}</span><div class="grow"><h3>${esc(ej.nombre)}</h3>${!ej.musculo_img_url && ej.musculo ? `<div class="small muted">${esc(ej.musculo)}</div>` : ''}</div><div class="stack" style="gap:6px;align-items:flex-end">${vid}${ro ? '' : `<button class="btn sm ghost omitir-b" data-act="omitir" data-es="${e.id}" data-n="${esc(ej.nombre)}">No lo hago</button>`}</div></div>
-    <div class="chips ex-chips"><span class="pill">${e.series} ${e.series === 1 ? 'serie' : 'series'}</span><span class="pill">${desc ? 'Descanso ' + seg(desc) : 'Sin descanso'}</span>${e.metodos ? `<button class="pill gold" data-act="metodo" data-n="${esc(e.metodos.nombre)}">${esc(e.metodos.nombre)} ⓘ</button>` : ''}${e.aproximacion_631 ? '<button class="pill gold" data-act="metodo" data-n="Aproximación 6·3·1">Aproximación 6·3·1 ⓘ</button>' : ''}</div>
+    <div class="chips ex-chips"><span class="pill">${e.series} ${e.series === 1 ? 'serie' : 'series'}</span>${tandas ? '' : `<span class="pill">${desc ? 'Descanso ' + seg(desc) : 'Sin descanso'}</span>`}${e.metodos ? `<button class="pill gold" data-act="metodo" data-n="${esc(e.metodos.nombre)}">${esc(e.metodos.nombre)} ⓘ</button>` : ''}${e.aproximacion_631 ? '<button class="pill gold" data-act="metodo" data-n="Aproximación 6·3·1">Aproximación 6·3·1 ⓘ</button>' : ''}</div>
     ${(() => { const mt = e.material ?? ej.material, mi = e.material_img_url ?? ej.material_img_url; return mt || mi ? `<div class="row a-medida small" style="gap:10px;align-items:center">${mi ? `<button class="img mat-img" data-act="verImagen" data-src="${esc(mi)}" aria-label="Ver imagen del material"><img src="${esc(mi)}" alt="Material" loading="lazy" onerror="this.parentNode.hidden=true"></button>` : ''}${mt ? `<span><b>Material:</b> ${esc(mt)}</span>` : '<span><b>Material</b></span>'}</div>` : ''; })()}
     ${aj.length ? `<div class="small a-medida"><b>A tu medida:</b> ${aj.map(esc).join(' · ')}</div>` : ''}
     ${e.nota ? `<div class="small ex-nota"><b>Nota de Jesús:</b> ${esc(e.nota)}</div>` : ''}
     ${e.aproximacion_631 && !ro ? vAprox(e) : ''}
     ${ro && !plan ? resumenEjCerrado(ro, e) : ''}
-    ${!ro ? (() => { const t0 = grupos[0]?.tramos[0] || {}, kg = sp ? '' : (kgDe(t0) || kg0), rp = repsPh(t0.r), ri = t0.rir ?? e.rir; return `<div class="small pauta-l"><b>Pautado:</b> ${e.series} × ${esc(rp || '—')}${kg ? ' · ' + esc(kg) + ' kg' : ''}${ri != null && ri !== '' ? ' · RIR ' + esc(String(ri)) : ''}${grupos.some(g => g.tramos.length > 1) ? ' · con tramos' : ''}<span class="muted"> · en gris en cada serie. Escribe solo lo que cambie; al marcar ✓ se guarda.</span></div>`; })() : ''}
-    <div class="sets"><span class="h">Nº</span><span class="h">Kg</span><span class="h">Reps</span><span class="h">RIR</span><span class="h">${plan ? '' : 'Hecha'}</span>${filas}</div>
+    ${tandas ? Tandas.vista(e, ej, sp) : ''}
+    ${!ro && !tandas ? (() => { const t0 = grupos[0]?.tramos[0] || {}, kg = sp ? '' : (kgDe(t0) || kg0), rp = repsPh(t0.r), ri = t0.rir ?? e.rir; return `<div class="small pauta-l"><b>Pautado:</b> ${e.series} × ${esc(rp || '—')}${kg ? ' · ' + esc(kg) + ' kg' : ''}${ri != null && ri !== '' ? ' · RIR ' + esc(String(ri)) : ''}${grupos.some(g => g.tramos.length > 1) ? ' · con tramos' : ''}<span class="muted"> · en gris en cada serie. Escribe solo lo que cambie; al marcar ✓ se guarda.</span></div>`; })() : ''}
+    ${tandas ? '' : `<div class="sets"><span class="h">Nº</span><span class="h">Kg</span><span class="h">Reps</span><span class="h">RIR</span><span class="h">${plan ? '' : 'Hecha'}</span>${filas}</div>`}
     ${plan ? '' : ro ? (com ? `<div class="ex-com small"><b>Comentario:</b> ${esc(com)}</div>` : '') : `<div class="ex-com-w" id="com-${e.id}">${com ? `<div class="ex-com small">${esc(com)} <button class="linkbtn small" data-act="comentarEj" data-es="${e.id}">Editar</button></div>` : `<button class="linkbtn small" data-act="comentarEj" data-es="${e.id}">＋ Comentario sobre este ejercicio</button>`}</div>`}
   </div>`;
 }
@@ -1284,7 +1285,7 @@ const Guia = {
   cambiar() { try { localStorage.setItem('lof-guia', this.activo() ? 'completa' : 'guiada'); } catch (e) { } S.paso = null; render(); },
   barra() { return `<div class="guia-barra row" id="guia-barra"><span class="small grow" id="guia-txt"></span><button class="linkbtn small" data-act="guiaModo">${this.activo() ? 'Ver sesión completa' : 'Ver paso a paso'}</button></div>`; },
   pasos() { return [...document.querySelectorAll('#ses-pasos .paso-u')]; },
-  hecho(el) { const c = el.querySelectorAll('.chk[data-act="serie"]'); return c.length ? [...c].every(x => x.classList.contains('on')) : false; },
+  hecho(el) { const c = el.querySelectorAll('.chk[data-act="serie"], .rp-serie'); return c.length ? [...c].every(x => x.classList.contains('on')) : false; },
   pintar() {
     const P = this.pasos(), txt = document.getElementById('guia-txt'); if (!P.length) return;
     if (S.paso == null || S.paso >= P.length) { const i = P.findIndex(x => !this.hecho(x)); S.paso = i < 0 ? 0 : i; }
@@ -1337,7 +1338,8 @@ setInterval(() => { const t = $('#crono-t'); if (t && S.sesion?.inicio) t.textCo
 async function abrirDia(id, op = {}) {
   S.dia = op.dia || S.d.programa.dias.find(d => d.id === id);
   const fechaS = op.fecha || S.obj?.fecha || hoyISO(), editar = !!op.editar;
-  S.sesion = { id: null, regs: {}, valores: {}, ultimos: {}, inicio: null, fecha: fechaS, editar }; S.paso = null;
+  const prev = S.sesion?.diaId === id && S.sesion.fecha === fechaS && !!S.sesion.editar === editar ? S.sesion : null;   // al volver a la misma sesión se conserva lo escrito sin confirmar
+  S.sesion = { id: null, regs: {}, valores: {}, ultimos: {}, inicio: null, fecha: fechaS, editar, diaId: id, borr: prev?.borr || {}, abiertas: prev?.abiertas || {} }; S.paso = null;
   if (!editar) try { const v = +localStorage.getItem(claveCrono()); if (v) S.sesion.inicio = v; } catch (e) { }
   S.tab = 'entreno'; window.scrollTo(0, 0);
   const ids = S.dia.bloques_sesion.flatMap(b => b.ejercicios_sesion.map(e => e.id));
@@ -1356,11 +1358,14 @@ async function abrirDia(id, op = {}) {
       else if (!S.sesion.ultimos[k] && !(editar && (fechaDe(r.sesion_id) || '9') >= fechaS)) S.sesion.ultimos[k] = r;
     });
   }
-  Cola.leer().filter(x => x.ses.dia_id === S.dia.id && x.ses.fecha === S.sesion.fecha).forEach(x => { S.sesion.regs[x.fila] ||= []; x.rows.forEach((r, k) => { S.sesion.valores[`${x.fila}-${k}`] = r; }); });
+  Cola.leer().filter(x => x.ses.dia_id === S.dia.id && x.ses.fecha === S.sesion.fecha).forEach(x => {
+    if (x.k != null) { S.sesion.valores[`${x.fila}-${x.k}`] = x.rows[0]; return; }   // tanda suelta pendiente de enviar
+    S.sesion.regs[x.fila] ||= []; x.rows.forEach((r, k) => { S.sesion.valores[`${x.fila}-${k}`] = r; }); });
+  Tandas.depurar();
   render(); Cola.pintar();
 }
 function rellenarSesion() {
-  const z = S.sesion; if (!z) return; setTimeout(() => { Cola.pintar(); Guia.pintar(); }, 0);
+  const z = S.sesion; if (!z) return; setTimeout(() => { Cola.pintar(); Guia.pintar(); }, 0); Tandas.pintar();
   document.querySelectorAll('.chk[data-act="serie"]').forEach(b => {
     const fila = `${b.dataset.es}-${b.dataset.n}`, T = +b.dataset.t;
     for (let k = 0; k < T; k++) {
@@ -1388,6 +1393,12 @@ async function asegurarSesion() {
   if (error) throw error;
   S.sesion.id = data.id; S.d.sesiones.push(data); return data.id;
 }
+/* Series registradas de una sesión: las tandas internas (rest-pause…) cuentan dentro de su serie */
+const nSeriesReg = rs => { rs = rs || []; return rs.length && rs[0].serie != null ? new Set(rs.map(r => `${r.ejercicio_sesion_id}-${r.serie}`)).size : rs.length; };
+function actualizarConteo(sid) {
+  const c = conteoSeries(S.dia, S.sesion), est = { series_hechas: c.hechas, series_total: c.total };
+  sb.from('sesiones_hechas').update(est).eq('id', sid).then(r => { if (!r.error) Object.assign(S.d.sesiones.find(x => x.id === sid) || {}, est); });
+}
 async function toggleSerie(b) {
   const es = +b.dataset.es, n = +b.dataset.n, T = +b.dataset.t, fila = `${es}-${n}`, z = S.sesion;
   if (b.classList.contains('on')) {
@@ -1414,7 +1425,7 @@ async function toggleSerie(b) {
     if (error) throw error;
     z.regs[fila] = data.map(x => x.id);
     if (!z.editar) Peso.revisar(es, fila, T, sid);
-    if (!z.editar) { const c = conteoSeries(S.dia, z), est = { series_hechas: c.hechas, series_total: c.total }; sb.from('sesiones_hechas').update(est).eq('id', sid).then(r => { if (!r.error) Object.assign(S.d.sesiones.find(x => x.id === sid) || {}, est); }); }
+    if (!z.editar) actualizarConteo(sid);
     rows.forEach((r, k) => {
       r.id = data[k]?.id; z.valores[`${fila}-${k}`] = r;
       const kg = document.getElementById(`kg-${fila}-${k}`), rp = document.getElementById(`rp-${fila}-${k}`);
@@ -1435,15 +1446,16 @@ const Cola = {
   k: 'lof-cola-series',
   leer() { try { return JSON.parse(localStorage.getItem(this.k) || '[]'); } catch (e) { return []; } },
   escribir(l) { try { localStorage.setItem(this.k, JSON.stringify(l)); } catch (e) { } },
-  anadir(it) { const l = this.leer().filter(x => !(x.ses.dia_id === it.ses.dia_id && x.ses.fecha === it.ses.fecha && x.fila === it.fila)); l.push(it); this.escribir(l); this.pintar(); },
+  anadir(it) { const l = this.leer().filter(x => !(x.ses.dia_id === it.ses.dia_id && x.ses.fecha === it.ses.fecha && x.fila === it.fila && (x.k ?? null) === (it.k ?? null))); l.push(it); this.escribir(l); this.pintar(); },
   quitar(dia, f, fila) { const l = this.leer(), r = l.filter(x => !(x.ses.dia_id === dia && x.ses.fecha === f && x.fila === fila)); if (r.length === l.length) return false; this.escribir(r); this.pintar(); return true; },
   pintar() {
     const l = this.leer(), z = S.sesion, mias = z && S.dia ? l.filter(x => x.ses.dia_id === S.dia.id && x.ses.fecha === z.fecha) : [];
     document.querySelectorAll('.chk[data-act="serie"]').forEach(b => b.classList.toggle('pend', mias.some(x => x.fila === `${b.dataset.es}-${b.dataset.n}`)));
+    if (document.querySelector('.rp-wrap')) Tandas.pintar();
     let el = document.getElementById('cola-aviso');
     if (!l.length) { el?.remove(); return; }
     if (!el) { el = document.createElement('div'); el.id = 'cola-aviso'; document.body.appendChild(el); }
-    el.innerHTML = `⏳ ${l.length} ${l.length === 1 ? 'serie pendiente' : 'series pendientes'} de enviar · se guardan solas al volver la conexión <button type="button" onclick="Cola.enviar(true)">Reintentar</button>`;
+    el.innerHTML = `⏳ ${l.length} ${l.length === 1 ? 'registro pendiente' : 'registros pendientes'} de enviar · se guardan solas al volver la conexión <button type="button" onclick="Cola.enviar(true)">Reintentar</button>`;
   },
   async enviar(manual) {
     if (this.enviando) return; let l = this.leer(); if (!l.length) return; this.enviando = true; const sids = {}, n0 = l.length;
@@ -1455,7 +1467,9 @@ const Cola = {
         const filas = it.rows.map(r => ({ ...r, sesion_id: sid }));
         const { data, error } = await conRespaldo(() => sb.from('registros_series').insert(filas).select('id'), () => sb.from('registros_series').insert(filas.map(({ tramo, ...x }) => x)).select('id'));
         if (error) throw error;
-        if (S.sesion && S.dia?.id === it.ses.dia_id && S.sesion.fecha === it.ses.fecha) { S.sesion.id = S.sesion.id || sid; S.sesion.regs[it.fila] = (data || []).map(x => x.id); }
+        if (S.sesion && S.dia?.id === it.ses.dia_id && S.sesion.fecha === it.ses.fecha) { S.sesion.id = S.sesion.id || sid;
+          if (it.k != null) { const v = S.sesion.valores[`${it.fila}-${it.k}`]; if (v) { v.id = data?.[0]?.id; v.sesion_id = sid; } Tandas.depurar(); }
+          else S.sesion.regs[it.fila] = (data || []).map(x => x.id); }
         l = l.filter(x => x.uid !== it.uid); this.escribir(l);
       } catch (e) { break; }
     }
@@ -1475,12 +1489,12 @@ const Peso = {
     const series = +e.series || 0, hechas = Object.keys(z.regs || {}).filter(k => k.startsWith(es + '-')).length;
     if (series && hechas < series) return;   // aún no ha terminado el ejercicio
     let antes = null, despues = null;
-    document.querySelectorAll(`input[id^="kg-${es}-"]`).forEach(i => { if (!i.value.trim()) return; const v = numero(i.value), ph = numero(i.placeholder); if (v != null && ph != null && v !== ph) { antes = ph; despues = v; } });
+    document.querySelectorAll(`input[id^="kg-${es}-"]`).forEach(i => { if (!i.value.trim()) return; const v = numero(i.value), ph = numero(i.dataset.plan ?? i.placeholder); if (v != null && ph != null && v !== ph) { antes = ph; despues = v; } });
     if (despues == null) return;
     z.pesoPreg[es] = { antes, despues, sid };
     const ex = document.getElementById('ex-' + es); if (!ex || ex.querySelector('.peso-preg')) return;
     const su = S.obj ? 'su' : 'tu';
-    ex.querySelector('.sets')?.insertAdjacentHTML('afterend', `<div class="peso-preg aprox stack" style="gap:8px;margin-top:8px"><b class="small">Ejercicio terminado con ${fmtNum(despues, 2)} kg (pauta: ${fmtNum(antes, 2)} kg). ¿Queda como ${su} peso para las próximas semanas?</b><span class="small muted">${S.obj ? 'Se cambiará en su programa.' : 'Se cambiará en tus próximos entrenamientos de este ejercicio y Jesús lo verá en tu seguimiento.'}</span><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="pesoSi" data-es="${es}">Sí, actualizar a ${fmtNum(despues, 2)} kg</button><button class="btn sm ghost" data-act="pesoNo" data-es="${es}">No, solo hoy (temporal)</button></div></div>`);
+    (ex.querySelector('.rp-wrap') || ex.querySelector('.sets'))?.insertAdjacentHTML('afterend', `<div class="peso-preg aprox stack" style="gap:8px;margin-top:8px"><b class="small">Ejercicio terminado con ${fmtNum(despues, 2)} kg (pauta: ${fmtNum(antes, 2)} kg). ¿Queda como ${su} peso para las próximas semanas?</b><span class="small muted">${S.obj ? 'Se cambiará en su programa.' : 'Se cambiará en tus próximos entrenamientos de este ejercicio y Jesús lo verá en tu seguimiento.'}</span><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="pesoSi" data-es="${es}">Sí, actualizar a ${fmtNum(despues, 2)} kg</button><button class="btn sm ghost" data-act="pesoNo" data-es="${es}">No, solo hoy (temporal)</button></div></div>`);
     ex.querySelector('.peso-preg')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   },
   descartar(es) { document.querySelector(`#ex-${es} .peso-preg`)?.remove(); },
@@ -1920,7 +1934,7 @@ async function abrirFicha(id) {
   S.ficha = { id, cargando: true }; S.verSes = null; S.verPlan = null; S.fichaSub = null; render(); window.scrollTo(0, 0);
   const [med, ses, notas, prog, srv, todas] = await Promise.all([
     sb.from('mediciones').select('*').eq('alumno_id', id).order('fecha', { ascending: false }),
-    sb.from('sesiones_hechas').select('*,dias(*),registros_series(id)').eq('alumno_id', id).order('fecha', { ascending: false }).limit(60),
+    conRespaldo(() => sb.from('sesiones_hechas').select('*,dias(*),registros_series(id,ejercicio_sesion_id,serie)').eq('alumno_id', id).order('fecha', { ascending: false }).limit(60), () => sb.from('sesiones_hechas').select('*,dias(*),registros_series(id)').eq('alumno_id', id).order('fecha', { ascending: false }).limit(60)),
     sb.from('notas_coach').select('*').eq('alumno_id', id).order('fecha', { ascending: false }).limit(20),
     sb.from('programas').select('nombre,dias_semana').eq('alumno_id', id).eq('activo', true).limit(1),
     sb.from('servicios').select('*').eq('alumno_id', id).eq('activo', true).limit(1),
@@ -2794,7 +2808,7 @@ function vFichaSub(f, a) {
   const sub = S.fichaSub, srv = f.srv, nom = (a.nombre || '').split(' ')[0], hoy = hoyISO(), lunes = lunesDe(hoy);
   const cab = t => `<section class="stack"><button class="btn sm ghost" data-act="cerrarSub" style="align-self:flex-start">← Ficha de ${esc(nom)}</button><span class="eyebrow">${esc(a.nombre)}</span><h1>${t}</h1></section>`;
   if (sub === 'entreno') {
-    const dpwB = f.prog?.dias_semana || 0, dpw = dpwEn(a.id, lunes, dpwB), dpw4 = [0, 1, 2, 3].reduce((t, k) => t + dpwEn(a.id, sumaDias(lunes, -7 * k), dpwB), 0), P = proceso(srv), linea = s2 => `<div class="line" data-act="verSesion" data-id="${s2.id}" style="cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(s2.fecha))}</span><div class="grow"><div class="small"><b>${esc(nomDia(s2.dias))}</b> · ${esc(s2.dias?.foco || '')} · ${(s2.registros_series || []).length} series${s2.duracion_min ? ` · ${s2.duracion_min} min` : ''}${s2.cansancio ? ` · cansancio ${s2.cansancio}/5` : ''}${(s2.omitidos || []).length ? ` · ${s2.omitidos.length} no realizado${s2.omitidos.length > 1 ? 's' : ''}` : ''}</div>${s2.nota ? `<div class="small muted">"${esc(s2.nota)}"</div>` : ''}</div><span class="small" style="color:var(--blue-text)">›</span></div>`;
+    const dpwB = f.prog?.dias_semana || 0, dpw = dpwEn(a.id, lunes, dpwB), dpw4 = [0, 1, 2, 3].reduce((t, k) => t + dpwEn(a.id, sumaDias(lunes, -7 * k), dpwB), 0), P = proceso(srv), linea = s2 => `<div class="line" data-act="verSesion" data-id="${s2.id}" style="cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(s2.fecha))}</span><div class="grow"><div class="small"><b>${esc(nomDia(s2.dias))}</b> · ${esc(s2.dias?.foco || '')} · ${nSeriesReg(s2.registros_series)} series${s2.duracion_min ? ` · ${s2.duracion_min} min` : ''}${s2.cansancio ? ` · cansancio ${s2.cansancio}/5` : ''}${(s2.omitidos || []).length ? ` · ${s2.omitidos.length} no realizado${s2.omitidos.length > 1 ? 's' : ''}` : ''}</div>${s2.nota ? `<div class="small muted">"${esc(s2.nota)}"</div>` : ''}</div><span class="small" style="color:var(--blue-text)">›</span></div>`;
     const semana = f.ses.filter(x => x.fecha >= lunes), bloque = P && !P.antes ? f.ses.filter(x => x.fecha >= P.cc.ini && x.fecha <= P.cc.fin && x.fecha < lunes) : [];
     const unicas = l => new Set(l.map(x => x.fecha + x.dia_id)).size, mes = unicas(f.todas.filter(x => x.fecha >= sumaDias(hoy, -27)));
     return cab('Entrenamiento') + vZonasFC({ vals: f.val, perfil: a, srv, coach: true }) + vContextos(f, a) + `
@@ -2880,7 +2894,9 @@ async function verSesionLista(id) {
   if (error) return fallo(error, 'No se ha podido cargar la sesión.');
   const g = {};
   (data || []).forEach(r => { const es = r.ejercicios_sesion, k = `${es?.bloques_sesion?.letra || ''}${String(es?.orden || 0).padStart(2, '0')}`; (g[k] ||= { n: es?.ejercicios?.nombre || 'Ejercicio', s: [] }).s.push(r); });
-  abrirSheet(`<div class="stack"><h2>Series registradas</h2>${Object.keys(g).sort().map(k => `<div class="stack" style="gap:4px"><h3>${esc(g[k].n)}</h3>${g[k].s.map(r => `<div class="small num">Serie ${r.serie}: ${r.kg == null ? '—' : fmtNum(r.kg, 2) + ' kg'} × ${r.repeticiones ?? '—'} rep · RIR ${r.rir ?? '—'}</div>`).join('')}</div>`).join('') || '<p class="muted">No hay series registradas.</p>'}<button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
+  const porSerie = l => Object.values(l.reduce((m, r) => ((m[r.serie] ||= []).push(r), m), {}));
+  const txtR = r => `${r.kg == null ? '—' : fmtNum(r.kg, 2) + ' kg'} × ${r.repeticiones ?? '—'} rep${r.rir != null ? ' · RIR ' + r.rir : ''}`;
+  abrirSheet(`<div class="stack"><h2>Series registradas</h2>${Object.keys(g).sort().map(k => `<div class="stack" style="gap:4px"><h3>${esc(g[k].n)}</h3>${porSerie(g[k].s).map(l => `<div class="small num">Serie ${l[0].serie}: ${l.length > 1 ? l.map((r, i) => `<span class="muted">T${i + 1}</span> ${txtR(r)}`).join(' · ') + ` <span class="muted">(${l.length} tandas)</span>` : txtR(l[0])}</div>`).join('')}</div>`).join('') || '<p class="muted">No hay series registradas.</p>'}<button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
 }
 /* El alumno online se mide él mismo una vez al mes */
 const MEDIDAS_ALUMNO = [['cuello', 'Cuello', 'incluida la nuez'], ['cintura', 'Cintura', 'bajo la última costilla'], ['abd_bajo', 'Abdomen bajo', 'a la altura del ombligo'], ['cadera', 'Cadera', 'parte más ancha del glúteo'], ['muslo_d', 'Muslo derecho', 'parte más ancha'], ['muslo_i', 'Muslo izquierdo', 'parte más ancha'], ['gemelo_d', 'Gemelo derecho', 'parte más ancha'], ['gemelo_i', 'Gemelo izquierdo', 'parte más ancha'], ['hombros', 'Anchura de hombros', 'medición más ancha'], ['brazo_d', 'Brazo contraído', 'parte más ancha']];
@@ -3645,7 +3661,7 @@ function verPres(id) {
   const D = datosPres(coach ? S.ficha.srv : S.d.servicio, lista), num = D.hechas.indexOf(p) + 1;
   abrirSheet(`<div class="stack"><span class="eyebrow">Sesión presencial ${num || ''}</span><h2>${esc(fLargaP(p))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</h2>
     <span class="pill ${p.estado === 'tarde' ? 'bad' : p.estado === 'dada' ? 'ok' : ''}" style="align-self:flex-start">${esc(PRES_EST[p.estado] || p.estado)}</span>
-    ${dia ? `<div class="card stack"><span class="eyebrow">Qué entrenamos</span><b>${esc(nomDia(dia))} · ${esc(dia.foco || '')}</b>${ses.registros_series ? `<div class="small muted">${ses.registros_series.length} series registradas</div>` : ''}${ses.duracion_min ? `<div class="small muted">${ses.duracion_min} minutos</div>` : ''}</div>` : `<p class="small muted">${p.estado === 'tarde' ? 'No se entrenó: se avisó con menos de 24 horas.' : 'Sin entrenamiento registrado en la app.'}</p>`}
+    ${dia ? `<div class="card stack"><span class="eyebrow">Qué entrenamos</span><b>${esc(nomDia(dia))} · ${esc(dia.foco || '')}</b>${ses.registros_series ? `<div class="small muted">${nSeriesReg(ses.registros_series)} series registradas</div>` : ''}${ses.duracion_min ? `<div class="small muted">${ses.duracion_min} minutos</div>` : ''}</div>` : `<p class="small muted">${p.estado === 'tarde' ? 'No se entrenó: se avisó con menos de 24 horas.' : 'Sin entrenamiento registrado en la app.'}</p>`}
     ${p.nota ? `<div class="small"><span class="muted">Nota:</span> ${esc(p.nota)}</div>` : ''}
     ${coach ? `<div class="row" style="gap:8px">${p.sesion_id ? `<button class="btn sm" data-act="presVerSesion" data-id="${p.sesion_id}">Ver entrenamiento</button>` : ''}<button class="btn sm ghost" data-act="editarPres" data-id="${p.id}">✎ Editar</button></div>` : ''}
     ${!coach && p.estado === 'programada' && p.fecha >= hoyISO() ? `<button class="btn ghost full" data-act="cancelarPres" data-id="${p.id}" style="color:var(--bad)">Cancelar esta sesión</button>` : ''}
@@ -5070,6 +5086,9 @@ document.addEventListener('click', async e => {
     case 'nuevoCiclo': formNuevoCiclo(); break;
     case 'editarProgramaObj': { const id = S.obj.id; await salirComo(); await abrirEditor(id); break; }
     case 'serie': await toggleSerie(b); break;
+    case 'tanda': await Tandas.confirmar(b); break;
+    case 'tandaQuitar': await Tandas.quitar(b); break;
+    case 'rpAbrir': Tandas.abrir(+b.dataset.es, +b.dataset.n); break;
     case 'tramo': { const d = +b.dataset.d; if (d > 0) startTimer(d, 'Pausa · ' + b.dataset.lbl); else toast('Sin pausa: sigue con el siguiente tramo'); break; }
     case 'aprox': b.classList.add('on'); if (b.dataset.j === '2') startTimer(60, 'Descanso tras la aproximación 6·3·1'); else toast(b.dataset.j === '0' ? 'Ahora 3 repeticiones con tu peso objetivo' : 'Ahora 1 repetición por encima del objetivo'); break;
     case 'metodo': { const n = b.dataset.n; abrirSheet(`<div class="stack"><span class="eyebrow">Método</span><h2>${esc(n)}</h2><p class="pre">${esc((S.d?.metodos || {})[n] || 'Pregúntale a Jesús por este método.')}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`); break; }
@@ -5211,6 +5230,7 @@ document.addEventListener('click', async e => {
 document.addEventListener('change', async e => {
   if (e.target.id === 'al-prog' || e.target.id === 'al-mod') { S.alF[e.target.id === 'al-prog' ? 'p' : 'm'] = e.target.value; aplicarFiltroAl(); return; }
   if (e.target.dataset?.graf === 'comp') { S.grafComp = e.target.value; render(); return; }
+  if (e.target.dataset?.tanda && S.sesion) return Tandas.corregir(e.target);
   const m = (e.target.id || '').match(/^(kg|rp|ri)-(\d+)-(\d+)(?:-(\d+))?$/); if (!m || !S.sesion) return;
   const fila = `${m[2]}-${m[3]}`, z = S.sesion; if (!z.regs[fila]) return;
   const T = +(document.getElementById('ck-' + fila)?.dataset.t || 1), k = m[1] === 'ri' ? T - 1 : +m[4];
@@ -5222,6 +5242,7 @@ document.addEventListener('change', async e => {
   reg[campo] = val; toast('Cambio guardado');
 });
 document.addEventListener('input', e => {
+  if (e.target.dataset?.tanda && S.sesion && !S.sesion.valores[e.target.id.slice(3)]) { (S.sesion.borr ||= {})[e.target.id] = e.target.value; return; }
   if (e.target.id === 'al-busca' || e.target.id === 'lat-busca') { S.alF.q = e.target.value; const o = e.target.id === 'al-busca' ? $('#lat-busca') : $('#al-busca'); if (o) o.value = e.target.value; aplicarFiltroAl(); return; }
   if (e.target.id === 'ej-buscar') { S.filtroEj = e.target.value; const pos = e.target.selectionStart; render(); const i = $('#ej-buscar'); i.focus(); try { i.setSelectionRange(pos, pos); } catch (er) { } }
   if (e.target.id === 'k-mot') $('#k-mot-v').textContent = e.target.value + '/10';
