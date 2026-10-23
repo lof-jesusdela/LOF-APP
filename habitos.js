@@ -208,19 +208,20 @@ const Habitos = (() => {
   const pillSem = s => s ? `<span class="pill ${SEM[s.sem][0]}">${SEM[s.sem][1]}${s.pct != null && s.sem !== 'nuevo' ? ` · ${s.pct} %` : ''}</span>` : '';
 
   /* ---------- ALUMNO: tarjeta en Hoy ---------- */
+  /* Día a registrar: hoy o cualquier día de la ventana de registro (esta semana; los lunes, también la anterior) */
   function diaRegistro(act, regs) {
-    const hoy = hoyISO(), ayer = sumaDias(hoy, -1);
-    const ayerPend = new Date().getHours() < 12 && act.some(h => h.inicio <= ayer && !regs.some(x => x.habito_id === h.id && x.fecha === ayer));
-    if (!ayerPend && S.hDia === ayer) S.hDia = hoy;
-    return { dia: S.hDia === ayer && ayerPend ? ayer : hoy, ayerPend, hoy, ayer };
+    const hoy = hoyISO(), dias = ventanaRegistro(), ayer = sumaDias(hoy, -1);
+    if (!dias.includes(S.hDia)) S.hDia = hoy;
+    return { dia: S.hDia, dias, hoy, ayer, ayerPend: false };
   }
   function bloqueHoy(titulo, conEnlace) {
     const act = mios().filter(h => h.estado === 'instalacion' && h.inicio), regs = misReg();
     if (!act.length) return '';
-    const { dia, ayerPend, hoy, ayer } = diaRegistro(act, regs);
-    const sel = ayerPend ? `<div class="choice" role="group" style="grid-template-columns:1fr 1fr;margin-bottom:6px"><button type="button" data-act="hbDia" data-f="${ayer}" aria-pressed="${dia === ayer}">Ayer</button><button type="button" data-act="hbDia" data-f="${hoy}" aria-pressed="${dia === hoy}">Hoy</button></div>` : '';
+    const { dia, dias } = diaRegistro(act, regs);
+    const hecho = f => { const a = act.filter(h => h.inicio <= f); return a.length && a.every(h => regs.some(x => x.habito_id === h.id && x.fecha === f)); };
+    const sel = `<div class="stack" style="gap:6px;margin-bottom:8px"><span class="small muted">Puedes rellenar los días de esta semana; los lunes, también los de la semana anterior.</span><div class="reg-dias" role="group" aria-label="Día a registrar" style="--n:${Math.max(7, dias.length)}">${dias.map(f => `<button type="button" data-act="hbDia" data-f="${f}" aria-pressed="${f === dia}" class="${hecho(f) ? 'hecho' : ''}" aria-label="${esc(fLarga(f))}${hecho(f) ? ' · registrado' : ''}"><small>${DIA3[fecha(f).getDay()]}</small><b>${fecha(f).getDate()}</b></button>`).join('')}</div>${dia !== hoyISO() ? `<span class="small"><b>Registrando: ${esc(fLarga(dia))}</b></span>` : ''}</div>`;
     const alerta = act.map(h => [h, stats(h, regs)]).find(([, s]) => s?.dosSeguidos);
-    return `<section class="section"><div class="section-head"><h2>${titulo}</h2>${conEnlace ? '<button class="btn sm ghost" data-act="tab" data-t="habitos">Ver tu plan ›</button>' : ''}</div><div class="card stack" style="gap:0">${sel}${act.map(h => filaMarca(h, regs, dia)).join('')}</div>
+    return `<section class="section"><div class="section-head"><h2>${titulo}</h2>${conEnlace ? '<button class="btn sm ghost" data-act="tab" data-t="habitos">Ver tu plan ›</button>' : ''}</div><div class="card stack" style="gap:0">${sel}${act.filter(h => h.inicio <= dia).map(h => filaMarca(h, regs, dia)).join('') || '<p class="small muted">Ese día aún no tenías hábitos activos.</p>'}</div>
       ${alerta ? `<p class="small hb-animo">Un día suelto no estropea nada. Hoy, aunque sea, la versión mínima: <b>${esc(alerta[0].minimo || alerta[0].titulo)}</b>.</p>` : ''}</section>`;
   }
   /* Dentro del «Registro del día»: el hábito que está instalando, para el día elegido (también días anteriores de la semana) */
