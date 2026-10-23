@@ -20,10 +20,11 @@ const Negocio = (() => {
       sb.from('mejoras').select('*').order('created_at'),
       sb.from('saldos').select('*').order('fecha', { ascending: false }).limit(20),
       sb.from('movimientos').select('*').gte('fecha', sumaDias(hoyISO(), -400)).order('fecha', { ascending: false }),
-      sb.from('reservas').select('*').order('concepto')
+      sb.from('reservas').select('*').order('concepto'),
+      sb.from('recordatorios').select('*').order('orden').order('id')
     ]);
-    const [ag, ci, me, sa, mo, re] = r.map(x => x.data || []);
-    Object.assign(S.c, { agenda: ag, cierres: ci, mejoras: me, saldos: sa, movs: mo, reservas: re, negErr: r.some(x => x.error) });
+    const [ag, ci, me, sa, mo, re, rc] = r.map(x => x.data || []);
+    Object.assign(S.c, { agenda: ag, cierres: ci, mejoras: me, saldos: sa, movs: mo, reservas: re, recordatorios: rc, recErr: !!r[6].error, negErr: r.slice(0, 6).some(x => x.error) });
   }
   async function guardarAjuste(clave, valor) {
     const { error } = await sb.from('ajustes_privados').upsert({ clave, valor: String(valor) }, { onConflict: 'clave' }); if (error) return fallo(error);
@@ -159,6 +160,7 @@ const Negocio = (() => {
         <div class="card">${d.prio.map(x => fila(x, true)).join('') || '<div class="empty">Nada urgente hoy. Buen día para avanzar en una mejora del negocio.</div>'}</div>
         <p class="small muted">${d.items.some(x => x.prioridad) ? 'Prioridades elegidas por ti (★).' : 'Propuestas por fecha y urgencia: confírmalas o cambia con ★.'}</p></section>
       ${d.otras.length ? `<section class="section"><details class="card" ${d.otras.some(x => x.importante && x.estado === 'pendiente') ? 'open' : ''}><summary><b>Otras tareas e incidencias (${d.otras.filter(x => x.estado === 'pendiente').length} pendientes)</b>${d.otras.some(x => x.importante && x.estado === 'pendiente') ? ' <span class="pill bad">Incluye alumnos en rojo</span>' : ''}</summary>${d.otras.map(x => fila(x, false)).join('')}</details></section>` : ''}
+      ${vRecordatorios(null)}
       ${vEcoResumen()}
       ${vMejoras()}
       <section class="section"><button class="btn full ${ci ? 'ghost' : 'dark'}" data-act="agCierre">${ci ? 'Revisar el cierre de hoy' : 'Cerrar la jornada'}</button></section>`;
@@ -186,6 +188,44 @@ const Negocio = (() => {
     });
   }
 
+  /* ---------- Recordatorios de seguimiento: cambios que apuntas para sus entrenos, programa o app, en tu orden de prioridad ---------- */
+  const TIPOS_REC = { entreno: '🏋️ Entreno', programa: '📋 Programa', nutricion: '🥗 Alimentación', app: '📱 App', otro: '📝 Otro' };
+  const recPend = aid => (S.c.recordatorios || []).filter(x => !x.hecho_at && (!aid || x.alumno_id === aid)).sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || a.id - b.id);
+  function vRecordatorios(aid) {
+    if (S.c.recErr) return aid ? '' : `<section class="section"><div class="card small muted">Para usar los recordatorios, ejecuta el Bloque 62 en Supabase.</div></section>`;
+    const l = recPend(aid), hechos = (S.c.recordatorios || []).filter(x => x.hecho_at && (!aid || x.alumno_id === aid)).slice(-5).reverse();
+    const nom = id => (S.c.perfiles.find(p => p.id === id)?.nombre || '').split(' ')[0];
+    return `<section class="section"><div class="section-head"><h2>Recordatorios${aid ? '' : ' de seguimiento'}</h2><button class="btn sm ghost" data-act="recNuevo" data-al="${aid || ''}">＋ Recordatorio</button></div>
+      <div class="card">${l.map((x, i) => `<div class="line" style="gap:8px;align-items:flex-start"><button class="ag-chk" data-act="recHecho" data-id="${x.id}" aria-label="Marcar como hecho"></button><span class="pill gold num" style="flex:none">${i + 1}</span>
+        <div class="grow stack" style="gap:2px" data-act="recNuevo" data-id="${x.id}"><span class="small" style="cursor:pointer">${esc(x.texto)}</span><span class="small muted">${TIPOS_REC[x.tipo] || ''}${!aid && x.alumno_id ? ` · <button class="linkbtn small" data-act="ficha" data-id="${x.alumno_id}">${esc(nom(x.alumno_id))} ›</button>` : ''} · ${esc(fCorta((x.created_at || hoyISO()).slice(0, 10)))}</span></div>
+        <span class="stack" style="gap:2px"><button class="btn sm ghost" data-act="recMover" data-id="${x.id}" data-dir="-1" aria-label="Subir prioridad" ${i === 0 ? 'disabled' : ''} style="padding:2px 10px">▲</button><button class="btn sm ghost" data-act="recMover" data-id="${x.id}" data-dir="1" aria-label="Bajar prioridad" ${i === l.length - 1 ? 'disabled' : ''} style="padding:2px 10px">▼</button></span></div>`).join('') || `<div class="empty">${aid ? 'Sin recordatorios para este alumno.' : 'Sin recordatorios pendientes. Apúntalos durante el seguimiento desde aquí o desde su ficha.'}</div>`}
+      ${hechos.length ? `<details class="small" style="margin-top:6px"><summary class="muted">Hechos recientemente (${hechos.length})</summary>${hechos.map(x => `<div class="row small" style="gap:8px;padding:4px 0"><span class="grow muted" style="text-decoration:line-through">${esc(x.texto)}${!aid && x.alumno_id ? ' · ' + esc(nom(x.alumno_id)) : ''}</span><button class="linkbtn small" data-act="recDeshacer" data-id="${x.id}">Deshacer</button></div>`).join('')}</details>` : ''}</div>
+      ${l.length > 1 ? '<p class="small muted">El orden es tu prioridad: ▲▼ para atacarlos antes o después.</p>' : ''}</section>`;
+  }
+  function formRec(id, aid) {
+    const x = id ? (S.c.recordatorios || []).find(r => r.id === id) : null, als = S.c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach');
+    abrirSheet(`<form class="stack" id="f-rec"><h2>${x ? 'Editar recordatorio' : 'Nuevo recordatorio'}</h2>
+      <label class="f">Qué tienes que cambiar<textarea id="rc-t" rows="3" required placeholder="Ej. subir peso en hip thrust a 30 kg y cambiar el día 2 por la variante en casa">${esc(x?.texto || '')}</textarea></label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Alumno<select id="rc-a"><option value="">General (sin alumno)</option>${als.map(a => `<option value="${a.id}" ${(x?.alumno_id || aid) === a.id ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('')}</select></label>
+      <label class="f">Sobre<select id="rc-k">${Object.entries(TIPOS_REC).map(([k, t]) => `<option value="${k}" ${(x?.tipo || 'entreno') === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label></div>
+      ${x ? '' : '<label class="row small" style="gap:8px"><input type="checkbox" id="rc-top" style="width:20px;height:20px"> Ponerlo el primero de la lista</label>'}
+      <button class="btn full" type="submit">Guardar</button>${x ? '<button type="button" class="btn ghost full" id="rc-del" style="color:var(--bad)">Eliminar</button>' : ''}</form>`);
+    $('#f-rec').addEventListener('submit', async e => {
+      e.preventDefault(); const t = $('#rc-t').value.trim(); if (!t) return;
+      const l = recPend(null), orden = x ? x.orden : $('#rc-top')?.checked ? Math.min(0, ...l.map(r => r.orden ?? 0)) - 1 : Math.max(0, ...l.map(r => r.orden ?? 0)) + 1;
+      const row = { texto: t, alumno_id: $('#rc-a').value || null, tipo: $('#rc-k').value, orden };
+      const { error } = x ? await sb.from('recordatorios').update(row).eq('id', x.id) : await sb.from('recordatorios').insert(row);
+      if (error) return fallo(error, 'Falta ejecutar el Bloque 62 en Supabase.'); cerrarSheet(); await cargar(); render(); toast('Recordatorio guardado');
+    });
+    $('#rc-del')?.addEventListener('click', async () => { if (!confirm('¿Eliminar este recordatorio?')) return; await sb.from('recordatorios').delete().eq('id', x.id); cerrarSheet(); await cargar(); render(); });
+  }
+  async function moverRec(id, dir) {
+    const l = recPend(null), i = l.findIndex(x => x.id === id), j = i + dir; if (i < 0 || j < 0 || j >= l.length) return;
+    [l[i], l[j]] = [l[j], l[i]];
+    for (const [k, x] of l.entries()) if (x.orden !== k + 1) { const { error } = await sb.from('recordatorios').update({ orden: k + 1 }).eq('id', x.id); if (error) return fallo(error); }
+    await cargar(); render();
+  }
+  async function hechoRec(id, on) { const { error } = await sb.from('recordatorios').update({ hecho_at: on ? new Date().toISOString() : null }).eq('id', id); if (error) return fallo(error); await cargar(); render(); if (on) toast('Hecho ✓'); }
   /* ---------- Mejoras del negocio: máximo 3 abiertas ---------- */
   function vMejoras() {
     const l = S.c.mejoras || [], ab = l.filter(x => x.estado === 'abierta'), ideas = l.filter(x => x.estado === 'idea');
@@ -314,5 +354,5 @@ const Negocio = (() => {
   }
   async function revisionHecha() { await guardarAjuste('eco_revision', hoyISO()); toast('Revisión semanal anotada'); render(); }
 
-  return { cargar, vInicio, vEconomia, vEcoResumen, semana, propuestas, delDia, formCapacidad, formItem, formTarea, hecha, estrella, decidirAnterior, formCierre, nuevaMejora, estadoMejora, formSaldo, formMov, formReserva, revisionHecha, calc };
+  return { vRecordatorios, formRec, moverRec, hechoRec, cargar, vInicio, vEconomia, vEcoResumen, semana, propuestas, delDia, formCapacidad, formItem, formTarea, hecha, estrella, decidirAnterior, formCierre, nuevaMejora, estadoMejora, formSaldo, formMov, formReserva, revisionHecha, calc };
 })();

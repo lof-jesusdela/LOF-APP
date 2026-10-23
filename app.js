@@ -2741,6 +2741,7 @@ function vFicha() {
     <div class="small muted">${esc(a.email)} · alta ${esc(fCorta(a.fecha_alta))}${a.nombre_fiscal ? ' · ' + esc(a.nombre_fiscal) : ''}</div>
     <div class="row" style="flex-wrap:wrap;gap:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como ${esc(nom)}</button><button class="btn sm gold" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm" data-act="abrirReporte" data-id="${a.id}">📋 Reporting semanal</button><button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}</div>${a.activo === false ? '<div class="aprox small" style="margin-top:10px">Antiguo alumno: no le llegan avisos de seguimiento al coach. Sus datos siguen guardados y puede seguir usando la app. Reactívalo si vuelve a empezar un proceso.</div>' : ''}</section>
   ${Acomp.vResumen(f, a)}
+  ${Negocio.vRecordatorios(a.id)}
   ${e.items.length ? `<section class="section"><div class="card stack"><div class="row"><span class="eyebrow grow">Para revisar</span>${e.motivos.length ? '' : '<span class="pill ok">✅ Todo al día</span>'}</div>${vListaAlertas(a.id, e, true)}</div></section>` : ''}
   <section class="section"><div class="section-head"><h2>Plan</h2><button class="btn sm ghost" data-act="editarServicio">✎ Editar</button></div><div class="card stack">
     <button class="plan-b" data-act="fichaSub" data-s="plan"><div class="grow"><h3>${esc(srv?.producto || 'Sin plan asignado')} <span style="color:var(--blue-text)">›</span></h3><div class="small" style="color:var(--blue-text)">Ver toda su planificación: entrenamiento, alimentación y hábitos</div></div></button>
@@ -4975,6 +4976,10 @@ document.addEventListener('click', async e => {
     case 'cerrarDia': S.dia = null; S.sesion = null; render(); break;
     case 'salirComo': await salirComo(); break;
     case 'volverEntreno': await volverEntreno(); break;
+    case 'recNuevo': Negocio.formRec(b.dataset.id ? +b.dataset.id : null, b.dataset.al || S.ficha?.id || null); break;
+    case 'recMover': await Negocio.moverRec(+b.dataset.id, +b.dataset.dir); break;
+    case 'recHecho': await Negocio.hechoRec(+b.dataset.id, true); break;
+    case 'recDeshacer': await Negocio.hechoRec(+b.dataset.id, false); break;
     case 'abrirDiaAlt': { const c = (S.d.alternativos || []).find(x => x.id === +b.dataset.p), d = c?.dias.find(x => x.id === +b.dataset.id); if (d) await abrirDia(d.id, { dia: d }); break; }
     case 'altToggle': await altToggle(+b.dataset.id, b.dataset.v === '1'); break;
     case 'verValoracion': S.valSel = +b.dataset.id; render(); break;
