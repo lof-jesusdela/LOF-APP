@@ -4222,7 +4222,7 @@ function vEditor() {
     ${d.bloques_sesion.map(b => `<div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:10px">
       <div class="row" style="flex-wrap:wrap"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}${b.variante ? ` <span class="pill blue">${esc(b.variante)}</span>` : ''}</h3>${(() => { const k = d.bloques_sesion.indexOf(b), pr = d.bloques_sesion[k - 1]; return b.tipo === 'fuerza' && pr?.tipo === 'fuerza' ? `<button class="btn sm ghost" data-act="unirBloque" data-id="${b.id}" title="Pasa sus ejercicios al bloque ${esc(pr.letra)}">⤒ Unir con ${esc(pr.letra)}</button>` : ''; })()}<button class="btn sm ghost" data-act="dupBloque" data-id="${b.id}">⧉ Duplicar</button><button class="btn sm ghost" data-act="edBloque" data-id="${b.id}">✎ Editar bloque</button></div>
       ${b.agrupacion ? `<div class="small muted">${esc(b.agrupacion)}</div>` : ''}
-      ${b.tipo === 'fuerza' ? `${b.ejercicios_sesion.map((e, i) => `<div class="ed-ej">${(() => { const u = e.imagen_url || (S.c.ejercicios || []).find(x => x.id === e.ejercicio_id)?.imagen_url; return u ? `<img class="ed-mini" src="${esc(u)}" alt="" loading="lazy" data-act="edEj" data-id="${e.id}">` : `<span class="ed-mini ed-sin" data-act="edEj" data-id="${e.id}" title="Sin foto: toca para añadirla">📷</span>`; })()}<div class="grow" data-act="edEj" data-id="${e.id}" style="cursor:pointer;min-width:0"><b class="small">${i + 1}. ${esc(e.nombre || e.ejercicios?.nombre || '')}</b><div class="small muted">${resumen(e)}</div></div>${i > 0 ? `<button class="mini" data-act="separarEj" data-id="${e.id}" aria-label="Separar en un bloque nuevo desde este ejercicio" title="Separar en un bloque nuevo desde aquí">✂</button>` : ''}<button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="-1" aria-label="Subir" ${i === 0 ? 'disabled' : ''}>↑</button><button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="1" aria-label="Bajar" ${i === b.ejercicios_sesion.length - 1 ? 'disabled' : ''}>↓</button></div>`).join('')}
+      ${b.tipo === 'fuerza' ? `${edEjercicios(b, (e, i) => `<div class="ed-ej">${(() => { const u = e.imagen_url || (S.c.ejercicios || []).find(x => x.id === e.ejercicio_id)?.imagen_url; return u ? `<img class="ed-mini" src="${esc(u)}" alt="" loading="lazy" data-act="edEj" data-id="${e.id}">` : `<span class="ed-mini ed-sin" data-act="edEj" data-id="${e.id}" title="Sin foto: toca para añadirla">📷</span>`; })()}<div class="grow" data-act="edEj" data-id="${e.id}" style="cursor:pointer;min-width:0"><b class="small">${i + 1}. ${esc(e.nombre || e.ejercicios?.nombre || '')}</b><div class="small muted">${resumen(e)}</div></div>${i > 0 ? `<button class="mini" data-act="separarEj" data-id="${e.id}" aria-label="Separar en un bloque nuevo desde este ejercicio" title="Separar en un bloque nuevo desde aquí">✂</button>` : ''}<button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="-1" aria-label="Subir" ${i === 0 ? 'disabled' : ''}>↑</button><button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="1" aria-label="Bajar" ${i === b.ejercicios_sesion.length - 1 ? 'disabled' : ''}>↓</button></div>`)}
         <button class="btn sm ghost" data-act="edEj" data-bloque="${b.id}" style="align-self:flex-start">+ Añadir ejercicio</button>` : `<div class="row" style="gap:10px">${(b.imagen_url || miniYoutube(b.video_url) || fotosCardio(b)[0]) ? `<img class="ed-mini" src="${esc(b.imagen_url || miniYoutube(b.video_url) || fotosCardio(b)[0])}" alt="" loading="lazy" data-act="verImagen" data-src="${esc(b.imagen_url)}" onerror="this.outerHTML='<span class=&quot;ed-mini ed-sin&quot;>⚠</span>'">` : ''}<div class="small muted">${esc(b.tipo === 'cardio' ? [b.duracion, fcTexto(b.fc_objetivo, fcEditor()), b.maquina].filter(Boolean).join(' · ') : 'Movilidad')}</div></div>`}
     </div>`).join('')}
     <button class="btn sm" data-act="edParte" data-dia="${d.id}" style="align-self:flex-start">＋ Añadir parte</button>
@@ -4698,6 +4698,22 @@ async function unirBloque(id) {
   } catch (err) { fallo(err, 'No se han podido unir los bloques: ' + (err.message || 'revisa la conexión')); }
   refrescarEditor();
 }
+/* Editor: superseries visibles (recuadro dorado) y un toque entre ejercicios para juntarlos o separarlos */
+function edEjercicios(b, fila) {
+  const L = b.ejercicios_sesion, cad = cadenasDe(L); let out = '', i = 0;
+  cad.forEach(c => {
+    const filas = c.map((e, k) => (k > 0 ? `<button type="button" class="ss-link on" data-act="ssSeparar" data-id="${c[k - 1].id}" title="Separar: con descanso entre ellos">🔗 Juntos sin descanso · <u>separar</u></button>` : (i > 0 ? `<button type="button" class="ss-link" data-act="ssJuntar" data-id="${L[i - 1].id}" title="Hacer superserie con el anterior">＋ juntar con el anterior</button>` : '')) + fila(e, i++)).join('');
+    out += c.length > 1 ? `<div class="ss-caja"><span class="ss-tit">🔗 Superserie · ${c.length} ejercicios seguidos sin descanso; el descanso va al final</span>${filas}</div>` : filas;
+  });
+  return out;
+}
+async function ssCambiar(id, juntar) {
+  const e = S.editor.prog.dias.flatMap(d => d.bloques_sesion).flatMap(b => b.ejercicios_sesion).find(x => x.id === id); if (!e) return;
+  const des = juntar ? 0 : 90, pauta = Array.isArray(e.pauta) && e.pauta.length ? e.pauta.map((t, k, a) => k === a.length - 1 ? { ...t, d: des } : t) : e.pauta;
+  const row = { descanso_seg: des, pauta }; if (!juntar && /juntos|super\s*(serie|set)|circuito/i.test(e.grupo || '')) row.grupo = null;
+  const { error } = await sb.from('ejercicios_sesion').update(row).eq('id', id); if (error) return fallo(error);
+  toast(juntar ? 'Juntos en superserie (sin descanso entre ellos)' : 'Separados: 1 min 30 s de descanso (cámbialo al editar el ejercicio)'); refrescarEditor();
+}
 async function separarEj(id) {
   const dia = S.editor.prog.dias.find(d => d.bloques_sesion.some(b => b.ejercicios_sesion.some(e => e.id === id))); if (!dia) return;
   const blq = dia.bloques_sesion.find(b => b.ejercicios_sesion.some(e => e.id === id)), k = blq.ejercicios_sesion.findIndex(e => e.id === id), mover = blq.ejercicios_sesion.slice(k);
@@ -5042,6 +5058,8 @@ document.addEventListener('click', async e => {
     case 'dupBloque': formDuplicar(+b.dataset.id); break;
     case 'unirBloque': await unirBloque(+b.dataset.id); break;
     case 'separarEj': await separarEj(+b.dataset.id); break;
+    case 'ssJuntar': await ssCambiar(+b.dataset.id, true); break;
+    case 'ssSeparar': await ssCambiar(+b.dataset.id, false); break;
     case 'nuevoPrograma': formPrograma(); break;
     case 'sinVideo': toast('Jesús todavía no ha subido el vídeo de este ejercicio'); break;
     case 'pagar': await marcarPagado(+b.dataset.id, b); break;
