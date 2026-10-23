@@ -2937,7 +2937,7 @@ function formMedicion() {
     fm.querySelectorAll('[data-campo]').forEach(i => { const v = numero(i.value); if (v != null) row[i.dataset.campo] = v; });
     if (row.grasa_pct != null && row.grasa_kg == null && row.peso) row.grasa_kg = Math.round(row.peso * row.grasa_pct) / 100;
     const { error } = await guardarMedicion(row);
-    if (error) { bt.disabled = false; return fallo(error); }
+    if (error) { bt.disabled = false; return fallo(error, 'No se ha podido guardar la medición: ' + (error.message || 'revisa la conexión')); }
     cerrarSheet(); toast('Medición guardada'); await abrirFicha(S.ficha.id); abrirSub('composicion');
     if (primera && !S.ficha.medObj) { toast('Valoración inicial guardada: ahora fija su objetivo'); formObjetivoComp(); }
   });
