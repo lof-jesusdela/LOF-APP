@@ -966,11 +966,10 @@ function vEjercicio(e, i, ro) {
         const ult = k === T - 1, id = `${r}-${k}`, kgP = t.kg === '' ? '↓' : kgDe(t) || kgDe(t0) || kg0, rpP = repsPh(t.r || t0.r), riP = t.rir ?? (ult ? t0.rir ?? e.rir ?? '' : '');
         const pausa = !ult && t.d ? (plan ? `<span class="small muted">${seg(t.d)}</span>` : `<button class="pausa" data-act="tramo" data-d="${t.d}" data-lbl="${esc(ej.nombre)} · pausa">${seg(t.d)}</button>`) : '<span></span>';
         const nc = `<span class="num muted nlab" data-row="${r}" ${k === 0 && !plan ? `id="row-${r}"` : ''}>${k === 0 ? n : t.lado ? '' : '↳'}${t.lado ? `<i>${t.lado}</i>` : ''}</span>`;
-        if (plan) return nc + `<span class="cas">${sp ? '—' : esc(kgP || '—')}</span><span class="cas">${esc(rpP || '—')}</span><span class="cas">${esc(riP === '' || riP == null ? '—' : String(riP))}</span>` + (ult ? '<span></span>' : pausa);
+        if (plan) return nc + `<span class="cas">${sp ? '—' : esc(kgP || '—')}</span><span class="cas">${esc(rpP || '—')}</span>` + (ult ? '<span></span>' : pausa);
         return nc
           + (sp ? `<span class="small muted" data-row="${r}" style="text-align:center">—</span>` : `<input id="kg-${id}" data-row="${r}" type="text" inputmode="decimal" placeholder="${esc(kgP)}" aria-label="Kg serie ${n}${T > 1 ? ' tramo ' + (k + 1) : ''}">`)
           + `<input id="rp-${id}" data-row="${r}" type="text" inputmode="numeric" placeholder="${esc(rpP)}" aria-label="Repeticiones serie ${n}${T > 1 ? ' tramo ' + (k + 1) : ''}">`
-          + `<input id="ri-${id}" data-row="${r}" type="text" inputmode="numeric" placeholder="${esc(String(riP ?? ''))}" aria-label="RIR serie ${n}${T > 1 ? ' tramo ' + (k + 1) : ''}">`
           + (ult ? `<button class="chk" id="ck-${r}" data-act="serie" data-es="${e.id}" data-n="${n}" data-t="${T}" data-sp="${sp ? 1 : 0}" data-d="${descanso}" data-lbl="${esc(ej.nombre)} · serie ${n}" aria-label="Serie ${n} hecha">${CHK}</button>` : pausa);
       }).join('');
     }).join('');
@@ -993,8 +992,9 @@ function vEjercicio(e, i, ro) {
     ${e.aproximacion_631 && !ro ? vAprox(e) : ''}
     ${ro && !plan ? resumenEjCerrado(ro, e) : ''}
     ${tandas && !ro ? Tandas.vista(e, ej, sp) : tandas ? Tandas.vistaRO(e, ro) : ''}
-    ${!ro && !tandas ? (() => { const t0 = grupos[0]?.tramos[0] || {}, kg = sp ? '' : (kgDe(t0) || kg0), rp = repsPh(t0.r), ri = t0.rir ?? e.rir; return `<div class="small pauta-l"><b>Pautado:</b> ${e.series} × ${esc(rp || '—')}${kg ? ' · ' + esc(kg) + ' kg' : ''}${ri != null && ri !== '' ? ' · RIR ' + esc(String(ri)) : ''}${grupos.some(g => g.tramos.length > 1) ? ' · con tramos' : ''}<span class="muted"> · en gris en cada serie. Escribe solo lo que cambie; al marcar ✓ se guarda.</span></div>`; })() : ''}
-    ${tandas ? '' : `<div class="sets"><span class="h">Nº</span><span class="h">Kg</span><span class="h">Reps</span><span class="h">RIR</span><span class="h">${plan ? '' : 'Hecha'}</span>${filas}</div>`}
+    ${!tandas && !ro ? (() => { const rr = [...new Set(grupos.flatMap(g => g.tramos.map(t => t.rir ?? g.tramos[0].rir ?? e.rir)).filter(x => x != null && x !== '').map(String))]; return rr.length ? `<div class="rp-rir">${Tandas.ICO.rir}<div><b>Esfuerzo indicado · RIR ${esc(rr.join(' / '))}</b><span class="small">${esc(rr.length === 1 ? Tandas.rirTxt(rr[0]) : 'RIR = repeticiones que deberían quedarte en reserva al terminar cada serie.')}</span></div></div>` : ''; })() : ''}
+    ${!ro && !tandas ? (() => { const t0 = grupos[0]?.tramos[0] || {}, kg = sp ? '' : (kgDe(t0) || kg0), rp = repsPh(t0.r), ri = t0.rir ?? e.rir; return `<div class="small pauta-l"><b>Pautado:</b> ${e.series} × ${esc(rp || '—')}${kg ? ' · ' + esc(kg) + ' kg' : ''}${grupos.some(g => g.tramos.length > 1) ? ' · con tramos' : ''}<span class="muted"> · en gris en cada serie. Escribe solo lo que cambie; al marcar ✓ se guarda.</span></div>`; })() : ''}
+    ${tandas ? '' : `<div class="sets"><span class="h">Nº</span><span class="h">Kg</span><span class="h">Reps</span><span class="h">${plan ? '' : 'Hecha'}</span>${filas}</div>`}
     ${plan ? '' : ro ? (com ? `<div class="ex-com small"><b>Comentario:</b> ${esc(com)}</div>` : '') : `<div class="ex-com-w" id="com-${e.id}">${com ? `<div class="ex-com small">${esc(com)} <button class="linkbtn small" data-act="comentarEj" data-es="${e.id}">Editar</button></div>` : `<button class="linkbtn small" data-act="comentarEj" data-es="${e.id}">＋ Comentario sobre este ejercicio</button>`}</div>`}
   </div>`;
 }
@@ -1167,7 +1167,7 @@ function filaCerrada(ro, r, n, T, sp) {
     html += `<span class="num muted">${k === 0 ? n : '↳'}</span>`
       + (sp ? `<span class="small muted" style="text-align:center">Sin peso</span>` : `<span class="ro num ${cls}">${kg(v(k))}</span>`)
       + `<span class="ro num ${cls}">${rp(v(k))}</span>`
-      + `<span class="ro num ${cls}">${v(k)?.rir ?? (ult ? '—' : '')}</span>` + (ult ? `<span class="chk ${hecha ? 'on' : ''}" aria-label="${hecha ? 'Hecha' : 'No registrada'}">${CHK}</span>` : '<span></span>');
+      + (ult ? `<span class="chk ${hecha ? 'on' : ''}" aria-label="${hecha ? 'Hecha' : 'No registrada'}">${CHK}</span>` : '<span></span>');
     if (a(k)) html += `<span></span><span class="ant num">Anterior: ${sp ? '' : kg(a(k)) + ' kg × '}${rp(a(k))} rep${a(k).rir != null ? ' · RIR ' + a(k).rir : ''}</span><span></span>`;
   }
   return html;

@@ -1,7 +1,7 @@
 /* ---------- Series con tandas internas, para todos los métodos ----------
    Cada serie es una tarjeta con sus tandas; una tanda puede tener varias partes (lado derecho / izquierdo,
    pesado / explosivo / isométrico). El alumno solo escribe peso y repeticiones (o segundos en los isométricos).
-   Lo pautado se muestra como información y nunca se guarda como realizado sin que el alumno lo confirme.
+   Lo pautado sale en gris en cada casilla: si el alumno no escribe nada y pulsa el botón, se guarda lo pautado (como en las series normales).
    Una serie cuenta como hecha solo cuando todas sus partes están confirmadas (o, en myo reps, cuando el alumno da la serie por terminada).
    Registro: una fila de registros_series por parte (serie = nº de serie, tramo = nº de parte dentro de la serie). */
 const Tandas = {
@@ -101,7 +101,7 @@ const Tandas = {
     if (x.tipo === 'iso') { const s = this.segDe(x); return { txt: s ? `${s} segundos` : String(x.r || '—'), num: s, iso: true }; }
     if (x.myo) return { txt: x.myo.toLowerCase(), num: null };
     const r = String(x?.r ?? '').trim(), ph = repsPh(r);
-    return { txt: ph === 'Máx' ? 'al máximo' : ph ? `${ph} reps` : r || '—', num: /^\d+$/.test(ph) ? +ph : null };
+    return { txt: ph === 'Máx' ? 'al máximo' : ph ? `${ph} reps` : r || '—', num: /^\d+$/.test(ph) ? +ph : null, ph: /^\d/.test(ph) ? ph : '' };
   },
   nomParte(x) { return [x.vuelta ? `${x.vuelta}ª vuelta` : '', x.lado ? this.LADO[x.lado] : '', x.tipo ? this.TIPO[x.tipo] : ''].filter(Boolean).join(' · '); },
   chipLado: l => `<span class="rp-lado ${l === 'D' ? 'd' : 'i'}">${l === 'D' ? 'Derecho' : 'Izquierdo'}</span>`,
@@ -171,18 +171,19 @@ const Tandas = {
   kgPlan(x, sp) { return sp ? '' : x.kg === '' ? '' : kgDe(x); },
   cabParte(x, rirUnico, sp, k) {
     const o = this.objetivo(x), kgP = this.kgPlan(x, sp);
-    return `<span class="muted"> · Objetivo: ${esc(o.txt)}${kgP ? ` · ${esc(fmtNum(numero(kgP), 2))} kg ${x.auto ? '(−20 %)' : 'pautados'}` : (!sp && x.kg === '' && k > 0) ? ' · baja el peso' : ''}</span>${rirUnico === undefined && x.rir != null && x.rir !== '' ? ` <span class="rp-rir-chip">RIR ${esc(String(x.rir))}</span>` : ''}`;
+    return `<span class="muted"> · Objetivo: ${esc(o.txt)}${x.auto ? ' · baja un 20 %' : (!sp && x.kg === '' && k > 0) ? ' · baja el peso' : ''}</span>${rirUnico === undefined && x.rir != null && x.rir !== '' ? ` <span class="rp-rir-chip">RIR ${esc(String(x.rir))}</span>` : ''}`;
   },
   campos(e, fila, n, x, sp, una, rirUnico, t = {}) {
     const z = S.sesion, id = `${fila}-${x.p}`, u = z.ultimos[id], v = z.valores[id], bor = z.borr || {}, o = this.objetivo(x), kgP = this.kgPlan(x, sp), bajada = !sp && x.kg === '' && x.p > 0;
     const val = (c, f) => v && v[f] != null ? fmtNum(v[f], 2) : (bor[`${c}-${id}`] ?? '');
+    // En gris: lo pautado y, si no hay pauta, lo de la última vez
+    const phKg = kgP ? fmtNum(numero(kgP), 2) : (u?.kg != null ? fmtNum(u.kg, 2) : '—'), phRp = o.iso ? (o.num ?? (u?.repeticiones ?? '—')) : (o.ph || (x.myo ? '—' : (u?.repeticiones ?? '—')));
     const nom = this.nomParte(x), lblR = o.iso ? 'Segundos' : 'Reps realizadas';
     return `<div class="rp-parte${una ? ' una' : ''}">
-      ${una ? '' : `<div class="rp-pt">${x.lado && !t.lado ? this.chipLado(x.lado) : ''}${x.vuelta ? `<b>${x.vuelta}ª vuelta</b>` : ''}${x.tipo ? `<b>${esc(this.TIPO[x.tipo])}</b>` : ''}<span class="muted">Objetivo: ${esc(o.txt)}${kgP ? ` · ${esc(fmtNum(numero(kgP), 2))} kg` : ''}</span>${rirUnico === undefined && x.rir != null && x.rir !== '' ? `<span class="rp-rir-chip">RIR ${esc(String(x.rir))}</span>` : ''}</div>`}
-      ${u && (u.kg != null || u.repeticiones != null) ? `<div class="rp-ult small">Última vez: ${u.kg != null && !sp ? fmtNum(u.kg, 2) + ' kg × ' : ''}${u.repeticiones ?? '—'}${o.iso ? ' s' : ' reps'}</div>` : ''}
+      ${una ? '' : `<div class="rp-pt">${x.lado && !t.lado ? this.chipLado(x.lado) : ''}${x.vuelta ? `<b>${x.vuelta}ª vuelta</b>` : ''}${x.tipo ? `<b>${esc(this.TIPO[x.tipo])}</b>` : ''}<span class="muted">Objetivo: ${esc(o.txt)}</span>${rirUnico === undefined && x.rir != null && x.rir !== '' ? `<span class="rp-rir-chip">RIR ${esc(String(x.rir))}</span>` : ''}</div>`}
       <div class="rp-campos${sp ? ' uno' : ''}">
-        ${sp ? '' : `<label>Peso (kg)<input id="kg-${id}" data-tanda="1" data-row="${fila}" data-plan="${esc(kgP)}"${bajada ? ' data-bajada="1"' : ''} type="text" inputmode="decimal" placeholder="—" value="${esc(val('kg', 'kg'))}" aria-label="Peso en kilos, serie ${n}${nom ? ', ' + esc(nom) : ''}"></label>`}
-        <label>${lblR}<input id="rp-${id}" data-tanda="1" data-row="${fila}" data-obj="${o.num ?? ''}"${o.iso ? ' data-iso="1"' : ''} type="text" inputmode="numeric" placeholder="—" value="${esc(val('rp', 'repeticiones'))}" aria-label="${lblR}, serie ${n}${nom ? ', ' + esc(nom) : ''}"></label>
+        ${sp ? '' : `<label>Peso (kg)<input id="kg-${id}" data-tanda="1" data-row="${fila}" data-plan="${esc(kgP)}"${bajada ? ' data-bajada="1"' : ''} type="text" inputmode="decimal" placeholder="${esc(phKg)}" value="${esc(val('kg', 'kg'))}" aria-label="Peso en kilos, serie ${n}${nom ? ', ' + esc(nom) : ''}"></label>`}
+        <label>${lblR}<input id="rp-${id}" data-tanda="1" data-row="${fila}" data-obj="${o.num ?? ''}"${o.iso ? ' data-iso="1"' : ''} type="text" inputmode="numeric" placeholder="${esc(String(phRp))}" value="${esc(val('rp', 'repeticiones'))}" aria-label="${lblR}, serie ${n}${nom ? ', ' + esc(nom) : ''}"></label>
       </div></div>`;
   },
   /* Estados visibles (sin rehacer los campos, para no perder lo escrito) */
@@ -226,22 +227,12 @@ const Tandas = {
     if (z.guard[id] || this.tandaHecha(z, fila, t)) return;   // evita duplicados por pulsaciones repetidas
     const L = t.partes.map(x => {
       const pid = `${fila}-${x.p}`, kgI = document.getElementById('kg-' + pid), rpI = document.getElementById('rp-' + pid);
-      return { x, pid, kgI, rpI, kg: kgI ? numero(kgI.value) : null, rp: numero(rpI.value), kgPlan: kgI ? numero(kgI.dataset.plan) : null, rpPlan: numero(rpI.dataset.obj) };
+      // Lo que no se escribe se guarda como lo que sale en gris (pauta o última vez)
+      return { x, pid, kgI, rpI, kg: kgI ? (numero(kgI.value) ?? valPh(kgI)) : null, rp: numero(rpI.value) ?? valPh(rpI) };
     }).filter(q => !this.hecha(z, fila, q.x.p));
-    const sinDato = L.find(q => q.rp == null && q.rpPlan == null);
+    const sinDato = L.find(q => q.rp == null);
     if (sinDato) { toast(`Escribe ${sinDato.rpI.dataset.iso ? 'los segundos' : 'las repeticiones'}${L.length > 1 ? ' de ' + this.nomParte(sinDato.x).toLowerCase() : ''} que has hecho`); sinDato.rpI.focus(); return; }
-    const faltan = L.filter(q => q.rp == null || (q.kgI && q.kg == null && q.kgPlan != null));
-    if (faltan.length) {
-      // Sin escribir nada: no se guarda lo pautado salvo que el alumno lo confirme expresamente
-      if (b.dataset.conf !== '1') {
-        const q = faltan[0], r = q.rp ?? q.rpPlan, p = q.kg ?? q.kgPlan, u = q.rpI.dataset.iso ? 's' : ' reps';
-        b.dataset.conf = '1'; b.classList.add('conf');
-        b.textContent = L.length === 1 ? `¿Has hecho ${r}${u}${p != null ? ` con ${fmtNum(p, 2)} kg` : ''}? Toca para confirmar` : `¿Has hecho lo pautado en ${faltan.length === L.length ? 'todas las partes' : 'lo que no has escrito'}? Toca para confirmar`;
-        clearTimeout(b._t); b._t = setTimeout(() => { if (b.dataset.conf === '1') { b.dataset.conf = ''; b.classList.remove('conf'); b.textContent = b.dataset.lbl; } }, 6000);
-        return;
-      }
-      faltan.forEach(q => { if (q.rp == null) { q.rp = q.rpPlan; q.rpI.value = q.rp; } if (q.kgI && q.kg == null && q.kgPlan != null) { q.kg = q.kgPlan; q.kgI.value = fmtNum(q.kg, 2); } });
-    }
+    L.forEach(q => { if (!q.rpI.value.trim()) q.rpI.value = q.rp; if (q.kgI && !q.kgI.value.trim() && q.kg != null) q.kgI.value = fmtNum(q.kg, 2); });
     clearTimeout(b._t); b.dataset.conf = ''; b.classList.remove('conf');
     z.guard[id] = true; b.disabled = true; b.textContent = 'Guardando…';
     if (!z.inicio && !z.editar) empezarCrono();
@@ -281,7 +272,7 @@ const Tandas = {
         const sk = document.getElementById('kg-' + did); if (!sk || sk.value || sk.dataset.bajada) return;
         const src = did.startsWith(`${es}-${n + 1}-`) ? z.valores[`${fila}-${did.split('-').pop()}`] : z.valores[q.pid]; if (src?.kg == null) return;
         const planS = numero(document.getElementById('kg-' + (did.startsWith(`${es}-${n + 1}-`) ? `${fila}-${did.split('-').pop()}` : q.pid))?.dataset.plan), planD = numero(sk.dataset.plan);
-        if (planD == null || planD === planS) { sk.value = fmtNum(src.kg, 2); (z.borr ||= {})['kg-' + did] = sk.value; }
+        if (src.kg !== planS && (planD == null || planD === planS)) { sk.value = fmtNum(src.kg, 2); (z.borr ||= {})['kg-' + did] = sk.value; }
       });
     });
     if (this.estadoSerie(z, s, fila).est === 'on') this.serieHecha(e, n, sid);
