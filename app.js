@@ -954,7 +954,7 @@ function pautaEfectiva(e) {
 /* Datos del ejercicio: lo puesto solo en este programa (foto, nombre, vídeo, músculo) manda sobre la biblioteca */
 const ejDe = e => { const b = e.ejercicios || {}, o = {}; ['imagen_url', 'nombre', 'video_url', 'musculo_img_url'].forEach(k => { if (e[k]) o[k] = e[k]; }); return Object.keys(o).length ? { ...b, ...o } : b; };
 function vEjercicio(e, i, ro) {
-  const grupos = gruposDe(pautaEfectiva(e)), sp = esSinPeso(e), ej = ejDe(e), plan = ro?.plan, tandas = !ro && Tandas.usa(e);
+  const grupos = gruposDe(pautaEfectiva(e)), sp = esSinPeso(e), ej = ejDe(e), plan = ro?.plan, tandas = Tandas.usa(e);
   const kg0 = kgDe(grupos[0]?.tramos[0]) || kgDe({ kg: e.peso_ref });
   let n = 0;
   const filas = grupos.map(g => {
@@ -992,7 +992,7 @@ function vEjercicio(e, i, ro) {
     ${e.nota ? `<div class="small ex-nota"><b>Nota de Jesús:</b> ${esc(e.nota)}</div>` : ''}
     ${e.aproximacion_631 && !ro ? vAprox(e) : ''}
     ${ro && !plan ? resumenEjCerrado(ro, e) : ''}
-    ${tandas ? Tandas.vista(e, ej, sp) : ''}
+    ${tandas && !ro ? Tandas.vista(e, ej, sp) : tandas ? Tandas.vistaRO(e, ro) : ''}
     ${!ro && !tandas ? (() => { const t0 = grupos[0]?.tramos[0] || {}, kg = sp ? '' : (kgDe(t0) || kg0), rp = repsPh(t0.r), ri = t0.rir ?? e.rir; return `<div class="small pauta-l"><b>Pautado:</b> ${e.series} × ${esc(rp || '—')}${kg ? ' · ' + esc(kg) + ' kg' : ''}${ri != null && ri !== '' ? ' · RIR ' + esc(String(ri)) : ''}${grupos.some(g => g.tramos.length > 1) ? ' · con tramos' : ''}<span class="muted"> · en gris en cada serie. Escribe solo lo que cambie; al marcar ✓ se guarda.</span></div>`; })() : ''}
     ${tandas ? '' : `<div class="sets"><span class="h">Nº</span><span class="h">Kg</span><span class="h">Reps</span><span class="h">RIR</span><span class="h">${plan ? '' : 'Hecha'}</span>${filas}</div>`}
     ${plan ? '' : ro ? (com ? `<div class="ex-com small"><b>Comentario:</b> ${esc(com)}</div>` : '') : `<div class="ex-com-w" id="com-${e.id}">${com ? `<div class="ex-com small">${esc(com)} <button class="linkbtn small" data-act="comentarEj" data-es="${e.id}">Editar</button></div>` : `<button class="linkbtn small" data-act="comentarEj" data-es="${e.id}">＋ Comentario sobre este ejercicio</button>`}</div>`}
@@ -4456,7 +4456,20 @@ function filaTramo(t, primero) {
     <label>Desc. (s)<input type="number" data-k="d" min="0" step="5" value="${t.d ?? ''}" placeholder="60"></label>
     <button type="button" class="mini" data-quitar aria-label="Quitar">✕</button>
     <label style="grid-column:3/5">RIR<input type="text" data-k="rir" value="${esc(t.rir ?? '')}" placeholder="1"></label>
+    <input type="hidden" data-k="tp" value="${esc(t.tp || '')}"><input type="hidden" data-k="op" value="${esc(t.op ? JSON.stringify(t.op) : '')}">
   </div>`;
+}
+/* Una fila del editor de pauta → tramo { s, r, rir, kg, d, tp, op } */
+function leerFilaTramo(f, i = 1) {
+  const g = k => f.querySelector(`[data-k="${k}"]`)?.value.trim() ?? '';
+  const t = { r: g('r') || '—' };
+  if (g('tipo') === 'serie' || i === 0) t.s = Math.max(1, numero(g('s')) || 1);
+  const rir = g('rir'); if (rir !== '') t.rir = /^\d+$/.test(rir) ? +rir : rir;
+  if (g('kg')) t.kg = g('kg');
+  t.d = numero(g('d')) ?? 0;
+  if (g('tp')) t.tp = g('tp');
+  if (g('op')) try { t.op = JSON.parse(g('op')); } catch (e) { }
+  return t;
 }
 const MATERIALES = ['Barra recta', 'Barra Z', 'Barra olímpica', 'Cuerda', 'Agarre en V', 'Agarre neutro', 'Agarre prono', 'Agarre supino', 'Agarre amplio', 'Agarre cerrado', 'Barra de polea corta', 'Mancuernas', 'Kettlebell', 'Banda elástica', 'Mini banda', 'Tobillera', 'Landmine', 'Smith', 'Banco plano', 'Banco inclinado'];
 function formEjSesion(id, bloqueId) {
@@ -4490,8 +4503,9 @@ function formEjSesion(id, bloqueId) {
       <label class="f">Foto (opcional)<input type="file" id="es-nfoto" accept="image/*"></label><div id="es-nprev"></div>
       <label class="f">Vídeo (opcional)<input type="text" id="es-nvid" inputmode="url" placeholder="https://youtu.be/…"></label></div>
     ${hermanos.length ? `<label class="f">Bloque<select id="es-blq">${hermanos.map(x => `<option value="${x.id}" ${x.id === blq.id ? 'selected' : ''}>${esc(x.letra)} · ${esc(x.nombre)}</option>`).join('')}<option value="nuevo">＋ En un bloque nuevo, después del ${esc(blq.letra)}</option></select></label>` : ''}
-    <div class="stack" style="gap:8px"><span class="small muted">Pauta serie a serie. Usa "Tramo sin parar" para dropsets, clusters o rest-pause.</span><div id="es-tramos" class="stack" style="gap:10px">${pauta.map((t, i) => filaTramo(t, i === 0)).join('')}</div><button type="button" class="btn sm ghost" id="es-add" style="align-self:flex-start">+ Añadir fila</button></div>
     <label class="f">Método<select id="es-met"><option value="">Sin método</option>${S.editor.metodos.map(m => `<option value="${m.id}" ${e?.metodo_id === m.id ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('')}</select></label>
+    <div id="es-asis"></div>
+    <div class="stack" style="gap:8px"><span class="small muted">Pauta serie a serie. Usa "Tramo sin parar" para las tandas de un método (dropset, cluster, rest-pause…).</span><div id="es-tramos" class="stack" style="gap:10px">${pauta.map((t, i) => filaTramo(t, i === 0)).join('')}</div><button type="button" class="btn sm ghost" id="es-add" style="align-self:flex-start">+ Añadir fila</button></div>
     <label class="f">Ajustes a su medida<input type="text" id="es-aj" value="${esc(e?.ajustes || '')}" placeholder="Ej. Silla: 5 · pies altos"></label>
     <div class="stack" style="gap:8px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2)">
       <label class="f">Material (barra, agarre, accesorio…)<input type="text" id="es-mat" list="es-mat-l" value="${esc(e?.material ?? libEj?.material ?? '')}" placeholder="Ej. Barra recta · agarre neutro" autocomplete="off"></label>
@@ -4552,6 +4566,7 @@ function formEjSesion(id, bloqueId) {
   $('#es-prev').addEventListener('click', ev => { if (ev.target.id === 'es-img') ev.target.classList.toggle('grande'); });
   $('#es-nfoto').addEventListener('change', ev => { st.nfoto = ev.target.files[0] || null; $('#es-nprev').innerHTML = st.nfoto ? `<img class="es-nimg" src="${esc(URL.createObjectURL(st.nfoto))}" alt="">` : ''; });
   $('#es-add').addEventListener('click', () => { $('#es-tramos').insertAdjacentHTML('beforeend', filaTramo({ d: 0 }, false)); });
+  Tandas.ed.montar($('#es-asis'), $('#es-tramos'), $('#es-met'), v => (S.editor.metodos || []).find(m => m.id === +v)?.nombre);
   $('#es-tramos').addEventListener('click', ev => { const q = ev.target.closest('[data-quitar]'); if (q && document.querySelectorAll('#es-tramos [data-tramo]').length > 1) q.closest('[data-tramo]').remove(); });
   $('#f-ejs').addEventListener('submit', async ev => {
     ev.preventDefault();
@@ -4589,15 +4604,7 @@ function formEjSesion(id, bloqueId) {
       let destino = blq; const vb = $('#es-blq')?.value;
       if (vb === 'nuevo') destino = await nuevoBloqueTras(dia, blq);
       else if (vb && +vb !== blq.id) destino = hermanos.find(x => x.id === +vb) || blq;
-      const filas = [...document.querySelectorAll('#es-tramos [data-tramo]')].map((f, i) => {
-        const g = k => f.querySelector(`[data-k="${k}"]`).value.trim();
-        const t = { r: g('r') || '—' };
-        if (g('tipo') === 'serie' || i === 0) t.s = Math.max(1, numero(g('s')) || 1);
-        const rir = g('rir'); if (rir !== '') t.rir = /^\d+$/.test(rir) ? +rir : rir;
-        if (g('kg')) t.kg = g('kg');
-        t.d = numero(g('d')) ?? 0;
-        return t;
-      });
+      const filas = [...document.querySelectorAll('#es-tramos [data-tramo]')].map((f, i) => leerFilaTramo(f, i));
       const rirNum = filas.map(t => t.rir).find(v => typeof v === 'number');
       const row = { ejercicio_id: +ejId, pauta: filas, series: filas.reduce((t, x) => t + (x.s || 0), 0), repeticiones: filas[0].r, rir: rirNum ?? null,
         peso_ref: filas.find(t => t.kg)?.kg || null, descanso_seg: filas[filas.length - 1].d, metodo_id: numero($('#es-met').value), ajustes: $('#es-aj').value.trim() || null,
@@ -5088,6 +5095,7 @@ document.addEventListener('click', async e => {
     case 'serie': await toggleSerie(b); break;
     case 'tanda': await Tandas.confirmar(b); break;
     case 'tandaQuitar': await Tandas.quitar(b); break;
+    case 'tandaCortar': Tandas.cortar(b); break;
     case 'rpAbrir': Tandas.abrir(+b.dataset.es, +b.dataset.n); break;
     case 'tramo': { const d = +b.dataset.d; if (d > 0) startTimer(d, 'Pausa · ' + b.dataset.lbl); else toast('Sin pausa: sigue con el siguiente tramo'); break; }
     case 'aprox': b.classList.add('on'); if (b.dataset.j === '2') startTimer(60, 'Descanso tras la aproximación 6·3·1'); else toast(b.dataset.j === '0' ? 'Ahora 3 repeticiones con tu peso objetivo' : 'Ahora 1 repetición por encima del objetivo'); break;

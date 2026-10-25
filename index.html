@@ -107,6 +107,20 @@ header.top{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;ali
 .exn{font-family:var(--display);font-weight:800;font-size:20px;color:var(--blue);width:24px;flex:none}
 .tramos{display:flex;flex-wrap:wrap;gap:6px}
 .tramo{border:1px dashed var(--line);background:var(--surface);border-radius:10px;padding:6px 9px;font-size:12px;text-align:left}
+.as-panel{padding:12px;border:1.5px solid var(--blue);border-radius:12px;background:var(--blue-soft);gap:8px}
+.as-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.as-grid label,.as-reps label{display:flex;flex-direction:column;gap:3px;font-size:12.5px}
+.as-reps{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.as-cont{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface);border-radius:10px;padding:8px 10px}.as-cont b{min-width:22px;text-align:center;font-size:17px}
+.as-prev{margin:0;color:var(--blue-text);font-weight:700}
+.rp-met{display:flex;flex-direction:column;gap:4px;background:var(--blue-soft);border-radius:12px;padding:10px 12px;margin-top:10px;color:var(--fg)}
+.rp-lado{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12.5px;font-weight:800;vertical-align:1px}
+.rp-lado.d{background:var(--blue);color:#fff}.rp-lado.i{background:var(--gold);color:#2a2000}
+.rp-parte{display:flex;flex-direction:column;gap:6px}.rp-parte:not(.una){padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2)}
+.rp-pt{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:14px}
+.rp-corte{align-self:center;margin-top:2px}
+.rp-tanda.cortada{opacity:.6}
+.rp-ro{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.rp-ro-s{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:13px;padding:8px 10px;border:1px solid var(--line);border-radius:10px}.rp-ro-s b{flex-basis:100%}.rp-ro-s i{font-style:normal;color:var(--muted)}
 .rp-desc{display:flex;align-items:center;gap:14px;background:var(--surface-2);border-radius:14px;padding:12px 14px;margin-top:10px}
 .rp-desc>div{display:flex;flex-direction:column;gap:1px;flex:1;min-width:0}.rp-desc b{font-size:16px;color:var(--fg)}.rp-desc .small{color:var(--fg)}
 .rp-reloj{width:30px;height:30px;flex:none;color:var(--fg)}.rp-sep{flex:0 0 1px!important;align-self:stretch;background:var(--line)}
