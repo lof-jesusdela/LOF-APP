@@ -257,7 +257,7 @@ function vContextos(f, a) {
   const est = c => c.contexto_hasta < hoy ? ['', 'Terminado'] : c.contexto_desde <= lunes ? ['gold', 'Activo esta semana'] : ['blue', 'Programado'];
   return `<section class="section"><div class="section-head"><h2>Contextos temporales</h2><button class="btn sm" data-act="nuevoContexto">＋ Nuevo contexto</button></div>
     <div class="card">${l.map(c => `<div class="line" style="flex-wrap:wrap"><div class="grow" style="min-width:180px"><b>${esc(c.contexto_nombre || 'Contexto')}</b><div class="small muted">${esc(fCtx(c))} · ${semanasCtx(c)} ${semanasCtx(c) === 1 ? 'semana' : 'semanas'} · ${c.dias_semana} ${c.dias_semana === 1 ? 'entreno' : 'entrenos'}/semana${c.dias ? ` · ${c.dias.length} ${c.dias.length === 1 ? 'sesión' : 'sesiones'}` : ''}</div></div><span class="pill ${est(c)[0]}">${est(c)[1]}</span><div class="row" style="gap:6px"><button class="btn sm ghost" data-act="sesionesContexto" data-id="${c.id}">✎ Sesiones</button><button class="btn sm ghost" data-act="editarContexto" data-id="${c.id}">Datos</button></div></div>`).join('') || '<div class="empty small">Sin contextos. Úsalos cuando sepas que unas semanas no podrá seguir su plan (vacaciones, viaje, lesión…): le preparas un plan para esas semanas y se mide contra él.</div>'}</div>
-    ${(f.guardados || []).length ? `<div class="section-head" style="margin-top:14px"><h3>Guardados para aplicar cuando quieras</h3></div><div class="card">${f.guardados.map(c => `<div class="line" style="flex-wrap:wrap"><div class="grow" style="min-width:180px"><b>${esc(c.contexto_nombre)}</b><div class="small muted">Sin fechas · ${c.dias_semana} ${c.dias_semana === 1 ? 'entreno' : 'entrenos'}/semana${c.dias ? ` · ${c.dias.length} ${c.dias.length === 1 ? 'sesión' : 'sesiones'}` : ''}</div></div>${c.alternativo ? '<span class="pill gold">Alternativo · siempre visible</span>' : '<span class="pill">Sin aplicar</span>'}<button class="btn sm ${c.alternativo ? 'ghost' : ''}" data-act="altToggle" data-id="${c.id}" data-v="${c.alternativo ? 0 : 1}">${c.alternativo ? 'Quitar como alternativo' : 'Usar como alternativo'}</button><div class="row" style="gap:6px"><button class="btn sm" data-act="editarContexto" data-id="${c.id}">Aplicar</button><button class="btn sm ghost" data-act="sesionesContexto" data-id="${c.id}">✎ Sesiones</button></div></div>`).join('')}</div>` : ''}
+    ${(f.guardados || []).length ? `<div class="section-head" style="margin-top:14px"><h3>Guardados para aplicar cuando quieras</h3></div><div class="card">${f.guardados.map(c => `<div class="line" style="flex-wrap:wrap"><div class="grow" style="min-width:180px"><b>${esc(c.contexto_nombre)}</b><div class="small muted">Sin fechas · ${c.dias_semana} ${c.dias_semana === 1 ? 'entreno' : 'entrenos'}/semana${c.dias ? ` · ${c.dias.length} ${c.dias.length === 1 ? 'sesión' : 'sesiones'}` : ''}</div></div>${c.alternativo ? '<span class="pill gold">Alternativo · siempre visible</span>' : '<span class="pill">Sin aplicar</span>'}<button class="btn sm ${c.alternativo ? 'ghost' : ''}" data-act="altToggle" data-id="${c.id}" data-v="${c.alternativo ? 0 : 1}">${c.alternativo ? 'Quitar como alternativo' : 'Usar como alternativo'}</button><div class="row" style="gap:6px"><button class="btn sm" data-act="editarContexto" data-id="${c.id}">Aplicar</button><button class="btn sm ghost" data-act="sesionesContexto" data-id="${c.id}">✎ Sesiones</button><button class="btn sm ghost" data-act="guardarPlantilla" data-id="${c.id}">Guardar como plantilla</button></div></div>`).join('')}</div>` : ''}
     <p class="note">Durante esas semanas entrena las sesiones del contexto y su cumplimiento se calcula con ellas (por ejemplo, 2 de 2 = 100 %). El ciclo se adapta y al terminar vuelve solo a su programa.</p></section>`;
 }
 function formContexto(id) {
@@ -2447,7 +2447,8 @@ async function editarYo() {
   await abrirFicha(id); if (sub) await abrirSub(sub);
 }
 /* ---------- Plantillas de programa por tipo de alumno (programas sin alumno asignado; los alumnos no las ven) ---------- */
-const CATEGORIAS = ['Futbolistas alto rendimiento', 'Recomposición hombres', 'Recomposición mujeres', 'Salud +55 · lesiones y enfermedades', 'Otras'];
+const CATEGORIAS = ['Futbolistas alto rendimiento', 'Recomposición hombres', 'Recomposición mujeres', 'Salud +55 · lesiones y enfermedades', 'Contextos · semanas adaptadas', 'Otras'];
+const CAT_CTX = 'Contextos · semanas adaptadas';
 async function cargarPlantillas() {
   const sel = c => () => sb.from('programas').select(c + 'id,nombre,dias_semana,dias(id,numero,nombre,foco,bloques_sesion(id,tipo,ejercicios_sesion(id)))').is('alumno_id', null).order('nombre');
   const r = await conRespaldo(sel('categoria,descripcion,valoracion,'), () => conRespaldo(sel('categoria,descripcion,'), sel('')));
@@ -2498,6 +2499,7 @@ function formAsignarPlantilla(alumnoId, plantillaId) {
     <label class="f">Nombre del programa para el alumno<input type="text" id="as-n" placeholder="Ej. Ciclo 1"></label>
     ${P?.ciclos?.length ? `<label class="f">Bloque del proceso<select id="as-c">${P.ciclos.map(c => `<option value="${c.n}" ${c.n === P.ciclo ? 'selected' : ''}>${esc(nomCiclo(c))} · ${esc(fCorta(c.ini))} – ${esc(fCorta(c.fin))}</option>`).join('')}</select></label>` : ''}
     <label class="row small" style="gap:8px"><input type="checkbox" id="as-val" checked style="width:auto"> Crear también su test inicial, si la plantilla lo tiene (los resultados los rellenas tú)</label>
+    <label class="row small" style="gap:8px"><input type="checkbox" id="as-ctx" ${(S.c.plantillas.find(p => p.id === plantillaId) || {}).categoria === CAT_CTX ? 'checked' : ''} style="width:auto"> Guardarlo como contexto del alumno (no cambia su programa activo; lo aplicas cuando quieras)</label>
     <label class="row small" style="gap:8px"><input type="checkbox" id="as-act" checked style="width:auto"> Pasa a ser su programa activo (el anterior queda guardado con su historial)</label>
     <p class="err" id="as-err"></p><button class="btn full" type="submit" id="as-b">Asignar y personalizar</button></form>`);
   $('#f-ap2').addEventListener('submit', async e => {
@@ -2507,7 +2509,14 @@ function formAsignarPlantilla(alumnoId, plantillaId) {
     if (!(pl?.dias || []).length && !confirm('Esta plantilla está vacía (sin días). ¿Asignarla igualmente?')) return;
     btn.disabled = true; btn.textContent = 'Copiando…';
     try {
-      await copiarPrograma({ origen: pid, destino: aid, nombre_nuevo: $('#as-n').value.trim() || pl?.nombre || 'Programa', categoria_nueva: null, limpiar: false, activar: $('#as-act').checked, ciclo_nuevo: $('#as-c') ? +$('#as-c').value : null });
+      const comoCtx = $('#as-ctx').checked, nom = $('#as-n').value.trim() || pl?.nombre || 'Programa';
+      const npid = await copiarPrograma({ origen: pid, destino: aid, nombre_nuevo: comoCtx ? 'Contexto · ' + nom : nom, categoria_nueva: null, limpiar: false, activar: comoCtx ? false : $('#as-act').checked, ciclo_nuevo: comoCtx || !$('#as-c') ? null : +$('#as-c').value });
+      if (comoCtx) {
+        const rc = await sb.from('programas').update({ contexto_nombre: nom, activo: false }).eq('id', npid); if (rc.error) throw rc.error;
+        cerrarSheet(); toast('Guardado como contexto: aplícalo desde su ficha cuando quieras'); await cargarCoach();
+        if (S.ficha?.id === aid) { await cargarProgramasFicha(S.ficha); render(); }
+        return;
+      }
       const val = valDePlantilla(pl);
       if (val && $('#as-val')?.checked) {
         try { await crearValoracionDesdePlantilla(aid, val); }
@@ -2596,10 +2605,10 @@ function formPruebaPlantilla(k) {
   });
 }
 function formGuardarPlantilla(progId, duplicar = false) {
-  const pl = duplicar ? (S.c.plantillas || []).find(p => p.id === progId) : null, pr = !duplicar ? (S.ficha?.programas || []).find(p => p.id === progId) : null;
+  const pl = duplicar ? (S.c.plantillas || []).find(p => p.id === progId) : null, pr = !duplicar ? [...(S.ficha?.programas || []), ...(S.ficha?.guardados || []), ...(S.ficha?.contextos || [])].find(p => p.id === progId) : null, esCtx = !!pr?.contexto_nombre;
   abrirSheet(`<form class="stack" id="f-gp"><h2>${duplicar ? 'Duplicar plantilla' : 'Guardar como plantilla'}</h2>
-    <label class="f">Nombre de la plantilla<input type="text" id="gp-n" value="${esc(duplicar ? (pl?.nombre || '') + ' (copia)' : '')}" placeholder="Ej. Recomposición mujeres · 3 días" required></label>
-    <label class="f">Tipo de alumno<select id="gp-c">${CATEGORIAS.map(c => `<option ${c === pl?.categoria ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
+    <label class="f">Nombre de la plantilla<input type="text" id="gp-n" value="${esc(duplicar ? (pl?.nombre || '') + ' (copia)' : esCtx ? pr.contexto_nombre : '')}" placeholder="Ej. Recomposición mujeres · 3 días" required></label>
+    <label class="f">Tipo de alumno<select id="gp-c">${CATEGORIAS.map(c => `<option ${c === pl?.categoria || (esCtx && c === CAT_CTX) ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
     ${duplicar ? '' : `<label class="row small" style="gap:8px"><input type="checkbox" id="gp-l" checked style="width:auto"> Quitar los pesos y los ajustes de máquina (son de este alumno)</label><p class="small muted">Se copia <b>${esc(pr?.nombre || 'su programa')}</b> con sus días, bloques, métodos y series. El programa del alumno no cambia.</p>`}
     <p class="err" id="gp-err"></p><button class="btn full" type="submit" id="gp-b">Guardar plantilla</button></form>`);
   $('#f-gp').addEventListener('submit', async e => {
