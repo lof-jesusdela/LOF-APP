@@ -138,7 +138,8 @@ async function cargarPerfil() {
   if (!data.consentimiento_at) return Casos.vistaInicial();
   S.modo = data.rol === 'coach' ? 'coach' : 'alumno';
   await Promise.all([cargarAlumno(S.user.id), cargarAjustes()]);
-  avisoCheckin();
+  avisoCheckin(); avisoFutbol();
+  if (!window._lofVis) { window._lofVis = true; document.addEventListener('visibilitychange', () => { if (!document.hidden && S.modo === 'alumno') { avisoCheckin(); avisoFutbol(); } }); }
   if (S.modo === 'coach') await cargarCoach();
   render();
   if (S.modo === 'alumno' && Bienvenida.reciente() && !Bienvenida.vista() && $('#sheet').hidden) Bienvenida.abrir(0);
@@ -455,13 +456,22 @@ function ingestasSemana(reg, ini, srv) {
 function tocaCheckin() {
   const now = new Date(), dow = now.getDay();
   if (!((dow === 6 && now.getHours() >= 15) || dow === 0)) return false;
-  if (Acomp.estado(S.d?.servicio).k === 'pausado') return false;
+  if (Acomp.estado(S.d?.servicio).k === 'pausado' || S.d?.servicio?.modulo_futbol) return false;
   return !(S.d?.checkins || []).some(c => c.semana_inicio === lunesDe(hoyISO()));
 }
 async function avisoCheckin() {
   if (!tocaCheckin() || !('Notification' in window) || Notification.permission !== 'granted') return;
   const k = 'lof-aviso-chk-' + hoyISO(); try { if (localStorage.getItem(k)) return; localStorage.setItem(k, '1'); } catch (e) { }
   try { const reg = await navigator.serviceWorker?.ready; const op = { body: 'Es fin de semana: rellena tu check-in semanal para Jesús. Tarda 2 minutos.', icon: 'icons/icon-192.png', tag: 'checkin' }; reg ? reg.showNotification('Check-in semanal', op) : new Notification('Check-in semanal', op); } catch (e) { }
+}
+/* Avisos del futbolista: check diario, cuestionario del lunes y del partido. Salen al abrir la app, una vez al día por tipo */
+async function avisoFutbol() {
+  if (!S.d?.servicio?.modulo_futbol || !('Notification' in window) || Notification.permission !== 'granted') return;
+  const reg = await navigator.serviceWorker?.ready.catch(() => null);
+  for (const p of pendientesFutbol()) {
+    const k = `lof-aviso-fut-${p.t}-${p.f}-${hoyISO()}`; try { if (localStorage.getItem(k)) continue; localStorage.setItem(k, '1'); } catch (e) { }
+    const op = { body: p.sub, icon: 'icons/icon-192.png', tag: 'fut-' + p.t }; try { reg ? reg.showNotification(p.txt, op) : new Notification(p.txt, op); } catch (e) { }
+  }
 }
 /* Barra de la semana (lunes a domingo): cada comida saludable suma. El color depende del % que lleva
    respecto a lo que podría llevar hasta hoy: verde ≥85 %, naranja 60–85 %, rojo <60 %. */
@@ -765,7 +775,7 @@ const Bienvenida = {
       [(s.modulo_entreno ?? true) && 'Haz tu primer entreno', (D.sesiones || []).some(x => !x.previa), 'tab:entreno'],
       [conPasos(s) && 'Registra tus pasos de hoy', (D.diario || []).some(r => r.pasos != null), null],
       [!s.modulo_presencial && 'Añade tus medidas', (D.mediciones || []).length > 0, 'misMedidas'],
-      ['Rellena tu primer check-in', (D.checkins || []).length > 0, 'tab:checkin']
+      [!s.modulo_futbol && 'Rellena tu primer check-in', (D.checkins || []).length > 0, 'tab:checkin']
     ].filter(x => x[0]);
   },
   tarjeta() {
@@ -806,6 +816,7 @@ function vPresResumen(srv, lista) {
 }
 /* Check-in semanal como tarjeta con estado y fecha; el formulario se despliega al ir a completarlo */
 function vCheckinTarjeta() {
+  if (S.d.servicio?.modulo_futbol) return '';   // los futbolistas ya rellenan su check diario, el del lunes y el del partido
   const lunes = lunesDe(hoyISO()), c = S.d.checkins.find(x => x.semana_inicio === lunes), sab = sumaDias(lunes, 5), dom = sumaDias(lunes, 6), toca = tocaCheckin();
   if (S.chkAbierto) return `<section class="section chk-hoy" id="checkin">${vCheckin(true)}<button class="btn ghost full" data-act="cerrarCheckin" style="margin-top:8px">Cerrar sin enviar</button></section>`;
   const est = c ? `<span class="pill ok">✓ Enviado el ${esc(fCorta((c.created_at || c.actualizado_at || lunes).slice(0, 10)))}</span>` : toca ? '<span class="pill gold">Toca ahora</span>' : `<span class="pill">Se abre el sábado ${esc(fCorta(sab))}</span>`;
@@ -2141,7 +2152,8 @@ function formWellness(tipo, f, alumnoId) {
     ${q('Fatiga general hoy', escala10('w-fat', d.fatiga, ['1 · Fresco', '10 · Destrozado']))}
     ${q('Dolor muscular / agujetas', escala10('w-dolor', d.dolor, ['1 · Nada', '10 · Mucho']))}
     ${q('¿Cómo has dormido este fin de semana?', escala10('w-sueno', d.sueno, ['1 · Fatal', '10 · Genial']))}
-    <label class="f">¿Cómo es tu semana con el equipo? (días y horarios de entreno, partido…)<textarea id="w-semana" rows="2" placeholder="Ej. entreno L-M-X-J 10:00, viernes libre, partido sábado 18:00">${esc(d.semana || '')}</textarea></label>`;
+    <label class="f">¿Cómo es tu semana con el equipo? (días y horarios de entreno, partido…)<textarea id="w-semana" rows="2" placeholder="Ej. entreno L-M-X-J 10:00, viernes libre, partido sábado 18:00">${esc(d.semana || '')}</textarea></label>
+    ${q('Datos del GPS (opcional)', `<span class="small muted">Sube la captura o el PDF del GPS que te dé el club.${(d.gps || []).length ? ` Ya has subido ${d.gps.length} ${d.gps.length === 1 ? 'archivo' : 'archivos'}.` : ''}</span><input type="file" id="w-gps" accept="image/*,application/pdf" multiple>`)}`;
   if (tipo === 'semana') cuerpo = `
     <p class="small muted">Lo que te haya pasado el club para la semana que viene: días y horarios de entreno, tipo de sesión, día libre y partido. Con escribirla o subir la foto/PDF es suficiente.</p>
     <label class="f">Planificación del equipo<textarea id="w-plan" rows="5" placeholder="Ej. Lunes libre · Martes 10:00 fuerza + táctica · Miércoles 10:00 alta intensidad · Jueves 10:00 · Viernes activación · Sábado partido 18:00">${esc(d.texto || '')}</textarea></label>
@@ -2179,7 +2191,10 @@ function formWellness(tipo, f, alumnoId) {
       if (!datos.texto && !($('#w-arch')?.files || []).length && !datos.archivos.length) return $('#w-err').textContent = 'Escribe la planificación o sube una foto o PDF.';
       if (!await subirArchivosW($('#w-arch'), datos.archivos, `${alumnoId || uidSes()}/semana-${f}`, 'Subiendo…', 'No se ha podido subir el archivo.')) return;
     }
-    if (tipo === 'lunes') { Object.assign(datos, { fatiga: valEscala('w-fat'), dolor: valEscala('w-dolor'), sueno: valEscala('w-sueno'), semana: $('#w-semana').value.trim() || null }); if (!datos.fatiga) return $('#w-err').textContent = 'Indica tu fatiga general.'; }
+    if (tipo === 'lunes') {
+      Object.assign(datos, { fatiga: valEscala('w-fat'), dolor: valEscala('w-dolor'), sueno: valEscala('w-sueno'), semana: $('#w-semana').value.trim() || null, gps: d.gps || [] }); if (!datos.fatiga) return $('#w-err').textContent = 'Indica tu fatiga general.';
+      if (!await subirArchivosW($('#w-gps'), datos.gps, `${alumnoId || uidSes()}/${f}-lunes`, 'Subiendo GPS…', 'No se ha podido subir el GPS.')) return;
+    }
     const btn = $('#w-b'); btn.disabled = true; btn.textContent = 'Enviando…';
     const row = { alumno_id: alumnoId || uidSes(), fecha: f, tipo, datos };
     const r = prev?.id ? await sb.from('wellness').update({ datos }).eq('id', prev.id) : await sb.from('wellness').insert(row);
