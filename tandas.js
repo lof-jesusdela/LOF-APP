@@ -18,7 +18,19 @@ const Tandas = {
     'Contrastes': { tipo: 'contraste', info: 'Contraste: dos tandas seguidas, sin descanso entre ellas.' },
     'Unilateral contraste': { tipo: 'ucontraste', info: 'Contraste unilateral: con un lado, la parte pesada y sin parar la explosiva; después, el otro lado.' },
     'Forzadas': { tipo: 'simple', forz: true, info: 'Forzadas: llega a las repeticiones objetivo aunque no te salgan seguidas. Cuando no puedas más, para 5 segundos y sigue sumando hasta llegar.' },
-    'Topset': { tipo: 'top', info: 'Top set: la 1ª serie es la más pesada. Las siguientes van con un 15 % menos de peso.' }
+    'Topset': { tipo: 'top', info: 'Top set: la 1ª serie es la más pesada. Las siguientes van con un 15 % menos de peso.' },
+    'Isométrico': { tipo: 'simple', iso: true, info: 'Isométrico: sostén la carga, sin moverte, en la posición indicada durante el tiempo marcado. Aquí no cuentas repeticiones, sino segundos.' }
+  },
+  /* Métodos que crea el coach desde la biblioteca: se comportan como uno de estos 4 modelos */
+  BASES: { tandas: 'Tandas con pausa entre ellas (como rest-pause o cluster)', lados: 'Un lado y luego el otro (como unilateral)', drop: 'Bajando el peso sin descanso (como dropset)', iso: 'Sostener en una posición, por tiempo (como isométrico)' },
+  dinamicos(filas) {
+    this._fijos ||= new Set(Object.keys(this.MET)); (this._propios || []).forEach(n => delete this.MET[n]); this._propios = [];
+    (filas || []).forEach(f => {
+      if (!f.base || this._fijos.has(f.nombre) || !this.BASES[f.base]) return;
+      const info = (f.explicacion || '').trim() || `${f.nombre}: sigue las indicaciones de tu entrenador.`, p = +f.pausa > 0 ? +f.pausa : 20;
+      this.MET[f.nombre] = f.base === 'tandas' ? { tipo: 'pausa', pausa: p, info } : f.base === 'lados' ? { tipo: 'uni', info } : f.base === 'drop' ? { tipo: 'drop', info } : { tipo: 'simple', iso: true, info };
+      this._propios.push(f.nombre);
+    });
   },
   TEMPO: 'Ritmo 6-3-6: 6 segundos para subir (contracción), 3 segundos aguantando arriba y 6 segundos para bajar.',
   LADO: { D: 'Derecho', I: 'Izquierdo' },
@@ -71,7 +83,8 @@ const Tandas = {
       out = series.map((tr, i) => ({ etq: i === 0 ? 'Top set' : ({ drop: 'Back-off en dropset', rp: 'Back-off en rest-pause', backup: 'Back-off set' }[v] || (tr.length > 1 ? (tr.some(t => t.d > 0 && t !== tr[tr.length - 1]) ? 'Back-off en rest-pause' : 'Back-off en dropset') : 'Back-off set')),
         tandas: tr.map((t, k) => ({ partes: [P(t, { rir: rirS(tr, t) })], d: t.d ?? (k < tr.length - 1 ? 0 : e.descanso_seg ?? 60) })) }));
     } else {
-      out = exp(G).map(tr => ({ tandas: tr.map((t, k) => ({ partes: [P(t, { rir: rirS(tr, t) })], d: t.d ?? (k < tr.length - 1 ? 0 : e.descanso_seg ?? 60) })) }));
+      const X = M.iso ? { tipo: 'iso' } : {};
+      out = exp(G).map(tr => ({ tandas: tr.map((t, k) => ({ partes: [P(t, { rir: rirS(tr, t), ...X, ...(M.iso && t.op?.pos ? { pos: t.op.pos } : {}) })], d: t.d ?? (k < tr.length - 1 ? 0 : e.descanso_seg ?? 60) })) }));
     }
     // Índice de cada parte dentro de su serie (es el «tramo» del registro)
     out.forEach(s => { let p = 0; s.tandas.forEach(t => { t.p0 = p; t.partes.forEach(x => { x.p = p++; }); }); s.T = p; });
@@ -158,8 +171,9 @@ const Tandas = {
         <div class="rp-cuerpo">${tandas}</div></div>`;
     }).join('');
     const eT = this.rango(entreT, true), eS = this.rango(entreS, true);
-    const info = [M.info, M.tempo ? this.TEMPO : ''].filter(Boolean);
+    const info = [M.info, M.tempo ? this.TEMPO : ''].filter(Boolean), pos = partes.find(x => x.pos)?.pos;
     return `<div class="rp-met small">${info.map(x => `<span>${esc(x)}</span>`).join('')}</div>
+      ${pos ? `<div class="rp-rir">${this.ICO.rir}<div><b>Posición a mantener</b><span class="small">${esc(pos)}</span></div></div>` : ''}
       ${eT || (eS && N > 1) ? `<div class="rp-desc">${this.ICO.reloj}${eT ? `<div><span class="small">Entre ${M.tipo === 'uni' || M.tipo === 'ucontraste' ? 'lados' : 'tandas'}:</span><b>${esc(eT)}</b></div>` : ''}${eT && eS && N > 1 ? '<div class="rp-sep"></div>' : ''}${eS && N > 1 ? `<div><span class="small">Entre series:</span><b>${esc(eS)}</b></div>` : ''}</div>` : ''}
       ${rirUnico ? `<div class="rp-rir">${this.ICO.rir}<div><b>Esfuerzo indicado · RIR ${esc(rirUnico)}</b><span class="small">${esc(this.rirTxt(rirUnico))}</span></div></div>` : rirs.some(x => x != null) ? `<div class="rp-rir">${this.ICO.rir}<div><b>Esfuerzo indicado</b><span class="small">El RIR cambia según la ${M.tipo === 'doble' ? 'vuelta' : 'tanda'}: lo verás junto a cada una. RIR = repeticiones que deberían quedarte en reserva.</span></div></div>` : ''}
       <div class="rp-wrap" id="rpw-${e.id}">${html}</div>`;
@@ -359,9 +373,10 @@ Tandas.ed = {
   /* Lee la pauta actual para rellenar el asistente */
   desde(tipo, met, pauta, cambio) {
     const p = pauta?.length ? (cambio ? pauta.slice(0, 1).map(t => ({ s: t.s, kg: t.kg, d: pauta[pauta.length - 1].d })) : pauta) : [], g = gruposDe(p), t0 = p[0] || {}, ult = p[p.length - 1] || {}, M = Tandas.MET[met] || {};
-    const v = { s: t0.s || 3, r: Tandas.limpiaR(t0.r || '') || (M.myo ? '' : '10'), kg: numero(kgDe(t0)) ?? '', rir: t0.rir ?? (tipo === 'doble' ? 1 : 1), d: ult.d ?? 120,
+    const v = { pos: t0.op?.pos || '', s: t0.s || 3, r: Tandas.limpiaR(t0.r || '') || (M.myo ? '' : '10'), kg: numero(kgDe(t0)) ?? '', rir: t0.rir ?? (tipo === 'doble' ? 1 : 1), d: ult.d ?? 120,
       n: Math.max(g[0]?.tramos.length || 0, tipo === 'drop' ? 3 : 3), pausa: M.pausa ?? 20, reps: (g[0]?.tramos || []).map(t => repsPh(t.r) || t.r || ''), baja: 20 };
     if (tipo === 'pausa' && g[0]?.tramos.length > 1) v.pausa = g[0].tramos[0].d ?? v.pausa;
+    if (M.iso) v.r = Tandas.segDe(t0) || 30;
     if (tipo === 'doble') { v.rir2 = g[0]?.tramos[1]?.rir ?? 0; }
     if (tipo === 'contraste' || tipo === 'ucontraste') {
       const t1 = g[0]?.tramos[1] || {};
@@ -405,6 +420,8 @@ Tandas.ed = {
         M.tipo === 'ucontraste' ? this.sel('orden', 'Orden', v.orden, [['lado', 'Por lado: derecho (1ª y 2ª parte) y luego izquierdo'], ['fase', 'Por partes: 1ª parte con los dos lados y luego la 2ª']]) : ''].join('');
     } else if (M.tipo === 'doble') {
       campos = [this.num('s', 'Series', v.s), this.txt('r', 'Reps por lado', v.r), this.num('kg', 'Peso (kg)', v.kg), this.txt('rir', 'RIR 1ª vuelta', v.rir), this.txt('rir2', 'RIR 2ª vuelta', v.rir2), this.num('d', 'Descanso entre series (s)', v.d)].join('');
+    } else if (M.iso) {
+      campos = [this.num('s', 'Series', v.s), this.num('r', 'Segundos que debe aguantar', v.r), this.num('kg', 'Peso (kg, si lleva carga)', v.kg), this.txt('pos', 'Posición a mantener', v.pos, 'Ej.: rodillas a 90º, codo flexionado a 90º, a mitad de recorrido'), this.num('d', 'Descanso entre series (s)', v.d)].join('');
     } else {
       campos = [this.num('s', 'Series', v.s), this.txt('r', M.forz ? 'Reps objetivo' : M.tipo === 'uni' ? 'Reps por lado' : 'Reps', v.r), ...comun.slice(1)].join('');
     }
@@ -417,6 +434,7 @@ Tandas.ed = {
     const s = Math.max(1, n('s') || 1), kg = n('kg'), rir = a('rir') === '' ? undefined : (/^\d+$/.test(a('rir')) ? +a('rir') : a('rir')), d = n('d') ?? 120;
     const T = (x) => { const o = {}; Object.entries(x).forEach(([k, v]) => { if (v !== undefined && v !== '' && v !== null) o[k] = v; }); return o; };
     const R = v => v === '' ? undefined : (/^\d+$/.test(v) ? +v : v);
+    if (M.iso) return [T({ s, r: `${n('r') || 30}´´ isométrico`, kg: this.kg(kg), d, tp: 'iso', op: a('pos') ? { pos: a('pos') } : undefined })];
     switch (M.tipo) {
       case 'pausa': { const N = cnt('n'), p = n('pausa') ?? M.pausa;
         return [...Array(N)].map((_, k) => T({ s: k ? undefined : s, r: M.myo ? (k ? 'Las que puedas' : 'Hasta 1 del fallo') : a('r' + k) || a('r0') || '8', rir: k ? undefined : rir, kg: this.kg(kg), d: k < N - 1 ? p : d })); }

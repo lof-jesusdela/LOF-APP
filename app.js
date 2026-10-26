@@ -329,7 +329,7 @@ async function cargarAlumno(uid) {
     sb.from('sesiones_hechas').select('*').eq('alumno_id', uid).gte('fecha', desde).order('fecha'),
     sb.from('checkins').select('*').eq('alumno_id', uid).order('semana_inicio', { ascending: false }).limit(12),
     sb.from('hoja_ruta').select('*').eq('alumno_id', uid).order('orden'),
-    sb.from('metodos').select('nombre,explicacion'),
+    sb.from('metodos').select('*'),
     sb.from('valoraciones').select('*,pruebas(*)').eq('alumno_id', uid).order('fecha', { ascending: false }),
     sb.from('presenciales').select('*').eq('alumno_id', uid).order('fecha'),
     sb.from('programas').select(CTX_COLS + SEL_PROGRAMA).eq('alumno_id', uid).gte('contexto_hasta', sumaDias(hoyISO(), -120)).order('contexto_desde')
@@ -345,7 +345,7 @@ async function cargarAlumno(uid) {
   S.d = {
     servicio: srv.data?.[0] || null, programa: p, mediciones: (med.data || []).filter(m => !m.es_objetivo), medObj: (med.data || []).find(m => m.es_objetivo) || null, diario: reg.data || [],
     sesiones: ses.data || [], checkins: chk.data || [], ruta: ruta.data || [],
-    metodos: Object.fromEntries((met.data || []).map(m => [m.nombre, m.explicacion])),
+    metodos: (Tandas.dinamicos(met.data), Object.fromEntries((met.data || []).map(m => [m.nombre, m.explicacion]))),
     valoraciones: ordenarValoraciones(val.data || []),
     presenciales: pres.data || [], uid, contextos: ctxs, programaBase: p
   };
@@ -1776,6 +1776,7 @@ async function cargarCoach() {
   try { await Nutricion.cargarCoach(S.c); } catch (err) { S.c.creacionesNuevas = []; }
   { const cx = await sb.from('programas').select('id,alumno_id,nombre,dias_semana,' + CTX_COLS.slice(0, -1)).gte('contexto_hasta', sumaDias(hoyISO(), -70)).order('contexto_desde');
     S.c.contextos = cx.error ? [] : (cx.data || []).filter(esContexto); }
+  { const mt = await sb.from('metodos').select('*').order('nombre'); S.c.metodos = mt.data || []; Tandas.dinamicos(S.c.metodos); }
   { const mc = await sb.from('movilidad_catalogo').select('*').order('titulo'); S.c.movCat = mc.error ? null : (mc.data || []); }
   S.c.facturas = fa.data || []; S.c.facturasError = !!fa.error; S.c.fiscal = Object.fromEntries((ap.data || []).map(x => [x.clave, x.valor]));
 }
@@ -2343,8 +2344,9 @@ async function probarPlantilla(id) {
   const pl = (S.c.plantillas || []).find(p => p.id === id) || {};
   const [pr, met] = await Promise.all([
     conRespaldo(() => sb.from('programas').select(SEL_PROGRAMA).eq('id', id).limit(1), () => sb.from('programas').select(SIN_NUEVAS(SEL_PROGRAMA)).eq('id', id).limit(1)),
-    sb.from('metodos').select('nombre,explicacion')
+    sb.from('metodos').select('*')
   ]);
+  Tandas.dinamicos(met.data);
   const prog = pr.data?.[0]; if (!prog) return toast('No se ha podido cargar la plantilla');
   if (!(prog.dias || []).length) return toast('La plantilla está vacía: añádele días antes de probarla');
   const hoy = hoyISO(), futbol = /futbol/.test(norm(pl.categoria)), u = UID_PRUEBA, val = valDePlantilla(pl);
@@ -3238,11 +3240,56 @@ function formServicio() {
 }
 
 /* ---------- Biblioteca de ejercicios (coach) ---------- */
+/* Pestañas de la biblioteca: Ejercicios | Métodos */
+const bibTabs = () => `<div class="chips" role="group" aria-label="Biblioteca" style="margin-bottom:12px"><button aria-pressed="${S.bibVista !== 'met'}" data-act="bibVista" data-v="ej">Ejercicios</button><button aria-pressed="${S.bibVista === 'met'}" data-act="bibVista" data-v="met">Métodos</button></div>`;
+const BASE_ETQ = { '': 'Series normales (solo explicación para el alumno)', ...Tandas.BASES };
+const BASE_FIJA = { 'Rest-pause': 'tandas', 'Cluster': 'tandas', 'Myo reps': 'tandas', 'Dropset': 'drop', 'Unilateral': 'lados', 'Unilateral lento': 'lados', 'Unilateral superlento': 'lados', 'Unilateral doble': 'lados', 'Contrastes': 'tandas', 'Unilateral contraste': 'lados', 'Forzadas': '', 'Topset': '', 'Isométrico': 'iso', 'Superserie': '' };
+function vMetodos() {
+  const l = (S.c.metodos || []).slice().sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '')), fijo = n => n in Tandas.MET && !(Tandas._propios || []).includes(n) || n in BASE_FIJA;
+  return `${bibTabs()}<section class="stack"><span class="eyebrow">Tu metodología</span><h1>Métodos</h1><p class="small muted">Lo que escribas en la explicación lo ve el alumno al tocar el método en su entreno. Los métodos nuevos que crees salen al instante en el editor de programas.</p></section>
+  <section class="section"><button class="btn full" data-act="nuevoMetodo">＋ Crear un método nuevo</button>
+  <div class="card" style="margin-top:12px">${l.map(m => `<div class="line" data-act="editarMetodo" data-id="${m.id}" style="cursor:pointer"><div class="grow"><h3>${esc(m.nombre)}</h3><div class="small muted">${esc((m.explicacion || 'Sin explicación todavía').slice(0, 110))}${(m.explicacion || '').length > 110 ? '…' : ''}</div></div><span class="pill ${fijo(m.nombre) ? '' : 'ok'}">${fijo(m.nombre) ? 'De serie' : 'Tuyo'}</span></div>`).join('') || '<p class="muted small" style="padding:12px">Todavía no hay métodos. Ejecuta el Bloque 64 en Supabase.</p>'}</div></section>`;
+}
+function formMetodo(id) {
+  const x = id ? (S.c.metodos || []).find(z => z.id === id) : null; if (id && !x) return;
+  const fijo = x && (x.nombre in BASE_FIJA || (x.nombre in Tandas.MET && !(Tandas._propios || []).includes(x.nombre))), base = x?.base ?? '';
+  abrirSheet(`<form class="stack" id="f-met"><h2>${x ? esc(x.nombre) : 'Método nuevo'}</h2>
+    ${fijo ? '<p class="small muted">Es un método de la app: puedes cambiar su explicación. Su forma de registrarse en el entreno no se cambia.</p>' : `<label class="f">Nombre del método<input type="text" id="m-nom" value="${esc(x?.nombre || '')}" placeholder="Ej.: Pre-fatiga" maxlength="60" required></label>`}
+    <label class="f">Explicación para el alumno<textarea id="m-exp" rows="5" placeholder="Cómo se hace y qué tiene que notar el alumno">${esc(x?.explicacion || '')}</textarea></label>
+    ${fijo ? '' : `<label class="f">¿Cómo lo registra el alumno?<select id="m-base">${Object.entries(BASE_ETQ).map(([k, l]) => `<option value="${k}" ${k === base ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+    <label class="f" id="m-pausa-w" ${base === 'tandas' ? '' : 'hidden'}>Pausa entre tandas (segundos)<input type="text" inputmode="numeric" id="m-pausa" value="${esc(x?.pausa ?? 20)}"></label>`}
+    <p class="err" id="m-err"></p><button class="btn full" type="submit" id="m-btn">Guardar</button>
+    ${x && !fijo ? '<button type="button" class="btn ghost full" data-act="borrarMetodo" data-id="' + x.id + '">Eliminar este método</button>' : ''}</form>`);
+  $('#m-base')?.addEventListener('change', e => { $('#m-pausa-w').hidden = e.target.value !== 'tandas'; });
+  $('#f-met').addEventListener('submit', async ev => {
+    ev.preventDefault(); const btn = $('#m-btn'); btn.disabled = true; btn.textContent = 'Guardando…';
+    try {
+      const exp = $('#m-exp').value.trim() || null, cambios = { explicacion: exp };
+      if (!fijo) {
+        const nom = $('#m-nom').value.trim(); if (!nom) throw new Error('Pon un nombre al método');
+        if ((S.c.metodos || []).some(m => m.id !== x?.id && norm(m.nombre) === norm(nom))) throw new Error('Ya hay un método con ese nombre');
+        Object.assign(cambios, { nombre: nom, base: $('#m-base').value || null, pausa: $('#m-base').value === 'tandas' ? Math.max(0, parseInt($('#m-pausa').value, 10) || 20) : null });
+      }
+      const r = x ? await sb.from('metodos').update(cambios).eq('id', x.id).select().single() : await sb.from('metodos').insert({ ...cambios, propio: true }).select().single();
+      if (r.error) throw r.error;
+      await cargarCoach(); cerrarSheet(); toast(x ? 'Método guardado' : 'Método creado'); render();
+    } catch (err) { btn.disabled = false; btn.textContent = 'Guardar'; $('#m-err').textContent = /column|base|pausa|propio|row-level|policy|permission/i.test(err?.message || '') ? 'Falta ejecutar el Bloque 64 en Supabase.' : (err?.message || 'No se ha podido guardar'); console.error(err); }
+  });
+}
+async function borrarMetodo(id) {
+  const x = (S.c.metodos || []).find(z => z.id === id); if (!x) return;
+  const u = await sb.from('ejercicios_sesion').select('id', { count: 'exact', head: true }).eq('metodo_id', id);
+  if (!u.error && u.count) return toast(`No se puede eliminar: lo usan ${u.count} ejercicios de programas. Quítaselo primero.`);
+  if (!confirm(`¿Eliminar el método «${x.nombre}»?`)) return;
+  const r = await sb.from('metodos').delete().eq('id', id); if (r.error) return toast('No se ha podido eliminar');
+  await cargarCoach(); cerrarSheet(); toast('Método eliminado'); render();
+}
 function vEjercicios() {
+  if (S.bibVista === 'met') return vMetodos();
   const l = S.c.ejercicios.filter(x => !x.privado), filtro = norm(S.filtroEj || '');
   const esCardio = x => /^cardio ·/i.test(x.nombre || ''), vis = l.filter(x => (!filtro || norm(x.nombre + ' ' + (x.musculo || '')).includes(filtro)) && (S.ejFalta === 'mus' ? !esCardio(x) && !x.musculo_img_url : S.ejFalta === 'foto' ? !esCardio(x) && !x.imagen_url : true));
   const fuerza = l.filter(x => !/^cardio ·/i.test(x.nombre || '')), sinV = l.filter(x => !x.video_url).length, sinF = fuerza.filter(x => !x.imagen_url).length, sinM = fuerza.filter(x => !x.musculo_img_url).length;
-  return `<section class="stack"><span class="eyebrow">Tu biblioteca</span><h1>Ejercicios</h1><p class="small muted">Lo que cambies aquí se ve al instante en los entrenos de todos tus alumnos.</p></section>
+  return `${bibTabs()}<section class="stack"><span class="eyebrow">Tu biblioteca</span><h1>Ejercicios</h1><p class="small muted">Lo que cambies aquí se ve al instante en los entrenos de todos tus alumnos.</p></section>
   <section class="section"><div class="kpis"><div class="kpi"><div class="v num">${l.length}</div><div class="l">ejercicios</div></div><div class="kpi"><div class="v num" style="color:${sinV ? 'var(--warn)' : 'var(--ok)'}">${sinV}</div><div class="l">sin vídeo</div></div><button class="kpi" data-act="ejFalta" data-v="foto" aria-pressed="${S.ejFalta === 'foto'}"><div class="v num" style="color:${sinF ? 'var(--warn)' : 'var(--ok)'}">${sinF}</div><div class="l">sin foto</div></button><button class="kpi" data-act="ejFalta" data-v="mus" aria-pressed="${S.ejFalta === 'mus'}"><div class="v num" style="color:${sinM ? 'var(--warn)' : 'var(--ok)'}">${sinM}</div><div class="l">sin músculo</div></button></div>${S.ejFalta ? `<p class="small">Mostrando solo los que no tienen ${S.ejFalta === 'mus' ? 'imagen del músculo' : 'foto'}. <button class="linkbtn small" data-act="ejFalta" data-v="">Ver todos</button></p>` : ''}
   ${S.c.movCat ? `<details class="card" style="margin-top:12px"><summary><b>🦾 Vídeos de movilidad (${S.c.movCat.length})</b> <span class="small muted">· el catálogo que sale al añadir movilidad a un día</span></summary><div class="stack" style="gap:0;margin-top:8px">${S.c.movCat.map(x => `<div class="line" data-act="movItem" data-id="${x.id}" style="cursor:pointer">${(x.imagen_url || miniYoutube(x.video_url)) ? `<img src="${esc(x.imagen_url || miniYoutube(x.video_url))}" alt="" style="width:64px;height:40px;object-fit:cover;border-radius:8px">` : ''}<div class="grow small"><b>${esc(x.titulo)}</b>${x.zona ? ` · <span class="muted">${esc(x.zona)}</span>` : ''}</div><span class="small" style="color:var(--blue-text)">Editar</span></div>`).join('')}<button class="btn sm ghost" data-act="movItem" style="align-self:flex-start;margin-top:8px">＋ Añadir vídeo</button></div></details>` : ''}
   <button class="btn full" data-act="importarImagenes">Actualizar imágenes desde tus hojas</button><p class="note">Pone la imagen del ejercicio, la del músculo y las de cardio y movilidad que tenías en tus hojas, y repara las que no cargan.</p>
@@ -5058,6 +5105,10 @@ document.addEventListener('click', async e => {
     case 'fichaSub': await abrirSub(b.dataset.s); break;
     case 'cerrarSub': S.fichaSub = null; render(); window.scrollTo(0, 0); break;
     case 'editarComidas': formComidas(); break;
+    case 'bibVista': S.bibVista = b.dataset.v; render(); break;
+    case 'nuevoMetodo': formMetodo(null); break;
+    case 'editarMetodo': formMetodo(+b.dataset.id); break;
+    case 'borrarMetodo': await borrarMetodo(+b.dataset.id); break;
     case 'ejFalta': S.ejFalta = S.ejFalta === b.dataset.v ? '' : b.dataset.v; render(); break;
     case 'edAbrirDia': S.editor.dia = b.dataset.id === 'todos' ? 'todos' : +b.dataset.id || null; render(); window.scrollTo(0, 0); break;
     case 'edCarrera': await nuevaCarrera(+b.dataset.dia); break;
