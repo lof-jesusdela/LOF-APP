@@ -3975,21 +3975,30 @@ const Clip = {
       ${enEditor ? `<label class="row small" style="gap:8px"><input type="radio" name="cl-d" value="aqui" checked style="width:20px;height:20px"> Añadir ${c.tipo === 'dia' ? 'como día nuevo' : 'sus días'} a este programa (${esc(E.prog.nombre)})</label>` : ''}
       <label class="row small" style="gap:8px"><input type="radio" name="cl-d" value="alumno" ${enEditor ? '' : 'checked'} style="width:20px;height:20px"> En otro alumno</label>
       <div class="stack" id="cl-alw" style="gap:8px" ${enEditor ? 'hidden' : ''}><label class="f">Alumno<select id="cl-al">${als.map(a => `<option value="${a.id}" ${a.id === aidEd ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('')}</select></label>
-        ${c.tipo === 'programa' ? `<label class="row small" style="gap:8px"><input type="radio" name="cl-m" value="nuevo" checked style="width:20px;height:20px"> Como programa nuevo (pasa a ser su programa activo; el anterior queda guardado)</label><label class="row small" style="gap:8px"><input type="radio" name="cl-m" value="anadir" style="width:20px;height:20px"> Añadir sus días a su programa activo</label><label class="f">Nombre<input type="text" id="cl-n" value="${esc(c.nombre)}"></label>` : '<p class="small muted">Se añade como día nuevo a su programa activo (si no tiene, se le crea uno).</p>'}</div>
+        <div id="cl-tw" class="stack" style="gap:8px"></div></div>
       <div id="cl-opc" class="stack" style="gap:8px"></div>
       <button class="btn full" type="submit">Pegar</button></form>`);
     const destAid = () => document.querySelector('[name=cl-d]:checked').value === 'aqui' ? null : $('#cl-al')?.value;
     const pintaOpc = async () => {
-      const aqui = document.querySelector('[name=cl-d]:checked').value === 'aqui', modo = c.tipo === 'programa' && !aqui ? document.querySelector('[name=cl-m]:checked')?.value : 'anadir';
-      let dias = [], fut = false, srv = null;
-      if (aqui) { dias = E.prog.dias; fut = editorEsFutbol(); }
-      else { const aid = destAid(); srv = S.c.servicios.find(x => x.alumno_id === aid); fut = !!srv?.modulo_futbol; if (modo !== 'nuevo') { const { data } = await sb.from('programas').select('id,dias(id,numero,nombre,titulo)').eq('alumno_id', aid).eq('activo', true).is('contexto_nombre', null).limit(1); dias = (data?.[0]?.dias || []).sort((a, b) => a.numero - b.numero); } }
+      const aqui = document.querySelector('[name=cl-d]:checked').value === 'aqui';
+      let dias = [], fut = false, srv = null, t = 'act';
+      if (aqui) { dias = E.prog.dias; fut = editorEsFutbol(); $('#cl-tw').innerHTML = ''; }
+      else {
+        const aid = destAid(); srv = S.c.servicios.find(x => x.alumno_id === aid); fut = !!srv?.modulo_futbol;
+        const { data } = await sb.from('programas').select('id,nombre,activo,contexto_nombre,contexto_desde,contexto_hasta,dias(id,numero,nombre,titulo)').eq('alumno_id', aid).order('id');
+        const progs = (data || []).map(p => ({ ...p, dias: (p.dias || []).sort((a, b) => a.numero - b.numero) })), act = progs.find(p => p.activo && !p.contexto_nombre), ctxs = progs.filter(p => p.contexto_nombre);
+        const prev = $('#cl-t')?.value; t = prev && prev !== '' ? prev : (c.tipo === 'programa' ? 'nuevo' : 'act');
+        if (t.startsWith('ctx:') && !ctxs.some(x => 'ctx:' + x.id === t)) t = 'act';
+        $('#cl-tw').innerHTML = `<label class="f">¿Dónde lo pego?<select id="cl-t"><option value="act" ${t === 'act' ? 'selected' : ''}>En su programa actual${act ? ' (' + esc(act.nombre) + ')' : ' (se le crea uno)'}</option>${ctxs.map(x => `<option value="ctx:${x.id}" ${t === 'ctx:' + x.id ? 'selected' : ''}>En su contexto «${esc(x.contexto_nombre)}»${x.contexto_desde ? ' (con fechas)' : ''}</option>`).join('')}<option value="nuevoctx" ${t === 'nuevoctx' ? 'selected' : ''}>＋ Como contexto nuevo (guardado, sin aplicar)</option>${c.tipo === 'programa' ? `<option value="nuevo" ${t === 'nuevo' ? 'selected' : ''}>＋ Como programa nuevo (pasa a ser el actual; el anterior queda guardado)</option>` : ''}</select></label>`;
+        if (t === 'act') dias = act?.dias || []; else if (t.startsWith('ctx:')) dias = ctxs.find(x => 'ctx:' + x.id === t)?.dias || [];
+      }
       const P = srv ? proceso(srv) : null;
-      $('#cl-opc').innerHTML = (modo === 'nuevo' ? (P?.ciclos?.length ? `<label class="f">Bloque del proceso<select id="cl-c">${P.ciclos.map(x => `<option value="${x.n}" ${x.n === P.ciclo ? 'selected' : ''}>${esc(nomCiclo(x))} · ${esc(fCorta(x.ini))} – ${esc(fCorta(x.fin))}</option>`).join('')}</select></label>` : '')
+      $('#cl-opc').innerHTML = (t === 'nuevo' ? `<label class="f">Nombre<input type="text" id="cl-n" value="${esc(c.nombre)}"></label>` + (P?.ciclos?.length ? `<label class="f">Bloque del proceso<select id="cl-c">${P.ciclos.map(x => `<option value="${x.n}" ${x.n === P.ciclo ? 'selected' : ''}>${esc(nomCiclo(x))} · ${esc(fCorta(x.ini))} – ${esc(fCorta(x.fin))}</option>`).join('')}</select></label>` : '')
+        : t === 'nuevoctx' ? `<label class="f">Nombre del contexto<input type="text" id="cl-n" value="${esc(c.nombre)}" placeholder="Ej. Mancuernas en casa"></label>`
         : !fut && dias.length ? `<label class="f">¿En qué posición del bloque?<select id="cl-pos">${dias.map((d, i) => `<option value="${i + 1}">Como Día ${i + 1} (antes de «${esc(etiquetaFlex(d))}»)</option>`).join('')}<option value="" selected>Al final (Día ${dias.length + 1}${c.dias.length > 1 ? '…' : ''})</option></select></label>` : fut ? '<p class="small muted">Futbolista: los días conservan su día de la semana; ordénalos después en su programa.</p>' : '');
     };
     pintaOpc();
-    $('#f-clip').addEventListener('change', ev => { $('#cl-alw').hidden = document.querySelector('[name=cl-d]:checked').value !== 'alumno'; if (ev.target.id !== 'cl-pos' && ev.target.id !== 'cl-c' && ev.target.id !== 'cl-n') pintaOpc(); });
+    $('#f-clip').addEventListener('change', ev => { $('#cl-alw').hidden = document.querySelector('[name=cl-d]:checked').value !== 'alumno'; if (ev.target.id !== 'cl-pos' && ev.target.id !== 'cl-c' && ev.target.id !== 'cl-n') { if (ev.target.id === 'cl-al') { const t = $('#cl-t'); if (t) t.value = ''; } pintaOpc(); } });
     $('#f-clip').addEventListener('submit', async e => {
       e.preventDefault(); const bt = e.target.querySelector('[type=submit]'); if (bt.disabled) return; bt.disabled = true; bt.textContent = 'Copiando…';
       try {
@@ -3999,15 +4008,20 @@ const Clip = {
           cerrarSheet(); toast('Pegado en este programa'); refrescarEditor(); return;
         }
         const aid = $('#cl-al').value, fut = !!S.c.servicios.find(x => x.alumno_id === aid)?.modulo_futbol, nom = (S.c.perfiles.find(x => x.id === aid) || {}).nombre || '';
-        const modo = c.tipo === 'programa' ? document.querySelector('[name=cl-m]:checked').value : 'anadir';
+        const t = $('#cl-t')?.value || (c.tipo === 'programa' ? 'nuevo' : 'act'), pos = $('#cl-pos')?.value ? +$('#cl-pos').value : null;
         let { data: act } = await sb.from('programas').select('id,dias(numero)').eq('alumno_id', aid).eq('activo', true).is('contexto_nombre', null).limit(1);
         act = act?.[0];
-        if (modo === 'nuevo' || !act) {
-          if (act && modo === 'nuevo') await sb.from('programas').update({ activo: false }).eq('id', act.id);
+        if (t.startsWith('ctx:')) await this.pegarEn(c.dias, +t.slice(4), pos, fut);
+        else if (t === 'nuevoctx') {
+          const nc = ($('#cl-n')?.value || '').trim() || c.nombre || 'Contexto';
+          const { data: np, error } = await sb.from('programas').insert({ alumno_id: aid, nombre: 'Contexto · ' + nc, dias_semana: c.dias_semana || c.dias.length, activo: false, contexto_nombre: nc }).select().single(); if (error) throw error;
+          await this.insertarDias(c.dias, np.id, 0, fut);
+        } else if (t === 'nuevo' || !act) {
+          if (act && t === 'nuevo') await sb.from('programas').update({ activo: false }).eq('id', act.id);
           const { data: np, error } = await sb.from('programas').insert({ alumno_id: aid, nombre: ($('#cl-n')?.value || '').trim() || (c.tipo === 'programa' ? c.nombre : 'Programa') || 'Programa', dias_semana: c.dias_semana || c.dias.length, activo: true }).select().single(); if (error) throw error;
           await this.insertarDias(c.dias, np.id, 0, fut);
           if ($('#cl-c')?.value) await sb.from('programas').update({ ciclo: +$('#cl-c').value }).eq('id', np.id);
-        } else await this.pegarEn(c.dias, act.id, $('#cl-pos')?.value ? +$('#cl-pos').value : null, fut);
+        } else await this.pegarEn(c.dias, act.id, pos, fut);
         cerrarSheet(); toast(`Pegado en ${nom}`); await cargarCoach(); if (S.editor) refrescarEditor(); else if (S.ficha?.id === aid) await abrirFicha(aid);
       } catch (err) { bt.disabled = false; bt.textContent = 'Pegar'; fallo(err, 'No se ha podido pegar.'); }
     });
