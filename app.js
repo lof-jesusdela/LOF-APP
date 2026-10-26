@@ -947,7 +947,7 @@ function pautaEfectiva(e) {
   }
   return g.flatMap((gr, gi) => {
     if (gr.tramos.length > 1) return gr.tramos;
-    const t = { ...gr.tramos[0], s: gr.s }, forzar = met === 'Topset' ? gi > 0 : !!MULTI[met];
+    const t = { ...gr.tramos[0], s: gr.s }, forzar = met === 'Topset' ? gi > 0 && !g[0].tramos[0].op?.var : !!MULTI[met];
     return trocear(t, met === 'Topset' ? (/''|´´|seg/.test(t.r || '') ? 'Rest-pause' : 'Dropset') : met, forzar);
   });
 }
