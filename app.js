@@ -1120,11 +1120,20 @@ function enfocarFila(es, n) {
 }
 /* Peso de referencia de la 6·3·1: el objetivo de la 1.ª serie (si no hay, el peso del ejercicio) */
 const kgRef = e => { const n = parseFloat(String(kgDe(gruposDe(pautaEfectiva(e))[0]?.tramos[0]) || kgDe({ kg: e.peso_ref })).replace(',', '.')); return n > 0 ? n : null; };
+/* ¿Ejercicio unilateral? (por método, por «x lado» en la pauta o por el nombre) y si es de brazo o de pierna */
+function ladoAprox(e) {
+  const txt = [e.nombre, e.ejercicio?.nombre, e.metodo?.nombre, e.metodos, e.pauta, e.repeticiones, JSON.stringify(pautaEfectiva(e) || '')].filter(x => typeof x === 'string').join(' ');
+  const uni = /unilateral|x lado|por lado|a una (mano|pierna)|1 (mano|pierna)|un solo (brazo|pierna)|búlgara|bulgara|zancada|step.?up|pistol/i.test(txt) || (e.pauta_info?.lados && e.pauta_info.lados !== '2');
+  if (!uni) return null;
+  const nom = [e.nombre, e.ejercicio?.nombre, e.ejercicio?.musculo, e.musculo].filter(x => typeof x === 'string').join(' ');
+  return /pierna|cu[aá]dr|g[lú]+teo|isquio|gemelo|sentadilla|zancada|b[uú]lgara|step|pistol|prensa|hip|femoral|peso muerto|abductor|aductor/i.test(nom) ? 'pies' : 'manos';
+}
 function vAprox(e) {
+  const lado = ladoAprox(e), dos = lado ? (lado === 'pies' ? 'los dos pies / las dos piernas' : 'las dos manos / los dos brazos') : '';
   const ak = parseFloat(String(e.aprox_kg ?? '').replace(',', '.')), ref = ak > 0 ? ak : kgRef(e);
   const filas = [[6, 0.7, 'Peso ligero'], [3, 1, 'Peso objetivo'], [1, 1.1, 'Por encima del objetivo']];
-  return `<div class="aprox"><span class="eyebrow">Aproximación 6·3·1 · antes de empezar${e.aprox_kg > 0 ? ' · con las dos manos/piernas' : ''}</span>
-    <div class="small">Al terminar la repetición única, descansa 1 minuto y empieza tus series.</div>
+  return `<div class="aprox"><span class="eyebrow">Aproximación 6·3·1 · antes de empezar${lado ? ' · con ' + (lado === 'pies' ? 'los dos pies' : 'las dos manos') : ''}</span>
+    ${lado ? `<div class="small" style="color:var(--gold,inherit);font-weight:700">⚠ Aunque el ejercicio sea unilateral, la aproximación se hace SIEMPRE con ${dos}${e.aprox_kg > 0 ? ' (peso indicado por Jesús)' : ''}.</div>` : ''}<div class="small">Al terminar la repetición única, descansa 1 minuto y empieza tus series.</div>
     ${filas.map(([n, f, t], j) => `<div class="ap-row"><span class="ap-n num">${n}</span><span class="small">${n === 1 ? '1 repetición' : n + ' repeticiones'}<br><span class="muted">${t}</span></span><b class="ap-kg num">${ref ? Math.round(ref * f) + ' kg' : 'como 1.ª serie'}</b><button class="chk" data-act="aprox" data-j="${j}" aria-label="Hecha">${CHK}</button></div>`).join('')}
   </div>`;
 }
@@ -4651,7 +4660,7 @@ function formEjSesion(id, bloqueId) {
     <label class="f">Descripción adicional (opcional)<textarea id="es-nota" rows="3" placeholder="Algo que quieras añadir y que no sale en el vídeo: «sube explosivo, baja en 3 s», «codos pegados»…">${esc(e?.nota || '')}</textarea></label>
     <label class="f">Indicación de superserie (opcional)<input type="text" id="es-gr" value="${esc(e?.grupo || '')}" placeholder="Ej. 3 y 4 juntos (superserie)"></label>
     <label class="row small"><input type="checkbox" id="es-631" ${e?.aproximacion_631 ? 'checked' : ''} style="width:20px;height:20px"> Aproximación 6·3·1 antes de empezar</label>
-    <label class="f">Peso de la aproximación (kg, opcional)<input type="text" inputmode="decimal" id="es-631kg" value="${esc(e?.aprox_kg ?? '')}" placeholder="Ej. 40 · en unilaterales: con las dos manos o pies. Vacío = el de la 1.ª serie"></label>
+    <label class="f">Peso de la aproximación (kg, opcional)<input type="text" inputmode="decimal" id="es-631kg" value="${esc(e?.aprox_kg ?? '')}" placeholder="Ej. 40 · en unilaterales se hace con las dos manos o los dos pies. Vacío = el de la 1.ª serie"></label>
     <p class="note">Si pones descanso 0 en la última fila, la app enlaza este ejercicio con el siguiente como superserie.</p>
     <button class="btn full" type="submit">Guardar</button>${e ? '<button class="btn ghost full" type="button" id="es-del" style="color:var(--bad)">Quitar del programa</button>' : ''}</form>`);
   const sel = $('#es-ej');
