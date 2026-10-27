@@ -261,14 +261,14 @@ function vContextos(f, a) {
     ${(f.guardados || []).length ? `<div class="section-head" style="margin-top:14px"><h3>Guardados para aplicar cuando quieras</h3></div><div class="card">${f.guardados.map(c => `<div class="line" style="flex-wrap:wrap"><div class="grow" style="min-width:180px"><b>${esc(c.contexto_nombre)}</b><div class="small muted">Sin fechas · ${c.dias_semana} ${c.dias_semana === 1 ? 'entreno' : 'entrenos'}/semana${c.dias ? ` · ${c.dias.length} ${c.dias.length === 1 ? 'sesión' : 'sesiones'}` : ''}</div></div>${c.alternativo ? '<span class="pill gold">Alternativo · siempre visible</span>' : '<span class="pill">Sin aplicar</span>'}<button class="btn sm ${c.alternativo ? 'ghost' : ''}" data-act="altToggle" data-id="${c.id}" data-v="${c.alternativo ? 0 : 1}">${c.alternativo ? 'Quitar como alternativo' : 'Usar como alternativo'}</button><div class="row" style="gap:6px"><button class="btn sm" data-act="editarContexto" data-id="${c.id}">Aplicar</button><button class="btn sm ghost" data-act="sesionesContexto" data-id="${c.id}">✎ Sesiones</button><button class="btn sm ghost" data-act="guardarPlantilla" data-id="${c.id}">Guardar como plantilla</button></div></div>`).join('')}</div>` : ''}
     <p class="note">Durante esas semanas entrena las sesiones del contexto y su cumplimiento se calcula con ellas (por ejemplo, 2 de 2 = 100 %). El ciclo se adapta y al terminar vuelve solo a su programa.</p></section>`;
 }
-function formContexto(id) {
-  const f = S.ficha, a = S.c.perfiles.find(p => p.id === f.id) || {}, c = id ? [...(f.contextos || []), ...(f.guardados || [])].find(x => x.id === id) : null, base = f.progFull, hoy = hoyISO(), guardado = esGuardado(c);
+function formContexto(id, op = {}) {
+  const f = S.ficha, a = S.c.perfiles.find(p => p.id === f.id) || {}, c = id ? [...(f.contextos || []), ...(f.guardados || [])].find(x => x.id === id) : null, base = op.base || f.progFull, hoy = hoyISO(), guardado = esGuardado(c);
   const lunesSig = sumaDias(lunesDe(hoy), 7);
   abrirSheet(`<form class="stack" id="f-ctx"><h2>${guardado ? 'Aplicar contexto' : c ? 'Editar contexto' : 'Nuevo contexto temporal'}</h2>${guardado ? '<p class="small muted">Elige desde qué semana y cuántas semanas lo aplicas. Mientras dure, entrenará estas sesiones.</p>' : ''}
-    <label class="f">Nombre (lo ve ${esc((a.nombre || 'el alumno').split(' ')[0])})<input type="text" id="cx-n" value="${esc(c?.contexto_nombre || '')}" placeholder="Ej. Vacaciones en la playa, Viaje de trabajo, Rodilla" required></label>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><label class="f">Semana que empieza<input type="date" id="cx-d" value="${c?.contexto_desde || lunesSig}" required></label><label class="f">Semanas<input type="number" id="cx-s" min="1" max="12" value="${c?.contexto_desde ? semanasCtx(c) : 1}" required></label><label class="f">Entrenos/semana<input type="number" id="cx-e" min="1" max="7" value="${c?.dias_semana || 2}" required></label></div>
+    <label class="f">Nombre (lo ve ${esc((a.nombre || 'el alumno').split(' ')[0])})<input type="text" id="cx-n" value="${esc(c?.contexto_nombre || op.nombre || '')}" placeholder="Ej. Vacaciones en la playa, Viaje de trabajo, Rodilla" required></label>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><label class="f">Semana que empieza<input type="date" id="cx-d" value="${c?.contexto_desde || op.fecha || lunesSig}" required></label><label class="f">Semanas<input type="number" id="cx-s" min="1" max="12" value="${c?.contexto_desde ? semanasCtx(c) : 1}" required></label><label class="f">Entrenos/semana<input type="number" id="cx-e" min="1" max="7" value="${c?.dias_semana || op.dpw || 2}" required></label></div>
     <p class="small muted" id="cx-r"></p>
-    ${c ? '' : base?.dias?.length ? `<div class="stack" style="gap:6px"><span class="small"><b>Sesiones de partida</b> · se copian de su programa y luego puedes recortarlas o añadir nuevas</span>${base.dias.map(d => `<label class="row small"><input type="checkbox" data-cxd="${d.id}" style="width:20px;height:20px"> ${esc(nomDia(d))}${d.foco && d.foco !== nomDia(d) ? ` <span class="muted">· ${esc(d.foco)}</span>` : ''}</label>`).join('')}<span class="small muted">Sin marcar ninguna empiezas con el contexto vacío y creas las sesiones desde cero.</span></div>` : '<p class="small muted">Empezarás con el contexto vacío y crearás las sesiones en el editor.</p>'}
+    ${c ? '' : base?.dias?.length ? `<div class="stack" style="gap:6px"><span class="small"><b>Sesiones de partida</b> · se copian de su programa y luego puedes recortarlas o añadir nuevas</span>${base.dias.map(d => `<label class="row small"><input type="checkbox" data-cxd="${d.id}" ${op.todos ? 'checked' : ''} style="width:20px;height:20px"> ${esc(nomDia(d))}${d.foco && d.foco !== nomDia(d) ? ` <span class="muted">· ${esc(d.foco)}</span>` : ''}</label>`).join('')}<span class="small muted">Sin marcar ninguna empiezas con el contexto vacío y creas las sesiones desde cero.</span></div>` : '<p class="small muted">Empezarás con el contexto vacío y crearás las sesiones en el editor.</p>'}
     ${guardado ? '' : `<label class="row small" style="gap:8px"><input type="checkbox" id="cx-g" style="width:20px;height:20px" ${c ? '' : ''}> <span>Guardar sin fechas: queda en su programa para aplicarlo cuando yo quiera</span></label>`}
     <p class="small" id="cx-err" style="color:var(--bad)"></p>
     <button class="btn full" type="submit">${guardado ? 'Aplicar en esas fechas' : c ? 'Guardar' : 'Crear y preparar sesiones'}</button>${c ? '<button class="btn ghost full" type="button" id="cx-del" style="color:var(--bad)">Eliminar contexto</button>' : ''}</form>`);
@@ -2322,10 +2322,18 @@ function resumenW(x) {
   if (x.tipo === 'semana') return `Cierre de semana${d.texto ? ': ' + d.texto : ''}`;
   return `Fatiga ${d.fatiga ?? '—'}/10 · dolor ${d.dolor ?? '—'} · sueño ${d.sueno ?? '—'}${d.semana ? ' · semana: ' + d.semana : ''}${m}`;
 }
+/* Semana patrón + ajuste de cada semana: una semana ajustada es un contexto de 1 semana copiado del patrón (o de la semana anterior) */
+function vAjusteSemana(a) {
+  const f = S.ficha, ctxs = (f?.id === a.id && f.contextos) || contextosDe(a.id), l0 = lunesDe(hoyISO());
+  return `<section class="section"><div class="section-head"><h2>Semana de entreno</h2></div><div class="card stack">
+    <p class="small muted" style="margin:0">Cada semana se repite su <b>semana patrón</b>. Si esa semana cambia algo (partido, carga, mover un entreno), crea una copia solo para esa semana: queda guardada tal como la dejas y no toca las anteriores ni el patrón.</p>
+    <div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end"><label class="f grow" style="min-width:160px">Semana del lunes<select id="aj-sem-${a.id}">${[0, 1, 2, 3].map(i => { const l = sumaDias(l0, 7 * i), c = ctxEnSemana(ctxs, l); return `<option value="${l}" ${i === 1 ? 'selected' : ''}>${esc(fCorta(l))}${i === 0 ? ' (esta)' : i === 1 ? ' (próxima)' : ''}${c ? ' · ajustada' : ''}</option>`; }).join('')}</select></label>
+      <button class="btn sm" data-act="ajustarSemana" data-al="${a.id}" data-m="patron">Ajustar desde el patrón</button><button class="btn sm ghost" data-act="ajustarSemana" data-al="${a.id}" data-m="anterior">Duplicar la semana anterior</button></div></div></section>`;
+}
 function vFutbolFicha(a) {
   const { w, p } = futDe(a.id), M = mdDe(p), C = cargasSemana(w), [na, ta] = nivelAcwr(C.acwr), uf = ultimaFatiga(w);
   const ult = w.slice().sort((x, y) => (y.fecha + y.tipo).localeCompare(x.fecha + x.tipo)).slice(0, 10);
-  return `<section class="section"><div class="section-head"><h2>Competición y fatiga</h2><button class="btn sm ghost" data-act="partido" data-al="${a.id}">＋ Partido</button></div>
+  return vAjusteSemana(a) + `<section class="section"><div class="section-head"><h2>Competición y fatiga</h2><button class="btn sm ghost" data-act="partido" data-al="${a.id}">＋ Partido</button></div>
     <div class="card stack">
       <div class="row"><span class="md-chip">${esc(M.md || '—')}</span><div class="grow"><b>${esc(M.txt)}</b>${M.prox ? `<div class="small muted">${esc(M.prox.rival || 'Partido')} · ${esc(fCorta(M.prox.fecha))}${M.prox.hora ? ' · ' + esc(M.prox.hora) : ''}${M.prox.nivel ? ' · rival ' + esc(M.prox.nivel.toLowerCase()) : ''}</div>` : ''}</div></div>
       <div class="kpis"><div class="kpi"><div class="l">Fatiga</div><b class="num" style="color:var(--${nivelFat(uf?.v) || 'fg'})">${uf ? uf.v + '/10' : '—'}</b></div><div class="kpi"><div class="l">Carga 7 días</div><b class="num">${fmtNum(C.aguda, 0)}</b></div><div class="kpi"><div class="l">ACWR</div><b class="num" style="color:var(--${na || 'fg'})">${C.acwr != null ? fmtNum(C.acwr) : '—'}</b><div class="small muted">${ta}</div></div></div>
@@ -5352,6 +5360,11 @@ document.addEventListener('click', async e => {
       S.editor = null; S.verPlan = null; if (S.ficha && !S.ficha.cargando) await cargarProgramasFicha(S.ficha); render(); window.scrollTo(0, 0); break;
     case 'edDia': formDia(b.dataset.id ? +b.dataset.id : null); break;
     case 'nuevoContexto': formContexto(null); break;
+    case 'ajustarSemana': { const f = S.ficha, al = b.dataset.al, lunes = $(`#aj-sem-${al}`)?.value; if (!f || !lunes) break;
+      const ctxs = f.contextos || [], ya = ctxEnSemana(ctxs, lunes); if (ya) { formContexto(ya.id); break; }
+      const ant = b.dataset.m === 'anterior' ? ctxEnSemana(ctxs, sumaDias(lunes, -7)) : null, src = ant || f.progFull;
+      if (!src?.dias?.length) { toast('Aún no hay semana patrón que copiar'); break; }
+      formContexto(null, { base: src, nombre: 'Semana del ' + fCorta(lunes), fecha: lunes, dpw: src.dias_semana || src.dias.length, todos: true }); break; }
     case 'editarContexto': formContexto(+b.dataset.id); break;
     case 'sesionesContexto': await abrirEditor(S.ficha.id, +b.dataset.id); break;
     case 'edBloque': formBloque(b.dataset.id ? +b.dataset.id : null, b.dataset.dia ? +b.dataset.dia : null); break;
