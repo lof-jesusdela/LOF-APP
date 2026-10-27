@@ -1128,6 +1128,12 @@ function ladoAprox(e) {
   const nom = [e.nombre, e.ejercicio?.nombre, e.ejercicio?.musculo, e.musculo].filter(x => typeof x === 'string').join(' ');
   return /pierna|cu[aá]dr|g[lú]+teo|isquio|gemelo|sentadilla|zancada|b[uú]lgara|step|pistol|prensa|hip|femoral|peso muerto|abductor|aductor/i.test(nom) ? 'pies' : 'manos';
 }
+/* Pesos que calcula la app por defecto (70 % · 100 % · 110 %; el doble si es unilateral) */
+function aproxDefecto(e) {
+  if (!e) return [];
+  const r = kgRef(e); if (!r) return []; const b = ladoAprox(e) ? r * 2 : r;
+  return [.7, 1, 1.1].map(f => String(Math.round(b * f)));
+}
 function vAprox(e) {
   const lado = ladoAprox(e), dos = lado ? (lado === 'pies' ? 'los dos pies / las dos piernas' : 'las dos manos / los dos brazos') : '';
   const ak = parseFloat(String(e.aprox_kg ?? '').replace(',', '.')), auto = !(ak > 0) && lado && kgRef(e), ref = ak > 0 ? ak : auto ? kgRef(e) * 2 : kgRef(e);   // unilateral sin peso fijado: el doble (se hace con las dos extremidades)
@@ -4660,7 +4666,7 @@ function formEjSesion(id, bloqueId) {
     <label class="f">Descripción adicional (opcional)<textarea id="es-nota" rows="3" placeholder="Algo que quieras añadir y que no sale en el vídeo: «sube explosivo, baja en 3 s», «codos pegados»…">${esc(e?.nota || '')}</textarea></label>
     <label class="f">Indicación de superserie (opcional)<input type="text" id="es-gr" value="${esc(e?.grupo || '')}" placeholder="Ej. 3 y 4 juntos (superserie)"></label>
     <label class="row small"><input type="checkbox" id="es-631" ${e?.aproximacion_631 ? 'checked' : ''} style="width:20px;height:20px"> Aproximación 6·3·1 antes de empezar</label>
-    <div class="f"><span>Pesos de la aproximación (kg, opcional) · déjalos vacíos para el cálculo automático (70 % · 100 % · 110 %, el doble si es unilateral)</span><div class="row" style="gap:8px">${(String(e?.aprox_kgs ?? '').split(';').concat(['', '', '']).slice(0, 3)).map((v, j) => `<label class="grow small">${['6 rep.', '3 rep.', '1 rep.'][j]}<input type="text" inputmode="decimal" class="es-631kgs" value="${esc(v)}" placeholder="auto"></label>`).join('')}</div></div>
+    <div class="f"><span>Pesos de la aproximación (kg, opcional) · déjalos vacíos para el cálculo automático (70 % · 100 % · 110 %, el doble si es unilateral)</span><div class="row" style="gap:8px">${(String(e?.aprox_kgs ?? '').split(';').concat(['', '', '']).slice(0, 3)).map((v, j) => `<label class="grow small">${['6 rep.', '3 rep.', '1 rep.'][j]}<input type="text" inputmode="decimal" class="es-631kgs" value="${esc(v)}" placeholder="${esc(aproxDefecto(e)[j] || 'auto')}"></label>`).join('')}</div></div>
     <p class="note">Si pones descanso 0 en la última fila, la app enlaza este ejercicio con el siguiente como superserie.</p>
     <button class="btn full" type="submit">Guardar</button>${e ? '<button class="btn ghost full" type="button" id="es-del" style="color:var(--bad)">Quitar del programa</button>' : ''}</form>`);
   const sel = $('#es-ej');
@@ -4751,7 +4757,10 @@ function formEjSesion(id, bloqueId) {
       const rirNum = filas.map(t => t.rir).find(v => typeof v === 'number');
       const row = { ejercicio_id: +ejId, pauta: filas, series: filas.reduce((t, x) => t + (x.s || 0), 0), repeticiones: filas[0].r, rir: rirNum ?? null,
         peso_ref: filas.find(t => t.kg)?.kg || null, descanso_seg: filas[filas.length - 1].d, metodo_id: numero($('#es-met').value), ajustes: $('#es-aj').value.trim() || null,
-        grupo: $('#es-gr').value.trim() || null, aproximacion_631: $('#es-631').checked, aprox_kg: numero([...document.querySelectorAll('.es-631kgs')][1]?.value), aprox_kgs: [...document.querySelectorAll('.es-631kgs')].map(x => x.value.trim().replace(',', '.')).some(Boolean) ? [...document.querySelectorAll('.es-631kgs')].map(x => x.value.trim().replace(',', '.')).join(';') : null };
+        grupo: $('#es-gr').value.trim() || null, aproximacion_631: $('#es-631').checked };
+      { const ks = [...document.querySelectorAll('.es-631kgs')].map(x => x.value.trim().replace(',', '.')), hay = ks.some(Boolean);
+        if (hay || e?.aprox_kgs != null) row.aprox_kgs = hay ? ks.join(';') : null;
+        if (hay || e?.aprox_kg != null) row.aprox_kg = hay ? numero(ks[1]) : null; }
       const mat = $('#es-mat').value.trim(), nota = $('#es-nota').value.trim(), todos = !$('#es-mat-o').hidden && document.querySelector('input[name="es-ma"]:checked')?.value === 'todos';
       const libX = (S.c.ejercicios || []).find(z => z.id === +ejId), matBib = libX?.material || '';
       let urlMat; if (st.mimg) { try { urlMat = await subirImagenEj(st.mimg, 'material', 900); } catch (err) { console.error(err); return toast(motivoImg(err)); } }
