@@ -5111,11 +5111,29 @@ async function notificarFin() {
     reg ? reg.showNotification('Fin del descanso', op) : new Notification('Fin del descanso', op);
   } catch (e) { }
 }
+/* Audio silencioso en bucle mientras corre el descanso: mantiene viva la app en segundo plano para que pueda avisar al terminar */
+function silencioVivo(on) {
+  try {
+    if (on) {
+      if (!T.sil) { const sr = 8000, n = sr, b = new ArrayBuffer(44 + n * 2), v = new DataView(b), w = (o, t) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+        w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+        for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, i % 2 ? 1 : -1, true);   // ruido inaudible (no es silencio digital puro)
+        T.sil = new Audio(URL.createObjectURL(new Blob([b], { type: 'audio/wav' }))); T.sil.loop = true; T.sil.volume = .02; }
+      if (navigator.audioSession) navigator.audioSession.type = 'ambient';
+      T.sil.play().catch(() => { });
+    } else if (T.sil) { T.sil.pause(); if (navigator.audioSession) navigator.audioSession.type = 'transient'; }
+  } catch (e) { }
+}
+/* Respaldo: el service worker programa el aviso por si la página se congela */
+function avisoSW(on) {
+  try { navigator.serviceWorker?.ready.then(r => r.active?.postMessage(on ? { t: 'descanso', ms: Math.max(0, T.end - Date.now()), body: T.lbl.replace(/^Descanso · /, '') || 'Fin del descanso' } : { t: 'descanso-cancelar' })); } catch (e) { }
+}
 async function startTimer(sec, lbl) {
   audio(); pararAlarma(); clearInterval(T.iv); T.total = sec * 1000; T.end = Date.now() + T.total; T.fin = false; T.lbl = lbl;
   const el = $('#timer'); el.hidden = false; el.classList.remove('done'); $('#t-lbl').textContent = lbl;
   try { if (navigator.wakeLock && !T.lock) T.lock = await navigator.wakeLock.request('screen'); } catch (e) { }
   if (sec >= 45) pedirAvisos();
+  silencioVivo(true); avisoSW(true);
   tick(); T.iv = setInterval(tick, 250);
 }
 function tick() {
@@ -5126,6 +5144,7 @@ function tick() {
   if (left <= 0) { clearInterval(T.iv); T.iv = null; finTimer(left); }
 }
 function finTimer(left) {
+  silencioVivo(false); avisoSW(false);
   if (T.fin) return; T.fin = true; // una sola alarma por descanso, aunque se vuelva a la app varias veces
   $('#timer').classList.add('done'); $('#t-lbl').textContent = 'Fin del descanso';
   if (document.hidden) notificarFin();
@@ -5135,7 +5154,7 @@ function finTimer(left) {
   sonarFin(); try { navigator.vibrate && navigator.vibrate([300, 250, 300, 250, 300]); } catch (e) { }
 }
 function pararAlarma() { callar(); const ov = $('#alarma'); if (ov) ov.hidden = true; }
-function stopTimer() { clearInterval(T.iv); T.iv = null; T.fin = true; pararAlarma(); $('#timer').hidden = true; try { T.lock?.release(); } catch (e) { } T.lock = null; }
+function stopTimer() { silencioVivo(false); avisoSW(false); clearInterval(T.iv); T.iv = null; T.fin = true; pararAlarma(); $('#timer').hidden = true; try { T.lock?.release(); } catch (e) { } T.lock = null; }
 /* Bloquear la pantalla o salir de la app para la alarma al momento */
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') { callar(); return; }
@@ -5151,7 +5170,7 @@ document.addEventListener('click', async e => {
   if (e.target.closest('[data-alarma]')) { stopTimer(); return; }
   const tm = e.target.closest('[data-tm]');
   if (tm) {
-    if (tm.dataset.tm === 'plus') { T.end += 15000; T.total += 15000; if ($('#timer').classList.contains('done')) { $('#timer').classList.remove('done'); clearInterval(T.iv); T.iv = setInterval(tick, 250); } }
+    if (tm.dataset.tm === 'plus') { T.end += 15000; T.total += 15000; avisoSW(true); if ($('#timer').classList.contains('done')) { $('#timer').classList.remove('done'); clearInterval(T.iv); T.iv = setInterval(tick, 250); } }
     else stopTimer();
     return;
   }
