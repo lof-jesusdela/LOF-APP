@@ -1131,10 +1131,10 @@ function ladoAprox(e) {
 function vAprox(e) {
   const lado = ladoAprox(e), dos = lado ? (lado === 'pies' ? 'los dos pies / las dos piernas' : 'las dos manos / los dos brazos') : '';
   const ak = parseFloat(String(e.aprox_kg ?? '').replace(',', '.')), auto = !(ak > 0) && lado && kgRef(e), ref = ak > 0 ? ak : auto ? kgRef(e) * 2 : kgRef(e);   // unilateral sin peso fijado: el doble (se hace con las dos extremidades)
-  const filas = [[6, 0.7, 'Peso ligero'], [3, 1, 'Peso objetivo'], [1, 1.1, 'Por encima del objetivo']];
+  const man = String(e.aprox_kgs ?? '').split(';').map(x => parseFloat(x.replace(',', '.'))), filas = [[6, 0.7, 'Peso ligero'], [3, 1, 'Peso objetivo'], [1, 1.1, 'Por encima del objetivo']];
   return `<div class="aprox"><span class="eyebrow">Aproximación 6·3·1 · antes de empezar${lado ? ' · con ' + (lado === 'pies' ? 'los dos pies' : 'las dos manos') : ''}</span>
-    ${lado ? `<div class="small" style="color:var(--gold,inherit);font-weight:700">⚠ Aunque el ejercicio sea unilateral, la aproximación se hace SIEMPRE con ${dos}${e.aprox_kg > 0 ? ' (peso indicado por Jesús)' : ' (el peso es el doble del de un lado)'}.</div>` : ''}<div class="small">Al terminar la repetición única, descansa 1 minuto y empieza tus series.</div>
-    ${filas.map(([n, f, t], j) => `<div class="ap-row"><span class="ap-n num">${n}</span><span class="small">${n === 1 ? '1 repetición' : n + ' repeticiones'}<br><span class="muted">${t}</span></span><b class="ap-kg num">${ref ? Math.round(ref * f) + ' kg' : 'como 1.ª serie'}</b><button class="chk" data-act="aprox" data-j="${j}" aria-label="Hecha">${CHK}</button></div>`).join('')}
+    ${lado ? `<div class="small" style="color:var(--gold,inherit);font-weight:700">⚠ Aunque el ejercicio sea unilateral, la aproximación se hace SIEMPRE con ${dos}${e.aprox_kg > 0 ? ' (peso indicado por Jesús)' : man.some(x => x > 0) ? ' (pesos indicados por Jesús)' : ' (el peso es el doble del de un lado)'}.</div>` : ''}<div class="small">Al terminar la repetición única, descansa 1 minuto y empieza tus series.</div>
+    ${filas.map(([n, f, t], j) => `<div class="ap-row"><span class="ap-n num">${n}</span><span class="small">${n === 1 ? '1 repetición' : n + ' repeticiones'}<br><span class="muted">${t}</span></span><b class="ap-kg num">${man[j] > 0 ? fmtNum(man[j], 2) + ' kg' : ref ? Math.round(ref * f) + ' kg' : 'como 1.ª serie'}</b><button class="chk" data-act="aprox" data-j="${j}" aria-label="Hecha">${CHK}</button></div>`).join('')}
   </div>`;
 }
 /* El coach entra en el entreno de un alumno (en directo o para corregir una sesión) */
@@ -4660,7 +4660,7 @@ function formEjSesion(id, bloqueId) {
     <label class="f">Descripción adicional (opcional)<textarea id="es-nota" rows="3" placeholder="Algo que quieras añadir y que no sale en el vídeo: «sube explosivo, baja en 3 s», «codos pegados»…">${esc(e?.nota || '')}</textarea></label>
     <label class="f">Indicación de superserie (opcional)<input type="text" id="es-gr" value="${esc(e?.grupo || '')}" placeholder="Ej. 3 y 4 juntos (superserie)"></label>
     <label class="row small"><input type="checkbox" id="es-631" ${e?.aproximacion_631 ? 'checked' : ''} style="width:20px;height:20px"> Aproximación 6·3·1 antes de empezar</label>
-    <label class="f">Peso de la aproximación (kg, opcional)<input type="text" inputmode="decimal" id="es-631kg" value="${esc(e?.aprox_kg ?? '')}" placeholder="Ej. 40 · en unilaterales se hace con las dos manos o los dos pies. Vacío = el de la 1.ª serie (el doble si es unilateral)"></label>
+    <div class="f"><span>Pesos de la aproximación (kg, opcional) · déjalos vacíos para el cálculo automático (70 % · 100 % · 110 %, el doble si es unilateral)</span><div class="row" style="gap:8px">${(String(e?.aprox_kgs ?? '').split(';').concat(['', '', '']).slice(0, 3)).map((v, j) => `<label class="grow small">${['6 rep.', '3 rep.', '1 rep.'][j]}<input type="text" inputmode="decimal" class="es-631kgs" value="${esc(v)}" placeholder="auto"></label>`).join('')}</div></div>
     <p class="note">Si pones descanso 0 en la última fila, la app enlaza este ejercicio con el siguiente como superserie.</p>
     <button class="btn full" type="submit">Guardar</button>${e ? '<button class="btn ghost full" type="button" id="es-del" style="color:var(--bad)">Quitar del programa</button>' : ''}</form>`);
   const sel = $('#es-ej');
@@ -4751,7 +4751,7 @@ function formEjSesion(id, bloqueId) {
       const rirNum = filas.map(t => t.rir).find(v => typeof v === 'number');
       const row = { ejercicio_id: +ejId, pauta: filas, series: filas.reduce((t, x) => t + (x.s || 0), 0), repeticiones: filas[0].r, rir: rirNum ?? null,
         peso_ref: filas.find(t => t.kg)?.kg || null, descanso_seg: filas[filas.length - 1].d, metodo_id: numero($('#es-met').value), ajustes: $('#es-aj').value.trim() || null,
-        grupo: $('#es-gr').value.trim() || null, aproximacion_631: $('#es-631').checked, aprox_kg: numero($('#es-631kg').value) };
+        grupo: $('#es-gr').value.trim() || null, aproximacion_631: $('#es-631').checked, aprox_kg: numero([...document.querySelectorAll('.es-631kgs')][1]?.value), aprox_kgs: [...document.querySelectorAll('.es-631kgs')].map(x => x.value.trim().replace(',', '.')).some(Boolean) ? [...document.querySelectorAll('.es-631kgs')].map(x => x.value.trim().replace(',', '.')).join(';') : null };
       const mat = $('#es-mat').value.trim(), nota = $('#es-nota').value.trim(), todos = !$('#es-mat-o').hidden && document.querySelector('input[name="es-ma"]:checked')?.value === 'todos';
       const libX = (S.c.ejercicios || []).find(z => z.id === +ejId), matBib = libX?.material || '';
       let urlMat; if (st.mimg) { try { urlMat = await subirImagenEj(st.mimg, 'material', 900); } catch (err) { console.error(err); return toast(motivoImg(err)); } }
@@ -4892,7 +4892,7 @@ function formDuplicar(id) {
       const nuevo = { ...data, ejercicios_sesion: [] };
       for (const [i, x] of blq.ejercicios_sesion.entries()) {
         const f = { bloque_id: data.id, orden: i + 1 };
-        ['ejercicio_id', 'series', 'repeticiones', 'rir', 'peso_ref', 'descanso_seg', 'metodo_id', 'ajustes', 'aproximacion_631', 'aprox_kg', 'grupo', 'pauta', 'material', 'material_img_url', 'nota', 'imagen_url', 'nombre', 'video_url', 'musculo_img_url'].forEach(k => { if (x[k] != null) f[k] = x[k]; });
+        ['ejercicio_id', 'series', 'repeticiones', 'rir', 'peso_ref', 'descanso_seg', 'metodo_id', 'ajustes', 'aproximacion_631', 'aprox_kg', 'aprox_kgs', 'grupo', 'pauta', 'material', 'material_img_url', 'nota', 'imagen_url', 'nombre', 'video_url', 'musculo_img_url'].forEach(k => { if (x[k] != null) f[k] = x[k]; });
         const r = await sb.from('ejercicios_sesion').insert(f); if (r.error) throw r.error;
       }
       dia.bloques_sesion.splice(pos, 0, nuevo); await reletrar(dia);
