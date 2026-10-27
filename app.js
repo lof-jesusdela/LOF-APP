@@ -4770,9 +4770,9 @@ function formEjSesion(id, bloqueId) {
       if (destino !== blq || !e) { row.bloque_id = destino.id; row.orden = Math.max(0, ...destino.ejercicios_sesion.map(x => x.orden)) + 1; }
       const guardaEj = r => e ? sb.from('ejercicios_sesion').update(r).eq('id', e.id) : sb.from('ejercicios_sesion').insert(r);
       let { error } = await guardaEj(row);
-      if (error && /aprox_kgs/.test(error.message || '')) {   // falta el bloque 68: se guarda igual, sin los pesos manuales
-        const r2 = { ...row }; delete r2.aprox_kgs; ({ error } = await guardaEj(r2));
-        if (!error) toast('Guardado, pero sin los pesos de la aproximación: falta ejecutar el Bloque 68 en Supabase');
+      if (error && /aprox_kg/.test(error.message || '')) {   // faltan los bloques 67/68: se guarda igual, sin los pesos manuales
+        const r2 = { ...row }; delete r2.aprox_kgs; delete r2.aprox_kg; ({ error } = await guardaEj(r2));
+        if (!error) toast('Guardado, pero sin los pesos de la aproximación: ejecuta los Bloques 67 y 68 en Supabase');
       }
       if (error) throw error;
       cerrarSheet(); toast('Ejercicio guardado'); refrescarEditor();
