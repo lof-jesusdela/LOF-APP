@@ -138,7 +138,7 @@ async function cargarPerfil() {
   if (!data.consentimiento_at) return Casos.vistaInicial();
   S.modo = data.rol === 'coach' ? 'coach' : 'alumno';
   await Promise.all([cargarAlumno(S.user.id), cargarAjustes()]);
-  avisoCheckin(); avisoFutbol();
+  avisoCheckin(); avisoFutbol(); refrescarPush();
   if (!window._lofVis) { window._lofVis = true; document.addEventListener('visibilitychange', () => { if (!document.hidden && S.modo === 'alumno') { avisoCheckin(); avisoFutbol(); } }); }
   if (S.modo === 'coach') await cargarCoach();
   render();
@@ -361,7 +361,7 @@ async function cargarAlumno(uid) {
   await Acomp.cargarAlumno(uid, S.d);
   { const r = await sb.from('programas').select('contexto_nombre,alternativo,' + SEL_PROGRAMA).eq('alumno_id', uid).eq('alternativo', true).order('id');
     S.d.alternativos = r.error ? [] : (r.data || []).map(x => { ordSemana(x.dias ||= []); x.dias.forEach(ordenarDia); return x; }); }
-  { const r = await sb.from('plan_semana').select('*').eq('alumno_id', uid).gte('semana_inicio', sumaDias(lunesDe(hoyISO()), -56)); S.d.planes = r.data || []; }
+  { const r = await sb.from('plan_semana').select('*').eq('alumno_id', uid).gte('semana_inicio', sumaDias(lunesDe(hoyISO()), -56)); S.d.planes = r.data || []; }  { const r = await sb.from('avisos').select('*').eq('alumno_id', uid).is('visto_at', null).order('creado_at', { ascending: false }).limit(5); S.d.avisos = r.error ? [] : (r.data || []); }
 }
 
 /* ---------- Render principal ---------- */
@@ -822,6 +822,45 @@ function vCheckinTarjeta() {
   const est = c ? `<span class="pill ok">✓ Enviado el ${esc(fCorta((c.created_at || c.actualizado_at || lunes).slice(0, 10)))}</span>` : toca ? '<span class="pill gold">Toca ahora</span>' : `<span class="pill">Se abre el sábado ${esc(fCorta(sab))}</span>`;
   return `<section class="section" id="checkin"><div class="card row" style="gap:10px;align-items:center"><div class="ico ${toca && !c ? 'gold' : ''}">${svg('checkin')}</div><div class="grow stack" style="gap:4px"><b class="small">Check-in semanal · semana del ${esc(fCorta(lunes))}</b><div>${est}</div><div class="small muted">${c ? 'Puedes modificarlo hasta el domingo.' : `Hasta el domingo ${esc(fCorta(dom))}. Lo que registras cada día se rellena solo.`}</div></div><button class="btn sm ${c ? 'ghost' : ''}" data-act="abrirCheckin">${c ? 'Modificar' : toca ? 'Rellenar' : 'Rellenar ya'}</button></div></section>`;
 }
+/* ---------- Avisos al móvil (push) y «Tu semana está lista» ---------- */
+const b64u = t => { const p = '='.repeat((4 - t.length % 4) % 4), r = atob((t + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from([...r].map(c => c.charCodeAt(0))); };
+const esIOS = /iphone|ipad|ipod/i.test(navigator.userAgent), instalada = !!(navigator.standalone || matchMedia('(display-mode: standalone)').matches);
+async function estadoPush() {
+  try {
+    if (!window.LOF_CONFIG?.vapid || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return esIOS && !instalada ? 'instalar' : 'no';
+    if (Notification.permission === 'denied') return 'bloqueado';
+    if (Notification.permission !== 'granted') return 'falta';
+    const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription();
+    if (!sub) return 'falta';
+    return 'ok';
+  } catch (e) { return 'no'; }
+}
+async function activarPush() {
+  try {
+    const p = await Notification.requestPermission(); if (p !== 'granted') { toast('Sin permiso no podemos avisarte. Puedes activarlo en Ajustes del móvil'); return false; }
+    const reg = await navigator.serviceWorker.ready;
+    const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(window.LOF_CONFIG.vapid) });
+    const j = sub.toJSON();
+    const { error } = await sb.from('push_suscripciones').upsert({ alumno_id: S.user.id, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth }, { onConflict: 'endpoint' });
+    if (error) throw error;
+    toast('Avisos activados'); return true;
+  } catch (err) { console.error(err); toast(/push_suscripciones|relation/.test(err?.message || '') ? 'Falta ejecutar el Bloque 69 en Supabase' : 'No se han podido activar los avisos'); return false; }
+}
+/* Si ya dio permiso, se renueva la suscripción en silencio (por si el móvil la cambió) y se actualiza el estado de la tarjeta */
+async function refrescarPush() {
+  if (S.modo !== 'alumno') return;
+  let est = await estadoPush();
+  if (est === 'ok') { try { const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription(), j = sub.toJSON(); await sb.from('push_suscripciones').upsert({ alumno_id: S.user.id, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth }, { onConflict: 'endpoint' }); } catch (e) { } }
+  if (S.push !== est) { S.push = est; if (S.tab === 'hoy' && $('#sheet').hidden) render(); }
+}
+function vAvisosHoy() {
+  const av = (S.d?.avisos || [])[0], push = S.push;
+  let h = '';
+  if (av) h += `<section class="section"><div class="card ctx-aviso"><span class="pill gold">${esc(av.titulo || 'Aviso')}</span><div class="grow"><b>${esc(av.cuerpo || '')}</b></div><button class="btn sm" data-act="avisoVisto" data-id="${av.id}" data-t="${av.tipo === 'semana' ? 'entreno' : 'hoy'}">${av.tipo === 'semana' ? 'Ver mi semana ›' : 'Entendido'}</button></div></section>`;
+  if (push === 'falta') h += `<section class="section"><div class="card row" style="gap:10px;flex-wrap:wrap"><div class="grow small"><b>🔔 Activa los avisos</b><div class="muted">Para que te llegue al móvil cuando Jesús deje tu semana lista.</div></div><button class="btn sm" data-act="activarPush">Activar</button></div></section>`;
+  else if (push === 'instalar') h += `<section class="section"><div class="card small"><b>🔔 Para recibir avisos en el iPhone</b><div class="muted">Abre la app desde Safari, pulsa Compartir → «Añadir a pantalla de inicio» y ábrela desde el icono. Después podrás activar los avisos.</div></div></section>`;
+  return h;
+}
 /* «Esta semana»: planificación del equipo que subió el alumno (cierre de semana), justo antes de «Lo que toca hoy» */
 const SEMIMG = {};
 function esWeekCard() {
@@ -859,6 +898,7 @@ function vHoy() {
   </section>
   ${Acomp.tarjetaEstadoHoy()}
   ${vAvisoContexto()}
+  ${vAvisosHoy()}
   ${esWeekCard()}
   <section class="section"><h2>Lo que toca hoy</h2><div class="card">${toca}</div></section>
   ${vPendientesHoy(s)}
@@ -2355,6 +2395,17 @@ async function ajustarSemana(lunes, anterior) {
     toast('Semana preparada: ajusta lo que cambie'); await recargarContextosCoach(); await cargarProgramasFicha(f); await abrirEditor(f.id, np.id);
   } catch (err) { fallo(err, /contexto/.test(err.message || '') ? 'Falta ejecutar el Bloque 34 en Supabase.' : 'No se ha podido preparar la semana.'); }
 }
+async function avisarSemana(alumnoId, lunes) {
+  try {
+    const nom = (S.c.perfiles.find(p => p.id === alumnoId)?.nombre || 'el jugador').split(' ')[0];
+    const reg = { alumno_id: alumnoId, tipo: 'semana', semana_inicio: lunes, titulo: 'Tu semana está lista', cuerpo: 'Jesús ya te ha preparado tu semana de entreno. Échale un vistazo.' };
+    await sb.from('avisos').update({ visto_at: new Date().toISOString() }).eq('alumno_id', alumnoId).eq('tipo', 'semana').is('visto_at', null);
+    const { error } = await sb.from('avisos').insert(reg); if (error) throw error;
+    const r = await sb.functions.invoke('enviar-aviso', { body: { alumno_ids: [alumnoId], titulo: reg.titulo, cuerpo: reg.cuerpo, url: './' } });
+    if (r.error || r.data?.error) { toast(`Aviso dejado en la app de ${nom}. El envío al móvil no está configurado todavía`); return; }
+    toast(r.data?.enviados ? `Aviso enviado al móvil de ${nom}` : `Aviso dejado en la app de ${nom}. Aún no ha activado las notificaciones`);
+  } catch (err) { fallo(err, /avisos|relation/.test(err?.message || '') ? 'Falta ejecutar el Bloque 69 en Supabase.' : 'No se ha podido enviar el aviso.'); }
+}
 function vSemanasFutbol(a) {
   const f = S.ficha; if (!f || f.id !== a.id) return '';
   const L0 = lunesDe(hoyISO()), semanas = [[L0, 'Esta semana'], [sumaDias(L0, 7), 'La semana que viene']];
@@ -2363,7 +2414,7 @@ function vSemanasFutbol(a) {
     <p class="small muted" style="margin:0">Cada semana usa el programa base (la semana patrón). Para adaptarla a la carga de ese momento, crea una copia solo de esa semana: queda guardada tal como la dejes y no toca las demás.</p>
     ${semanas.map(([l, et]) => { const c = ctxEnSemana(f.contextos, l), ant = ctxEnSemana(f.contextos, sumaDias(l, -7));
       return `<div class="line" style="flex-wrap:wrap;gap:6px"><div class="grow" style="min-width:170px"><b>${et}</b> <span class="small muted">· del ${esc(fCorta(l))} al ${esc(fCorta(sumaDias(l, 6)))}</span><div class="small ${c ? '' : 'muted'}">${c ? '✓ Ajustada: ' + esc(c.contexto_nombre || '') : 'Con el programa base'}</div></div>
-      ${c ? `<button class="btn sm ghost" data-act="sesionesContexto" data-id="${c.id}">✎ Editar sus sesiones</button>` : `<button class="btn sm" data-act="semAjustar" data-l="${l}">Ajustar esta semana</button>${ant ? `<button class="btn sm ghost" data-act="semAjustar" data-l="${l}" data-ant="1">Duplicar la anterior</button>` : ''}`}</div>`; }).join('')}
+      <button class="btn sm gold" data-act="avisarSemana" data-al="${a.id}" data-l="${l}">🔔 Avisar: semana lista</button>${c ? `<button class="btn sm ghost" data-act="sesionesContexto" data-id="${c.id}">✎ Editar sus sesiones</button>` : `<button class="btn sm" data-act="semAjustar" data-l="${l}">Ajustar esta semana</button>${ant ? `<button class="btn sm ghost" data-act="semAjustar" data-l="${l}" data-ant="1">Duplicar la anterior</button>` : ''}`}</div>`; }).join('')}
     ${hechas.length ? `<div class="small muted">Semanas ajustadas: ${hechas.map(c => `<button class="pill" data-act="sesionesContexto" data-id="${c.id}">${esc(fCorta(c.contexto_desde))}</button>`).join(' ')}</div>` : ''}</div></section>`;
 }
 function vFutbolFicha(a) {
@@ -5402,6 +5453,9 @@ document.addEventListener('click', async e => {
       if (!src?.dias?.length) { toast('Aún no hay semana patrón que copiar'); break; }
       formContexto(null, { base: src, nombre: 'Semana del ' + fCorta(lunes), fecha: lunes, dpw: src.dias_semana || src.dias.length, todos: true }); break; }
     case 'editarContexto': formContexto(+b.dataset.id); break;
+    case 'activarPush': await activarPush(); await refrescarPush(); render(); break;
+    case 'avisoVisto': { const id = +b.dataset.id; await sb.from('avisos').update({ visto_at: new Date().toISOString() }).eq('id', id); S.d.avisos = (S.d.avisos || []).filter(x => x.id !== id); S.tab = b.dataset.t || 'hoy'; S.dia = null; render(); window.scrollTo(0, 0); break; }
+    case 'avisarSemana': b.disabled = true; await avisarSemana(b.dataset.al, b.dataset.l); b.disabled = false; break;
     case 'semAjustar': b.disabled = true; await ajustarSemana(b.dataset.l, !!b.dataset.ant); b.disabled = false; break;
     case 'sesionesContexto': await abrirEditor(S.ficha.id, +b.dataset.id); break;
     case 'edBloque': formBloque(b.dataset.id ? +b.dataset.id : null, b.dataset.dia ? +b.dataset.dia : null); break;
