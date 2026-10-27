@@ -4768,7 +4768,12 @@ function formEjSesion(id, bloqueId) {
       Object.entries(datos).forEach(([k, v]) => { if (v !== undefined) row[k] = v; });
       if (e && +ejId !== e.ejercicio_id) ['imagen_url', 'nombre', 'video_url', 'musculo_img_url'].forEach(k => { if (e[k]) row[k] = null; });
       if (destino !== blq || !e) { row.bloque_id = destino.id; row.orden = Math.max(0, ...destino.ejercicios_sesion.map(x => x.orden)) + 1; }
-      const { error } = e ? await sb.from('ejercicios_sesion').update(row).eq('id', e.id) : await sb.from('ejercicios_sesion').insert(row);
+      const guardaEj = r => e ? sb.from('ejercicios_sesion').update(r).eq('id', e.id) : sb.from('ejercicios_sesion').insert(r);
+      let { error } = await guardaEj(row);
+      if (error && /aprox_kgs/.test(error.message || '')) {   // falta el bloque 68: se guarda igual, sin los pesos manuales
+        const r2 = { ...row }; delete r2.aprox_kgs; ({ error } = await guardaEj(r2));
+        if (!error) toast('Guardado, pero sin los pesos de la aproximación: falta ejecutar el Bloque 68 en Supabase');
+      }
       if (error) throw error;
       cerrarSheet(); toast('Ejercicio guardado'); refrescarEditor();
     } catch (err) { fallo(err, /nombre|video_url|musculo_img_url/i.test(err.message || '') ? 'Falta ejecutar el Bloque 46 en Supabase para guardar nombre, vídeo o músculo solo en este programa.' : /privado|imagen_url/i.test(err.message || '') ? 'Falta ejecutar el Bloque 43 en Supabase para guardar fotos o ejercicios solo de este programa.' : /material|nota|column/i.test(err.message || '') ? 'Falta ejecutar el Bloque 39 en Supabase para guardar el material y la descripción.' : /bucket|row-level|security/i.test(err.message || '') ? 'Supabase no deja subir imágenes: ejecuta el Bloque 38.' : undefined); }
