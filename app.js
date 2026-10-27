@@ -822,6 +822,16 @@ function vCheckinTarjeta() {
   const est = c ? `<span class="pill ok">✓ Enviado el ${esc(fCorta((c.created_at || c.actualizado_at || lunes).slice(0, 10)))}</span>` : toca ? '<span class="pill gold">Toca ahora</span>' : `<span class="pill">Se abre el sábado ${esc(fCorta(sab))}</span>`;
   return `<section class="section" id="checkin"><div class="card row" style="gap:10px;align-items:center"><div class="ico ${toca && !c ? 'gold' : ''}">${svg('checkin')}</div><div class="grow stack" style="gap:4px"><b class="small">Check-in semanal · semana del ${esc(fCorta(lunes))}</b><div>${est}</div><div class="small muted">${c ? 'Puedes modificarlo hasta el domingo.' : `Hasta el domingo ${esc(fCorta(dom))}. Lo que registras cada día se rellena solo.`}</div></div><button class="btn sm ${c ? 'ghost' : ''}" data-act="abrirCheckin">${c ? 'Modificar' : toca ? 'Rellenar' : 'Rellenar ya'}</button></div></section>`;
 }
+/* «Esta semana»: planificación del equipo que subió el alumno (cierre de semana), justo antes de «Lo que toca hoy» */
+const SEMIMG = {};
+function esWeekCard() {
+  if (!S.d.servicio?.modulo_futbol) return '';
+  const sw = (S.d.wellness || []).filter(x => x.tipo === 'semana' && x.fecha >= sumaDias(hoyISO(), -13) && x.fecha <= sumaDias(hoyISO(), 6) && x.datos?.archivos?.length).sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
+  if (!sw || hoyISO() < sumaDias(sw.fecha, 1) || hoyISO() > sumaDias(sw.fecha, 7)) return '';
+  const rs = sw.datos.archivos, faltan = rs.filter(r => !SEMIMG[r] && !/\.pdf$/i.test(r));
+  if (faltan.length) sb.storage.from('gps').createSignedUrls(faltan, 6 * 3600).then(r => { (r.data || []).forEach(x => { if (x.signedUrl) SEMIMG[x.path] = x.signedUrl; }); render(); });
+  return `<section class="section"><h2>Esta semana</h2><div class="card stack" style="gap:8px"><div class="small muted">Tu semana con tu equipo · del ${esc(fCorta(sumaDias(sw.fecha, 1)))} al ${esc(fCorta(sumaDias(sw.fecha, 7)))}</div>${sw.datos.texto ? `<div class="pre small">${esc(sw.datos.texto)}</div>` : ''}${rs.map(r => /\.pdf$/i.test(r) ? `<button class="pill blue" data-act="verGps" data-r="${esc(r)}">📎 Ver planificación (PDF)</button>` : SEMIMG[r] ? `<img src="${esc(SEMIMG[r])}" alt="Semana con tu equipo" style="width:100%;border-radius:12px" data-act="verGps" data-r="${esc(r)}">` : '<div class="small muted">Cargando…</div>').join('')}</div></section>`;
+}
 function vHoy() {
   const s = S.d.servicio || {}, p = S.d.programa, hoy = hoyISO();
   const d = diaDeHoy(), prox = proximoDia();
@@ -849,6 +859,7 @@ function vHoy() {
   </section>
   ${Acomp.tarjetaEstadoHoy()}
   ${vAvisoContexto()}
+  ${esWeekCard()}
   <section class="section"><h2>Lo que toca hoy</h2><div class="card">${toca}</div></section>
   ${vPendientesHoy(s)}
   ${Acomp.ultimaIndicacion()}
