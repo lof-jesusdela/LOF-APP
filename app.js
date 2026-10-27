@@ -1343,7 +1343,7 @@ function vSesion() {
     <p class="note">Corrige kg, repeticiones o RIR: los cambios de una serie ya marcada se guardan solos al salir de la casilla. Para añadir una serie que no apuntó, rellénala y marca el check. Para borrarla, quita el check.</p></section>
   <section class="section">${vBloquesDia(d, cont)}
   <button class="btn full dark" data-act="terminar">Listo, ver sesión</button></section>`;
-  return como + `<div class="crono" id="crono">${ini ? `<span class="crono-t num" id="crono-t">${fmtCrono(Date.now() - ini)}</span><span class="small">Entrenamiento en curso</span>` : `<button class="btn sm" data-act="empezarCrono">⏱ Empezar entrenamiento</button><span class="small muted">El cronómetro mide tu sesión completa</span>`}</div>
+  return como + `<div class="crono" id="crono">${ini ? `<span class="crono-t num" id="crono-t">${fmtCrono(Date.now() - ini)}</span><span class="small">Entrenamiento en curso</span>` : S.sesion?.finMin ? `<span class="small">✓ Entrenamiento terminado · ${S.sesion.finMin} min</span>` : `<button class="btn sm" data-act="empezarCrono">⏱ Empezar entrenamiento</button><span class="small muted">El cronómetro mide tu sesión completa</span>`}</div>
   <section class="stack"><button class="btn sm ghost" data-act="cerrarDia" style="align-self:flex-start">← Semana</button>
     <span class="eyebrow">${esc(S.d.programa?.nombre || '')} · ${esc(d.nombre)}</span><h1>${esc(d.titulo || d.foco || d.nombre)}</h1>
     ${cicloSesion()}
@@ -1385,7 +1385,11 @@ async function abrirDia(id, op = {}) {
   if (hoyS && hoyS.fecha && hoyS.fecha !== fechaS && !op.sesionId) { S.sesion.fecha = hoyS.fecha; S.sesion.retomada = true; }
   const fechaDe = sid => (S.d.sesiones.find(s => s.id === sid) || {}).fecha;
   if (hoyS) { S.sesion.omitidos = hoyS.omitidos || []; S.sesion.comentarios = hoyS.comentarios || [];
-    S.sesion.id = hoyS.id; if (!S.sesion.inicio && hoyS.inicio_at) S.sesion.inicio = new Date(hoyS.inicio_at).getTime(); }
+    S.sesion.id = hoyS.id;
+    const fin = hoyS.inicio_at && hoyS.duracion_min ? new Date(hoyS.inicio_at).getTime() + hoyS.duracion_min * 60000 : 0;   // sesión ya terminada: el cronómetro no vuelve a correr
+    if (fin) { if (S.sesion.inicio && S.sesion.inicio <= fin + 60000) { S.sesion.inicio = null; try { localStorage.removeItem(claveCrono()); } catch (e) { } } if (!S.sesion.inicio) S.sesion.finMin = hoyS.duracion_min; }
+    else if (!S.sesion.inicio && hoyS.inicio_at) S.sesion.inicio = new Date(hoyS.inicio_at).getTime(); }
+  if (S.sesion.inicio && Date.now() - S.sesion.inicio > 8 * 3600 * 1000) { S.sesion.inicio = null; try { localStorage.removeItem(claveCrono()); } catch (e) { } }   // cronómetro olvidado de otro día
   if (ids.length) {
     const { data } = await conRespaldo(() => sb.from('registros_series').select('id,sesion_id,ejercicio_sesion_id,serie,tramo,kg,repeticiones,rir,creado_at').eq('alumno_id', uidSes()).in('ejercicio_sesion_id', ids).order('creado_at', { ascending: false }).limit(1500),
       () => sb.from('registros_series').select('id,sesion_id,ejercicio_sesion_id,serie,kg,repeticiones,rir,creado_at').eq('alumno_id', uidSes()).in('ejercicio_sesion_id', ids).order('creado_at', { ascending: false }).limit(1500));
@@ -1580,7 +1584,7 @@ async function guardarSesion() {
     if (Object.keys(cambios).length) { const { error } = await conRespaldo(() => sb.from('sesiones_hechas').update(cambios).eq('id', id), () => sb.from('sesiones_hechas').update({ nota: cambios.nota ?? null }).eq('id', id)); if (error) throw error; Object.assign(S.d.sesiones.find(s => s.id === id) || {}, cambios); }
     { const c = conteoSeries(S.dia, S.sesion), est = { estado: !c.total || c.hechas >= c.total ? 'completa' : 'parcial', series_hechas: c.hechas, series_total: c.total };
       const r = await sb.from('sesiones_hechas').update(est).eq('id', id); if (!r.error) Object.assign(S.d.sesiones.find(x => x.id === id) || {}, est); }
-    try { localStorage.removeItem(claveCrono()); } catch (e) { }
+    try { localStorage.removeItem(claveCrono()); } catch (e) { } S.sesion.inicio = null;
     if (S.obj) { const canj = S.obj.presencial; await registrarPresencial(id); cerrarSheet(); stopTimer(); await salirComo(); toast(canj ? 'Sesión guardada y presencial canjeada' : 'Sesión guardada en su ficha'); await verSesion(id); return; }
     cerrarSheet(); stopTimer(); S.dia = null; S.sesion = null; S.tab = 'hoy'; toast('Sesión guardada. ¡Buen trabajo!'); render(); window.scrollTo(0, 0);
   } catch (err) { fallo(err); }
