@@ -579,6 +579,16 @@ nav.tabs a.tab-wa{flex:1;padding:10px 2px 12px;display:flex;flex-direction:colum
 <script src="tandas.js"></script>
 <script src="app.js"></script>
 <script>
+/* Si la app se queda en «Cargando…», a los 12 s ofrece limpiar la caché y reintentar (y enseña el error si lo hay) */
+(function () {
+  let ultimo = ''; window.addEventListener('error', e => { ultimo = (e.message || '') + (e.filename ? ' · ' + e.filename.split('/').pop() + ':' + e.lineno : ''); });
+  window.addEventListener('unhandledrejection', e => { ultimo = String(e.reason && (e.reason.message || e.reason)); });
+  setTimeout(() => {
+    const app = document.getElementById('app'); if (!app || !/Cargando…/.test(app.textContent) || app.querySelector('form,.card')) return;
+    app.innerHTML = '<div class="login"><div class="card stack" style="text-align:center"><h2>La app no ha terminado de cargar</h2><p class="muted small">' + (ultimo ? 'Error: ' + ultimo.replace(/</g, '&lt;') : 'Puede ser la conexión o una versión antigua guardada.') + '</p><button class="btn" id="rec-cache">Limpiar y reintentar</button></div></div>';
+    document.getElementById('rec-cache').onclick = async () => { try { (await navigator.serviceWorker.getRegistrations()).forEach(r => r.unregister()); (await caches.keys()).forEach(k => caches.delete(k)); } catch (e) { } location.reload(); };
+  }, 12000);
+})();
 if ('serviceWorker' in navigator) {
   const tenia = !!navigator.serviceWorker.controller; let nueva = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (tenia) nueva = true; });
