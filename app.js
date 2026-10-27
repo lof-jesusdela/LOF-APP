@@ -2330,10 +2330,46 @@ function vAjusteSemana(a) {
     <div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end"><label class="f grow" style="min-width:160px">Semana del lunes<select id="aj-sem-${a.id}">${[0, 1, 2, 3].map(i => { const l = sumaDias(l0, 7 * i), c = ctxEnSemana(ctxs, l); return `<option value="${l}" ${i === 1 ? 'selected' : ''}>${esc(fCorta(l))}${i === 0 ? ' (esta)' : i === 1 ? ' (próxima)' : ''}${c ? ' · ajustada' : ''}</option>`; }).join('')}</select></label>
       <button class="btn sm" data-act="ajustarSemana" data-al="${a.id}" data-m="patron">Ajustar desde el patrón</button><button class="btn sm ghost" data-act="ajustarSemana" data-al="${a.id}" data-m="anterior">Duplicar la semana anterior</button></div></div></section>`;
 }
+/* Futbolistas: semana patrón (su programa base) + copia propia de una semana concreta para ajustarla sin tocar las demás */
+async function copiarDiasPrograma(baseId, npId) {
+  const { data: full, error: e0 } = await sb.from('programas').select(SEL_EDITOR).eq('id', baseId).single(); if (e0) throw e0;
+  let num = 0;
+  for (const d of (full.dias || []).sort((x, y) => x.numero - y.numero)) {
+    const { id: _i, bloques_sesion, programa_id, ...dd } = d;
+    const { data: nd, error: e1 } = await sb.from('dias').insert({ ...dd, numero: ++num, programa_id: npId }).select().single(); if (e1) throw e1;
+    for (const b of bloques_sesion || []) {
+      const { id: _b, ejercicios_sesion, dia_id, ...bb } = b;
+      const { data: nb, error: e2 } = await sb.from('bloques_sesion').insert({ ...bb, dia_id: nd.id }).select().single(); if (e2) throw e2;
+      if ((ejercicios_sesion || []).length) { const { error: e3 } = await sb.from('ejercicios_sesion').insert(ejercicios_sesion.map(({ id: _e, ejercicios, bloque_id, ...x }) => ({ ...x, bloque_id: nb.id }))); if (e3) throw e3; }
+    }
+  }
+}
+async function ajustarSemana(lunes, anterior) {
+  const f = S.ficha, base = anterior ? ctxEnSemana(f.contextos, sumaDias(lunes, -7)) : f.progFull;
+  if (!base) return toast('Este jugador no tiene programa base todavía');
+  if (ctxEnSemana(f.contextos, lunes)) return toast('Esa semana ya está ajustada');
+  try {
+    const row = { nombre: `Semana del ${fCorta(lunes)}`, dias_semana: base.dias_semana || (base.dias || []).length || null, contexto_desde: lunes, contexto_hasta: sumaDias(lunes, 6), contexto_nombre: `Semana del ${fCorta(lunes)}` };
+    const { data: np, error } = await sb.from('programas').insert({ ...row, alumno_id: f.id, activo: false }).select().single(); if (error) throw error;
+    await copiarDiasPrograma(base.id, np.id);
+    toast('Semana preparada: ajusta lo que cambie'); await recargarContextosCoach(); await cargarProgramasFicha(f); await abrirEditor(f.id, np.id);
+  } catch (err) { fallo(err, /contexto/.test(err.message || '') ? 'Falta ejecutar el Bloque 34 en Supabase.' : 'No se ha podido preparar la semana.'); }
+}
+function vSemanasFutbol(a) {
+  const f = S.ficha; if (!f || f.id !== a.id) return '';
+  const L0 = lunesDe(hoyISO()), semanas = [[L0, 'Esta semana'], [sumaDias(L0, 7), 'La semana que viene']];
+  const hechas = (f.contextos || []).filter(c => /^Semana del /.test(c.contexto_nombre || '')).sort((x, y) => y.contexto_desde.localeCompare(x.contexto_desde)).slice(0, 6);
+  return `<section class="section"><h2>Semana de entreno</h2><div class="card stack" style="gap:10px">
+    <p class="small muted" style="margin:0">Cada semana usa el programa base (la semana patrón). Para adaptarla a la carga de ese momento, crea una copia solo de esa semana: queda guardada tal como la dejes y no toca las demás.</p>
+    ${semanas.map(([l, et]) => { const c = ctxEnSemana(f.contextos, l), ant = ctxEnSemana(f.contextos, sumaDias(l, -7));
+      return `<div class="line" style="flex-wrap:wrap;gap:6px"><div class="grow" style="min-width:170px"><b>${et}</b> <span class="small muted">· del ${esc(fCorta(l))} al ${esc(fCorta(sumaDias(l, 6)))}</span><div class="small ${c ? '' : 'muted'}">${c ? '✓ Ajustada: ' + esc(c.contexto_nombre || '') : 'Con el programa base'}</div></div>
+      ${c ? `<button class="btn sm ghost" data-act="sesionesContexto" data-id="${c.id}">✎ Editar sus sesiones</button>` : `<button class="btn sm" data-act="semAjustar" data-l="${l}">Ajustar esta semana</button>${ant ? `<button class="btn sm ghost" data-act="semAjustar" data-l="${l}" data-ant="1">Duplicar la anterior</button>` : ''}`}</div>`; }).join('')}
+    ${hechas.length ? `<div class="small muted">Semanas ajustadas: ${hechas.map(c => `<button class="pill" data-act="sesionesContexto" data-id="${c.id}">${esc(fCorta(c.contexto_desde))}</button>`).join(' ')}</div>` : ''}</div></section>`;
+}
 function vFutbolFicha(a) {
   const { w, p } = futDe(a.id), M = mdDe(p), C = cargasSemana(w), [na, ta] = nivelAcwr(C.acwr), uf = ultimaFatiga(w);
   const ult = w.slice().sort((x, y) => (y.fecha + y.tipo).localeCompare(x.fecha + x.tipo)).slice(0, 10);
-  return vAjusteSemana(a) + `<section class="section"><div class="section-head"><h2>Competición y fatiga</h2><button class="btn sm ghost" data-act="partido" data-al="${a.id}">＋ Partido</button></div>
+  return vAjusteSemana(a) + vSemanasFutbol(a) + `<section class="section"><div class="section-head"><h2>Competición y fatiga</h2><button class="btn sm ghost" data-act="partido" data-al="${a.id}">＋ Partido</button></div>
     <div class="card stack">
       <div class="row"><span class="md-chip">${esc(M.md || '—')}</span><div class="grow"><b>${esc(M.txt)}</b>${M.prox ? `<div class="small muted">${esc(M.prox.rival || 'Partido')} · ${esc(fCorta(M.prox.fecha))}${M.prox.hora ? ' · ' + esc(M.prox.hora) : ''}${M.prox.nivel ? ' · rival ' + esc(M.prox.nivel.toLowerCase()) : ''}</div>` : ''}</div></div>
       <div class="kpis"><div class="kpi"><div class="l">Fatiga</div><b class="num" style="color:var(--${nivelFat(uf?.v) || 'fg'})">${uf ? uf.v + '/10' : '—'}</b></div><div class="kpi"><div class="l">Carga 7 días</div><b class="num">${fmtNum(C.aguda, 0)}</b></div><div class="kpi"><div class="l">ACWR</div><b class="num" style="color:var(--${na || 'fg'})">${C.acwr != null ? fmtNum(C.acwr) : '—'}</b><div class="small muted">${ta}</div></div></div>
@@ -5366,6 +5402,7 @@ document.addEventListener('click', async e => {
       if (!src?.dias?.length) { toast('Aún no hay semana patrón que copiar'); break; }
       formContexto(null, { base: src, nombre: 'Semana del ' + fCorta(lunes), fecha: lunes, dpw: src.dias_semana || src.dias.length, todos: true }); break; }
     case 'editarContexto': formContexto(+b.dataset.id); break;
+    case 'semAjustar': b.disabled = true; await ajustarSemana(b.dataset.l, !!b.dataset.ant); b.disabled = false; break;
     case 'sesionesContexto': await abrirEditor(S.ficha.id, +b.dataset.id); break;
     case 'edBloque': formBloque(b.dataset.id ? +b.dataset.id : null, b.dataset.dia ? +b.dataset.dia : null); break;
     case 'edEj': formEjSesion(b.dataset.id ? +b.dataset.id : null, b.dataset.bloque ? +b.dataset.bloque : null); break;
