@@ -15,8 +15,8 @@ const Tandas = {
     'Unilateral lento': { tipo: 'uni', tempo: true, info: 'Unilateral lento: primero el lado derecho y luego el izquierdo, a ritmo 6-3-6.' },
     'Unilateral superlento': { tipo: 'simple', tempo: true, info: 'Superlento: con los dos lados a la vez, a ritmo 6-3-6.' },
     'Unilateral doble': { tipo: 'doble', info: 'Unilateral doble: derecho e izquierdo y, sin parar, otra vuelta. La 1ª vuelta te acerca al fallo (RIR 1); la 2ª suma repeticiones efectivas hasta el fallo (RIR 0).' },
-    'Contrastes': { tipo: 'contraste', info: 'Contraste: dos tandas seguidas, sin descanso entre ellas.' },
-    'Unilateral contraste': { tipo: 'ucontraste', info: 'Contraste unilateral: con un lado, la parte pesada y sin parar la explosiva; después, el otro lado.' },
+    'Contrastes': { tipo: 'contraste', info: 'Contraste: dos tandas seguidas, sin descanso entre ellas (superlento, isométrico, pesado o explosivo, en el orden que elijas).' },
+    'Unilateral contraste': { tipo: 'ucontraste', info: 'Contraste unilateral: con un lado, la 1ª parte y sin parar la 2ª; después, el otro lado (mismo peso salvo que se indique otro).' },
     'Forzadas': { tipo: 'simple', forz: true, info: 'Forzadas: llega a las repeticiones objetivo aunque no te salgan seguidas. Cuando no puedas más, para 5 segundos y sigue sumando hasta llegar.' },
     'Topset': { tipo: 'top', info: 'Top set: la 1ª serie es la más pesada. Las siguientes van con un 15 % menos de peso.' },
     'Isométrico': { tipo: 'simple', iso: true, info: 'Isométrico: sostén la carga, sin moverte, en la posición indicada durante el tiempo marcado. Aquí no cuentas repeticiones, sino segundos.' }
@@ -34,7 +34,7 @@ const Tandas = {
   },
   TEMPO: 'Ritmo 6-3-6: 6 segundos para subir (contracción), 3 segundos aguantando arriba y 6 segundos para bajar.',
   LADO: { D: 'Derecho', I: 'Izquierdo' },
-  TIPO: { pesado: 'Pesado', iso: 'Isométrico', explosivo: 'Explosivo' },
+  TIPO: { pesado: 'Pesado', iso: 'Isométrico', explosivo: 'Explosivo', superlento: 'Superlento' },
   met(e) { return this.MET[e?.metodos?.nombre] || null; },
   usa(e) { return !!this.met(e); },
   ejercicio(es) { return S.dia?.bloques_sesion.flatMap(b => b.ejercicios_sesion).find(x => x.id === +es); },
@@ -423,8 +423,8 @@ Tandas.ed = {
       extra = this.contador('bn', 'Tandas en cada back-off (dropset o rest-pause)', Math.min(Math.max(v.bn, 2), 4), 2, 4) + '<p class="small as-prev" data-prev></p>';
     } else if (M.tipo === 'contraste' || M.tipo === 'ucontraste') {
       campos = [this.num('s', 'Series', v.s),
-        this.sel('t1', '1ª parte', v.t1, [['pesado', 'Pesado (kilos)'], ['iso', 'Isométrico (tiempo y peso)']]), this.txt('r1', v.t1 === 'iso' ? 'Segundos' : 'Reps', v.r1), this.num('kg', 'Peso (kg)', v.kg),
-        this.sel('t2', '2ª parte', v.t2, [['explosivo', 'Explosivo (50 % menos de peso)'], ['iso', 'Isométrico (tiempo)']]), this.txt('r2', v.t2 === 'iso' ? 'Segundos' : 'Reps', v.r2), this.num('kg2', 'Peso 2ª parte (kg)', v.kg2, 'data-auto="1"'),
+        this.sel('t1', '1ª parte', v.t1, [['pesado', 'Pesado (kilos)'], ['superlento', 'Superlento (6-3-6)'], ['iso', 'Isométrico (tiempo y peso)'], ['explosivo', 'Explosivo']]), this.txt('r1', v.t1 === 'iso' ? 'Segundos' : 'Reps', v.r1), this.num('kg', 'Peso (kg)', v.kg),
+        this.sel('t2', '2ª parte', v.t2, [['explosivo', 'Explosivo'], ['pesado', 'Pesado (kilos)'], ['superlento', 'Superlento (6-3-6)'], ['iso', 'Isométrico (tiempo)']]), this.txt('r2', v.t2 === 'iso' ? 'Segundos' : 'Reps', v.r2), this.num('kg2', 'Peso 2ª parte (kg)', v.kg2, 'data-auto="1"'),
         this.txt('rir', 'RIR', v.rir), this.num('d', 'Descanso entre series (s)', v.d),
         M.tipo === 'ucontraste' ? this.sel('orden', 'Orden', v.orden, [['lado', 'Por lado: derecho (1ª y 2ª parte) y luego izquierdo'], ['fase', 'Por partes: 1ª parte con los dos lados y luego la 2ª']]) : ''].join('');
     } else if (M.tipo === 'doble') {
@@ -457,8 +457,9 @@ Tandas.ed = {
         else [...Array(bn)].forEach((_, k) => out.push(T({ s: k ? undefined : bs, r: (a('br') || '8') + xl, rir: k ? undefined : brir, kg: this.kg(bk), d: k < bn - 1 ? 20 : d })));
         return out; }
       case 'contraste': case 'ucontraste': { const t1 = a('t1'), t2 = a('t2'), x = M.tipo === 'ucontraste' ? ' x lado' : '';
-        const r1 = t1 === 'iso' ? `${a('r1') || 30}´´ isométrico` : (a('r1') || '7') + x, r2 = t2 === 'iso' ? `${a('r2') || 30}´´ isométrico` : (a('r2') || '10') + x + (t2 === 'explosivo' ? ' (explosivo)' : '');
-        const kg2 = n('kg2') ?? (t2 === 'explosivo' && kg ? kg * 0.5 : t2 === 'iso' ? kg : null);
+        const eti = { superlento: ' (superlento)', explosivo: ' (explosivo)' };
+        const r1 = t1 === 'iso' ? `${a('r1') || 30}´´ isométrico` : (a('r1') || '7') + x + (eti[t1] || ''), r2 = t2 === 'iso' ? `${a('r2') || 30}´´ isométrico` : (a('r2') || '10') + x + (eti[t2] || '');
+        const kg2 = n('kg2') ?? (t1 === 'pesado' && t2 === 'explosivo' && kg ? kg * 0.5 : kg);   // pesado→explosivo: 50 %; el resto (p. ej. superlento→explosivo) con el mismo peso
         return [T({ s, r: r1, rir, kg: this.kg(kg), d: 0, tp: t1, op: M.tipo === 'ucontraste' ? { orden: a('orden') || 'lado' } : undefined }), T({ r: r2, rir: R(a('rir2') || '0') ?? 0, kg: this.kg(kg2), d, tp: t2 })]; }
       case 'doble': return [T({ s, r: (a('r') || '8') + ' x lado', rir: rir ?? 1, kg: this.kg(kg), d: 0 }), T({ r: (a('r') || '8') + ' x lado', rir: R(a('rir2')) ?? 0, kg: this.kg(kg), d })];
       case 'uni': return [T({ s, r: (a('r') || '10') + ' x lado', rir, kg: this.kg(kg), d })];
@@ -485,7 +486,7 @@ Tandas.ed = {
     cont.addEventListener('input', ev => {
       const panel = cont.querySelector('.as-panel'); if (!panel) return;
       if (ev.target.dataset.a === 'kg2') ev.target.dataset.auto = ev.target.value.trim() ? '' : '1';
-      if (ev.target.dataset.a === 'kg' || ev.target.dataset.a === 't2') { const k2 = panel.querySelector('[data-a="kg2"]'); if (k2 && k2.dataset.auto === '1') k2.value = ''; }
+      if (ev.target.dataset.a === 'kg' || ev.target.dataset.a === 't1' || ev.target.dataset.a === 't2') { const k2 = panel.querySelector('[data-a="kg2"]'); if (k2 && k2.dataset.auto === '1') k2.value = ''; }
       if (ev.target.dataset.a === 'rm') { const k = panel.querySelector('[data-a="kg"]'); const rm = numero(ev.target.value); if (k && rm) k.value = fmtNum(this.red(rm * 0.9), 2); }
       volcar();
     });
