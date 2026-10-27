@@ -2081,7 +2081,7 @@ function pendientesFutbol() {
   jugados.forEach(p => out.push({ t: 'partido', f: p.fecha, txt: `Cuestionario del partido${p.rival ? ' contra ' + p.rival : ''}`, sub: p.fecha === hoy ? 'Rellénalo al terminar: antes, durante y después.' : 'Te falta contarle a Jesús cómo fue.' }));
   if (dow === 0 && !wDe(w, hoy, 'lunes')) out.push({ t: 'lunes', f: hoy, txt: 'Cuestionario del lunes', sub: 'Tu fatiga tras el fin de semana para ajustar la semana. 1 minuto.' });
   const dom = dow === 6 ? hoy : dow === 0 ? sumaDias(hoy, -1) : null;
-  if (dom && !wDe(w, dom, 'semana')) out.push({ t: 'semana', f: dom, txt: 'Comparte la planificación de tu equipo', sub: 'La semana que viene del club (entrenos, horarios, partido). Escríbela o sube una foto o PDF. Así Jesús te deja tu semana lista el lunes.' });
+  if (dom && !wDe(w, dom, 'semana')) out.push({ t: 'semana', f: dom, txt: 'Cierre de semana', sub: 'La semana que viene del club (entrenos, horarios, partido). Escríbela o sube una foto o PDF. Así Jesús te deja tu semana lista el lunes.' });
   if (!wDe(w, hoy, 'diario') && !jugados.some(p => p.fecha === hoy)) out.push({ t: 'diario', f: hoy, txt: 'Check diario', sub: 'Carga con el equipo, tu sesión y tu fatiga. 30 segundos.' });
   return out;
 }
@@ -2139,6 +2139,7 @@ function formWellness(tipo, f, alumnoId) {
     ${q(sesLof ? `Tu sesión de hoy con Jesús${sesLof.duracion_min ? ` (${sesLof.duracion_min} min)` : ''}: ¿cómo de dura?` : '¿Has hecho hoy tu sesión de Jesús? ¿Cómo de dura?', `${escala10('w-lof-rpe', d.lof_rpe, ['1 · Muy suave', '10 · Máximo'])}<label class="f">Minutos de la sesión<input type="number" id="w-lof-min" inputmode="numeric" value="${d.lof_min ?? sesLof?.duracion_min ?? ''}" placeholder="Déjalo vacío si hoy no tocaba"></label>`)}
     ${q('Fatiga general ahora mismo', escala10('w-fat', d.fatiga, ['1 · Fresco', '10 · Destrozado']))}
     ${q('¿Cómo has dormido esta noche?', `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Me acosté a las<input type="time" id="w-dormir" value="${esc(d.dormir || '')}"></label><label class="f">Me levanté a las<input type="time" id="w-levantar" value="${esc(d.levantar || '')}"></label></div><span class="small muted">Tu horario objetivo: acostarte a las ${esc(objSueno(D.servicio || S.d?.servicio).dormir)} y levantarte a las ${esc(objSueno(D.servicio || S.d?.servicio).levantar)}.</span>`)}
+    ${q('Capturas de tu reloj (opcional)', `<span class="small muted">Sueño, frecuencia cardiaca, variabilidad… Puedes subir todas las que quieras.${(d.reloj || []).length ? ` Ya has subido ${d.reloj.length}.` : ''}</span><input type="file" id="w-reloj" accept="image/*,application/pdf" multiple>`)}
     ${q('¿Cómo ha ido hoy la alimentación?', `<div class="choice" role="group" id="w-ali">${[['si', 'Cumplida'], ['parcial', 'A medias'], ['no', 'No cumplida']].map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${d.alimentacion === v}">${l}</button>`).join('')}</div>`)}`;
   if (tipo === 'partido') cuerpo = `
     ${pt ? `<p class="small muted">${esc(pt.rival ? 'Contra ' + pt.rival : 'Partido')} · ${esc(fCorta(pt.fecha))}</p>` : ''}
@@ -2157,8 +2158,10 @@ function formWellness(tipo, f, alumnoId) {
   if (tipo === 'semana') cuerpo = `
     <p class="small muted">Lo que te haya pasado el club para la semana que viene: días y horarios de entreno, tipo de sesión, día libre y partido. Con escribirla o subir la foto/PDF es suficiente.</p>
     <label class="f">Planificación del equipo<textarea id="w-plan" rows="5" placeholder="Ej. Lunes libre · Martes 10:00 fuerza + táctica · Miércoles 10:00 alta intensidad · Jueves 10:00 · Viernes activación · Sábado partido 18:00">${esc(d.texto || '')}</textarea></label>
-    ${q('Foto o PDF de la planificación (opcional)', `${(d.archivos || []).length ? `<span class="small muted">Ya has subido ${d.archivos.length} ${d.archivos.length === 1 ? 'archivo' : 'archivos'}.</span>` : ''}<input type="file" id="w-arch" accept="image/*,application/pdf" multiple>`)}`;
-  abrirSheet(`<form class="stack" id="f-w"><h2>${{ diario: 'Check diario', partido: 'Cuestionario del partido', lunes: 'Cuestionario del lunes', semana: 'Planificación de tu equipo' }[tipo]}</h2><span class="small muted">${tipo === 'semana' ? 'Semana del ' + esc(fCorta(sumaDias(f, 1))) + ' al ' + esc(fCorta(sumaDias(f, 7))) : esc(fLarga(f))}</span>
+    ${q('Foto o PDF de la planificación (opcional)', `${(d.archivos || []).length ? `<span class="small muted">Ya has subido ${d.archivos.length} ${d.archivos.length === 1 ? 'archivo' : 'archivos'}.</span>` : ''}<input type="file" id="w-arch" accept="image/*,application/pdf" multiple>`)}
+    ${q('Datos del GPS (opcional)', `${(d.gps || []).length ? `<span class="small muted">Ya has subido ${d.gps.length} ${d.gps.length === 1 ? 'archivo' : 'archivos'}.</span>` : ''}<input type="file" id="w-gps" accept="image/*,application/pdf" multiple>`)}
+    ${q('Otros archivos de tu equipo (opcional)', `<span class="small muted">Cualquier otra cosa del club que quieras que vea Jesús.</span>${(d.otros || []).length ? `<span class="small muted">Ya has subido ${d.otros.length} ${d.otros.length === 1 ? 'archivo' : 'archivos'}.</span>` : ''}<input type="file" id="w-otros" accept="image/*,application/pdf" multiple>`)}`;
+  abrirSheet(`<form class="stack" id="f-w"><h2>${{ diario: 'Check diario', partido: 'Cuestionario del partido', lunes: 'Cuestionario del lunes', semana: 'Cierre de semana' }[tipo]}</h2><span class="small muted">${tipo === 'semana' ? 'Semana del ' + esc(fCorta(sumaDias(f, 1))) + ' al ' + esc(fCorta(sumaDias(f, 7))) : esc(fLarga(f))}</span>
     ${cuerpo}
     ${tipo === 'semana' ? '' : q('¿Alguna molestia? (opcional)', chipsZonas(d.molestias))}
     <label class="f">${tipo === 'lunes' ? '¿Algo que Jesús deba saber para planificar tu semana?' : tipo === 'semana' ? '¿Algo más que deba saber Jesús? (opcional)' : 'Comentario (opcional)'}<textarea id="w-nota" rows="2">${esc(d.nota || d.molestia_txt || '')}</textarea></label>
@@ -2180,6 +2183,8 @@ function formWellness(tipo, f, alumnoId) {
       datos.fatiga = valEscala('w-fat'); if (!datos.fatiga) return $('#w-err').textContent = 'Indica tu fatiga general.';
       datos.dormir = $('#w-dormir').value || null; datos.levantar = $('#w-levantar').value || null;
       datos.alimentacion = F.querySelector('#w-ali [aria-pressed="true"]')?.dataset.v || null;
+      datos.reloj = d.reloj || [];
+      if (!await subirArchivosW($('#w-reloj'), datos.reloj, `${alumnoId || uidSes()}/${f}-reloj`, 'Subiendo capturas…', 'No se han podido subir las capturas.')) return;
     }
     if (tipo === 'partido') {
       Object.assign(datos, { minutos: numero($('#w-min').value) ?? 0, antes: valEscala('w-antes'), durante: valEscala('w-durante'), despues: valEscala('w-despues'), rpe: valEscala('w-rpe'), partido_id: pt?.id || null, gps: d.gps || [] });
@@ -2187,9 +2192,11 @@ function formWellness(tipo, f, alumnoId) {
       if (!await subirArchivosW($('#w-gps'), datos.gps, `${alumnoId || uidSes()}/${f}`, 'Subiendo GPS…', 'No se ha podido subir el GPS.')) return;
     }
     if (tipo === 'semana') {
-      Object.assign(datos, { texto: $('#w-plan').value.trim() || null, archivos: d.archivos || [] });
-      if (!datos.texto && !($('#w-arch')?.files || []).length && !datos.archivos.length) return $('#w-err').textContent = 'Escribe la planificación o sube una foto o PDF.';
+      Object.assign(datos, { texto: $('#w-plan').value.trim() || null, archivos: d.archivos || [], gps: d.gps || [], otros: d.otros || [] });
+      if (!datos.texto && !['#w-arch', '#w-gps', '#w-otros'].some(k => ($(k)?.files || []).length) && !datos.archivos.length && !datos.gps.length && !datos.otros.length) return $('#w-err').textContent = 'Escribe algo o sube al menos un archivo.';
       if (!await subirArchivosW($('#w-arch'), datos.archivos, `${alumnoId || uidSes()}/semana-${f}`, 'Subiendo…', 'No se ha podido subir el archivo.')) return;
+      if (!await subirArchivosW($('#w-gps'), datos.gps, `${alumnoId || uidSes()}/semana-${f}-gps`, 'Subiendo GPS…', 'No se ha podido subir el GPS.')) return;
+      if (!await subirArchivosW($('#w-otros'), datos.otros, `${alumnoId || uidSes()}/semana-${f}-otros`, 'Subiendo…', 'No se ha podido subir el archivo.')) return;
     }
     if (tipo === 'lunes') {
       Object.assign(datos, { fatiga: valEscala('w-fat'), dolor: valEscala('w-dolor'), sueno: valEscala('w-sueno'), semana: $('#w-semana').value.trim() || null, gps: d.gps || [] }); if (!datos.fatiga) return $('#w-err').textContent = 'Indica tu fatiga general.';
@@ -2275,14 +2282,14 @@ function graficaCarga(w) {
   <div class="row small muted" style="gap:12px;flex-wrap:wrap"><span><i class="ley" style="background:var(--blue)"></i>Equipo</span><span><i class="ley" style="background:var(--gold)"></i>Sesión LOF</span><span><i class="ley" style="background:var(--bad)"></i>Partido</span><span>● Fatiga (1-10)</span></div>`;
 }
 function botonesArchivos(x) {
-  const l = x.datos?.gps?.length ? x.datos.gps : x.datos?.archivos || [], et = x.tipo === 'semana' ? 'Planificación' : 'GPS';
-  return l.length ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:4px">${l.map((g, i) => `<button class="pill blue" data-act="verGps" data-r="${esc(g)}">📎 ${et}${l.length > 1 ? ' ' + (i + 1) : ''}${/\.pdf$/.test(g) ? ' (PDF)' : ''}</button>`).join('')}</div>` : '';
+  const d = x.datos || {}, grupos = [['Planificación', d.archivos], ['GPS', d.gps], ['Reloj', d.reloj], ['Equipo', d.otros]].filter(([, l]) => (l || []).length);
+  return grupos.length ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:4px">${grupos.map(([et, l]) => l.map((g, i) => `<button class="pill blue" data-act="verGps" data-r="${esc(g)}">📎 ${et}${l.length > 1 ? ' ' + (i + 1) : ''}${/\.pdf$/.test(g) ? ' (PDF)' : ''}</button>`).join('')).join('')}</div>` : '';
 }
 function resumenW(x) {
   const d = x.datos || {}, m = (d.molestias || []).length ? ` · molestia: ${d.molestias.join(', ')}` : '';
   if (x.tipo === 'diario') return `Fatiga ${d.fatiga ?? '—'}/10${d.dormir && d.levantar ? ` · sueño ${d.dormir}–${d.levantar} (${fmtNum(horasSueno(d.dormir, d.levantar))} h)` : ''}${d.alimentacion ? ` · alimentación ${{ si: 'cumplida', parcial: 'a medias', no: 'no cumplida' }[d.alimentacion]}` : ''} · equipo ${d.eq_min ? `${d.eq_min}′ esfuerzo ${d.eq_rpe}` : 'no'} · sesión ${d.lof_rpe ? `esfuerzo ${d.lof_rpe}` : 'no'}${m}`;
   if (x.tipo === 'partido') return `${d.minutos ?? 0}′ jugados · antes ${d.antes ?? '—'} · durante ${d.durante ?? '—'} · después ${d.despues ?? '—'} · esfuerzo ${d.rpe ?? '—'}${m}`;
-  if (x.tipo === 'semana') return `Planificación del equipo${d.texto ? ': ' + d.texto : ''}`;
+  if (x.tipo === 'semana') return `Cierre de semana${d.texto ? ': ' + d.texto : ''}`;
   return `Fatiga ${d.fatiga ?? '—'}/10 · dolor ${d.dolor ?? '—'} · sueño ${d.sueno ?? '—'}${d.semana ? ' · semana: ' + d.semana : ''}${m}`;
 }
 function vFutbolFicha(a) {
@@ -2296,7 +2303,9 @@ function vFutbolFicha(a) {
       ${(() => { const srv = S.c.servicios.find(x => x.alumno_id === a.id), i7 = sumaDias(hoyISO(), -6), su = resumenSueno(w, srv, i7, hoyISO()), al = resumenAliW(w, i7, hoyISO());
         return `<div class="row small" style="gap:14px;flex-wrap:wrap"><span>Sueño 7 d: <b>${su.media == null ? '—' : fmtNum(su.media) + ' h'}</b> (objetivo ${fmtNum(su.meta)} h)</span><span>En horario: <b>${su.n ? su.enHorario + '/' + su.n : '—'}</b></span><span>Alimentación: <b>${al.pct == null ? '—' : al.pct + ' %'}</b></span></div>`; })()}
       <div class="chart">${graficaCarga(w)}</div>
-      <div><span class="eyebrow">Últimas respuestas</span>${ult.map(x => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(x.fecha))}</span><div class="grow small"><b>${{ diario: 'Diario', partido: 'Partido', lunes: 'Lunes', semana: 'Domingo' }[x.tipo]}</b> · ${esc(resumenW(x))}${x.datos?.nota ? `<div class="muted">"${esc(x.datos.nota)}"</div>` : ''}${botonesArchivos(x)}</div></div>`).join('') || '<div class="empty">Aún no ha respondido ningún cuestionario.</div>'}</div>
+      <div class="stack" style="gap:8px"><span class="eyebrow">Añadir o editar respuestas (por si te las pasa por otro medio)</span>
+        <div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end"><label class="f grow" style="min-width:150px">Semana del lunes<select id="fs-sem-${a.id}">${[0, 1, 2, 3].map(i => { const l = sumaDias(lunesDe(hoyISO()), -7 * i); return `<option value="${l}">${esc(fCorta(l))}${i ? '' : ' (esta semana)'}</option>`; }).join('')}</select></label><button class="btn sm" data-act="wellnessSem" data-t="lunes" data-al="${a.id}">✎ Check del lunes</button><button class="btn sm" data-act="wellnessSem" data-t="semana" data-al="${a.id}">✎ Cierre de semana</button></div></div>
+      <div><span class="eyebrow">Últimas respuestas</span>${ult.map(x => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(x.fecha))}</span><div class="grow small"><b>${{ diario: 'Diario', partido: 'Partido', lunes: 'Lunes', semana: 'Cierre de semana' }[x.tipo]}</b> · ${esc(resumenW(x))}${x.datos?.nota ? `<div class="muted">"${esc(x.datos.nota)}"</div>` : ''}${botonesArchivos(x)}</div></div>`).join('') || '<div class="empty">Aún no ha respondido ningún cuestionario.</div>'}</div>
       ${p.length ? `<details><summary class="small"><b>Partidos (${p.length})</b></summary>${p.slice().reverse().map(x => `<div class="line" data-act="partido" data-al="${a.id}" data-id="${x.id}" style="cursor:pointer"><span class="small num" style="width:64px">${esc(fCorta(x.fecha))}</span><span class="small grow">${esc(x.rival || 'Partido')}${x.competicion ? ' · ' + esc(x.competicion) : ''}${x.minutos != null ? ` · ${x.minutos}′` : ''}</span></div>`).join('')}</details>` : ''}
     </div></section>`;
 }
@@ -5257,6 +5266,7 @@ document.addEventListener('click', async e => {
     case 'salirPrueba': await salirPrueba(); break;
     case 'revision': formRevision(+b.dataset.n || null, b.dataset.id ? +b.dataset.id : null); break;
     case 'verGps': { const r = await sb.storage.from('gps').createSignedUrls([b.dataset.r], 3600); const u = r.data?.[0]?.signedUrl; if (!u) { toast('No se ha podido abrir el archivo'); break; } if (/\.pdf$/i.test(b.dataset.r)) window.open(u, '_blank', 'noopener'); else abrirSheet(`<div class="stack"><img src="${esc(u)}" alt="GPS" style="width:100%;border-radius:12px"><a class="btn ghost full" href="${esc(u)}" target="_blank" rel="noopener">Abrir en grande</a><button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`); break; }
+    case 'wellnessSem': { const l = $('#fs-sem-' + b.dataset.al)?.value || lunesDe(hoyISO()); formWellness(b.dataset.t, b.dataset.t === 'lunes' ? l : sumaDias(l, -1), b.dataset.al); break; }
     case 'wellness': formWellness(b.dataset.t, b.dataset.f || null, b.dataset.al || null); break;
     case 'partido': formPartido(b.dataset.id ? +b.dataset.id : null, b.dataset.al || null, b.dataset.f || null); break;
     case 'escala10': { const g = b.closest('.escala10'); g.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); break; }

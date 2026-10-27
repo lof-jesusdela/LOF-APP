@@ -579,7 +579,12 @@ nav.tabs a.tab-wa{flex:1;padding:10px 2px 12px;display:flex;flex-direction:colum
 <script src="tandas.js"></script>
 <script src="app.js"></script>
 <script>
-if ('serviceWorker' in navigator) { window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {})); }
+if ('serviceWorker' in navigator) {
+  const tenia = !!navigator.serviceWorker.controller; let nueva = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (tenia) nueva = true; });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && nueva) location.reload(); });   // versión nueva: se recarga sola al volver a la app
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
 </script>
 </body>
 </html>
