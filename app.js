@@ -1130,10 +1130,10 @@ function ladoAprox(e) {
 }
 function vAprox(e) {
   const lado = ladoAprox(e), dos = lado ? (lado === 'pies' ? 'los dos pies / las dos piernas' : 'las dos manos / los dos brazos') : '';
-  const ak = parseFloat(String(e.aprox_kg ?? '').replace(',', '.')), ref = ak > 0 ? ak : kgRef(e);
+  const ak = parseFloat(String(e.aprox_kg ?? '').replace(',', '.')), auto = !(ak > 0) && lado && kgRef(e), ref = ak > 0 ? ak : auto ? kgRef(e) * 2 : kgRef(e);   // unilateral sin peso fijado: el doble (se hace con las dos extremidades)
   const filas = [[6, 0.7, 'Peso ligero'], [3, 1, 'Peso objetivo'], [1, 1.1, 'Por encima del objetivo']];
   return `<div class="aprox"><span class="eyebrow">Aproximación 6·3·1 · antes de empezar${lado ? ' · con ' + (lado === 'pies' ? 'los dos pies' : 'las dos manos') : ''}</span>
-    ${lado ? `<div class="small" style="color:var(--gold,inherit);font-weight:700">⚠ Aunque el ejercicio sea unilateral, la aproximación se hace SIEMPRE con ${dos}${e.aprox_kg > 0 ? ' (peso indicado por Jesús)' : ''}.</div>` : ''}<div class="small">Al terminar la repetición única, descansa 1 minuto y empieza tus series.</div>
+    ${lado ? `<div class="small" style="color:var(--gold,inherit);font-weight:700">⚠ Aunque el ejercicio sea unilateral, la aproximación se hace SIEMPRE con ${dos}${e.aprox_kg > 0 ? ' (peso indicado por Jesús)' : ' (el peso es el doble del de un lado)'}.</div>` : ''}<div class="small">Al terminar la repetición única, descansa 1 minuto y empieza tus series.</div>
     ${filas.map(([n, f, t], j) => `<div class="ap-row"><span class="ap-n num">${n}</span><span class="small">${n === 1 ? '1 repetición' : n + ' repeticiones'}<br><span class="muted">${t}</span></span><b class="ap-kg num">${ref ? Math.round(ref * f) + ' kg' : 'como 1.ª serie'}</b><button class="chk" data-act="aprox" data-j="${j}" aria-label="Hecha">${CHK}</button></div>`).join('')}
   </div>`;
 }
@@ -4660,7 +4660,7 @@ function formEjSesion(id, bloqueId) {
     <label class="f">Descripción adicional (opcional)<textarea id="es-nota" rows="3" placeholder="Algo que quieras añadir y que no sale en el vídeo: «sube explosivo, baja en 3 s», «codos pegados»…">${esc(e?.nota || '')}</textarea></label>
     <label class="f">Indicación de superserie (opcional)<input type="text" id="es-gr" value="${esc(e?.grupo || '')}" placeholder="Ej. 3 y 4 juntos (superserie)"></label>
     <label class="row small"><input type="checkbox" id="es-631" ${e?.aproximacion_631 ? 'checked' : ''} style="width:20px;height:20px"> Aproximación 6·3·1 antes de empezar</label>
-    <label class="f">Peso de la aproximación (kg, opcional)<input type="text" inputmode="decimal" id="es-631kg" value="${esc(e?.aprox_kg ?? '')}" placeholder="Ej. 40 · en unilaterales se hace con las dos manos o los dos pies. Vacío = el de la 1.ª serie"></label>
+    <label class="f">Peso de la aproximación (kg, opcional)<input type="text" inputmode="decimal" id="es-631kg" value="${esc(e?.aprox_kg ?? '')}" placeholder="Ej. 40 · en unilaterales se hace con las dos manos o los dos pies. Vacío = el de la 1.ª serie (el doble si es unilateral)"></label>
     <p class="note">Si pones descanso 0 en la última fila, la app enlaza este ejercicio con el siguiente como superserie.</p>
     <button class="btn full" type="submit">Guardar</button>${e ? '<button class="btn ghost full" type="button" id="es-del" style="color:var(--bad)">Quitar del programa</button>' : ''}</form>`);
   const sel = $('#es-ej');
