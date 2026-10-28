@@ -13,7 +13,8 @@ const Tandas = {
     'Dropset': { tipo: 'drop', info: 'Dropset: al terminar cada tanda, baja el peso y sigue sin descansar.' },
     'Unilateral': { tipo: 'uni', info: 'Unilateral: primero el lado derecho y, sin descansar, el izquierdo.' },
     'Unilateral lento': { tipo: 'uni', tempo: true, info: 'Unilateral lento: primero el lado derecho y luego el izquierdo, a ritmo 6-3-6.' },
-    'Unilateral superlento': { tipo: 'simple', tempo: true, info: 'Superlento: con los dos lados a la vez, a ritmo 6-3-6.' },
+    'Superlento': { tipo: 'simple', tempo: true, info: 'Superlento: con los dos lados a la vez, con el ritmo de ejecución indicado.' },
+    'Unilateral superlento': { tipo: 'uni', tempo: true, info: 'Unilateral superlento: primero el lado derecho y luego el izquierdo, con el ritmo de ejecución indicado.' },
     'Unilateral doble': { tipo: 'doble', info: 'Unilateral doble: derecho e izquierdo y, sin parar, otra vuelta. La 1ª vuelta te acerca al fallo (RIR 1); la 2ª suma repeticiones efectivas hasta el fallo (RIR 0).' },
     'Contrastes': { tipo: 'contraste', info: 'Contraste: dos tandas seguidas, sin descanso entre ellas (superlento, isométrico, pesado o explosivo, en el orden que elijas).' },
     'Unilateral contraste': { tipo: 'ucontraste', info: 'Contraste unilateral: con un lado, la 1ª parte y sin parar la 2ª; después, el otro lado (mismo peso salvo que se indique otro).' },
@@ -48,7 +49,7 @@ const Tandas = {
   estructura(e) {
     const M = this.met(e) || { tipo: 'pausa' }, G = gruposDe(e.pauta), kg0 = e.peso_ref;
     const exp = gs => gs.flatMap(g => [...Array(g.s || 1)].map(() => g.tramos));
-    const P = (t, x = {}) => ({ r: t.r, kg: t.kg, rir: t.rir, ...x });
+    const P = (t, x = {}) => ({ r: t.r, kg: t.kg, rir: t.rir, ...(t.op?.ritmo ? { ritmo: t.op.ritmo } : {}), ...x });
     const rirS = (tr, t) => t.rir ?? tr[0].rir ?? e.rir;
     let out;
     if (M.tipo === 'pausa' || M.tipo === 'drop') {
@@ -180,7 +181,7 @@ const Tandas = {
         <div class="rp-cuerpo">${tandas}</div></div>`;
     }).join('');
     const eT = this.rango(entreT, true), eS = this.rango(entreS, true);
-    const info = [M.info, M.tempo ? this.TEMPO : ''].filter(Boolean), pos = partes.find(x => x.pos)?.pos;
+    const rit = partes.find(x => x.ritmo)?.ritmo, info = [M.info, rit ? `Ritmo de ejecución: ${rit}` : M.tempo ? this.TEMPO : ''].filter(Boolean), pos = partes.find(x => x.pos)?.pos;
     return `<div class="rp-met small">${info.map(x => `<span>${esc(x)}</span>`).join('')}</div>
       ${pos ? `<div class="rp-rir">${this.ICO.rir}<div><b>Posición a mantener</b><span class="small">${esc(pos)}</span></div></div>` : ''}
       ${eT || (eS && N > 1) ? `<div class="rp-desc">${this.ICO.reloj}${eT ? `<div><span class="small">Entre ${M.tipo === 'uni' || M.tipo === 'ucontraste' ? 'lados' : 'tandas'}:</span><b>${esc(eT)}</b></div>` : ''}${eT && eS && N > 1 ? '<div class="rp-sep"></div>' : ''}${eS && N > 1 ? `<div><span class="small">Entre series:</span><b>${esc(eS)}</b></div>` : ''}</div>` : ''}
@@ -382,7 +383,7 @@ Tandas.ed = {
   /* Lee la pauta actual para rellenar el asistente */
   desde(tipo, met, pauta, cambio) {
     const p = pauta?.length ? (cambio ? pauta.slice(0, 1).map(t => ({ s: t.s, kg: t.kg, d: pauta[pauta.length - 1].d })) : pauta) : [], g = gruposDe(p), t0 = p[0] || {}, ult = p[p.length - 1] || {}, M = Tandas.MET[met] || {};
-    const v = { pos: t0.op?.pos || '', s: t0.s || 3, r: Tandas.limpiaR(t0.r || '') || (M.myo ? '' : '10'), kg: numero(kgDe(t0)) ?? '', rir: t0.rir ?? (tipo === 'doble' ? 1 : 1), d: ult.d ?? 120,
+    const v = { pos: t0.op?.pos || '', ritmo: t0.op?.ritmo || '', s: t0.s || 3, r: Tandas.limpiaR(t0.r || '') || (M.myo ? '' : '10'), kg: numero(kgDe(t0)) ?? '', rir: t0.rir ?? (tipo === 'doble' ? 1 : 1), d: ult.d ?? 120,
       n: Math.max(g[0]?.tramos.length || 0, tipo === 'drop' ? 3 : 3), pausa: M.pausa ?? 20, reps: (g[0]?.tramos || []).map(t => repsPh(t.r) || t.r || ''), baja: 20 };
     if (tipo === 'pausa' && g[0]?.tramos.length > 1) v.pausa = g[0].tramos[0].d ?? v.pausa;
     if (M.iso) v.r = Tandas.segDe(t0) || 30;
@@ -434,14 +435,21 @@ Tandas.ed = {
     } else {
       campos = [this.num('s', 'Series', v.s), this.txt('r', M.forz ? 'Reps objetivo' : M.tipo === 'uni' ? 'Reps por lado' : 'Reps', v.r), ...comun.slice(1)].join('');
     }
-    return `<div class="as-panel stack" data-met="${esc(met)}" data-tipo="${M.tipo}"><b class="small">Asistente · ${esc(met)}</b><span class="small muted">${esc(M.info)}${M.tempo ? ' ' + esc(Tandas.TEMPO) : ''}</span>
-      <div class="as-grid">${campos}</div>${extra}<span class="small muted">La pauta de abajo se rellena sola con estos datos; si quieres, retócala fila a fila.</span></div>`;
+    return `<div class="as-panel stack" data-met="${esc(met)}" data-tipo="${M.tipo}"><b class="small">Asistente · ${esc(met)}</b><span class="small muted">${esc(M.info)}${M.tempo ? ' Si no escribes ritmo, se indica: ' + esc(Tandas.TEMPO) : ''}</span>
+      <div class="as-grid">${campos}${M.tempo || M.tipo === 'contraste' || M.tipo === 'ucontraste' ? this.txt('ritmo', M.tempo ? 'Ritmo de ejecución (tiempos)' : 'Ritmo del superlento (si lo hay)', v.ritmo, 'Ej.: 6-3-6, 5-2-5, 4 s subir y 8 s bajar') : ''}</div>${extra}<span class="small muted">La pauta de abajo se rellena sola con estos datos; si quieres, retócala fila a fila.</span></div>`;
   },
   /* Valores del panel → pauta (filas con s, r, rir, kg, d, tp, op) */
   pauta(panel) {
     const met = panel.dataset.met, M = Tandas.MET[met], a = k => panel.querySelector(`[data-a="${k}"]`)?.value.trim() ?? '', n = k => numero(a(k)), cnt = k => +(panel.querySelector(`[data-a-v="${k}"]`)?.textContent || 0);
     const s = Math.max(1, n('s') || 1), kg = n('kg'), rir = a('rir') === '' ? undefined : (/^\d+$/.test(a('rir')) ? +a('rir') : a('rir')), d = n('d') ?? 120;
     const T = (x) => { const o = {}; Object.entries(x).forEach(([k, v]) => { if (v !== undefined && v !== '' && v !== null) o[k] = v; }); return o; };
+    const R = v => v === '' ? undefined : (/^\d+$/.test(v) ? +v : v);
+    const rit = a('ritmo'); if (rit) { const f = this.pauta0(panel, T); f.forEach(t => { t.op = { ...(t.op || {}), ritmo: rit }; }); return f; }
+    return this.pauta0(panel, T);
+  },
+  pauta0(panel, T) {
+    const met = panel.dataset.met, M = Tandas.MET[met], a = k => panel.querySelector(`[data-a="${k}"]`)?.value.trim() ?? '', n = k => numero(a(k)), cnt = k => +(panel.querySelector(`[data-a-v="${k}"]`)?.textContent || 0);
+    const s = Math.max(1, n('s') || 1), kg = n('kg'), rir = a('rir') === '' ? undefined : (/^\d+$/.test(a('rir')) ? +a('rir') : a('rir')), d = n('d') ?? 120;
     const R = v => v === '' ? undefined : (/^\d+$/.test(v) ? +v : v);
     if (M.iso) return [T({ s, r: `${n('r') || 30}´´ isométrico`, kg: this.kg(kg), d, tp: 'iso', op: a('pos') ? { pos: a('pos') } : undefined })];
     switch (M.tipo) {

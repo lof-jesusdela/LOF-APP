@@ -3414,7 +3414,7 @@ function formServicio() {
 /* Pestañas de la biblioteca: Ejercicios | Métodos */
 const bibTabs = () => `<div class="chips" role="group" aria-label="Biblioteca" style="margin-bottom:12px"><button aria-pressed="${S.bibVista !== 'met'}" data-act="bibVista" data-v="ej">Ejercicios</button><button aria-pressed="${S.bibVista === 'met'}" data-act="bibVista" data-v="met">Métodos</button></div>`;
 const BASE_ETQ = { '': 'Series normales (solo explicación para el alumno)', ...Tandas.BASES };
-const BASE_FIJA = { 'Rest-pause': 'tandas', 'Cluster': 'tandas', 'Myo reps': 'tandas', 'Dropset': 'drop', 'Unilateral': 'lados', 'Unilateral lento': 'lados', 'Unilateral superlento': 'lados', 'Unilateral doble': 'lados', 'Contrastes': 'tandas', 'Unilateral contraste': 'lados', 'Forzadas': '', 'Topset': '', 'Isométrico': 'iso', 'Superserie': '' };
+const BASE_FIJA = { 'Rest-pause': 'tandas', 'Cluster': 'tandas', 'Myo reps': 'tandas', 'Dropset': 'drop', 'Unilateral': 'lados', 'Unilateral lento': 'lados', 'Superlento': '', 'Unilateral superlento': 'lados', 'Unilateral doble': 'lados', 'Contrastes': 'tandas', 'Unilateral contraste': 'lados', 'Forzadas': '', 'Topset': '', 'Isométrico': 'iso', 'Superserie': '' };
 function vMetodos() {
   const l = (S.c.metodos || []).slice().sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '')), fijo = n => n in Tandas.MET && !(Tandas._propios || []).includes(n) || n in BASE_FIJA;
   return `${bibTabs()}<section class="stack"><span class="eyebrow">Tu metodología</span><h1>Métodos</h1><p class="small muted">Lo que escribas en la explicación lo ve el alumno al tocar el método en su entreno. Los métodos nuevos que crees salen al instante en el editor de programas.</p></section>
