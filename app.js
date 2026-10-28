@@ -1125,18 +1125,26 @@ async function deshacerOmitir(es) {
 /* Orden de la sesión y cadenas de superseries (ejercicios unidos por descanso 0) */
 /* Superseries: un ejercicio se encadena con el anterior si este no tenía descanso o su nota dice "juntos/superserie";
    una nota de superserie nueva abre su propio grupo. Devuelve los grupos de ejercicios de un bloque. */
-function cadenasDe(L) {
+function cadenasDe(L, ag) {
   const junta = g => /juntos|super\s*(serie|set)|circuito/i.test(g || ''), out = [];
+  /* Números citados en las indicaciones de superserie («5 y 6 juntos», «superserie 2, 3 y 4»): ejercicios nº N del bloque que van seguidos */
+  const liga = new Set();
+  [ag, ...L.map(e => e.grupo)].filter(junta).forEach(t => {
+    [...String(t).matchAll(/\b(\d{1,2})(?:\s*(?:y|e|,|\+|-|a|con)\s*(\d{1,2}))+\b/gi)].forEach(m => {
+      const ns = (m[0].match(/\d{1,2}/g) || []).map(Number).sort((a, b) => a - b);
+      if (ns.length > 1 && ns.every((n, k) => n >= 1 && n <= L.length && (!k || n === ns[k - 1] + 1))) ns.slice(1).forEach(n => liga.add(n - 1));
+    });
+  });
   L.forEach((e, i) => {
     const p = L[i - 1];
-    const enlaza = p && ((p.descanso_seg ?? 60) === 0 || junta(p.grupo)) && !(junta(e.grupo) && e.grupo !== p.grupo);
+    const enlaza = p && (liga.has(i) || ((p.descanso_seg ?? 60) === 0 || junta(p.grupo)) && !(junta(e.grupo) && e.grupo !== p.grupo));
     if (enlaza) out[out.length - 1].push(e); else out.push([e]);
   });
   return out;
 }
 function prepararNavegacion(d) {
   const orden = [], cadena = {}, series = {};
-  d.bloques_sesion.filter(b => b.tipo === 'fuerza').forEach(b => cadenasDe(b.ejercicios_sesion).forEach(g => {
+  d.bloques_sesion.filter(b => b.tipo === 'fuerza').forEach(b => cadenasDe(b.ejercicios_sesion, b.agrupacion).forEach(g => {
     const ids = g.map(e => e.id);
     g.forEach(e => { cadena[e.id] = ids; orden.push(e.id); series[e.id] = e.series; });
   }));
@@ -1337,7 +1345,7 @@ function vBloque(b, cont, ro) {
       ${b.detalle ? `<p class="note">${esc(b.detalle)}</p>` : ''}
       ${b.video_url ? `<a class="btn sm ghost" style="align-self:flex-start" href="${esc(b.video_url)}" target="_blank" rel="noopener">Ver vídeo</a>` : ''}</div>`;
   }
-  const grupos = cadenasDe(b.ejercicios_sesion);
+  const grupos = cadenasDe(b.ejercicios_sesion, b.agrupacion);
   return `<div class="stack"><div class="row"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}</h3></div>${grupos.length === b.ejercicios_sesion.length && b.agrupacion ? `<p class="note">${esc(b.agrupacion)}</p>` : ''}${grupos.map(g => {
     const pu = h => ro ? h : `<div class="paso-u" data-paso-n="${esc(b.letra || '')}" data-paso-t="${esc(g.map(e => ejDe(e).nombre || '').join(' + '))}">${h}</div>`;
     if (g.length === 1) return pu(vEjercicio(g[0], ++cont.n, ro));
@@ -5030,7 +5038,7 @@ async function unirBloque(id) {
 }
 /* Editor: superseries visibles (recuadro dorado) y un toque entre ejercicios para juntarlos o separarlos */
 function edEjercicios(b, fila) {
-  const L = b.ejercicios_sesion, cad = cadenasDe(L); let out = '', i = 0;
+  const L = b.ejercicios_sesion, cad = cadenasDe(L, b.agrupacion); let out = '', i = 0;
   cad.forEach(c => {
     const filas = c.map((e, k) => (k > 0 ? `<button type="button" class="ss-link on" data-act="ssSeparar" data-id="${c[k - 1].id}" title="Separar: con descanso entre ellos">🔗 Juntos sin descanso · <u>separar</u></button>` : (i > 0 ? `<button type="button" class="ss-link" data-act="ssJuntar" data-id="${L[i - 1].id}" title="Hacer superserie con el anterior">＋ juntar con el anterior</button>` : '')) + fila(e, i++)).join('');
     out += c.length > 1 ? `<div class="ss-caja"><span class="ss-tit">🔗 Superserie · ${c.length} ejercicios seguidos sin descanso; el descanso va al final</span>${filas}</div>` : filas;
