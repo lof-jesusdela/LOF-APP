@@ -4633,6 +4633,8 @@ ${editorEsFutbol() || b?.momento ? `    <label class="f">Momento (día de partid
       <p class="small muted" style="margin:0">Escribe el protocolo en «Detalle»: por ejemplo, 2 minutos de agua fría y 2 de caliente, desde la cintura hacia abajo.</p></div>
     <label class="f">Opción para alternar <span class="muted">(opcional)</span><input type="text" id="b-va" value="${esc(b?.variante || '')}" placeholder="Ej. Tipo A"></label>
     <p class="note" style="margin-top:-6px">Varios bloques con la misma letra y una opción cada uno (Tipo A, Tipo B…) se muestran al alumno como alternativas: elige una, y la app le sugiere una distinta cada semana.</p>
+    <div class="stack" id="b-movw" style="gap:6px;padding:10px;border:1px solid var(--line);border-radius:12px" ${(S.c.movCat || []).length && b?.tipo === 'movilidad' ? '' : 'hidden'}>
+      <b class="small">🦾 Cambiar por otro ejercicio de tu catálogo de movilidad</b><input type="search" id="b-mq2" placeholder="Buscar en el catálogo…" autocomplete="off"><div id="b-ml" class="stack" style="gap:0;max-height:220px;overflow:auto"></div></div>
     <label class="f">Detalle<textarea id="b-de">${esc(b?.detalle || '')}</textarea></label>
     <label class="f">Vídeo (movilidad)<input type="text" id="b-vi" value="${esc(b?.video_url || '')}" placeholder="https://youtu.be/…"></label>
     ${b?.imagen_url ? `<img src="${esc(b.imagen_url)}" alt="" style="width:100%;max-height:180px;object-fit:contain;border-radius:12px;background:var(--surface-2)">` : ''}
@@ -4663,7 +4665,7 @@ ${editorEsFutbol() || b?.momento ? `    <label class="f">Momento (día de partid
   });
   $('#b-run').addEventListener('click', ev => { const x = ev.target.closest('[data-act="runTipo"]'); if (!x) return; ev.preventDefault(); ev.stopPropagation(); leerRun(); const v = x.dataset.v, i = RUN.tramos.findIndex(t => t.tipo === v); if (i >= 0) RUN.tramos.splice(i, 1); else { RUN.tramos.push({ tipo: v, ind: {}, obs: '' }); RUN.tramos.sort((a, b) => TIPOS_PRINCIPAL.indexOf(a.tipo) - TIPOS_PRINCIPAL.indexOf(b.tipo)); } pintarRun(); });
   const pintarCardio = () => {
-    $('#b-cardio').hidden = $('#b-t').value !== 'cardio'; $('#b-invw').hidden = $('#b-t').value !== 'invisible';
+    $('#b-cardio').hidden = $('#b-t').value !== 'cardio'; $('#b-movw').hidden = !($('#b-t').value === 'movilidad' && (S.c.movCat || []).length); $('#b-invw').hidden = $('#b-t').value !== 'invisible';
     $('#b-ma').hidden = $('#b-mq').value !== 'otra'; $('#b-fc').hidden = $('#b-fz').value !== 'otra'; $('#b-co').hidden = $('#b-mq').value !== 'Correr'; $('#b-pc').hidden = $('#b-fz').value !== 'pc'; if ($('#b-run').hidden === ($('#b-t').value === 'cardio' && $('#b-mq').value === 'Correr')) pintarRun();
     const zv = $('#b-fz').value; $('#b-fzt').textContent = zv === 'pc' ? ($('#b-pc').value.trim() ? fcTexto($('#b-pc').value.trim().replace(/%?$/, ' %'), FC) + (FC.mx ? '' : ' (pon su FC máxima o su fecha de nacimiento para ver las pulsaciones)') : '') : zv && zv !== 'otra' ? fcTexto('Zona ' + zv, FC) + (FC.mx ? '' : ' (pon su FC máxima o su fecha de nacimiento para ver las pulsaciones)') : '';
     const m = $('#b-mq').value !== 'otra' ? $('#b-mq').value : '', u = fotoMaquina(m), cardio = $('#b-t').value === 'cardio';
@@ -4674,6 +4676,13 @@ ${editorEsFutbol() || b?.momento ? `    <label class="f">Momento (día de partid
       : m ? `<p class="small muted" style="margin:0">Aún no tienes foto de ${esc(m)}: súbela abajo y se usará siempre para esta máquina.</p>` : '';
     $('#b-mqg').hidden = !(cardio && m && nueva); $('#b-mqn').textContent = m;
   };
+  let imgCat = null;
+  const pintaMov = () => { const q = normaliza($('#b-mq2').value || ''), l = (S.c.movCat || []).filter(x => !q || normaliza(x.titulo + ' ' + (x.zona || '')).includes(q)).slice(0, 30);
+    $('#b-ml').innerHTML = l.map(x => { const u = x.imagen_url || miniYoutube(x.video_url); return `<button type="button" class="line" data-mcat="${x.id}" style="text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:6px 0;gap:10px;cursor:pointer">${u ? `<img src="${esc(u)}" alt="" style="width:48px;height:36px;object-fit:cover;border-radius:6px">` : ''}<span class="grow small"><b>${esc(x.titulo)}</b>${x.zona ? ` <span class="muted">· ${esc(x.zona)}</span>` : ''}</span></button>`; }).join('') || '<span class="small muted">Sin resultados</span>'; };
+  $('#b-mq2').addEventListener('input', pintaMov); pintaMov();
+  $('#b-ml').addEventListener('click', ev => { const bt = ev.target.closest('[data-mcat]'); if (!bt) return; const x = (S.c.movCat || []).find(z => z.id === +bt.dataset.mcat); if (!x) return;
+    const pre = /^(.+?) · /.exec($('#b-n').value)?.[1]; $('#b-n').value = pre ? `${pre} · ${x.titulo}` : x.titulo; $('#b-vi').value = x.video_url || ''; imgCat = x.imagen_url && !/ytimg/.test(x.imagen_url) ? x.imagen_url : (miniYoutube(x.video_url) || null);
+    toast(`Cambiado por «${x.titulo}». Pulsa Guardar`); });
   ['#b-t', '#b-mq', '#b-fz', '#b-img'].forEach(k => $(k).addEventListener('change', pintarCardio)); $('#b-pc').addEventListener('input', pintarCardio);
   $('#b-invc').addEventListener('click', ev => { const x = ev.target.closest('[data-v]'); if (!x) return; document.querySelectorAll('#b-invc [data-v]').forEach(y => y.setAttribute('aria-pressed', y === x)); $('#b-n').value = x.dataset.v; });
   if (preset && !b) { if (preset.tipo) $('#b-t').value = preset.tipo; if (preset.nombre) $('#b-n').value = preset.nombre; if (preset.maquina) $('#b-mq').value = preset.maquina; }
@@ -4697,6 +4706,7 @@ ${editorEsFutbol() || b?.momento ? `    <label class="f">Momento (día de partid
     else if (b?.carrera) row.carrera = null;
     if (row.tipo === 'cardio' && $('#b-mq').value === 'Correr' && !$('#b-img').files[0] && b?.imagen_url) row.imagen_url = null;   // correr: fotos de cada modalidad
     if ($('#b-mo')?.value || b?.momento) row.momento = $('#b-mo')?.value || null;
+    if (imgCat && row.tipo === 'movilidad' && !$('#b-img').files[0]) row.imagen_url = imgCat;
     const file = $('#b-img').files[0];
     if (file) {
       btn.textContent = 'Subiendo imagen…';
