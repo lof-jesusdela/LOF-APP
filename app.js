@@ -1350,8 +1350,8 @@ function vBloque(b, cont, ro) {
     const pu = h => ro ? h : `<div class="paso-u" data-paso-n="${esc(b.letra || '')}" data-paso-t="${esc(g.map(e => ejDe(e).nombre || '').join(' + '))}">${h}</div>`;
     if (g.length === 1) return pu(vEjercicio(g[0], ++cont.n, ro));
     const ult = g[g.length - 1], d = ult.descanso_seg ?? 60, n0 = cont.n + 1;
-    const cards = g.map((e, k) => vEjercicio(e, ++cont.n, ro) + (k < g.length - 1 ? '<div class="ss-sig">↓ Sin descanso, sigue con el siguiente</div>' : '')).join('');
-    return pu(`<div class="superserie"><div class="ss-cab"><b>Superserie · ejercicios ${n0} a ${cont.n}</b><span class="small">Hazlos seguidos, sin descanso entre ellos. Al terminar el último, descansa ${d ? seg(d) : 'lo justo'} y repite la secuencia.</span></div>${cards}</div>`);
+    const cards = g.map((e, k) => vEjercicio(e, ++cont.n, ro) + (k < g.length - 1 ? `<div class="ss-sig">↓ ${(e.descanso_seg ?? 60) > 0 ? 'Pausa de ' + seg(e.descanso_seg) + ' y sigue con el siguiente' : 'Sin descanso, sigue con el siguiente'}</div>` : '')).join('');
+    return pu(`<div class="superserie"><div class="ss-cab"><b>Superserie · ejercicios ${n0} a ${cont.n}</b><span class="small">${g.slice(0, -1).every(e => !(e.descanso_seg > 0)) ? 'Hazlos seguidos, sin descanso entre ellos.' : 'Alterna los ejercicios con la pausa indicada entre ellos.'} Al terminar el último, descansa ${d ? seg(d) : 'lo justo'} y repite la secuencia.</span></div>${cards}</div>`);
   }).join('')}</div>`;
 }
 function cicloSesion() { return cicloSesion0() + avisoRetomada(); }
@@ -4774,7 +4774,7 @@ function formEjSesion(id, bloqueId) {
     <label class="f">Indicación de superserie (opcional)<input type="text" id="es-gr" value="${esc(e?.grupo || '')}" placeholder="Ej. 3 y 4 juntos (superserie)"></label>
     <label class="row small"><input type="checkbox" id="es-631" ${e?.aproximacion_631 ? 'checked' : ''} style="width:20px;height:20px"> Aproximación 6·3·1 antes de empezar</label>
     <div class="f"><span>Pesos de la aproximación (kg, opcional) · déjalos vacíos para el cálculo automático (70 % · 100 % · 110 %, el doble si es unilateral)</span><div class="row" style="gap:8px">${(String(e?.aprox_kgs ?? '').split(';').concat(['', '', '']).slice(0, 3)).map((v, j) => `<label class="grow small">${['6 rep.', '3 rep.', '1 rep.'][j]}<input type="text" inputmode="decimal" class="es-631kgs" value="${esc(v)}" placeholder="${esc(aproxDefecto(e)[j] || 'auto')}"></label>`).join('')}</div></div>
-    <p class="note">Si pones descanso 0 en la última fila, la app enlaza este ejercicio con el siguiente como superserie.</p>
+    <p class="note">Si pones descanso 0 en la última fila, la app enlaza este ejercicio con el siguiente como superserie. Para una superserie con pausa entre ejercicios, usa los botones de pausa que salen entre ellos en el editor del día.</p>
     <button class="btn full" type="submit">Guardar</button>${e ? '<button class="btn ghost full" type="button" id="es-del" style="color:var(--bad)">Quitar del programa</button>' : ''}</form>`);
   const sel = $('#es-ej');
   const pintarPrev = () => {
@@ -5040,10 +5040,21 @@ async function unirBloque(id) {
 function edEjercicios(b, fila) {
   const L = b.ejercicios_sesion, cad = cadenasDe(L, b.agrupacion); let out = '', i = 0;
   cad.forEach(c => {
-    const filas = c.map((e, k) => (k > 0 ? `<button type="button" class="ss-link on" data-act="ssSeparar" data-id="${c[k - 1].id}" title="Separar: con descanso entre ellos">🔗 Juntos sin descanso · <u>separar</u></button>` : (i > 0 ? `<button type="button" class="ss-link" data-act="ssJuntar" data-id="${L[i - 1].id}" title="Hacer superserie con el anterior">＋ juntar con el anterior</button>` : '')) + fila(e, i++)).join('');
-    out += c.length > 1 ? `<div class="ss-caja"><span class="ss-tit">🔗 Superserie · ${c.length} ejercicios seguidos sin descanso; el descanso va al final</span>${filas}</div>` : filas;
+    const filas = c.map((e, k) => (k > 0 ? (() => { const p = c[k - 1], dd = p.descanso_seg ?? 60, ahora = dd === 0 ? 0 : dd; return `<div class="ss-link on" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span class="small grow">🔗 Superserie · pausa antes del siguiente:</span>${[[0, 'Sin pausa'], [30, '30 s'], [60, '1 min'], [90, '1:30']].map(([v, l]) => `<button type="button" class="pill ${ahora === v ? 'blue' : ''}" data-act="ssPausa" data-id="${p.id}" data-s="${v}" aria-pressed="${ahora === v}">${l}</button>`).join('')}${![0, 30, 60, 90].includes(ahora) ? `<span class="pill blue">${ahora} s</span>` : ''}<button type="button" class="pill" data-act="ssSeparar" data-id="${p.id}" title="Separar: con descanso entre ellos">separar</button></div>`; })() : (i > 0 ? `<button type="button" class="ss-link" data-act="ssJuntar" data-id="${L[i - 1].id}" title="Hacer superserie con el anterior">＋ juntar con el anterior</button>` : '')) + fila(e, i++)).join('');
+    out += c.length > 1 ? `<div class="ss-caja"><span class="ss-tit">🔗 Superserie · ${c.length} ejercicios que se alternan; el descanso largo va al final</span>${filas}</div>` : filas;
   });
   return out;
+}
+const SS_AUTO = 'Superserie con el siguiente ejercicio';
+async function ssPausa(id, seg) {
+  const e = S.editor.prog.dias.flatMap(d => d.bloques_sesion).flatMap(b => b.ejercicios_sesion).find(x => x.id === id); if (!e) return;
+  const pauta = Array.isArray(e.pauta) && e.pauta.length ? e.pauta.map((t, k, a) => k === a.length - 1 ? { ...t, d: seg } : t) : e.pauta;
+  const junta = /juntos|super\s*(serie|set)|circuito/i.test(e.grupo || '');
+  const row = { descanso_seg: seg, pauta };
+  if (seg > 0 && !junta) row.grupo = SS_AUTO;                 // con pausa, la unión la marca el texto (si no, descanso 0 ya los une)
+  if (seg === 0 && e.grupo === SS_AUTO) row.grupo = null;     // sin pausa vuelve a unirlos el descanso 0
+  const { error } = await sb.from('ejercicios_sesion').update(row).eq('id', id); if (error) return fallo(error);
+  toast(seg ? `Superserie con ${seg} s de pausa entre los dos ejercicios` : 'Superserie sin pausa entre los dos ejercicios'); refrescarEditor();
 }
 async function ssCambiar(id, juntar) {
   const e = S.editor.prog.dias.flatMap(d => d.bloques_sesion).flatMap(b => b.ejercicios_sesion).find(x => x.id === id); if (!e) return;
@@ -5472,6 +5483,7 @@ document.addEventListener('click', async e => {
     case 'dupBloque': formDuplicar(+b.dataset.id); break;
     case 'unirBloque': await unirBloque(+b.dataset.id); break;
     case 'separarEj': await separarEj(+b.dataset.id); break;
+    case 'ssPausa': await ssPausa(+b.dataset.id, +b.dataset.s); break;
     case 'ssJuntar': await ssCambiar(+b.dataset.id, true); break;
     case 'ssSeparar': await ssCambiar(+b.dataset.id, false); break;
     case 'nuevoPrograma': formPrograma(); break;
