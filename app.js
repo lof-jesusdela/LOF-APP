@@ -1307,11 +1307,14 @@ const ILU = {
 };
 /* Fotograma del vídeo de YouTube (la misma imagen que hay en el Excel) cuando el bloque no tiene foto propia */
 const miniYoutube = url => { const m = String(url || '').match(/(?:youtu\.be\/|v=|shorts\/|embed\/)([\w-]{11})/); return m ? `https://i.ytimg.com/vi/${m[1]}/hqdefault.jpg` : null; };
+/* Contraste frío-calor: siempre va como entrenamiento invisible y con esta imagen por defecto */
+const IMG_CONTRASTE = 'img/contraste-frio-calor.jpg';
+const esContrasteFrioCalor = b => b?.tipo !== 'fuerza' && /contraste/i.test(b?.nombre || '') && /fr[ií]o|calor/i.test(b?.nombre || '');
 function imgBloque(b) {
   const ilu = (ILU[b.tipo] || '').replace('<svg', '<svg class="ilu"');
   const fc = !b.imagen_url ? fotosCardio(b) : [];
   if (fc.length) return `<div class="row" style="gap:8px;flex-wrap:wrap">${fc.map(u => `<button class="img" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver imagen" style="flex:1 1 140px"><img src="${esc(u)}" alt="${esc(b.maquina || '')}" loading="lazy" style="width:100%;height:160px;object-fit:cover;border-radius:12px;display:block"></button>`).join('')}</div>`;
-  const u = b.imagen_url || miniYoutube(b.video_url);
+  const u = b.imagen_url || (esContrasteFrioCalor(b) ? IMG_CONTRASTE : null) || miniYoutube(b.video_url);
   if (!u) return ilu;
   return `<div class="bimg"><button class="img" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver imagen"><img src="${esc(u)}" alt="${esc(b.nombre)}" loading="lazy" onerror="this.closest('.bimg').classList.add('roto')"></button>${ilu}</div>`;
 }
@@ -4545,7 +4548,7 @@ function vEditor() {
       <div class="row" style="flex-wrap:wrap"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}${b.variante ? ` <span class="pill blue">${esc(b.variante)}</span>` : ''}</h3>${(() => { const k = d.bloques_sesion.indexOf(b), pr = d.bloques_sesion[k - 1]; return b.tipo === 'fuerza' && pr?.tipo === 'fuerza' ? `<button class="btn sm ghost" data-act="unirBloque" data-id="${b.id}" title="Pasa sus ejercicios al bloque ${esc(pr.letra)}">⤒ Unir con ${esc(pr.letra)}</button>` : ''; })()}<button class="btn sm ghost" data-act="dupBloque" data-id="${b.id}">⧉ Duplicar</button><button class="btn sm ghost" data-act="edBloque" data-id="${b.id}">✎ Editar bloque</button></div>
       ${b.agrupacion ? `<div class="small muted">${esc(b.agrupacion)}</div>` : ''}
       ${b.tipo === 'fuerza' ? `${edEjercicios(b, (e, i) => `<div class="ed-ej">${(() => { const u = e.imagen_url || (S.c.ejercicios || []).find(x => x.id === e.ejercicio_id)?.imagen_url; return u ? `<img class="ed-mini" src="${esc(u)}" alt="" loading="lazy" data-act="edEj" data-id="${e.id}">` : `<span class="ed-mini ed-sin" data-act="edEj" data-id="${e.id}" title="Sin foto: toca para añadirla">📷</span>`; })()}<div class="grow" data-act="edEj" data-id="${e.id}" style="cursor:pointer;min-width:0"><b class="small">${i + 1}. ${esc(e.nombre || e.ejercicios?.nombre || '')}</b><div class="small muted">${resumen(e)}</div></div>${i > 0 ? `<button class="mini" data-act="separarEj" data-id="${e.id}" aria-label="Separar en un bloque nuevo desde este ejercicio" title="Separar en un bloque nuevo desde aquí">✂</button>` : ''}<button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="-1" aria-label="Subir" ${i === 0 ? 'disabled' : ''}>↑</button><button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="1" aria-label="Bajar" ${i === b.ejercicios_sesion.length - 1 ? 'disabled' : ''}>↓</button></div>`)}
-        <button class="btn sm ghost" data-act="edEj" data-bloque="${b.id}" style="align-self:flex-start">+ Añadir ejercicio</button>` : `<div class="row" style="gap:10px">${(b.imagen_url || miniYoutube(b.video_url) || fotosCardio(b)[0]) ? `<img class="ed-mini" src="${esc(b.imagen_url || miniYoutube(b.video_url) || fotosCardio(b)[0])}" alt="" loading="lazy" data-act="verImagen" data-src="${esc(b.imagen_url)}" onerror="this.outerHTML='<span class=&quot;ed-mini ed-sin&quot;>⚠</span>'">` : ''}<div class="small muted">${esc(b.tipo === 'cardio' ? [b.duracion, fcTexto(b.fc_objetivo, fcEditor()), b.maquina].filter(Boolean).join(' · ') : 'Movilidad')}</div></div>`}
+        <button class="btn sm ghost" data-act="edEj" data-bloque="${b.id}" style="align-self:flex-start">+ Añadir ejercicio</button>` : `<div class="row" style="gap:10px">${(b.imagen_url || (esContrasteFrioCalor(b) && IMG_CONTRASTE) || miniYoutube(b.video_url) || fotosCardio(b)[0]) ? `<img class="ed-mini" src="${esc(b.imagen_url || (esContrasteFrioCalor(b) && IMG_CONTRASTE) || miniYoutube(b.video_url) || fotosCardio(b)[0])}" alt="" loading="lazy" data-act="verImagen" data-src="${esc(b.imagen_url)}" onerror="this.outerHTML='<span class=&quot;ed-mini ed-sin&quot;>⚠</span>'">` : ''}<div class="small muted">${esc(b.tipo === 'cardio' ? [b.duracion, fcTexto(b.fc_objetivo, fcEditor()), b.maquina].filter(Boolean).join(' · ') : 'Movilidad')}</div></div>`}
     </div>`).join('')}
     <button class="btn sm" data-act="edParte" data-dia="${d.id}" style="align-self:flex-start">＋ Añadir parte</button>
   </div></section>`).join('') : '<div class="section card empty">Crea el programa para empezar a añadir días.</div>'}`;
@@ -4681,6 +4684,7 @@ ${editorEsFutbol() || b?.momento ? `    <label class="f">Momento (día de partid
       if (!r.error && r.data) { if (ya) Object.assign(ya, r.data); else S.c.ejercicios.push(r.data); }
     }
     if (v('#b-va') || b?.variante) row.variante = v('#b-va');
+    if (/^contrastes?\b.*(fr[ií]o|calor)/i.test(row.nombre)) row.tipo = 'invisible';   // siempre es entrenamiento invisible
     if (row.tipo === 'invisible') row.duracion = v('#b-idu');
     if (row.tipo === 'cardio' && $('#b-mq').value === 'Correr') { leerRun(); RUN.tramos.forEach(t => { Object.keys(t.ind).forEach(k => { if (!t.ind[k]) delete t.ind[k]; }); }); if (RUN.fase || RUN.tramos.length) row.carrera = RUN; else if (b?.carrera) row.carrera = null; }
     else if (b?.carrera) row.carrera = null;
