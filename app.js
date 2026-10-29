@@ -135,6 +135,7 @@ async function cargarPerfil() {
   const { data, error } = await sb.from('perfiles').select('*').eq('id', S.user.id).maybeSingle();
   if (error || !data) return vistaMensaje('Tu cuenta aún no está activa', 'Avisa a Jesús para que active tu perfil.', true);
   S.perfil = data;
+  if (data.acceso_pausado && data.rol !== 'coach') { await sb.auth.signOut(); return vistaMensaje('Tu acceso está en pausa', 'Tus datos se conservan. Escribe a Jesús cuando quieras volver a entrar.', false); }
   if (!data.consentimiento_at) return Casos.vistaInicial();
   S.modo = data.rol === 'coach' ? 'coach' : 'alumno';
   await Promise.all([cargarAlumno(S.user.id), cargarAjustes()]);
@@ -2931,7 +2932,7 @@ function vFicha() {
   const fF = iso => fecha(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
   return `<section class="stack"><button class="btn sm ghost" data-act="cerrarFicha" style="align-self:flex-start">← Alumnos</button><span class="eyebrow">Ficha del alumno</span><div class="row" style="gap:14px;align-items:center">${avatarDe(a, 64)}<h1 class="grow" style="margin:0">${esc(a.nombre)}</h1></div>
     <div class="small muted">${esc(a.email)} · alta ${esc(fCorta(a.fecha_alta))}${a.nombre_fiscal ? ' · ' + esc(a.nombre_fiscal) : ''}</div>
-    <div class="row" style="flex-wrap:wrap;gap:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como ${esc(nom)}</button><button class="btn sm gold" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm" data-act="abrirReporte" data-id="${a.id}">📋 Reporting semanal</button><button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}</div>${a.activo === false ? '<div class="aprox small" style="margin-top:10px">Antiguo alumno: no le llegan avisos de seguimiento al coach. Sus datos siguen guardados y puede seguir usando la app. Reactívalo si vuelve a empezar un proceso.</div>' : ''}</section>
+    <div class="row" style="flex-wrap:wrap;gap:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como ${esc(nom)}</button><button class="btn sm gold" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm" data-act="abrirReporte" data-id="${a.id}">📋 Reporting semanal</button><button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}<button class="btn sm ghost" data-act="pausarAcceso" data-id="${a.id}" data-on="${a.acceso_pausado ? 0 : 1}">${a.acceso_pausado ? '🔓 Devolver el acceso' : '🔒 Quitar el acceso (conserva el perfil)'}</button></div>${a.activo === false ? '<div class="aprox small" style="margin-top:10px">Antiguo alumno: no le llegan avisos de seguimiento al coach. Sus datos siguen guardados y puede seguir usando la app. Reactívalo si vuelve a empezar un proceso.</div>' : ''}</section>
   ${Acomp.vResumen(f, a)}
   ${Negocio.vRecordatorios(a.id)}
   ${e.items.length ? `<section class="section"><div class="card stack"><div class="row"><span class="eyebrow grow">Para revisar</span>${e.motivos.length ? '' : '<span class="pill ok">✅ Todo al día</span>'}</div>${vListaAlertas(a.id, e, true)}</div></section>` : ''}
@@ -5455,6 +5456,9 @@ document.addEventListener('click', async e => {
     case 'valPlantilla': formValPlantilla(+b.dataset.id); break;
     case 'regDia': S.regDia = b.dataset.f; render(); break;
     case 'zonaFC': zonaFC(+b.dataset.z, b.dataset.f === '1', +b.dataset.mx || null); break;
+    case 'pausarAcceso': { const on = b.dataset.on === '1'; if (on && !confirm('¿Quitarle el acceso a la app? No podrá entrar, pero su perfil, entrenos y mediciones se conservan. Puedes devolvérselo cuando quieras.')) break;
+      const { error } = await sb.from('perfiles').update({ acceso_pausado: on }).eq('id', b.dataset.id); if (error) { fallo(error, /acceso_pausado/.test(error.message || '') ? 'Falta ejecutar el Bloque 70 en Supabase.' : undefined); break; }
+      toast(on ? 'Acceso quitado: su perfil se conserva' : 'Acceso devuelto'); await cargarCoach(); await abrirFicha(b.dataset.id); break; }
     case 'archivarAlumno': await cambiarArchivo(b.dataset.id, false); break;
     case 'reactivarAlumno': await cambiarArchivo(b.dataset.id, true); break;
     case 'asignarPlantilla': formAsignarPlantilla(b.dataset.al || null, b.dataset.id ? +b.dataset.id : null); break;
