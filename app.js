@@ -5186,12 +5186,21 @@ async function unirBloque(id) {
 function edEjercicios(b, fila) {
   const L = b.ejercicios_sesion, cad = cadenasDe(L, b.agrupacion); let out = '', i = 0;
   cad.forEach(c => {
-    const filas = c.map((e, k) => (k > 0 ? (() => { const p = c[k - 1], dd = p.descanso_seg ?? 60, ahora = dd === 0 ? 0 : dd; return `<div class="ss-link on" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span class="small grow">🔗 Superserie · pausa antes del siguiente:</span>${[[0, 'Sin pausa'], [30, '30 s'], [60, '1 min'], [90, '1:30']].map(([v, l]) => `<button type="button" class="pill ${ahora === v ? 'blue' : ''}" data-act="ssPausa" data-id="${p.id}" data-s="${v}" aria-pressed="${ahora === v}">${l}</button>`).join('')}${![0, 30, 60, 90].includes(ahora) ? `<span class="pill blue">${ahora} s</span>` : ''}<button type="button" class="pill" data-act="ssSeparar" data-id="${p.id}" title="Separar: con descanso entre ellos">separar</button></div>`; })() : (i > 0 ? `<button type="button" class="ss-link" data-act="ssJuntar" data-id="${L[i - 1].id}" title="Hacer superserie con el anterior">＋ juntar con el anterior</button>` : '')) + fila(e, i++)).join('');
+    const filas = c.map((e, k) => (k > 0 ? (() => { const p = c[k - 1], dd = p.descanso_seg ?? 60, ahora = dd === 0 ? 0 : dd; return `<div class="ss-link on" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span class="small grow">🔗 Superserie · pausa antes del siguiente:</span>${[[0, 'Sin pausa'], [30, '30 s'], [60, '1 min'], [90, '1:30']].map(([v, l]) => `<button type="button" class="pill ${ahora === v ? 'blue' : ''}" data-act="ssPausa" data-id="${p.id}" data-s="${v}" aria-pressed="${ahora === v}">${l}</button>`).join('')}${![0, 30, 60, 90].includes(ahora) ? `<span class="pill blue">${ahora} s</span>` : ''}<button type="button" class="pill ${/superserie unilateral/i.test(p.grupo || '') ? 'blue' : ''}" data-act="ssUni" data-id="${p.id}" aria-pressed="${/superserie unilateral/i.test(p.grupo || '')}" title="Unilateral: ejercicio 1 con un lado, el 2 con el mismo lado; después el otro lado">↔ mismo lado seguido</button><button type="button" class="pill" data-act="ssSeparar" data-id="${p.id}" title="Separar: con descanso entre ellos">separar</button></div>`; })() : (i > 0 ? `<button type="button" class="ss-link" data-act="ssJuntar" data-id="${L[i - 1].id}" title="Hacer superserie con el anterior">＋ juntar con el anterior</button>` : '')) + fila(e, i++)).join('');
     out += c.length > 1 ? `<div class="ss-caja"><span class="ss-tit">🔗 Superserie · ${c.length} ejercicios que se alternan; el descanso largo va al final</span>${filas}</div>` : filas;
   });
   return out;
 }
 const SS_AUTO = 'Superserie con el siguiente ejercicio';
+/* Superserie unilateral: 1 con un lado, 2 con el mismo lado, y luego 1 y 2 con el otro lado */
+async function ssUniToggle(id) {
+  const todos = S.editor.prog.dias.flatMap(d => d.bloques_sesion).flatMap(b => b.ejercicios_sesion), e = todos.find(x => x.id === id); if (!e) return;
+  const on = !/superserie unilateral/i.test(e.grupo || ''), row = { grupo: on ? 'Superserie unilateral' : null };
+  const b = S.editor.prog.dias.flatMap(d => d.bloques_sesion).find(bl => bl.ejercicios_sesion.some(x => x.id === id)), L = b?.ejercicios_sesion || [], sig = L[L.indexOf(e) + 1];
+  const { error } = await sb.from('ejercicios_sesion').update(row).eq('id', id); if (error) return fallo(error);
+  const noUni = [e, sig].filter(x => x && Tandas.met(x)?.tipo !== 'uni');
+  toast(on ? (noUni.length ? 'Activado. Pon el método «Unilateral» en los dos ejercicios para que funcione' : 'Superserie unilateral: ejercicio 1 y 2 con un lado, y luego con el otro') : 'Quitado: cada ejercicio hace sus dos lados por separado'); refrescarEditor();
+}
 async function ssPausa(id, seg) {
   const e = S.editor.prog.dias.flatMap(d => d.bloques_sesion).flatMap(b => b.ejercicios_sesion).find(x => x.id === id); if (!e) return;
   const pauta = Array.isArray(e.pauta) && e.pauta.length ? e.pauta.map((t, k, a) => k === a.length - 1 ? { ...t, d: seg } : t) : e.pauta;
@@ -5642,6 +5651,7 @@ document.addEventListener('click', async e => {
     case 'unirBloque': await unirBloque(+b.dataset.id); break;
     case 'separarEj': await separarEj(+b.dataset.id); break;
     case 'ssPausa': await ssPausa(+b.dataset.id, +b.dataset.s); break;
+    case 'ssUni': await ssUniToggle(+b.dataset.id); break;
     case 'ssJuntar': await ssCambiar(+b.dataset.id, true); break;
     case 'ssSeparar': await ssCambiar(+b.dataset.id, false); break;
     case 'nuevoPrograma': formPrograma(); break;

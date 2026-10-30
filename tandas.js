@@ -37,6 +37,18 @@ const Tandas = {
   LADO: { D: 'Derecho', I: 'Izquierdo' },
   TIPO: { pesado: 'Pesado', iso: 'Isométrico', explosivo: 'Explosivo', superlento: 'Superlento' },
   met(e) { return this.MET[e?.metodos?.nombre] || null; },
+  /* Superserie unilateral: ejercicio 1 con un lado, sin parar el 2 con el mismo lado; después el otro lado con los dos */
+  ssUni(e) {
+    const ch = S.nav?.cadena?.[e?.id]; if (!ch || ch.length < 2) return null;
+    const L = ch.map(id => this.ejercicio(id)); if (L.some(x => !x || this.met(x)?.tipo !== 'uni')) return null;
+    return L.some(x => /superserie unilateral/i.test(x.grupo || '')) ? { L, i: ch.indexOf(e.id) } : null;
+  },
+  ssSig(e, n, k) {
+    const c = this.ssUni(e); if (!c) return null; const m = c.L.length;
+    if (c.i < m - 1) return [c.L[c.i + 1].id, n, k];
+    if (k % 2 === 0) return [c.L[0].id, n, k + 1];
+    return this.estructura(c.L[0])[n] ? [c.L[0].id, n + 1, 0] : null;
+  },
   usa(e) { return !!this.met(e); },
   ejercicio(es) { return S.dia?.bloques_sesion.flatMap(b => b.ejercicios_sesion).find(x => x.id === +es); },
   limpiaR: r => String(r ?? '').replace(/\s*\(2 veces\)/i, '').replace(/\s*(x|por|cada)\s*(lado|brazo|pierna|mano)\b/gi, '').replace(/^por lado:?\s*/i, '').trim(),
@@ -96,6 +108,12 @@ const Tandas = {
       const X = M.iso ? { tipo: 'iso' } : {};
       out = exp(G).map(tr => ({ tandas: tr.map((t, k) => ({ partes: [P(t, { rir: rirS(tr, t), ...X, ...(M.iso && t.op?.pos ? { pos: t.op.pos } : {}) })], d: t.d ?? (k < tr.length - 1 ? 0 : e.descanso_seg ?? 60) })) }));
     }
+    const ss = M.tipo === 'uni' ? this.ssUni(e) : null;
+    if (ss) out.forEach(s => s.tandas.forEach((tn, k) => {
+      const ult = ss.i === ss.L.length - 1, sig = ss.L[ss.i + 1] ? ejDe(ss.L[ss.i + 1]).nombre : '', prim = ejDe(ss.L[0]).nombre, lado = tn.lado === 'D' ? 'derecho' : 'izquierdo', otro = tn.lado === 'D' ? 'izquierdo' : 'derecho';
+      if (!ult) { tn.d = e.descanso_seg ?? 0; tn.ss = `sigue con «${sig}» con el mismo lado (${lado})`; }
+      else if (tn.lado === 'D') { tn.d = 0; tn.ss = `cambia de lado: «${prim}» con el lado ${otro}`; }
+    }));
     // Índice de cada parte dentro de su serie (es el «tramo» del registro)
     out.forEach(s => { let p = 0; s.tandas.forEach(t => { t.p0 = p; t.partes.forEach(x => { x.p = p++; }); }); s.T = p; });
     return out;
@@ -164,13 +182,13 @@ const Tandas = {
       const n = si + 1, fila = `${e.id}-${n}`, ultS = n === N, nT = s.tandas.length;
       const tandas = s.tandas.map((t, k) => {
         const ult = k === nT - 1, sig = s.tandas[k + 1], d = ult && ultS ? 0 : t.d;
-        const lbl = !ult ? (d > 0 ? `${this.hechoTxt(t)} · descansar ${this.dur(d)}` : `${this.hechoTxt(t)} · ${this.sigTxt(M, t, sig)}`) : ultS ? 'Terminar ejercicio' : (d > 0 ? `Terminar serie · descansar ${this.dur(d)}` : 'Terminar serie · sin descanso');
+        const lbl = t.ss ? `${this.hechoTxt(t)} · ${d > 0 ? 'descansa ' + this.dur(d) + ' y ' : ''}${t.ss}` : !ult ? (d > 0 ? `${this.hechoTxt(t)} · descansar ${this.dur(d)}` : `${this.hechoTxt(t)} · ${this.sigTxt(M, t, sig)}`) : ultS ? 'Terminar ejercicio' : (d > 0 ? `Terminar serie · descansar ${this.dur(d)}` : 'Terminar serie · sin descanso');
         const una = t.partes.length === 1, x0 = t.partes[0];
         const cab = una ? this.cabParte(x0, rirUnico, sp, k, s) : (t.doble ? '<span class="muted"> · sin descanso entre lados ni vueltas</span>' : '');
         return `<div class="rp-tanda" id="rpt-${fila}-${k}" data-p0="${t.p0}" data-np="${t.partes.length}">
           <div class="rp-tt">${t.lado ? this.chipLado(t.lado) + ' ' : ''}<b>${esc(this.tituloTanda(t, k, nT))}</b>${cab}</div>
           ${t.partes.map(x => this.campos(e, fila, n, x, sp, una, rirUnico, t)).join('')}
-          <button class="btn rp-btn" data-act="tanda" data-es="${e.id}" data-n="${n}" data-k="${k}" data-d="${d}" data-tipo="${!ult ? 'tandas' : ultS ? 'fin' : 'series'}" data-lbl="${esc(lbl)}">${esc(lbl)}</button>
+          <button class="btn rp-btn" data-act="tanda" data-es="${e.id}" data-n="${n}" data-k="${k}" data-d="${d}"${t.ss ? ` data-ss="${esc(t.ss)}"` : ''} data-tipo="${!ult ? 'tandas' : ultS ? 'fin' : 'series'}" data-lbl="${esc(lbl)}">${esc(lbl)}</button>
           ${M.myo && k > 0 ? `<button class="linkbtn small rp-corte" data-act="tandaCortar" data-es="${e.id}" data-n="${n}" data-k="${k}">No llego a 4 repeticiones · termino aquí la serie</button>` : ''}
           <div class="rp-ok small" hidden><span class="rp-ok-t">✓ Guardada</span><span class="muted"> · para corregir, cambia el número</span> <button class="linkbtn small" data-act="tandaQuitar" data-es="${e.id}" data-n="${n}" data-k="${k}">Quitar</button></div>
           <div class="rp-cortada small muted" hidden>No hecha: terminaste la serie antes <button class="linkbtn small" data-act="tandaCortar" data-es="${e.id}" data-n="${n}" data-k="-1">Deshacer</button></div>
@@ -283,6 +301,7 @@ const Tandas = {
     if (z.editar) return;
     if (tipo === 'fin') toast('Ejercicio terminado ✓');
     else if (d > 0) startTimer(d, `Descanso · ${nom} · entre ${tipo === 'tandas' ? 'tandas' : 'series'}`);
+    else if (b.dataset.ss) toast(`Sin descanso: ${b.dataset.ss}`);
     else toast(tipo === 'tandas' ? `Sin descanso: ${b.dataset.lbl.split('·').pop().trim()}` : 'Sin descanso: sigue con la siguiente serie');
   },
   trasGuardar(e, n, k, sid, L) {
@@ -302,7 +321,9 @@ const Tandas = {
     if (this.estadoSerie(z, s, fila).est === 'on') this.serieHecha(e, n, sid);
     else if (sid && !z.editar) actualizarConteo(sid);
     this.pintar(es); setTimeout(() => Guia.pintar(), 0);
-    const foco = document.getElementById(`rpt-${fila}-${k + 1}`) || document.getElementById(`rpt-${es}-${n + 1}-0`);
+    const sg = this.ssSig(e, n, k); let foco;
+    if (sg) { (z.abiertas ||= {})[sg[0]] = sg[1]; this.pintar(sg[0]); foco = document.getElementById(`rpt-${sg[0]}-${sg[1]}-${sg[2]}`); }
+    foco = foco || document.getElementById(`rpt-${fila}-${k + 1}`) || document.getElementById(`rpt-${es}-${n + 1}-0`);
     if (foco && z.abiertas[es] !== -1) foco.scrollIntoView({ behavior: 'smooth', block: 'center' });
   },
   serieHecha(e, n, sid) {
