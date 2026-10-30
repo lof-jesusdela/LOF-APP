@@ -2509,10 +2509,33 @@ function vSemanasFutbol(a) {
       <button class="btn sm gold" data-act="avisarSemana" data-al="${a.id}" data-l="${l}">🔔 Avisar: semana lista</button>${c ? `<button class="btn sm ghost" data-act="sesionesContexto" data-id="${c.id}">✎ Editar sus sesiones</button>` : `<button class="btn sm" data-act="semAjustar" data-l="${l}">Ajustar esta semana</button>${ant ? `<button class="btn sm ghost" data-act="semAjustar" data-l="${l}" data-ant="1">Duplicar la anterior</button>` : ''}`}</div>`; }).join('')}
     ${hechas.length ? `<div class="small muted">Semanas ajustadas: ${hechas.map(c => `<button class="pill" data-act="sesionesContexto" data-id="${c.id}">${esc(fCorta(c.contexto_desde))}</button>`).join(' ')}</div>` : ''}</div></section>`;
 }
+/* Calendario semanal del jugador: toca un día y ves lo que rellenó */
+function detalleW(x) {
+  const d = x.datos || {}, fila = (k, v) => v == null || v === '' ? '' : `<div class="row small" style="gap:8px"><span class="muted" style="width:128px;flex:none">${k}</span><b class="grow">${v}</b></div>`;
+  const ali = { si: 'Cumplida', parcial: 'A medias', no: 'No cumplida' }[d.alimentacion];
+  const cab = { diario: 'Check diario', partido: 'Partido', lunes: 'Cuestionario del lunes', semana: 'Planificación del equipo' }[x.tipo] || x.tipo;
+  let c = '';
+  if (x.tipo === 'diario') c = fila('Entreno con el equipo', d.eq_min != null ? (d.eq_min ? `${d.eq_min} min · esfuerzo ${d.eq_rpe ?? '—'}/10` : 'No') : '') + fila('Sesión LOF', d.lof_rpe ? `${d.lof_min || 45} min · esfuerzo ${d.lof_rpe}/10` : 'No') + fila('Fatiga', d.fatiga != null ? d.fatiga + '/10' : '') + fila('Sueño', d.dormir && d.levantar ? `${d.dormir}–${d.levantar} (${fmtNum(horasSueno(d.dormir, d.levantar))} h)` : '') + fila('Alimentación', ali);
+  else if (x.tipo === 'partido') c = fila('Minutos', d.minutos) + fila('Antes / durante / después', `${d.antes ?? '—'} / ${d.durante ?? '—'} / ${d.despues ?? '—'}`) + fila('Esfuerzo', d.rpe != null ? d.rpe + '/10' : '');
+  else if (x.tipo === 'lunes') c = fila('Fatiga', d.fatiga != null ? d.fatiga + '/10' : '') + fila('Dolor', d.dolor) + fila('Sueño', d.sueno) + fila('Semana', esc(d.semana || ''));
+  else c = d.texto ? `<div class="small pre">${esc(d.texto)}</div>` : '';
+  return `<div class="card stack" style="gap:4px"><b>${cab}</b>${c}${(d.molestias || []).length ? fila('Molestias', esc(d.molestias.join(', '))) : ''}${d.nota ? `<div class="small muted">"${esc(d.nota)}"</div>` : ''}${(d.reloj || []).length ? `<div class="small muted">Capturas del reloj (${d.reloj.length})</div>${miniW(d.reloj)}` : ''}${botonesArchivos(x)}</div>`;
+}
+function vSemanaCal(a) {
+  const f = S.ficha, hoy = hoyISO(), lunes = f.semFut || lunesDe(hoy), { w } = futDe(a.id), L = ['L', 'M', 'X', 'J', 'V', 'S', 'D'], sel = f.diaFut;
+  const dias = [...Array(7)].map((_, i) => sumaDias(lunes, i));
+  const esf = dias.map((d, i) => { const dd = wDe(w, d, 'diario'), pa = wDe(w, d, 'partido'), lu = wDe(w, d, 'lunes'), v = dd?.datos?.fatiga ?? lu?.datos?.fatiga, hay = dd || pa || lu, col = dd || lu ? `var(--${nivelFat(v) || 'ok'})` : pa ? 'var(--blue)' : 'var(--line)';
+    return `<button type="button" data-act="futDia" data-f="${d}" aria-pressed="${sel === d}" style="display:flex;flex-direction:column;align-items:center;gap:3px;background:none;border:0;padding:0;cursor:pointer;opacity:${d > hoy ? .45 : 1}"><span style="width:44px;height:44px;border-radius:50%;border:2.5px solid ${sel === d ? 'var(--fg)' : hay ? col : 'var(--line)'};background:${hay ? col : 'transparent'};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px">${dd || lu ? (v ?? '✓') : pa ? 'P' : ''}</span><span class="small ${d === hoy ? '' : 'muted'}" style="${d === hoy ? 'font-weight:800' : ''}">${L[i]} ${d.slice(8)}</span></button>`; }).join('');
+  const ents = sel ? w.filter(x => x.fecha === sel && x.tipo !== 'semana') : [], plan = sel && new Date(sel + 'T12:00').getDay() === 0 ? wDe(w, sel, 'semana') : null;
+  return `<section class="section"><div class="section-head"><h2>Semana · check-ins</h2><span class="row" style="gap:6px"><button class="btn sm ghost" data-act="futSem" data-l="${sumaDias(lunes, -7)}" aria-label="Semana anterior">◀</button><button class="btn sm ghost" data-act="futSem" data-l="${sumaDias(lunes, 7)}" ${lunes >= lunesDe(hoy) ? 'disabled' : ''} aria-label="Semana siguiente">▶</button></span></div>
+    <div class="card stack"><div class="small muted">Del ${esc(fCorta(lunes))} al ${esc(fCorta(dias[6]))}${lunes === lunesDe(hoy) ? ' · esta semana' : ''} · toca un día para ver lo que ha rellenado</div>
+      <div class="row" style="justify-content:space-between;gap:4px">${esf}</div>
+      ${sel ? (ents.length || plan ? [...ents, ...(plan ? [plan] : [])].map(detalleW).join('') : `<div class="small muted">${esc(fLarga(sel))}: no rellenó nada${sel > hoy ? ' (todavía no ha llegado)' : ''}.</div>`) : ''}</div></section>`;
+}
 function vFutbolFicha(a) {
   const { w, p } = futDe(a.id), M = mdDe(p), C = cargasSemana(w), [na, ta] = nivelAcwr(C.acwr), uf = ultimaFatiga(w);
   const ult = w.slice().sort((x, y) => (y.fecha + y.tipo).localeCompare(x.fecha + x.tipo)).slice(0, 10);
-  return vSemanasFutbol(a) + `<section class="section"><div class="section-head"><h2>Competición y fatiga</h2><button class="btn sm ghost" data-act="partido" data-al="${a.id}">＋ Partido</button></div>
+  return vSemanasFutbol(a) + vSemanaCal(a) + `<section class="section"><div class="section-head"><h2>Competición y fatiga</h2><button class="btn sm ghost" data-act="partido" data-al="${a.id}">＋ Partido</button></div>
     <div class="card stack">
       <div class="row"><span class="md-chip">${esc(M.md || '—')}</span><div class="grow"><b>${esc(M.txt)}</b>${M.prox ? `<div class="small muted">${esc(M.prox.rival || 'Partido')} · ${esc(fCorta(M.prox.fecha))}${M.prox.hora ? ' · ' + esc(M.prox.hora) : ''}${M.prox.nivel ? ' · rival ' + esc(M.prox.nivel.toLowerCase()) : ''}</div>` : ''}</div></div>
       <div class="kpis"><div class="kpi"><div class="l">Fatiga</div><b class="num" style="color:var(--${nivelFat(uf?.v) || 'fg'})">${uf ? uf.v + '/10' : '—'}</b></div><div class="kpi"><div class="l">Carga 7 días</div><b class="num">${fmtNum(C.aguda, 0)}</b></div><div class="kpi"><div class="l">ACWR</div><b class="num" style="color:var(--${na || 'fg'})">${C.acwr != null ? fmtNum(C.acwr) : '—'}</b><div class="small muted">${ta}</div></div></div>
@@ -5525,6 +5548,8 @@ document.addEventListener('click', async e => {
     case 'verAlertas': verAlertas(b.dataset.id); break;
     case 'alIr': alIr(b.dataset.id, b.dataset.m); break;
     case 'checkin': controlFut(); break;
+    case 'futSem': S.ficha.semFut = b.dataset.l; S.ficha.diaFut = null; render(); break;
+    case 'futDia': S.ficha.diaFut = S.ficha.diaFut === b.dataset.f ? null : b.dataset.f; render(); firmarMini(); break;
     case 'ctrlFut': cerrarSheet(); controlFut(b.dataset.l, b.dataset.m); break;
     case 'checkinJ': cerrarSheet(); checkinSheet(b.dataset.id); break;
     case 'bvIr': Bienvenida.abrir(+b.dataset.i); break;
