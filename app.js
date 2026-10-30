@@ -3621,6 +3621,7 @@ async function formIntegrarEj() {
 function formEjercicio(id) {
   const x = S.c.ejercicios.find(z => z.id === id); if (!x) return;
   abrirSheet(`<form class="stack" id="f-ej"><h2>${esc(x.nombre)}</h2>
+    <label class="f">Nombre del ejercicio<input type="text" id="e-nom" value="${esc(x.nombre || '')}" required></label>
     ${x.imagen_url ? `<img src="${esc(x.imagen_url)}" alt="" style="width:100%;max-height:200px;object-fit:cover;border-radius:12px">` : ''}
     <label class="f">Foto del ejercicio (desde la galería o la cámara)<input type="file" id="e-foto" accept="image/*"></label>
     ${x.musculo_img_url ? `<img src="${esc(x.musculo_img_url)}" alt="" style="width:100%;max-height:160px;object-fit:contain;border-radius:12px;background:#fff">` : ''}
@@ -3632,14 +3633,16 @@ function formEjercicio(id) {
   $('#f-ej').addEventListener('submit', async e => {
     e.preventDefault(); const btn = $('#e-btn'); btn.disabled = true; btn.textContent = 'Guardando…';
     try {
-      const cambios = { musculo: $('#e-mus').value.trim() || null, descripcion: $('#e-desc').value.trim() || null, video_url: $('#e-vid').value.trim() || null };
+      const nom = $('#e-nom').value.trim(); if (!nom) throw new Error('Escribe el nombre del ejercicio');
+      if (normaliza(nom) !== normaliza(x.nombre) && S.c.ejercicios.some(z => z.id !== x.id && normaliza(z.nombre) === normaliza(nom))) throw new Error('Ya existe otro ejercicio con ese nombre (puedes fusionarlos desde la lista)');
+      const cambios = { nombre: nom, musculo: $('#e-mus').value.trim() || null, descripcion: $('#e-desc').value.trim() || null, video_url: $('#e-vid').value.trim() || null };
       const file = $('#e-foto').files[0];
       if (file) cambios.imagen_url = await subirImagenEj(file, `ej-${x.id}`);
       const mfile = $('#e-mfoto').files[0];
       if (mfile) cambios.musculo_img_url = await subirImagenEj(mfile, `mus-${x.id}`, 900);
       const { error } = await sb.from('ejercicios').update(cambios).eq('id', x.id); if (error) throw error;
       Object.assign(x, cambios); cerrarSheet(); toast('Ejercicio guardado'); await cargarAlumno(S.user.id); render();
-    } catch (err) { btn.disabled = false; btn.textContent = 'Guardar'; $('#e-err').textContent = motivoImg(err); console.error(err); }
+    } catch (err) { btn.disabled = false; btn.textContent = 'Guardar'; $('#e-err').textContent = /nombre|Ya existe/.test(err?.message || '') ? err.message : motivoImg(err); console.error(err); }
   });
 }
 /* Sube una imagen al bucket público «ejercicios» y devuelve su URL. Si el navegador no puede reducirla (HEIC…), sube el original */
