@@ -4441,7 +4441,7 @@ function vResultados(p, ant) {
       const debil = pc ? (a < b ? 'derecho' : 'izquierdo') : null, col = pc == null ? 'var(--muted)' : pc >= 15 ? 'var(--bad)' : pc >= 8 ? 'var(--warn)' : 'var(--ok)';
       return `<div class="stack" style="gap:5px"><div class="row small"><b class="grow">${esc(x.nombre)}</b>${pc != null ? `<span class="pill" style="color:${col}">${pc} %${debil ? ' · más débil el lado ' + debil : ''}</span>` : ''}</div>
         <div class="lado"><span class="small muted">Dcha.</span><div class="track"><i style="width:${(a || 0) / mx * 100}%;background:var(--blue)"></i></div><b class="small num">${esc(x.d || '—')}</b></div>
-        <div class="lado"><span class="small muted">Izda.</span><div class="track"><i style="width:${(b || 0) / mx * 100}%;background:var(--gold)"></i></div><b class="small num">${esc(x.i || '—')}</b></div></div>`;
+        <div class="lado"><span class="small muted">Izda.</span><div class="track"><i style="width:${(b || 0) / mx * 100}%;background:var(--gold)"></i></div><b class="small num">${esc(x.i || '—')}</b></div>${(() => { const y = ant && (ant.datos || []).find(z => z.nombre === x.nombre); if (!y || (!y.d && !y.i)) return ''; const dd = numDe(x.d) - numDe(y.d), di = numDe(x.i) - numDe(y.i), a0 = difPct(y.d, y.i); const f = n => isNaN(n) || !n ? '' : `<b style="color:var(--${n > 0 ? 'ok' : 'bad'})">${n > 0 ? '+' : ''}${fmtNum(n)}</b>`; return `<div class="small muted">Antes: dcha. ${esc(y.d || '—')} ${f(dd)} · izda. ${esc(y.i || '—')} ${f(di)}${a0 != null ? ' · diferencia ' + a0 + ' % → ' + (pc ?? '—') + ' %' : ''}</div>`; })()}</div>`;
     }).join('')}<p class="note">Diferencia por encima del 15 %: desequilibrio a trabajar. Entre 8 y 15 %: a vigilar.</p></div>`;
   }
   const nums = ds.map(x => numDe(x.valor)), mx = Math.max(1, ...nums.filter(n => n != null)), barras = p.tipo === '1rm';
@@ -4493,10 +4493,55 @@ function vPrueba(p, lista, val, coach) {
     ${coach ? `<div class="row" style="gap:8px"><button class="btn sm" data-act="editarPrueba" data-id="${p.id}">✎ Editar prueba</button></div>` : !S.obj && S.d && p.tipo !== 'fc' ? `<button class="btn sm ghost" data-act="nuevoResultado" data-id="${p.id}" style="align-self:flex-start">＋ Añadir un nuevo resultado</button>` : ''}
     </div></details>`;
 }
+/* ---- Evolución: cada prueba comparada con el test anterior → mejoras y puntos a mejorar ---- */
+const numV = v => { const t = String(v ?? '').trim(), m = /^(\d+):(\d{2})/.exec(t); if (m) return +m[1] * 60 + +m[2]; return numDe(t); };
+const menorMejor = n => /ritmo|tiempo|segundos|min\/km|lesi|dolor/i.test(n || '');
+function evolucion(val, lista) {
+  if (val.origen === 'alumno') return null;
+  const prev = (lista || []).filter(v => v.origen !== 'alumno' && v.id !== val.id && v.fecha < val.fecha).sort((a, b) => b.fecha.localeCompare(a.fecha))[0]; if (!prev) return null;
+  const mej = [], baj = [], igual = [], asim = [];
+  const pc = (a, b) => b ? Math.round((a - b) / Math.abs(b) * 100) : null, sg = n => (n > 0 ? '+' : '') + fmtNum(n);
+  (val.pruebas || []).forEach(p => {
+    const pp = (prev.pruebas || []).find(x => x.tipo === p.tipo && x.titulo === p.titulo); if (!pp) return;
+    (p.datos || []).filter(x => x.nombre).forEach(x => {
+      const y = (pp.datos || []).find(z => z.nombre === x.nombre); if (!y) return;
+      if (p.tipo === 'descompensacion') {
+        const dd = numV(x.d) - numV(y.d), di = numV(x.i) - numV(y.i), a0 = difPct(y.d, y.i), a1 = difPct(x.d, x.i);
+        if ([dd, di].some(n => isNaN(n))) return;
+        const txt = `${x.nombre}: dcho. ${y.d || '—'} → ${x.d || '—'} (${sg(dd)}) · izdo. ${y.i || '—'} → ${x.i || '—'} (${sg(di)})`;
+        if (a1 != null && a0 != null) {
+          const deb = numV(x.d) < numV(x.i) ? 'derecho' : 'izquierdo', t2 = `${txt} · diferencia entre lados ${a0} % → ${a1} %`;
+          if (a1 <= a0 - 2) mej.push({ p: p.titulo, t: t2 }); else if (a1 >= a0 + 2) baj.push({ p: p.titulo, t: t2 + ` (más débil el ${deb})` }); else igual.push({ p: p.titulo, t: t2 });
+          if (a1 >= 8) asim.push({ p: p.titulo, t: `${x.nombre}: ${a1} % de diferencia, más débil el lado ${deb}`, grave: a1 >= 15 });
+        } else (dd > 0 && di > 0 ? mej : dd < 0 && di < 0 ? baj : igual).push({ p: p.titulo, t: txt });
+        return;
+      }
+      const a = numV(x.valor), b = numV(y.valor); if (a == null || b == null) return;
+      const d = a - b, mejor = menorMejor(x.nombre) ? d < 0 : d > 0, t = `${x.nombre}: ${y.valor} → ${x.valor} (${sg(d)}${pc(a, b) != null && !String(x.valor).includes(':') ? ', ' + sg(pc(a, b)) + ' %' : ''})`;
+      (d === 0 ? igual : mejor ? mej : baj).push({ p: p.titulo, t });
+    });
+  });
+  return { prev, mej, baj, igual, asim };
+}
+function textoEvolucion(val, ev) {
+  const L = [`EVOLUCIÓN · ${fCorta(ev.prev.fecha)} → ${fCorta(val.fecha)}`, ''];
+  const sec = (tit, l) => { if (l.length) { L.push(tit); l.forEach(x => L.push(`• ${x.t}`)); L.push(''); } };
+  sec('✅ MEJORAS', ev.mej); sec('⚠️ A MEJORAR', ev.baj); sec('⚖️ DESEQUILIBRIOS ENTRE LADOS (≥ 8 %)', ev.asim); sec('➖ SIN CAMBIOS', ev.igual);
+  return L.join('\n').trim();
+}
+function vEvolucion(val, lista, coach) {
+  const ev = evolucion(val, lista); if (!ev) return '';
+  const bloque = (tit, col, l) => l.length ? `<div class="stack" style="gap:4px"><b class="small" style="color:var(--${col})">${tit} (${l.length})</b>${l.map(x => `<div class="small"><span class="muted">${esc(x.p)} · </span>${esc(x.t)}</div>`).join('')}</div>` : '';
+  const vacio = !ev.mej.length && !ev.baj.length && !ev.igual.length && !ev.asim.length;
+  return `<div class="card stack"><span class="eyebrow">Evolución frente al test del ${esc(fCorta(ev.prev.fecha))} ${fecha(ev.prev.fecha).getFullYear()}</span>
+    ${vacio ? '<p class="small muted" style="margin:0">Todavía no hay pruebas con datos comparables entre los dos tests.</p>' : `${bloque('✅ Mejoras', 'ok', ev.mej)}${bloque('⚠️ Puntos a mejorar', 'warn', ev.baj)}${bloque('⚖️ Desequilibrios entre lados', 'bad', ev.asim)}${bloque('➖ Sin cambios', 'muted', ev.igual)}`}
+    ${coach && !vacio ? `<div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="evoCopiar" data-id="${val.id}">Copiar informe</button><button class="btn sm ghost" data-act="evoAnadir" data-id="${val.id}">Añadirlo al informe del test</button></div>` : ''}</div>`;
+}
 function vInforme(val, lista, coach) {
   return `<div class="card hero stack"><span class="eyebrow">${esc(fLarga(val.fecha))} ${fecha(val.fecha).getFullYear()}${val.origen === 'alumno' ? ' · registrado por el alumno' : ''}</span><h2 style="color:#fff">${esc(val.nombre)}</h2>
       ${val.resumen ? `<div class="stack" style="gap:6px;border-top:1px solid rgba(255,255,255,.14);padding-top:12px"><span class="eyebrow">Informe · valoración de todo el contexto</span><div class="small pre">${esc(val.resumen)}</div></div>` : `<div class="small muted">${coach ? 'Escribe aquí el informe general con "Editar informe".' : 'Jesús añadirá aquí el informe de la valoración.'}</div>`}
       <div class="row" style="gap:8px;flex-wrap:wrap">${coach ? `<button class="btn sm gold" data-act="editarValoracion" data-id="${val.id}">✎ Editar informe</button><button class="btn sm ghost" data-act="nuevaPrueba" data-id="${val.id}" style="background:#fff;color:#0B0B0C">＋ Añadir prueba</button>` : ''}<button class="btn sm ghost" data-act="pdfValoracion" data-id="${val.id}" style="background:#fff;color:#0B0B0C">⬇ Descargar informe en PDF</button></div></div>
+    ${vEvolucion(val, lista, coach)}
     <h2 style="margin-top:6px">Pruebas</h2>
     ${(val.pruebas || []).map(p => vPrueba(p, lista, val, coach)).join('') || '<div class="card empty">Aún no hay pruebas en esta valoración.</div>'}`;
 }
@@ -5495,6 +5540,9 @@ document.addEventListener('click', async e => {
     case 'abrirValoracion': S.valEd = +b.dataset.id; render(); window.scrollTo(0, 0); break;
     case 'cerrarValoracion': S.valEd = null; render(); window.scrollTo(0, 0); break;
     case 'editarValoracion': formValoracion(+b.dataset.id); break;
+    case 'evoCopiar': case 'evoAnadir': { const lista = S.ficha?.val || S.d?.valoraciones || [], val = lista.find(v => v.id === +b.dataset.id), ev = val && evolucion(val, lista); if (!ev) break; const t = textoEvolucion(val, ev);
+      if (a === 'evoCopiar') { try { await navigator.clipboard.writeText(t); toast('Informe copiado'); } catch (e) { abrirSheet(`<div class="stack"><h2>Informe de evolución</h2><textarea rows="14" readonly>${esc(t)}</textarea></div>`); } break; }
+      const nuevo = [val.resumen, t].filter(Boolean).join('\n\n'), { error } = await sb.from('valoraciones').update({ resumen: nuevo }).eq('id', val.id); if (error) { fallo(error); break; } toast('Añadido al informe del test'); await cargarValoraciones(); break; }
     case 'nuevaPrueba': formNuevaPrueba(+b.dataset.id); break;
     case 'crearPrueba': await crearPrueba(b.dataset.t, +b.dataset.v); break;
     case 'editarPrueba': formPrueba(+b.dataset.id); break;
