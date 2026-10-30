@@ -3629,7 +3629,16 @@ function formEjercicio(id) {
     <label class="f">Músculo que se trabaja<input type="text" id="e-mus" value="${esc(x.musculo || '')}"></label>
     <label class="f">Descripción o claves de ejecución<textarea id="e-desc">${esc(x.descripcion || '')}</textarea></label>
     <label class="f">Enlace del vídeo (YouTube oculto)<input type="text" id="e-vid" inputmode="url" value="${esc(x.video_url || '')}" placeholder="https://youtu.be/…"></label>
-    <p class="err" id="e-err"></p><button class="btn full" type="submit" id="e-btn">Guardar</button></form>`);
+    <p class="err" id="e-err"></p><button class="btn full" type="submit" id="e-btn">Guardar</button><button class="btn ghost full" type="button" id="e-del" style="color:var(--bad)">Eliminar ejercicio</button></form>`);
+  $('#e-del').addEventListener('click', async () => {
+    const { count, error: e0 } = await sb.from('ejercicios_sesion').select('id', { count: 'exact', head: true }).eq('ejercicio_id', x.id);
+    if (e0) return fallo(e0);
+    if (count > 0) return void ($('#e-err').textContent = `No se puede borrar: está en ${count} ejercicio${count > 1 ? 's' : ''} de programas o plantillas. Quítalo de ahí primero o fusiónalo con otro.`);
+    if (!confirm(`¿Eliminar «${x.nombre}» de la biblioteca? No se puede deshacer.`)) return;
+    const { error } = await sb.from('ejercicios').delete().eq('id', x.id);
+    if (error) return void ($('#e-err').textContent = 'No se ha podido eliminar: ' + (error.message || 'revisa la conexión'));
+    S.c.ejercicios = S.c.ejercicios.filter(z => z.id !== x.id); cerrarSheet(); toast('Ejercicio eliminado'); render();
+  });
   $('#f-ej').addEventListener('submit', async e => {
     e.preventDefault(); const btn = $('#e-btn'); btn.disabled = true; btn.textContent = 'Guardando…';
     try {
