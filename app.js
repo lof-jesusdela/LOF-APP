@@ -140,8 +140,9 @@ async function cargarPerfil() {
   S.modo = data.rol === 'coach' ? 'coach' : 'alumno';
   await Promise.all([cargarAlumno(S.user.id), cargarAjustes()]);
   avisoCheckin(); avisoFutbol(); refrescarPush();
-  if (!window._lofVis) { window._lofVis = true; document.addEventListener('visibilitychange', () => { if (!document.hidden && S.modo === 'alumno') { avisoCheckin(); avisoFutbol(); } }); }
+  if (!window._lofVis) { window._lofVis = true; document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (S.modo === 'alumno') { avisoCheckin(); avisoFutbol(); } const antes = !!S.reanudar; detectarEntrenoEnCurso(); if (antes !== !!S.reanudar && $('#sheet').hidden) render(); } }); }
   if (S.modo === 'coach') await cargarCoach();
+  detectarEntrenoEnCurso();
   render();
   if (S.modo === 'alumno' && Bienvenida.reciente() && !Bienvenida.vista() && $('#sheet').hidden) Bienvenida.abrir(0);
   else if ($('#sheet').hidden) Casos.avisoNovedad();
@@ -1215,6 +1216,27 @@ async function aparcarOSalir() {
   Object.assign(S, { d: S.propio.d, dia: S.propio.dia, sesion: S.propio.sesion, tab: S.propio.tab, obj: null, propio: null, verSes: null });
   toast(`Entreno con ${S.aparcado.obj.nombre.split(' ')[0]} en pausa: vuelve desde la barra de abajo`);
 }
+/* Entreno empezado y sin terminar: sigue «latente» (barra para reanudar) aunque salgas a otra pestaña o a otra app, hasta pulsar Terminar */
+const enCurso = () => !!(S.dia && S.sesion && !S.sesion.editar && !S.sesion.finMin && (S.sesion.inicio || Object.keys(S.sesion.valores || {}).length));
+function detectarEntrenoEnCurso() {
+  S.reanudar = null; if (S.dia || S.aparcado || S.obj || !S.user) return;
+  const ahora = Date.now(), coach = S.perfil?.rol === 'coach', ids = new Set([S.user.id, ...(coach ? (S.c?.perfiles || []).map(p => p.id) : [])]);
+  let mejor = null;
+  try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i), m = /^lof-ini-([0-9a-f-]{36})-(\d+)-(\d{4}-\d{2}-\d{2})$/.exec(k || ''); if (!m) continue;
+    const ini = +localStorage.getItem(k); if (!ini) continue; if (ahora - ini > 12 * 3600 * 1000) { localStorage.removeItem(k); continue; }
+    if (!ids.has(m[1])) continue; if (!mejor || ini > mejor.ini) mejor = { alumnoId: m[1], diaId: +m[2], fecha: m[3], ini }; } } catch (e) { }
+  if (mejor && mejor.alumnoId === S.user.id) { const ya = (S.d?.sesiones || []).find(x => x.dia_id === mejor.diaId && x.fecha === mejor.fecha && x.inicio_at && x.duracion_min); if (ya) { try { localStorage.removeItem(`lof-ini-${mejor.alumnoId}-${mejor.diaId}-${mejor.fecha}`); } catch (e) { } mejor = null; } }
+  S.reanudar = mejor;
+}
+async function reanudarEntreno() {
+  const x = S.reanudar; if (!x) return;
+  const propio = x.alumnoId === S.user.id;
+  if (!propio) await entrarComo(x.alumnoId); else if (S.perfil.rol === 'coach' && S.modo === 'coach') { S.modo = 'alumno'; await cargarAlumno(S.user.id); }
+  const p = S.d?.programa, todos = [...(p?.dias || []), ...(S.d?.contextos || []).flatMap(c => c.dias || []), ...(S.d?.alternativos || []).flatMap(c => c.dias || [])], dia = todos.find(d => d.id === x.diaId);
+  if (!dia) { try { localStorage.removeItem(`lof-ini-${x.alumnoId}-${x.diaId}-${x.fecha}`); } catch (e) { } S.reanudar = null; if (!propio) await salirComo(); return toast('No encuentro ese entreno: ya no está en el programa'); }
+  if (!propio) Object.assign(S.obj, { fecha: x.fecha, presencial: false, presProg: null });
+  S.reanudar = null; await abrirDia(dia.id, { dia, fecha: x.fecha });
+}
 async function volverEntreno() {
   const a = S.aparcado;
   if (a) {
@@ -1227,6 +1249,7 @@ async function volverEntreno() {
 function vBarraEntreno() {
   if (S.vista || S.prueba) return '';
   let t = '';
+  if (S.reanudar && !S.dia && !S.aparcado && !S.obj) return `<div id="entreno-barra"><span class="grow">🏋️ Entreno sin terminar${S.reanudar.alumnoId !== S.user.id ? ' · ' + esc((S.c?.perfiles.find(p => p.id === S.reanudar.alumnoId)?.nombre || '').split(' ')[0]) : ''}</span><button type="button" data-act="reanudarEntreno">Reanudar ▶</button></div>`;
   if (S.aparcado && !S.obj) t = `🏋️ Entrenando con <b>${esc(S.aparcado.obj.nombre.split(' ')[0])}</b> · ${esc(S.aparcado.dia?.titulo || S.aparcado.dia?.nombre || '')}`;
   else if (!S.obj && S.dia && !S.sesion?.editar && ((S.modo === 'coach') || (S.modo === 'alumno' && S.tab !== 'entreno'))) t = `🏋️ ${S.modo === 'coach' ? 'Tu entreno' : 'Entreno'} en curso · ${esc(S.dia.titulo || S.dia.nombre || '')}`;
   return t ? `<div id="entreno-barra"><span class="grow">${t}</span><button type="button" data-act="volverEntreno">Volver al entreno ▶</button></div>` : '';
@@ -1636,7 +1659,7 @@ async function guardarSesion() {
     if (Object.keys(cambios).length) { const { error } = await conRespaldo(() => sb.from('sesiones_hechas').update(cambios).eq('id', id), () => sb.from('sesiones_hechas').update({ nota: cambios.nota ?? null }).eq('id', id)); if (error) throw error; Object.assign(S.d.sesiones.find(s => s.id === id) || {}, cambios); }
     { const c = conteoSeries(S.dia, S.sesion), est = { estado: !c.total || c.hechas >= c.total ? 'completa' : 'parcial', series_hechas: c.hechas, series_total: c.total };
       const r = await sb.from('sesiones_hechas').update(est).eq('id', id); if (!r.error) Object.assign(S.d.sesiones.find(x => x.id === id) || {}, est); }
-    try { localStorage.removeItem(claveCrono()); } catch (e) { } S.sesion.inicio = null;
+    try { localStorage.removeItem(claveCrono()); } catch (e) { } S.sesion.inicio = null; S.reanudar = null;
     if (S.obj) { const canj = S.obj.presencial; await registrarPresencial(id); cerrarSheet(); stopTimer(); await salirComo(); toast(canj ? 'Sesión guardada y presencial canjeada' : 'Sesión guardada en su ficha'); await verSesion(id); return; }
     cerrarSheet(); stopTimer(); S.dia = null; S.sesion = null; S.tab = 'hoy'; toast('Sesión guardada. ¡Buen trabajo!'); render(); window.scrollTo(0, 0);
   } catch (err) { fallo(err); }
@@ -2177,6 +2200,7 @@ function vFutbolHoy() {
       <div class="row"><span class="md-chip">${esc(M.md || '—')}</span><div class="grow"><b>${esc(M.txt)}</b>${M.prox ? `<div class="small muted">Próximo: ${esc(M.prox.rival || 'partido')} · ${esc(fCorta(M.prox.fecha))}${M.prox.hora ? ' · ' + esc(String(M.prox.hora).slice(0, 5)) : ''}${M.prox.lugar ? ' · ' + esc(M.prox.lugar) : M.prox.local === false ? ' · fuera' : M.prox.local ? ' · en casa' : ''}</div>${M.prox.descripcion ? `<div class="small" style="margin-top:4px">${esc(M.prox.descripcion)}</div>` : ''}` : '<div class="small muted">Añade tu próximo partido para que Jesús ajuste tu semana.</div>'}</div></div>
       ${pend.map(p => `<button class="pend-b" data-act="wellness" data-t="${p.t}" data-f="${p.f}"><span class="badge-dot" style="position:static"></span><div class="grow" style="text-align:left"><b>${esc(p.txt)}</b><div class="small muted">${esc(p.sub)}</div></div><span style="color:var(--blue-text);font-weight:700">Rellenar ›</span></button>`).join('')}
       ${!pend.length ? '<div class="small" style="color:var(--ok)"><b>✓ Todo al día.</b> Gracias: Jesús ya tiene tu información de hoy.</div>' : ''}
+      ${wDe(w, hoy, 'diario') ? `<button class="btn sm ghost" data-act="wellness" data-t="diario" data-f="${hoy}" style="align-self:flex-start">Ver lo que he enviado hoy${(wDe(w, hoy, 'diario').datos?.reloj || []).length ? ' · ' + wDe(w, hoy, 'diario').datos.reloj.length + ' captura(s)' : ''}</button>` : ''}
       ${fut.length ? `<div class="stack" style="gap:4px"><span class="eyebrow">Próximos partidos</span>${fut.map(p => `<div class="line" data-act="partido" data-id="${p.id}" style="cursor:pointer;padding:6px 0"><span class="small num" style="width:56px">${esc(fCorta(p.fecha))}</span><span class="small grow"><b>${esc(p.rival || 'Partido')}</b>${p.competicion ? ' · ' + esc(p.competicion) : ''}${p.hora ? ' · ' + esc(p.hora) : ''}</span><span class="small" style="color:var(--blue-text)">Editar</span></div>`).join('')}</div>` : ''}
       <button class="btn sm ghost" data-act="partido" style="align-self:flex-start">＋ Añadir partido</button>
     </div></section>`;
@@ -2221,7 +2245,7 @@ function formWellness(tipo, f, alumnoId) {
     ${q(sesLof ? `Tu sesión de hoy con Jesús${sesLof.duracion_min ? ` (${sesLof.duracion_min} min)` : ''}: ¿cómo de dura?` : '¿Has hecho hoy tu sesión de Jesús? ¿Cómo de dura?', `${escala10('w-lof-rpe', d.lof_rpe, ['1 · Muy suave', '10 · Máximo'])}<label class="f">Minutos de la sesión<input type="number" id="w-lof-min" inputmode="numeric" value="${d.lof_min ?? sesLof?.duracion_min ?? ''}" placeholder="Déjalo vacío si hoy no tocaba"></label>`)}
     ${q('Fatiga general ahora mismo', escala10('w-fat', d.fatiga, ['1 · Fresco', '10 · Destrozado']))}
     ${q('¿Cómo has dormido esta noche?', `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Me acosté a las<input type="time" id="w-dormir" value="${esc(d.dormir || '')}"></label><label class="f">Me levanté a las<input type="time" id="w-levantar" value="${esc(d.levantar || '')}"></label></div><span class="small muted">Tu horario objetivo: acostarte a las ${esc(objSueno(D.servicio || S.d?.servicio).dormir)} y levantarte a las ${esc(objSueno(D.servicio || S.d?.servicio).levantar)}.</span>`)}
-    ${q('Capturas de tu reloj (opcional)', `<span class="small muted">Sueño, frecuencia cardiaca, variabilidad… Puedes subir todas las que quieras.${(d.reloj || []).length ? ` Ya has subido ${d.reloj.length}.` : ''}</span><input type="file" id="w-reloj" accept="image/*,application/pdf" multiple>`)}
+    ${q('Capturas de tu reloj (opcional)', `<span class="small muted">Sueño, frecuencia cardiaca, variabilidad… Puedes subir todas las que quieras.</span><div id="w-gal">${(d.reloj || []).length ? `<b class="small">Ya subidas (${d.reloj.length}):</b>${miniW(d.reloj, true)}` : ''}</div><input type="file" id="w-reloj" accept="image/*,application/pdf" multiple><span class="small muted" id="w-sel"></span>`)}
     ${q('¿Cómo ha ido hoy la alimentación?', `<div class="choice" role="group" id="w-ali">${[['si', 'Cumplida'], ['parcial', 'A medias'], ['no', 'No cumplida']].map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${d.alimentacion === v}">${l}</button>`).join('')}</div>`)}`;
   if (tipo === 'partido') cuerpo = `
     ${pt ? `<p class="small muted">${esc(pt.rival ? 'Contra ' + pt.rival : 'Partido')} · ${esc(fCorta(pt.fecha))}</p>` : ''}
@@ -2248,7 +2272,9 @@ function formWellness(tipo, f, alumnoId) {
     ${tipo === 'semana' ? '' : q('¿Alguna molestia? (opcional)', chipsZonas(d.molestias))}
     <label class="f">${tipo === 'lunes' ? '¿Algo que Jesús deba saber para planificar tu semana?' : tipo === 'semana' ? '¿Algo más que deba saber Jesús? (opcional)' : 'Comentario (opcional)'}<textarea id="w-nota" rows="2">${esc(d.nota || d.molestia_txt || '')}</textarea></label>
     <p class="err" id="w-err"></p><button class="btn full" type="submit" id="w-b">Enviar a Jesús</button></form>`);
-  const F = $('#f-w');
+  const F = $('#f-w'); firmarMini();
+  $('#w-reloj')?.addEventListener('change', ev => { $('#w-sel').textContent = ev.target.files.length ? `${ev.target.files.length} seleccionada${ev.target.files.length > 1 ? 's' : ''}: se suben al pulsar Enviar` : ''; });
+  F.addEventListener('click', ev => { const q = ev.target.closest('[data-act="quitarCapW"]'); if (!q) return; ev.preventDefault(); ev.stopPropagation(); (d.reloj ||= []).splice(+q.dataset.i, 1); $('#w-gal').innerHTML = d.reloj.length ? `<b class="small">Ya subidas (${d.reloj.length}):</b>${miniW(d.reloj, true)}` : ''; firmarMini(); });
   F.addEventListener('click', ev => {
     const z = ev.target.closest('[data-zona]'); if (z) z.setAttribute('aria-pressed', z.getAttribute('aria-pressed') !== 'true');
     const al = ev.target.closest('#w-ali [data-v]'); if (al) F.querySelectorAll('#w-ali [data-v]').forEach(x => x.setAttribute('aria-pressed', x === al));
@@ -2289,7 +2315,7 @@ function formWellness(tipo, f, alumnoId) {
     const r = prev?.id ? await sb.from('wellness').update({ datos }).eq('id', prev.id) : await sb.from('wellness').insert(row);
     if (r.error) { btn.disabled = false; btn.textContent = 'Enviar a Jesús'; return fallo(r.error, /wellness/.test(r.error.message || '') ? 'Falta ejecutar el Bloque 21 en Supabase.' : 'No se ha podido enviar.'); }
     if (pt && tipo === 'partido') await sb.from('partidos').update({ minutos: datos.minutos }).eq('id', pt.id);
-    cerrarSheet(); toast('¡Recibido! Gracias'); if (alumnoId) await cargarFutbolCoach(); else await cargarFutbol(S.user.id, S.d); render();
+    cerrarSheet(); toast(tipo === 'diario' && (datos.reloj || []).length ? `¡Recibido! Gracias · ${datos.reloj.length} captura${datos.reloj.length > 1 ? 's' : ''} subida${datos.reloj.length > 1 ? 's' : ''}` : '¡Recibido! Gracias'); if (alumnoId) await cargarFutbolCoach(); else await cargarFutbol(S.user.id, S.d); render();
   });
 }
 /* Sube imágenes (reducidas) o PDF al espacio privado "gps" (carpeta del jugador) y añade las rutas a la lista */
@@ -2353,14 +2379,15 @@ function checkinSheet(aid, f) {
     const a = S.c.perfiles.find(x => x.id === aid); if (!a) return;
     const l = (S.c.wellness || []).filter(x => x.alumno_id === aid && x.tipo !== 'semana').sort((x, y) => (y.fecha + y.tipo).localeCompare(x.fecha + x.tipo)).slice(0, 14), TL = { diario: 'Check diario', partido: 'Partido', lunes: 'Lunes' };
     return abrirSheet(`<div class="stack"><span class="eyebrow">Check-in</span><h2>${esc(a.nombre)}</h2>
-      ${l.map(x => `<div class="card stack" style="gap:4px"><div class="row"><b class="grow">${esc(TL[x.tipo] || x.tipo)}</b><span class="small muted">${esc(fCorta(x.fecha))}</span></div><div class="small">${esc(resumenW(x))}</div>${x.datos?.nota ? `<div class="small muted">"${esc(x.datos.nota)}"</div>` : ''}</div>`).join('') || '<p class="small muted">Aún no ha rellenado ningún check-in.</p>'}
+      ${l.map(x => `<div class="card stack" style="gap:4px"><div class="row"><b class="grow">${esc(TL[x.tipo] || x.tipo)}</b><span class="small muted">${esc(fCorta(x.fecha))}</span></div><div class="small">${esc(resumenW(x))}</div>${x.datos?.nota ? `<div class="small muted">"${esc(x.datos.nota)}"</div>` : ''}${(x.datos?.reloj || []).length ? `<div class="small muted">Capturas del reloj (${x.datos.reloj.length})</div>${miniW(x.datos.reloj)}` : ''}</div>`).join('') || '<p class="small muted">Aún no ha rellenado ningún check-in.</p>'}
       <button class="btn full" data-act="ficha" data-id="${a.id}">Abrir su ficha</button></div>`);
+    return firmarMini();
   }
   const fut = futbolistas(), W = S.c.wellness || [];
   abrirSheet(`<div class="stack"><span class="eyebrow">Futbolistas</span><h2>Check-in del día</h2>
     <label class="f">Día<input type="date" id="ck-f" value="${f}" max="${hoy}"></label>
     ${fut.map(a => { const ws = W.filter(x => x.alumno_id === a.id && x.fecha === f && x.tipo !== 'semana');
-      return `<div class="card stack" style="gap:4px;cursor:pointer" data-act="checkinJ" data-id="${a.id}"><div class="row"><b class="grow">${esc(a.nombre)}</b>${ws.length ? '<span class="pill ok">Rellenado</span>' : '<span class="pill warn">Sin rellenar</span>'}</div>${ws.map(x => `<div class="small">${esc(resumenW(x))}</div>`).join('')}</div>`; }).join('') || '<p class="small muted">No hay futbolistas activos.</p>'}</div>`);
+      return `<div class="card stack" style="gap:4px;cursor:pointer" data-act="checkinJ" data-id="${a.id}"><div class="row"><b class="grow">${esc(a.nombre)}</b>${ws.length ? '<span class="pill ok">Rellenado</span>' : '<span class="pill warn">Sin rellenar</span>'}</div>${ws.map(x => `<div class="small">${esc(resumenW(x))}${(x.datos?.reloj || []).length ? ` · 📎 ${x.datos.reloj.length} captura(s)` : ''}</div>`).join('')}</div>`; }).join('') || '<p class="small muted">No hay futbolistas activos.</p>'}</div>`);
   $('#ck-f').addEventListener('change', e => checkinSheet(null, e.target.value || hoy));
 }
 function alIr(aid, m) {
@@ -2386,6 +2413,16 @@ function graficaCarga(w) {
   const pts = fat.map((v, i) => v == null ? null : `${8 + i * bw + bw / 2},${100 - v * 9}`).filter(Boolean);
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Carga y fatiga de los últimos 14 días">${barras}${pts.length > 1 ? `<polyline points="${pts.join(' ')}" fill="none" stroke="var(--fg)" stroke-width="1.6" stroke-dasharray="3 3"/>` : ''}${fat.map((v, i) => v == null ? '' : `<circle cx="${8 + i * bw + bw / 2}" cy="${100 - v * 9}" r="3.2" fill="var(--${nivelFat(v) || 'fg'})"/>`).join('')}${dias.map((f, i) => i % 2 ? '' : `<text x="${8 + i * bw + bw / 2}" y="${H - 10}" font-size="9" fill="var(--muted)" text-anchor="middle">${fecha(f).getDate()}/${fecha(f).getMonth() + 1}</text>`).join('')}</svg>
   <div class="row small muted" style="gap:12px;flex-wrap:wrap"><span><i class="ley" style="background:var(--blue)"></i>Equipo</span><span><i class="ley" style="background:var(--gold)"></i>Sesión LOF</span><span><i class="ley" style="background:var(--bad)"></i>Partido</span><span>● Fatiga (1-10)</span></div>`;
+}
+/* Miniaturas de las capturas/archivos subidos (rutas del espacio privado «gps»), con la opción de quitar */
+function miniW(lista, quitar = false) {
+  if (!(lista || []).length) return '';
+  return `<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:4px">${lista.map((r, i) => /\.pdf$/i.test(r) ? `<button type="button" class="pill blue" data-act="verGps" data-r="${esc(r)}">📄 PDF ${i + 1}</button>` : `<span style="position:relative"><img data-ruta="${esc(r)}" ${quitar ? '' : `data-act="verGps" data-r="${esc(r)}"`} alt="Captura ${i + 1}" style="width:64px;height:64px;object-fit:cover;border-radius:10px;background:var(--surface-2);cursor:pointer">${quitar ? `<button type="button" data-act="quitarCapW" data-i="${i}" aria-label="Quitar" style="position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;border:0;background:var(--bad);color:#fff;font-weight:700">×</button>` : ''}</span>`).join('')}</div>`;
+}
+async function firmarMini() {
+  const im = [...document.querySelectorAll('img[data-ruta]')]; if (!im.length) return;
+  const { data } = await sb.storage.from('gps').createSignedUrls([...new Set(im.map(i => i.dataset.ruta))], 3600);
+  (data || []).forEach(u => { im.filter(i => i.dataset.ruta === u.path).forEach(i => { if (u.signedUrl) i.src = u.signedUrl; }); });
 }
 function botonesArchivos(x) {
   const d = x.datos || {}, grupos = [['Planificación', d.archivos], ['GPS', d.gps], ['Reloj', d.reloj], ['Equipo', d.otros]].filter(([, l]) => (l || []).length);
@@ -5373,12 +5410,13 @@ document.addEventListener('click', async e => {
   const a = b.dataset.act;
   switch (a) {
     case 'tab': if (b.dataset.t === 'checkin') { S.tab = 'hoy'; S.dia = null; render(); $('#checkin')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break; }
-      S.tab = b.dataset.t; S.dia = null; S.chipsCargados = false; render(); window.scrollTo(0, 0); break;
+      S.tab = b.dataset.t; if (!enCurso()) { S.dia = null; S.sesion = null; } S.chipsCargados = false; render(); window.scrollTo(0, 0); break;
     case 'sinWhatsapp': toast('Jesús aún no ha puesto su WhatsApp en la app'); break;
     case 'ctab': if (S.obj) await aparcarOSalir(); S.reporte = null; S.factura = null; S.ctab = b.dataset.t; S.ficha = null; S.editor = null; render(); window.scrollTo(0, 0); break;
     case 'modo': if (S.obj) await aparcarOSalir(); S.modo = b.dataset.v; S.ficha = null; S.editor = null; S.fichaSub = null; if (S.modo === 'coach') await cargarCoach(); else if (S.perfil?.rol === 'coach' && !S.prueba && !S.vista) await cargarAlumno(S.user.id); render(); window.scrollTo(0, 0); break;
     case 'abrirDia': await abrirDia(+b.dataset.id); break;
-    case 'cerrarDia': S.dia = null; S.sesion = null; render(); break;
+    case 'cerrarDia': if (enCurso()) { S.tab = 'hoy'; toast('Tu entreno sigue en curso: vuelve desde la barra azul'); } else { S.dia = null; S.sesion = null; } render(); break;
+    case 'reanudarEntreno': await reanudarEntreno(); break;
     case 'salirComo': await salirComo(); break;
     case 'volverEntreno': await volverEntreno(); break;
     case 'recNuevo': Negocio.formRec(b.dataset.id ? +b.dataset.id : null, b.dataset.al || S.ficha?.id || null); break;
