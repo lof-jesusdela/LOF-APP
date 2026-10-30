@@ -582,6 +582,8 @@ const DIA3 = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 const ventanaRegistro = () => { const hoy = hoyISO(), l = lunesDe(hoy), ini = hoy === l ? sumaDias(l, -7) : l, out = []; for (let d = ini; d <= hoy; d = sumaDias(d, 1)) out.push(d); return out; };
 const FOTOS = {};
 const fotoUrl = p => FOTOS[p] || null;
+/* Una comida puede llevar varias fotos: se guardan en «foto» separadas por ; */
+const fotosDe = x => String(x?.foto || '').split(';').filter(Boolean);
 async function pedirFotos(rutas) {
   const faltan = [...new Set(rutas || [])].filter(r => r && !(r in FOTOS));
   if (!faltan.length) return;
@@ -2245,7 +2247,7 @@ function formWellness(tipo, f, alumnoId) {
     ${q(sesLof ? `Tu sesión de hoy con Jesús${sesLof.duracion_min ? ` (${sesLof.duracion_min} min)` : ''}: ¿cómo de dura?` : '¿Has hecho hoy tu sesión de Jesús? ¿Cómo de dura?', `${escala10('w-lof-rpe', d.lof_rpe, ['1 · Muy suave', '10 · Máximo'])}<label class="f">Minutos de la sesión<input type="number" id="w-lof-min" inputmode="numeric" value="${d.lof_min ?? sesLof?.duracion_min ?? ''}" placeholder="Déjalo vacío si hoy no tocaba"></label>`)}
     ${q('Fatiga general ahora mismo', escala10('w-fat', d.fatiga, ['1 · Fresco', '10 · Destrozado']))}
     ${q('¿Cómo has dormido esta noche?', `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Me acosté a las<input type="time" id="w-dormir" value="${esc(d.dormir || '')}"></label><label class="f">Me levanté a las<input type="time" id="w-levantar" value="${esc(d.levantar || '')}"></label></div><span class="small muted">Tu horario objetivo: acostarte a las ${esc(objSueno(D.servicio || S.d?.servicio).dormir)} y levantarte a las ${esc(objSueno(D.servicio || S.d?.servicio).levantar)}.</span>`)}
-    ${q('Capturas de tu reloj (opcional)', `<span class="small muted">Sueño, frecuencia cardiaca, variabilidad… Puedes subir todas las que quieras.</span><div id="w-gal">${(d.reloj || []).length ? `<b class="small">Ya subidas (${d.reloj.length}):</b>${miniW(d.reloj, true)}` : ''}</div><input type="file" id="w-reloj" accept="image/*,application/pdf" multiple><span class="small muted" id="w-sel"></span>`)}
+    ${q('Capturas de tu reloj (opcional)', `<span class="small muted">Sueño, frecuencia cardiaca, variabilidad… Puedes subir todas las que quieras.</span><div id="w-gal">${(d.reloj || []).length ? `<b class="small">Ya subidas (${d.reloj.length}):</b>${miniW(d.reloj, true)}` : ''}</div><input type="file" id="w-reloj" accept="image/*,application/pdf" multiple>`)}
     ${q('¿Cómo ha ido hoy la alimentación?', `<div class="choice" role="group" id="w-ali">${[['si', 'Cumplida'], ['parcial', 'A medias'], ['no', 'No cumplida']].map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${d.alimentacion === v}">${l}</button>`).join('')}</div>`)}`;
   if (tipo === 'partido') cuerpo = `
     ${pt ? `<p class="small muted">${esc(pt.rival ? 'Contra ' + pt.rival : 'Partido')} · ${esc(fCorta(pt.fecha))}</p>` : ''}
@@ -2273,7 +2275,6 @@ function formWellness(tipo, f, alumnoId) {
     <label class="f">${tipo === 'lunes' ? '¿Algo que Jesús deba saber para planificar tu semana?' : tipo === 'semana' ? '¿Algo más que deba saber Jesús? (opcional)' : 'Comentario (opcional)'}<textarea id="w-nota" rows="2">${esc(d.nota || d.molestia_txt || '')}</textarea></label>
     <p class="err" id="w-err"></p><button class="btn full" type="submit" id="w-b">Enviar a Jesús</button></form>`);
   const F = $('#f-w'); firmarMini();
-  $('#w-reloj')?.addEventListener('change', ev => { $('#w-sel').textContent = ev.target.files.length ? `${ev.target.files.length} seleccionada${ev.target.files.length > 1 ? 's' : ''}: se suben al pulsar Enviar` : ''; });
   F.addEventListener('click', ev => { const q = ev.target.closest('[data-act="quitarCapW"]'); if (!q) return; ev.preventDefault(); ev.stopPropagation(); (d.reloj ||= []).splice(+q.dataset.i, 1); $('#w-gal').innerHTML = d.reloj.length ? `<b class="small">Ya subidas (${d.reloj.length}):</b>${miniW(d.reloj, true)}` : ''; firmarMini(); });
   F.addEventListener('click', ev => {
     const z = ev.target.closest('[data-zona]'); if (z) z.setAttribute('aria-pressed', z.getAttribute('aria-pressed') !== 'true');
@@ -2434,6 +2435,19 @@ function graficaCarga(w) {
   <div class="row small muted" style="gap:12px;flex-wrap:wrap"><span><i class="ley" style="background:var(--blue)"></i>Equipo</span><span><i class="ley" style="background:var(--gold)"></i>Sesión LOF</span><span><i class="ley" style="background:var(--bad)"></i>Partido</span><span>● Fatiga (1-10)</span></div>`;
 }
 /* Miniaturas de las capturas/archivos subidos (rutas del espacio privado «gps»), con la opción de quitar */
+/* Selector de archivos que acumula: al volver a pulsar se AÑADEN los nuevos a los ya elegidos (el móvil sustituía la selección anterior) */
+document.addEventListener('change', ev => {
+  const i = ev.target; if (!(i instanceof HTMLInputElement) || i.type !== 'file' || !i.multiple) return;
+  const prev = i._acum || [], dt = new DataTransfer(); prev.forEach(f => dt.items.add(f));
+  [...i.files].forEach(f => { if (!prev.some(p => p.name === f.name && p.size === f.size && p.lastModified === f.lastModified)) dt.items.add(f); });
+  i._acum = [...dt.files]; i.files = dt.files; pintaAcum(i);
+}, true);
+function pintaAcum(i) {
+  let l = i.parentElement?.querySelector(':scope > .acum-l'); if (!l) { l = document.createElement('div'); l.className = 'acum-l small'; i.insertAdjacentElement('afterend', l); }
+  const a = i._acum || [];
+  l.innerHTML = a.length ? `<b>${a.length} archivo${a.length > 1 ? 's' : ''} elegido${a.length > 1 ? 's' : ''}</b> · puedes pulsar otra vez para añadir más${a.map((f, k) => `<div class="row" style="gap:6px"><span class="grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.name)}</span><button type="button" data-qacum="${k}" aria-label="Quitar" style="border:0;background:none;color:var(--bad);font-weight:700">×</button></div>`).join('')}` : '';
+  l.onclick = e => { const q = e.target.closest('[data-qacum]'); if (!q) return; e.stopPropagation(); const dt = new DataTransfer(); a.filter((_, k) => k !== +q.dataset.qacum).forEach(f => dt.items.add(f)); i._acum = [...dt.files]; i.files = dt.files; pintaAcum(i); };
+}
 function miniW(lista, quitar = false) {
   if (!(lista || []).length) return '';
   return `<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:4px">${lista.map((r, i) => /\.pdf$/i.test(r) ? `<button type="button" class="pill blue" data-act="verGps" data-r="${esc(r)}">📄 PDF ${i + 1}</button>` : `<span style="position:relative"><img data-ruta="${esc(r)}" ${quitar ? '' : `data-act="verGps" data-r="${esc(r)}"`} alt="Captura ${i + 1}" style="width:64px;height:64px;object-fit:cover;border-radius:10px;background:var(--surface-2);cursor:pointer">${quitar ? `<button type="button" data-act="quitarCapW" data-i="${i}" aria-label="Quitar" style="position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;border:0;background:var(--bad);color:#fff;font-weight:700">×</button>` : ''}</span>`).join('')}</div>`;
@@ -5602,6 +5616,7 @@ document.addEventListener('click', async e => {
     case 'editarServicio': formServicio(); break;
     case 'editarEjercicio': formEjercicio(+b.dataset.id); break;
     case 'empezarCrono': empezarCrono(); break;
+    case 'verImagenes': abrirSheet(`<div class="stack">${b.dataset.s.split('|').map(u => `<img src="${esc(u)}" alt="" style="width:100%;border-radius:12px;background:var(--surface-2)">`).join('')}</div>`); break;
     case 'verImagen': abrirSheet(`<div class="stack"><img src="${esc(b.dataset.src)}" alt="" style="width:100%;border-radius:12px;background:var(--surface-2)"><a class="btn ghost full" href="${esc(b.dataset.src)}" target="_blank" rel="noopener">Abrir para guardar o imprimir</a><button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`); break;
     case 'importarImagenes': await importarImagenes(); break;
     case 'editarPrograma': await abrirEditor(b.dataset.id); break;

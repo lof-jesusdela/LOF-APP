@@ -49,13 +49,13 @@ const Nutricion = (() => {
       d.nutri.plan = (p.data || []).filter(x => x.visible !== false);
       d.nutri.comErr = !!c.error; d.nutri.comidas = c.data || [];
       await firmar(d.nutri);
-      const fotos = d.nutri.comidas.map(x => x.foto).filter(Boolean); if (fotos.length) pedirFotos(fotos);
+      const fotos = d.nutri.comidas.flatMap(fotosDe); if (fotos.length) pedirFotos(fotos);
     } catch (err) { console.error(err); }
   }
   async function cargarFicha(f) {
     const r = await sb.from('comidas_registro').select('*').eq('alumno_id', f.id).gte('fecha', sumaDias(hoyISO(), -60)).order('created_at');
     f.comErr = !!r.error; f.comidas = r.data || [];
-    const fotos = f.comidas.map(x => x.foto).filter(Boolean); if (fotos.length) pedirFotos(fotos);
+    const fotos = f.comidas.flatMap(fotosDe); if (fotos.length) pedirFotos(fotos);
   }
   async function cargarCoach(c) {
     const [r, pl] = await Promise.all([sb.from('comidas_registro').select('id,alumno_id').eq('compartido', true).is('coach_estado', null), sb.from('planificacion').select('alumno_id,visible,contenido,imagenes').eq('seccion', 'alimentacion')]);
@@ -158,8 +158,8 @@ const Nutricion = (() => {
   const pillEnc = x => { const e = ENCAJA.find(([v]) => v === x.encaja); return e ? `<span class="pill ${e[2]}">${e[0] === 2 ? 'De su plan' : e[1]}</span>` : ''; };
   const pillEncA = x => { const e = ENCAJA.find(([v]) => v === x.encaja); return e ? `<span class="pill ${e[2]}">${e[0] === 2 ? 'De tu plan' : e[1]}</span>` : ''; };
   function lineaComida(x, coach) {
-    const u = x.foto && fotoUrl(x.foto);
-    const mini = u ? (coach ? `<button class="img nu-mini" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver foto"><img src="${esc(u)}" alt=""></button>` : `<img class="nu-mini" src="${esc(u)}" alt="">`) : `<span class="nu-mini nu-ph" aria-hidden="true">🍽</span>`;
+    const fs = fotosDe(x), u = fs[0] && fotoUrl(fs[0]), todas = fs.map(fotoUrl).filter(Boolean).join('|');
+    const mini = u ? (coach ? `<button class="img nu-mini" data-act="verImagenes" data-s="${esc(todas)}" aria-label="Ver fotos" style="position:relative"><img src="${esc(u)}" alt="">${fs.length > 1 ? `<span class="pill" style="position:absolute;right:2px;bottom:2px">+${fs.length - 1}</span>` : ''}</button>` : `<span style="position:relative;display:inline-block"><img class="nu-mini" src="${esc(u)}" alt="">${fs.length > 1 ? `<span class="pill" style="position:absolute;right:2px;bottom:2px">+${fs.length - 1}</span>` : ''}</span>`) : `<span class="nu-mini nu-ph" aria-hidden="true">🍽</span>`;
     return `<div class="line nu-com" ${coach ? '' : `data-act="nuEditar" data-id="${x.id}"`}>${mini}<div class="grow stack" style="gap:2px;min-width:0"><span class="small"><b>${esc(x.momento || 'Comida')}</b>${x.plato ? ' · ' + esc(x.plato) : ''}${x.contexto ? ` <span class="muted">· ${esc(x.contexto)}</span>` : ''}</span>
       ${alimentosTxt(x) ? `<span class="small muted">${esc(alimentosTxt(x))}</span>` : ''}${x.nota ? `<span class="small muted">«${esc(x.nota)}»</span>` : ''}</div>${coach ? pillEnc(x) : pillEncA(x)}</div>`;
   }
@@ -188,12 +188,12 @@ const Nutricion = (() => {
     const n = S.d?.nutri; if (!n) return;
     const x = id ? n.comidas.find(c => c.id === id) : null; if (id && !x) return;
     const dia = x?.fecha || (ventana().includes(S.nDia) ? S.nDia : hoyISO());
-    const st = { mom: x?.momento || momentoSugerido(dia), sel: (x?.alimentos || []).map(a => ({ n: a.n, q: a.q || '' })), enc: x?.encaja ?? null, file: null };
+    const st = { mom: x?.momento || momentoSugerido(dia), sel: (x?.alimentos || []).map(a => ({ n: a.n, q: a.q || '' })), enc: x?.encaja ?? null, files: [], rutas: fotosDe(x || {}) };
     const propios = [...new Set(n.comidas.flatMap(c => (c.alimentos || []).map(a => a.n)))].filter(v => v && !TODOS.some(t => t.n === v));
     const ctx = ctxDe(n), chip = v => `<button type="button" class="pill" data-al="${esc(v)}">${esc(v)}</button>`;
     abrirSheet(`<form class="stack" id="f-nu"><h2>${x ? (x.compartido ? 'Tu creación' : 'Editar comida') : 'Apuntar una comida'}</h2><span class="small muted" style="margin-top:-8px">${esc(fLarga(dia))}</span>
       <div class="choice" role="group" aria-label="Momento">${MOMENTOS.map(m => `<button type="button" data-mom="${m}" aria-pressed="${m === st.mom}">${m}</button>`).join('')}</div>
-      <div class="stack" style="gap:6px"><span class="small"><b>Foto</b> <span class="muted">(opcional)</span></span><div id="nu-foto" class="nu-foto"></div><label class="btn ghost full"><input type="file" id="nu-f" accept="image/*" hidden><span id="nu-fl">📷 ${x?.foto ? 'Cambiar la foto' : 'Hacer o subir una foto'}</span></label></div>
+      <div class="stack" style="gap:6px"><span class="small"><b>Fotos</b> <span class="muted">(opcional · puedes añadir varias)</span></span><div id="nu-foto" class="nu-foto"></div><label class="btn ghost full"><input type="file" id="nu-f" accept="image/*" multiple hidden><span id="nu-fl">📷 ${fotosDe(x || {}).length ? 'Añadir más fotos' : 'Hacer o subir fotos'}</span></label></div>
       <div class="stack" style="gap:8px"><span class="small"><b>Qué has comido</b> <span class="muted">(opcional · la cantidad también)</span></span>
         <div id="nu-sel" class="stack" style="gap:6px"></div>
         <div class="row" style="gap:8px"><input type="text" id="nu-q" list="nu-lista" placeholder="Busca o escribe un alimento nuevo" autocomplete="off"><button type="button" class="btn sm" id="nu-add">Añadir</button></div>
@@ -211,8 +211,8 @@ const Nutricion = (() => {
     const pintar = () => {
       $('#nu-sel').innerHTML = st.sel.map((a, i) => { const t = TODOS.find(z => z.n === a.n); return `<div class="nu-it"><b>${esc(a.n)}</b><input type="text" data-qi="${i}" value="${esc(a.q)}" placeholder="${esc(t?.q ? 'ej. ' + t.q : 'cantidad')}" aria-label="Cantidad de ${esc(a.n)}"><button type="button" class="nu-x" data-quita="${i}" aria-label="Quitar">✕</button></div>`; }).join('');
       form.querySelectorAll('[data-al]').forEach(b => b.classList.toggle('blue', st.sel.some(a => a.n === b.dataset.al)));
-      const u = st.file ? URL.createObjectURL(st.file) : x?.foto && fotoUrl(x.foto);
-      $('#nu-foto').innerHTML = u ? `<img src="${esc(u)}" alt="Foto de la comida">` : '';
+      const us = [...st.rutas.map((r, k) => [fotoUrl(r), 'r', k]), ...st.files.map((f, k) => [URL.createObjectURL(f), 'f', k])].filter(z => z[0]);
+      $('#nu-foto').innerHTML = us.map(([u, t, k]) => `<span style="position:relative;display:inline-block;margin:0 6px 6px 0"><img src="${esc(u)}" alt="Foto de la comida" style="max-width:120px;max-height:120px;border-radius:10px"><button type="button" data-qf="${t}${k}" aria-label="Quitar foto" style="position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;border:0;background:var(--bad);color:#fff;font-weight:700">×</button></span>`).join('');
     };
     const anadir = v => { v = String(v || '').trim(); if (!v) return; const t = TODOS.find(z => z.n.toLowerCase() === v.toLowerCase()); const nom = t ? t.n : v.charAt(0).toUpperCase() + v.slice(1); if (!st.sel.some(a => a.n === nom)) st.sel.push({ n: nom, q: '' }); $('#nu-q').value = ''; pintar(); };
     form.addEventListener('click', e => {
@@ -220,13 +220,14 @@ const Nutricion = (() => {
       if (b.dataset.mom) { st.mom = b.dataset.mom; form.querySelectorAll('[data-mom]').forEach(z => z.setAttribute('aria-pressed', z === b)); }
       else if (b.dataset.enc != null) { const v = +b.dataset.enc; st.enc = st.enc === v ? null : v; form.querySelectorAll('[data-enc]').forEach(z => z.setAttribute('aria-pressed', +z.dataset.enc === st.enc)); }
       else if (b.dataset.al) { const i = st.sel.findIndex(a => a.n === b.dataset.al); i >= 0 ? st.sel.splice(i, 1) : st.sel.push({ n: b.dataset.al, q: '' }); pintar(); }
+      else if (b.dataset.qf) { const k = +b.dataset.qf.slice(1); b.dataset.qf[0] === 'r' ? st.rutas.splice(k, 1) : st.files.splice(k, 1); pintar(); }
       else if (b.dataset.quita != null) { st.sel.splice(+b.dataset.quita, 1); pintar(); }
       else if (b.id === 'nu-add') anadir($('#nu-q').value);
     });
     form.addEventListener('input', e => { if (e.target.dataset.qi != null) st.sel[+e.target.dataset.qi].q = e.target.value; });
     $('#nu-q').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); anadir(e.target.value); } });
     $('#nu-q').addEventListener('change', e => { if (TODOS.some(t => t.n === e.target.value) || propios.includes(e.target.value)) anadir(e.target.value); });
-    $('#nu-f').addEventListener('change', e => { st.file = e.target.files?.[0] || null; if (st.file) $('#nu-fl').textContent = '📷 Cambiar la foto'; pintar(); });
+    $('#nu-f').addEventListener('change', e => { st.files.push(...[...e.target.files]); e.target.value = ''; if (st.files.length) $('#nu-fl').textContent = '📷 Añadir más fotos'; pintar(); });
     $('#nu-c').addEventListener('change', e => { $('#nu-pl').hidden = !e.target.checked; if (e.target.checked) $('#nu-p').focus(); });
     $('#nu-del')?.addEventListener('click', async () => {
       if (!confirm('¿Borrar esta comida de tu diario?')) return;
@@ -237,22 +238,23 @@ const Nutricion = (() => {
     form.addEventListener('submit', async e => {
       e.preventDefault();
       const comp = $('#nu-c').checked, plato = $('#nu-p').value.trim(), nota = $('#nu-n').value.trim(), alimentos = st.sel.filter(a => a.n).map(a => a.q.trim() ? { n: a.n, q: a.q.trim() } : { n: a.n });
-      if (!st.file && !x?.foto && !alimentos.length && !nota && !plato) { $('#nu-err').textContent = 'Añade una foto o algún alimento.'; return; }
+      if (!st.files.length && !st.rutas.length && !alimentos.length && !nota && !plato) { $('#nu-err').textContent = 'Añade una foto o algún alimento.'; return; }
       if (comp && !plato) { $('#nu-err').textContent = 'Ponle un nombre a tu plato para compartirlo.'; $('#nu-p').focus(); return; }
       const btn = $('#nu-b'); btn.disabled = true; btn.textContent = 'Guardando…';
       try {
-        let foto = x?.foto || null;
-        if (st.file) {
-          const blob = await reducirImagen(st.file, 960), ruta = `${S.user.id}/menu/${dia}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}.jpg`;
+        const rutas = [...st.rutas];
+        for (const fl of st.files) {
+          const blob = await reducirImagen(fl, 960), ruta = `${S.user.id}/menu/${dia}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}.jpg`;
           const up = await sb.storage.from('comidas').upload(ruta, blob, { contentType: 'image/jpeg' }); if (up.error) throw up.error;
-          foto = ruta;
+          rutas.push(ruta);
         }
+        const foto = rutas.join(';') || null;
         const fila = { alumno_id: S.user.id, fecha: dia, momento: st.mom, alimentos, foto, encaja: st.enc, contexto: $('#nu-ctx')?.value || null, nota: nota || null, compartido: comp, plato: plato || null };
         const r = x ? await sb.from('comidas_registro').update(fila).eq('id', x.id).select().single() : await sb.from('comidas_registro').insert(fila).select().single();
         if (r.error) throw r.error;
         const nueva = r.data || { ...x, ...fila };
         n.comidas = x ? n.comidas.map(c => c.id === x.id ? nueva : c) : [...n.comidas, nueva];
-        if (foto) await pedirFotos([foto]);
+        if (rutas.length) await pedirFotos(rutas);
         S.nDia = dia; cerrarSheet(); toast(comp && !x?.compartido ? 'Creación enviada a Jesús' : x ? 'Guardado' : 'Comida apuntada'); render();
       } catch (err) {
         console.error(err); btn.disabled = false; btn.textContent = 'Guardar';
@@ -270,7 +272,7 @@ const Nutricion = (() => {
     const conE = l.filter(x => x.encaja != null), pct = conE.length ? Math.round(conE.reduce((t, x) => t + x.encaja, 0) / (conE.length * 2) * 100) : null;
     const crea = f.comidas.filter(x => x.compartido).slice().reverse();
     return `<section class="section"><div class="section-head"><h2>Creaciones que comparte</h2>${crea.filter(x => !x.coach_estado).length ? `<span class="pill gold">${crea.filter(x => !x.coach_estado).length} nueva${crea.filter(x => !x.coach_estado).length > 1 ? 's' : ''}</span>` : ''}</div><div class="card stack">
-      ${crea.length ? crea.map(x => { const u = x.foto && fotoUrl(x.foto); return `<div class="stack nu-crea" style="gap:6px"><div class="row" style="align-items:flex-start;gap:10px">${u ? `<button class="img nu-mini" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver foto"><img src="${esc(u)}" alt=""></button>` : ''}<div class="grow stack" style="gap:2px"><b class="small">${esc(x.plato || 'Plato sin nombre')}</b><span class="small muted">${esc(fCorta(x.fecha))}${x.momento ? ' · ' + esc(x.momento) : ''}${x.contexto ? ' · ' + esc(x.contexto) : ''}</span>${alimentosTxt(x) ? `<span class="small">${esc(alimentosTxt(x))}</span>` : ''}${x.nota ? `<span class="small muted">«${esc(x.nota)}»</span>` : ''}${x.coach_nota ? `<span class="small"><b>Tu respuesta:</b> ${esc(x.coach_nota)}</span>` : ''}</div>${x.coach_estado === 'anadido' ? '<span class="pill ok">Añadida</span>' : x.coach_estado === 'visto' ? '<span class="pill blue">Vista</span>' : '<span class="pill gold">Nueva</span>'}</div>
+      ${crea.length ? crea.map(x => { const u = fotosDe(x)[0] && fotoUrl(fotosDe(x)[0]); return `<div class="stack nu-crea" style="gap:6px"><div class="row" style="align-items:flex-start;gap:10px">${u ? `<button class="img nu-mini" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver foto"><img src="${esc(u)}" alt=""></button>` : ''}<div class="grow stack" style="gap:2px"><b class="small">${esc(x.plato || 'Plato sin nombre')}</b><span class="small muted">${esc(fCorta(x.fecha))}${x.momento ? ' · ' + esc(x.momento) : ''}${x.contexto ? ' · ' + esc(x.contexto) : ''}</span>${alimentosTxt(x) ? `<span class="small">${esc(alimentosTxt(x))}</span>` : ''}${x.nota ? `<span class="small muted">«${esc(x.nota)}»</span>` : ''}${x.coach_nota ? `<span class="small"><b>Tu respuesta:</b> ${esc(x.coach_nota)}</span>` : ''}</div>${x.coach_estado === 'anadido' ? '<span class="pill ok">Añadida</span>' : x.coach_estado === 'visto' ? '<span class="pill blue">Vista</span>' : '<span class="pill gold">Nueva</span>'}</div>
         <div class="row" style="gap:6px;flex-wrap:wrap">${x.coach_estado !== 'anadido' ? `<button class="btn sm" data-act="nuEstado" data-id="${x.id}" data-v="anadido">Añadida a sus contextos</button>` : ''}${!x.coach_estado ? `<button class="btn sm ghost" data-act="nuEstado" data-id="${x.id}" data-v="visto">Marcar vista</button>` : ''}<button class="btn sm ghost" data-act="nuNota" data-id="${x.id}">${x.coach_nota ? 'Cambiar respuesta' : 'Responder'}</button></div></div>`; }).join('') : `<p class="small muted" style="margin:0">Cuando ${esc(nom)} comparta un plato que ha creado, te aparecerá aquí para que lo añadas a sus contextos.</p>`}</div></section>
     <section class="section"><div class="section-head"><h2>Su diario de comidas</h2><span class="small muted">opcional · 14 días</span></div><div class="card stack">
       <div class="kpis" style="grid-template-columns:repeat(3,1fr)"><div class="kpi"><div class="l">Días con algo apuntado</div><b class="num">${dias.length} / 14</b></div><div class="kpi"><div class="l">Comidas apuntadas</div><b class="num">${l.length}</b></div><div class="kpi"><div class="l">Encajan con su plan</div><b class="num">${pct == null ? '—' : pct + ' %'}</b></div></div>
