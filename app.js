@@ -605,7 +605,9 @@ function vRegistroDia(s) {
       return `<div class="row"><div class="ico">${svg('entreno')}</div><div class="grow"><span class="small"><b>Entrenamiento</b></span><div class="small ${l.length ? '' : 'muted'}">${l.length ? `<span style="color:var(--ok);font-weight:700">✓ Completado</span> · ${esc([...new Set(l.map(nom))].join(' · '))}` : dd ? `Hoy toca ${esc(nomDia(dd))}: empiézalo en «Lo que toca hoy»` : esHoy && esFlex(S.d.programaBase || S.d.programa) ? 'Aún no has entrenado hoy' : esHoy ? 'Hoy no toca entrenar' : 'Sin entreno registrado ese día'}</div></div></div>`; })()}
     ${conPasos(s) ? '' : '<!--'}<div class="row"><div class="ico">${svg('pasos')}</div><label class="f grow">Pasos${objPasos(s) ? ` <span class="muted">(objetivo ${fmtNum(objPasos(s), 0)})</span>` : ''}<input id="r-pasos" type="number" inputmode="numeric" min="0" value="${r.pasos ?? ''}" placeholder="Ej. 8500"></label></div>${conPasos(s) ? '' : '-->'}
     ${s.modulo_nutricion && !midoAlumno() ? `<div class="small muted">🍽 ${Nutricion.fase(S.d) === 'recogida' ? 'Estos días solo apunta lo que comes en tu diario: aún no hay plan que cumplir.' : 'Tu plan de alimentación está en preparación: todavía no se mide nada.'}</div>` : ''}
-    ${midoAlumno() ? `<div class="stack" style="gap:6px"><span class="small">Comidas de tu plan cumplidas ${esHoy ? 'hoy' : 'ese día'} <span class="muted">(de ${comidasDia(s)})</span></span><div class="choice ing" role="group">${[...Array(comidasDia(s) + 1)].map((_, k) => `<button data-act="ingestas" data-v="${k}" aria-pressed="${r.ingestas === k}">${k}</button>`).join('')}</div></div>
+    ${midoAlumno() ? (() => { const n = comidasDia(s), tot = r.comidas_hechas ?? (r.ingestas != null ? n : null), mx = Math.max(n + 3, tot ?? 0, 6);
+      return `<div class="stack" style="gap:6px"><span class="small">¿Cuántas comidas has hecho ${esHoy ? 'hoy' : 'ese día'}? <span class="muted">(tu plan tiene ${n})</span></span><div class="choice ing" role="group" style="flex-wrap:wrap">${[...Array(mx + 1)].map((_, k) => `<button data-act="comidasHechas" data-v="${k}" aria-pressed="${tot === k}">${k}</button>`).join('')}</div></div>
+      ${tot ? `<div class="stack" style="gap:6px"><span class="small">De esas ${tot}, ¿cuántas han sido buenas, de tu plan? <span class="muted">(el resto, las que se salieron del plan)</span></span><div class="choice ing" role="group" style="flex-wrap:wrap">${[...Array(tot + 1)].map((_, k) => `<button data-act="ingestas" data-v="${k}" aria-pressed="${r.ingestas === k}">${k}</button>`).join('')}</div>${r.ingestas != null ? `<span class="small muted">${r.ingestas} buena${r.ingestas === 1 ? '' : 's'} y ${tot - r.ingestas} ${tot - r.ingestas === 1 ? 'que se salió' : 'que se salieron'} del plan.</span>` : ''}</div>` : ''}`; })() + `
     <div class="stack" style="gap:8px">${!s.modulo_nutricion ? '' : (() => { const nc = (S.d.nutri?.comidas || []).filter(x => x.fecha === sel).length; return `<button class="btn ghost full" data-act="nuIrDiario" data-f="${sel}">🍽 ${nc ? `${nc} ${nc === 1 ? 'comida apuntada' : 'comidas apuntadas'} · ver tu diario` : 'Apuntar lo que has comido (opcional)'}</button>`; })()}${rutas.length ? `<div class="plan-imgs">${miniFotos(rutas)}</div>` : ''}</div>` : ''}
     ${S.d.servicio?.modulo_habitos ? Habitos.enRegistro(sel) : ''}
     <label class="f">Observaciones${esHoy ? ' del día' : ' de ese día'}<textarea id="r-obs" rows="2" placeholder="Si no llegaste al objetivo, cuéntame por qué; o cualquier cosa del día que quieras que sepa">${esc(r.observacion || '')}</textarea></label>
@@ -920,14 +922,16 @@ function vHoy() {
 async function guardarDiario(extra = {}) {
   const f = ventanaRegistro().includes(S.regDia) ? S.regDia : hoyISO();
   const prev = S.d.diario.find(x => x.fecha === f) || {};
-  const row = { alumno_id: S.user.id, fecha: f, pasos: numero($('#r-pasos')?.value), observacion: $('#r-obs')?.value.trim() || null, ...(prev.ingestas != null ? { ingestas: prev.ingestas } : {}), ...extra };
+  const row = { alumno_id: S.user.id, fecha: f, pasos: numero($('#r-pasos')?.value), observacion: $('#r-obs')?.value.trim() || null, ...(prev.ingestas != null ? { ingestas: prev.ingestas } : {}), ...(prev.comidas_hechas != null ? { comidas_hechas: prev.comidas_hechas } : {}), ...extra };
+  if (row.comidas_hechas != null && row.ingestas != null && row.ingestas > row.comidas_hechas) row.ingestas = row.comidas_hechas;
   let { data, error } = await sb.from('registro_diario').upsert(row, { onConflict: 'alumno_id,fecha' }).select().single();
+  if (error && /comidas_hechas/.test(error.message || '')) { delete row.comidas_hechas; ({ data, error } = await sb.from('registro_diario').upsert(row, { onConflict: 'alumno_id,fecha' }).select().single()); if (!error) toast('Falta ejecutar el Bloque 71 en Supabase para guardar cuántas comidas has hecho'); }
   if (error && /ingestas/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 11 en Supabase.');
   if (error && /fotos/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 26 en Supabase.');
   if (error && /observacion/.test(error.message || '')) { delete row.observacion; ({ data, error } = await sb.from('registro_diario').upsert(row, { onConflict: 'alumno_id,fecha' }).select().single()); }
   if (error) return fallo(error);
   S.d.diario = S.d.diario.filter(x => x.fecha !== row.fecha).concat(data);
-  toast(extra.ingestas != null ? 'Ingestas guardadas' : 'Registro de hoy guardado'); render();
+  toast(extra.ingestas != null || extra.comidas_hechas != null ? 'Comidas guardadas' : 'Registro de hoy guardado'); render();
 }
 
 /* ---------- Entreno ---------- */
@@ -3122,7 +3126,7 @@ function vFichaSub(f, a) {
     <section class="section"><div class="section-head"><h2>Cumplimiento por ingestas</h2><button class="btn sm ghost" data-act="editarComidas">${n} ingestas/día · cambiar</button></div><div class="card">
       ${sems.map(l => { const I = ingestasSemana(dl, l, srv), ev = evalNutri(I.pct); return `<div class="line"><span class="small muted" style="width:96px;flex:none">${esc(fCorta(l))} – ${esc(fCorta(sumaDias(l, 6)))}</span><div class="grow small">${I.hechas} de ${I.total} ingestas${I.dias < 7 ? ` · ${I.dias} días registrados` : ''}</div>${ev ? `<span class="pill ${ev[0]}">${I.pct} % · ${ev[1]}</span>` : '<span class="small muted">sin datos</span>'}</div>`; }).join('')}
       <p class="note">Bien: 85 % o más de las ingestas de la semana. Regular: entre 60 y 85 %. Mal: por debajo del 60 %.</p></div></section>
-    ${vFotosComida(dl)}<section class="section"><h2>Día a día</h2><div class="card tbl"><table><thead><tr><th>Día</th><th>Ingestas</th><th>Observación</th></tr></thead><tbody>${dl.slice(0, 21).map(r => `<tr><td>${esc(fCorta(r.fecha))}</td><td class="num">${r.ingestas == null ? '—' : `${r.ingestas}/${n}`}</td><td class="small">${esc(r.observacion || '')}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">Sin registros.</td></tr>'}</tbody></table></div></section>
+    ${vFotosComida(dl)}<section class="section"><h2>Día a día</h2><div class="card tbl"><table><thead><tr><th>Día</th><th>Ingestas</th><th>Observación</th></tr></thead><tbody>${dl.slice(0, 21).map(r => `<tr><td>${esc(fCorta(r.fecha))}</td><td class="num">${r.ingestas == null ? '—' : `${r.ingestas}/${r.comidas_hechas ?? n}`}</td><td class="small">${esc(r.observacion || '')}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">Sin registros.</td></tr>'}</tbody></table></div></section>
     ${chk.length ? `<section class="section"><h2>Lo que cuenta en sus check-ins</h2><div class="card">${chk.slice(0, 6).map(k => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(k.semana_inicio))}</span><div class="small grow">${esc(k.nota_alimentacion)}</div></div>`).join('')}</div></section>` : ''}`;
   }
   if (sub === 'habitos') {
@@ -5623,6 +5627,7 @@ document.addEventListener('click', async e => {
     case 'guardarSesion': await guardarSesion(); break;
     case 'guardarDiario': await guardarDiario(); break;
     case 'ingestas': await guardarDiario({ ingestas: +b.dataset.v }); break;
+    case 'comidasHechas': await guardarDiario({ comidas_hechas: +b.dataset.v }); break;
     case 'permisoAvisos': try { await Notification.requestPermission(); } catch (e) { } render(); avisoCheckin(); break;
     case 'ali': await guardarDiario({ alimentacion: b.dataset.v }); break;
     case 'chip': { const v = b.dataset.v; S.chips.has(v) ? S.chips.delete(v) : S.chips.add(v); b.setAttribute('aria-pressed', S.chips.has(v)); break; }
