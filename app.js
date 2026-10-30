@@ -387,7 +387,7 @@ function vLateral(actual) {
   const als = S.c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach').map(a => ({ a, e: estadoAlumno(a) })).sort((x, y) => orden[x.e.nivel] - orden[y.e.nivel] || (x.a.nombre || '').localeCompare(y.a.nombre || ''));
   const nav = [['inicio', 'Tu día'], ['alumnos', 'Alumnos'], ['plantillas', 'Plantillas'], ['ejercicios', 'Ejercicios'], ['pagos', 'Economía']];
   return `<aside class="lateral" aria-label="Navegación del coach">
-    <nav class="lat-nav">${nav.map(([k, l]) => `<button data-act="ctab" data-t="${k}" ${actual === k && !S.ficha && !S.reporte && !S.editor && !S.obj ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span></button>`).join('')}<button data-act="abrirReporte" ${S.reporte && !S.reporte.alumno ? 'aria-current="page"' : ''}>${svg('checkin')}<span>Reporting semanal</span></button>${futbolistas().length ? `<button data-act="checkin">${svg('checkin')}<span>Check-in futbolistas</span></button>` : ''}</nav>
+    <nav class="lat-nav">${nav.map(([k, l]) => `<button data-act="ctab" data-t="${k}" ${actual === k && !S.ficha && !S.reporte && !S.editor && !S.obj ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span></button>`).join('')}<button data-act="abrirReporte" ${S.reporte && !S.reporte.alumno ? 'aria-current="page"' : ''}>${svg('checkin')}<span>Reporting semanal</span></button>${futbolistas().length ? `<button data-act="checkin">${svg('checkin')}<span>Control futbolistas</span></button>` : ''}</nav>
     <div class="eyebrow" style="margin:18px 12px 6px">Alumnos · ${als.length}</div>
     <input type="search" id="lat-busca" class="lat-busca" placeholder="Buscar alumno…" value="${esc(S.alF.q)}" aria-label="Buscar alumno" autocomplete="off">
     <div class="lat-al">${als.map(({ a, e }) => `<button data-act="ficha" data-id="${a.id}" data-n="${esc(normaliza(a.nombre))}" ${S.ficha?.id === a.id ? 'aria-current="page"' : ''}${S.alF.q && !normaliza(a.nombre).includes(normaliza(S.alF.q)) ? ' hidden' : ''}><i class="al-dot ${e.nuevas ? 'nueva' : ''}" data-act="verAlertas" data-id="${a.id}" role="button" aria-label="Ver alertas de ${esc(a.nombre)}" style="background:var(--${e.nivel})"></i><span class="grow">${esc(a.nombre)}</span>${e.nuevas ? `<b class="al-n">${e.nuevas}</b>` : ''}${e.control ? '<b class="small" style="color:var(--gold-ink)">●</b>' : ''}</button>`).join('')}</div>
@@ -2384,11 +2384,30 @@ function checkinSheet(aid, f) {
     return firmarMini();
   }
   const fut = futbolistas(), W = S.c.wellness || [];
-  abrirSheet(`<div class="stack"><span class="eyebrow">Futbolistas</span><h2>Check-in del día</h2>
+  abrirSheet(`<div class="stack"><span class="eyebrow">Futbolistas</span><h2>Check-in del día</h2><button class="btn sm ghost" data-act="ctrlFut" data-m="semana" data-l="${lunesDe(f)}" style="align-self:flex-start">← Control semanal</button>
     <label class="f">Día<input type="date" id="ck-f" value="${f}" max="${hoy}"></label>
     ${fut.map(a => { const ws = W.filter(x => x.alumno_id === a.id && x.fecha === f && x.tipo !== 'semana');
       return `<div class="card stack" style="gap:4px;cursor:pointer" data-act="checkinJ" data-id="${a.id}"><div class="row"><b class="grow">${esc(a.nombre)}</b>${ws.length ? '<span class="pill ok">Rellenado</span>' : '<span class="pill warn">Sin rellenar</span>'}</div>${ws.map(x => `<div class="small">${esc(resumenW(x))}${(x.datos?.reloj || []).length ? ` · 📎 ${x.datos.reloj.length} captura(s)` : ''}</div>`).join('')}</div>`; }).join('') || '<p class="small muted">No hay futbolistas activos.</p>'}</div>`);
   $('#ck-f').addEventListener('change', e => checkinSheet(null, e.target.value || hoy));
+}
+/* Control semanal de futbolistas: de un vistazo, check-ins diarios, del lunes, planificación del equipo y partido de cada jugador */
+function controlFut(lunes, modo = 'semana') {
+  const hoy = hoyISO(); lunes = lunes || lunesDe(hoy); const W = S.c.wellness || [], P = S.c.partidos || [], fut = futbolistas(), dias = [...Array(7)].map((_, i) => sumaDias(lunes, i)), L = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+  const tabs = `<div class="row" style="gap:6px"><button class="btn sm ${modo === 'semana' ? '' : 'ghost'}" data-act="ctrlFut" data-m="semana" data-l="${lunes}">Semana</button><button class="btn sm ${modo === 'dia' ? '' : 'ghost'}" data-act="ctrlFut" data-m="dia" data-l="${lunes}">Un día</button></div>`;
+  if (modo === 'dia') return checkinSheet(null, hoy);
+  const nav = `<div class="row" style="gap:8px;align-items:center"><button class="btn sm ghost" data-act="ctrlFut" data-m="semana" data-l="${sumaDias(lunes, -7)}">◀</button><b class="grow" style="text-align:center">Semana del ${esc(fCorta(lunes))} al ${esc(fCorta(dias[6]))}${lunes === lunesDe(hoy) ? ' · esta semana' : ''}</b><button class="btn sm ghost" data-act="ctrlFut" data-m="semana" data-l="${sumaDias(lunes, 7)}" ${lunes >= lunesDe(hoy) ? 'disabled' : ''}>▶</button></div>`;
+  const tarj = a => {
+    const w = W.filter(x => x.alumno_id === a.id), pl = wDe(w, sumaDias(lunes, -1), 'semana') || wDe(w, lunes, 'semana'), lu = wDe(w, lunes, 'lunes'), pts = P.filter(p => p.alumno_id === a.id && p.fecha >= lunes && p.fecha <= dias[6]);
+    const sq = dias.map((f, i) => { const d = wDe(w, f, 'diario'), pa = wDe(w, f, 'partido'), v = d?.datos?.fatiga, col = d ? `var(--${nivelFat(v) || 'ok'})` : pa ? 'var(--blue)' : f > hoy ? 'var(--line)' : 'transparent';
+      return `<span title="${esc(fCorta(f))}" style="display:inline-flex;flex-direction:column;align-items:center;gap:2px;font-size:11px"><span style="width:26px;height:26px;border-radius:8px;border:1.5px solid ${d || pa ? col : 'var(--line)'};background:${d || pa ? col : 'transparent'};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700">${d ? (v ?? '✓') : pa ? 'P' : ''}</span>${L[i]}</span>`; }).join('');
+    return `<div class="card stack" style="gap:8px"><div class="row" data-act="checkinJ" data-id="${a.id}" style="cursor:pointer"><b class="grow">${esc(a.nombre)}</b><span class="small muted">Ver detalle ›</span></div>
+      <div class="row" style="gap:4px;justify-content:space-between">${sq}</div>
+      <div class="small"><b>Lunes:</b> ${lu ? esc(resumenW(lu)) : '<span class="muted">sin rellenar</span>'}${lu ? botonesArchivos(lu) : ''}</div>
+      <div class="small"><b>Planificación del equipo:</b> ${pl ? `${pl.datos?.texto ? esc(pl.datos.texto) : '<span class="muted">sin texto</span>'}${botonesArchivos(pl)}` : '<span class="muted">sin subir</span>'}</div>
+      ${pts.length ? `<div class="small"><b>Partido:</b> ${pts.map(p => esc((p.rival ? 'vs ' + p.rival : 'Partido') + ' · ' + fCorta(p.fecha))).join(' · ')}${(() => { const pa = dias.map(f => wDe(w, f, 'partido')).filter(Boolean)[0]; return pa ? ' · ' + esc(resumenW(pa)) : ' · <span class="muted">sin cuestionario</span>'; })()}</div>` : ''}</div>`; };
+  abrirSheet(`<div class="stack"><span class="eyebrow">Futbolistas</span><h2>Control semanal</h2>${tabs}${nav}
+    <p class="small muted" style="margin:0">Cada cuadrado es un día: el número es la fatiga del check diario (verde fresco → rojo destrozado); P = partido; vacío = sin rellenar.</p>
+    ${fut.map(tarj).join('') || '<p class="small muted">No hay futbolistas activos.</p>'}</div>`);
 }
 function alIr(aid, m) {
   cerrarSheet();
@@ -2400,7 +2419,7 @@ function vFutbolCoach() {
   const fut = S.c.perfiles.filter(p => p.activo !== false && S.c.servicios.some(x => x.alumno_id === p.id && x.modulo_futbol));
   if (!fut.length) return '';
   const hoy = hoyISO();
-  return `<section class="section"><div class="section-head"><h2>Futbolistas · hoy</h2><button class="btn sm" data-act="checkin">Ver check-in de hoy</button></div><div class="card tbl" style="overflow-x:auto"><table class="fut-t"><thead><tr><th>Jugador</th><th>Partido</th><th>Fatiga</th><th>Carga 7 d</th><th>ACWR</th><th>Hoy</th></tr></thead><tbody>
+  return `<section class="section"><div class="section-head"><h2>Futbolistas · hoy</h2><button class="btn sm" data-act="checkin">Control semanal</button></div><div class="card tbl" style="overflow-x:auto"><table class="fut-t"><thead><tr><th>Jugador</th><th>Partido</th><th>Fatiga</th><th>Carga 7 d</th><th>ACWR</th><th>Hoy</th></tr></thead><tbody>
     ${fut.map(a => { const { w, p } = futDe(a.id), M = mdDe(p), uf = ultimaFatiga(w), C = cargasSemana(w), [na, ta] = nivelAcwr(C.acwr), hecho = wDe(w, hoy, 'diario') || wDe(w, hoy, 'partido'), mol = molestiasRecientes(w, 3).length;
       return `<tr data-act="ficha" data-id="${a.id}" style="cursor:pointer"><td><b>${esc(a.nombre)}</b>${mol ? ' <span class="pill warn">molestia</span>' : ''}</td><td class="small">${M.md ? `<span class="md-chip sm">${esc(M.md)}</span> ` : ''}${esc(M.prox?.rival || '')}</td><td>${uf ? `<span class="pill ${nivelFat(uf.v)}">${uf.v}/10</span>` : '—'}</td><td class="num">${fmtNum(C.aguda, 0)}</td><td>${C.acwr != null ? `<span class="pill ${na}" title="${ta}">${fmtNum(C.acwr)}</span>` : '—'}</td><td>${hecho ? '<span style="color:var(--ok)">✓</span>' : '<span class="muted">pendiente</span>'}</td></tr>`; }).join('')}
   </tbody></table><p class="note">Carga = minutos × esfuerzo (1-10) del equipo, de tu sesión y del partido. ACWR = carga de los últimos 7 días frente a la media de las últimas 4 semanas: entre 0,8 y 1,3 es la zona óptima; por encima de 1,5, riesgo de lesión.</p></div></section>`;
@@ -5505,7 +5524,8 @@ document.addEventListener('click', async e => {
     case 'ficha': cerrarSheet(); if (S.obj) await aparcarOSalir(); await abrirFicha(b.dataset.id); break;
     case 'verAlertas': verAlertas(b.dataset.id); break;
     case 'alIr': alIr(b.dataset.id, b.dataset.m); break;
-    case 'checkin': checkinSheet(); break;
+    case 'checkin': controlFut(); break;
+    case 'ctrlFut': cerrarSheet(); controlFut(b.dataset.l, b.dataset.m); break;
     case 'checkinJ': cerrarSheet(); checkinSheet(b.dataset.id); break;
     case 'bvIr': Bienvenida.abrir(+b.dataset.i); break;
     case 'bvFin': Bienvenida.fin(); break;
