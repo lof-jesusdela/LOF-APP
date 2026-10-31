@@ -1,4 +1,4 @@
--- Bloque 72 · EntenIAdor: asistente de IA de Jesús para los alumnos (chat)
+-- Bloque 72 · EntrenIAdor: asistente de IA de Jesús para los alumnos (chat)
 alter table perfiles add column if not exists ia_activa boolean not null default false;
 alter table perfiles add column if not exists ia_acepta_at timestamptz;
 
@@ -14,6 +14,23 @@ create table if not exists ia_mensajes (
   creado_at timestamptz not null default now()
 );
 create index if not exists ia_mensajes_alumno on ia_mensajes(alumno_id, id);
+-- canal: 'alumno' = chat del alumno · 'coach' = chat de Jesús con su asistente
+alter table ia_mensajes add column if not exists canal text not null default 'alumno';
+
+-- Lo que el EntrenIAdor sabe de Jesús: respuestas a las preguntas diarias, apuntes del chat y apuntes libres
+create table if not exists ia_conocimiento (
+  id bigserial primary key,
+  pregunta_id text unique,
+  categoria text,
+  pregunta text,
+  respuesta text not null,
+  creado_at timestamptz not null default now()
+);
+alter table ia_conocimiento enable row level security;
+drop policy if exists ia_conocimiento_coach on ia_conocimiento;
+create policy ia_conocimiento_coach on ia_conocimiento for all
+  using (exists (select 1 from perfiles p where p.id = auth.uid() and p.rol = 'coach'))
+  with check (exists (select 1 from perfiles p where p.id = auth.uid() and p.rol = 'coach'));
 alter table ia_mensajes enable row level security;
 
 drop policy if exists ia_mensajes_alumno_lee on ia_mensajes;
@@ -37,7 +54,7 @@ $$;
 grant execute on function public.ia_valorar(bigint, smallint) to authenticated;
 grant execute on function public.ia_aceptar() to authenticated;
 
--- Borrador inicial de criterios (solo si aún no hay). Edítalo desde la app: ficha de un alumno → EntenIAdor → «Tus criterios y tono»
+-- Borrador inicial de criterios (solo si aún no hay). Edítalo desde la app: EntrenIAdor (botón 🕵🏻‍♂️) → «Criterios y tono»
 insert into ajustes_privados (clave, valor) values ('ia_instrucciones', $txt$
 FILOSOFÍA
 - «Tu cuerpo es la consecuencia de cómo vives». Trabajamos Punto A → hábitos sostenidos y sostenibles → Punto B.

@@ -1,6 +1,7 @@
 // Edge Function: asistente de IA de Jesús para los alumnos (chat). Responde con la API de Claude
 // usando la metodología de Jesús (ajustes_privados.ia_instrucciones), sus correcciones y los datos del alumno.
-// Secretos necesarios: ANTHROPIC_API_KEY. Opcional: IA_MODELO (por defecto claude-sonnet-5-5), IA_LIMITE_DIA (por defecto 30).
+// Secretos necesarios: ANTHROPIC_API_KEY. Opcional: IA_MODELO (por defecto claude-sonnet-5-5), IA_LIMITE_DIA (por defecto 30), VAPID_* para avisar al coach.
+// Modos: alumno (por defecto) y coach ({ modo: "coach" }): Jesús habla con su asistente, le pregunta por los chats y le enseña ([APRENDER: …]).
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
 
@@ -46,7 +47,7 @@ function programaTxt(p: Fila | null) {
   }).join("\n");
 }
 
-const BASE = `Te llamas «EntenIAdor» y eres el asistente de IA de Jesús de la Obra, entrenador personal de La Obra Fitness (LOF). NO eres Jesús y el alumno lo sabe: eres una IA entrenada con sus conocimientos, su metodología y su forma de trabajar. Si te preguntan, dilo con naturalidad.
+const BASE = `Te llamas «EntrenIAdor» y eres el asistente de IA de Jesús de la Obra, entrenador personal de La Obra Fitness (LOF). NO eres Jesús y el alumno lo sabe: eres una IA entrenada con sus conocimientos, su metodología y su forma de trabajar. Si te preguntan, dilo con naturalidad.
 
 Para qué estás: resolver al momento las dudas pequeñas del día a día sobre entrenamiento, alimentación, hábitos y el uso de la app, para que el alumno no se quede con la duda por miedo a molestar. Jesús responde personalmente en 24-48 h; tú das apoyo inmediato en lo sencillo.
 
@@ -64,6 +65,24 @@ Cuándo derivar a Jesús (escribe además la etiqueta [DERIVAR] al final de tu r
 - Si el alumno no queda satisfecho, insiste, pide hablar con Jesús o no estás seguro de la respuesta.
 En esos casos responde con empatía, da solo una orientación prudente si procede, y dile que puede escribir a Jesús por WhatsApp con el botón de abajo.`;
 
+const COACH = `Te llamas «EntrenIAdor» y eres el asistente de IA de Jesús de la Obra (entrenador personal, La Obra Fitness). Ahora NO hablas con un alumno: hablas con el propio Jesús, tu creador. Tutéale, sé directo, breve y útil, como un buen ayudante de confianza.
+
+Tus funciones con Jesús:
+- Contarle lo que preguntan sus alumnos al asistente: consultas que derivaste o que no les sirvieron (👎), dudas que se repiten, alumnos que parecen desmotivados o con problemas. Usa solo las conversaciones que tienes abajo; no inventes.
+- Redactarle borradores de respuesta para sus alumnos con su estilo, listos para pegar en WhatsApp.
+- Aprender de él: cuando Jesús te dé un criterio, una corrección, una preferencia o cualquier información de su forma de trabajar que debas recordar para responder a los alumnos, guárdala escribiendo al final de tu respuesta una línea por cada cosa con este formato exacto: [APRENDER: texto claro y autocontenido, en tercera persona sobre Jesús o como regla]. Confírmale en una frase qué has apuntado. No apuntes cosas triviales ni datos personales de alumnos.
+- Hacerle preguntas para conocerle mejor cuando te lo pida o cuando veas huecos (por ejemplo, consultas que no supiste resolver): pregunta de una en una o en lista corta y numerada.`;
+
+/* Lo que Jesús le ha enseñado (preguntas diarias, apuntes del chat y libres): lo más reciente cabe primero */
+function conocimientoTxt(l: Fila[], max = 16000) {
+  const out: string[] = []; let n = 0;
+  for (const k of l) {
+    const t = k.pregunta ? `P: ${k.pregunta}\nR (Jesús): ${k.respuesta}` : `- ${k.respuesta}`;
+    if (n + t.length > max) break; out.push(t); n += t.length;
+  }
+  return out.reverse().join("\n\n");
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
@@ -73,53 +92,86 @@ Deno.serve(async (req) => {
     if (ue || !user) return json({ error: "No autorizado" }, 401);
     const uid = user.id;
     const { data: perfil } = await admin.from("perfiles").select("*").eq("id", uid).maybeSingle();
-    if (!perfil?.ia_activa) return json({ error: "El asistente no está activado para ti." }, 403);
-    if (perfil.acceso_pausado) return json({ error: "Tu acceso está pausado." }, 403);
-    if (!perfil.ia_acepta_at) return json({ error: "Primero acepta las condiciones del EntenIAdor." }, 403);
-
-    const { mensaje } = await req.json();
-    const pregunta = String(mensaje || "").trim().slice(0, 2000);
+    const body = await req.json();
+    const modoCoach = body.modo === "coach";
+    if (modoCoach && perfil?.rol !== "coach") return json({ error: "Solo para el coach" }, 403);
+    if (!modoCoach) {
+      if (!perfil?.ia_activa) return json({ error: "El asistente no está activado para ti." }, 403);
+      if (perfil.acceso_pausado) return json({ error: "Tu acceso está pausado." }, 403);
+      if (!perfil.ia_acepta_at) return json({ error: "Primero acepta las condiciones del EntrenIAdor." }, 403);
+    }
+    const canal = modoCoach ? "coach" : "alumno";
+    const pregunta = String(body.mensaje || "").trim().slice(0, modoCoach ? 4000 : 2000);
     if (!pregunta) return json({ error: "Escribe tu pregunta" }, 400);
     const key = Deno.env.get("ANTHROPIC_API_KEY");
     if (!key) return json({ error: "Falta la clave ANTHROPIC_API_KEY en los secretos de la función" }, 500);
 
-    const limite = +(Deno.env.get("IA_LIMITE_DIA") || 30);
-    const { count } = await admin.from("ia_mensajes").select("id", { count: "exact", head: true }).eq("alumno_id", uid).eq("rol", "alumno").gte("creado_at", hoy() + "T00:00:00+01:00");
-    if ((count || 0) >= limite) return json({ error: `Has llegado al máximo de ${limite} preguntas de hoy. Mañana sigo contigo, o escríbele a Jesús por WhatsApp.` }, 429);
-
-    const SEL = "id,nombre,dias_semana,dias(*,bloques_sesion(*,ejercicios_sesion(*,ejercicios(nombre,musculo,descripcion),metodos(nombre,explicacion))))";
-    const [cfg, srv, prog, ses, reg, wel, med, chk, dev, plan, hist, corr] = await Promise.all([
-      admin.from("ajustes_privados").select("clave,valor").in("clave", ["ia_instrucciones"]),
-      admin.from("servicios").select("*").eq("alumno_id", uid).order("id", { ascending: false }).limit(1),
-      admin.from("programas").select(SEL).eq("alumno_id", uid).eq("activo", true).is("contexto_desde", null).order("id", { ascending: false }).limit(1),
-      admin.from("sesiones_hechas").select("fecha,estado,series_hechas,series_total,valoracion,notas,dias(nombre)").eq("alumno_id", uid).gte("fecha", haceDias(21)).order("fecha", { ascending: false }).limit(20),
-      admin.from("registro_diario").select("*").eq("alumno_id", uid).gte("fecha", haceDias(10)).order("fecha", { ascending: false }),
-      admin.from("wellness").select("fecha,tipo,datos").eq("alumno_id", uid).gte("fecha", haceDias(10)).order("fecha", { ascending: false }),
-      admin.from("mediciones").select("*").eq("alumno_id", uid).order("fecha", { ascending: false }).limit(4),
-      admin.from("checkins").select("*").eq("alumno_id", uid).order("semana_inicio", { ascending: false }).limit(2),
-      admin.from("devoluciones").select("*").eq("alumno_id", uid).order("semana_inicio", { ascending: false }).limit(2),
-      admin.from("planificacion").select("seccion,titulo,contenido,visible").eq("alumno_id", uid).order("orden"),
-      admin.from("ia_mensajes").select("rol,texto").eq("alumno_id", uid).order("id", { ascending: false }).limit(16),
-      admin.from("ia_mensajes").select("id,alumno_id,texto,correccion").not("correccion", "is", null).order("id", { ascending: false }).limit(15),
-    ]);
-    // Contextos temporales activos (vacaciones, lesión…) mandan sobre el programa base
-    const ctx = await admin.from("programas").select("contexto_nombre,contexto_desde,contexto_hasta," + SEL).eq("alumno_id", uid).lte("contexto_desde", hoy()).gte("contexto_hasta", hoy()).limit(1);
-
-    /* Correcciones de Jesús: pregunta del alumno + cómo lo habría dicho él */
-    const ejemplos: string[] = [];
-    for (const c of (corr.data || []) as Fila[]) {
-      const { data: q } = await admin.from("ia_mensajes").select("texto").eq("alumno_id", c.alumno_id).eq("rol", "alumno").lt("id", c.id).order("id", { ascending: false }).limit(1);
-      if (q?.[0]) ejemplos.push(`Pregunta: ${q[0].texto}\nRespuesta de Jesús: ${c.correccion}`);
+    if (!modoCoach) {
+      const limite = +(Deno.env.get("IA_LIMITE_DIA") || 30);
+      const { count } = await admin.from("ia_mensajes").select("id", { count: "exact", head: true }).eq("alumno_id", uid).eq("canal", "alumno").eq("rol", "alumno").gte("creado_at", hoy() + "T00:00:00+01:00");
+      if ((count || 0) >= limite) return json({ error: `Has llegado al máximo de ${limite} preguntas de hoy. Mañana sigo contigo, o escríbele a Jesús por WhatsApp.` }, 429);
     }
 
+    /* Común: criterios, conocimiento, correcciones e historial de este chat */
+    const [cfg, kno, corr, hist] = await Promise.all([
+      admin.from("ajustes_privados").select("clave,valor").in("clave", ["ia_instrucciones"]),
+      admin.from("ia_conocimiento").select("pregunta,respuesta,categoria").order("id", { ascending: false }).limit(400),
+      admin.from("ia_mensajes").select("id,alumno_id,texto,correccion").eq("canal", "alumno").not("correccion", "is", null).order("id", { ascending: false }).limit(15),
+      admin.from("ia_mensajes").select("rol,texto").eq("alumno_id", uid).eq("canal", canal).order("id", { ascending: false }).limit(modoCoach ? 20 : 16),
+    ]);
+    const ejemplos: string[] = [];
+    for (const c of (corr.data || []) as Fila[]) {
+      const { data: q } = await admin.from("ia_mensajes").select("texto").eq("alumno_id", c.alumno_id).eq("canal", "alumno").eq("rol", "alumno").lt("id", c.id).order("id", { ascending: false }).limit(1);
+      if (q?.[0]) ejemplos.push(`Pregunta: ${q[0].texto}\nRespuesta de Jesús: ${c.correccion}`);
+    }
     const instr = ((cfg.data || []) as Fila[]).find((x) => x.clave === "ia_instrucciones")?.valor as string || "";
-    const medObj = ((med.data || []) as Fila[]).filter((m) => m.es_objetivo), medReal = ((med.data || []) as Fila[]).filter((m) => !m.es_objetivo);
-    const system = `${BASE}
-
-=== METODOLOGÍA Y CRITERIOS DE JESÚS ===
+    const saber = conocimientoTxt((kno.data || []) as Fila[]);
+    const comun = `=== METODOLOGÍA Y CRITERIOS DE JESÚS ===
 ${instr || "(Jesús aún no ha escrito sus criterios)"}
-${ejemplos.length ? `\n=== CÓMO RESPONDE JESÚS (correcciones suyas a respuestas anteriores; imita su criterio y su tono) ===\n${ejemplos.reverse().join("\n\n")}` : ""}
+${saber ? `\n=== LO QUE JESÚS TE HA ENSEÑADO (sus respuestas y apuntes; síguelo, manda sobre lo genérico) ===\n${saber}\n` : ""}${ejemplos.length ? `\n=== CÓMO RESPONDE JESÚS (correcciones suyas a respuestas anteriores; imita su criterio y su tono) ===\n${ejemplos.reverse().join("\n\n")}\n` : ""}`;
 
+    let system: string;
+    if (modoCoach) {
+      const desde = new Date(Date.now() - 14 * 864e5).toISOString();
+      const [als, conv] = await Promise.all([
+        admin.from("perfiles").select("id,nombre,ia_activa,ia_acepta_at,activo,rol").neq("rol", "coach"),
+        admin.from("ia_mensajes").select("alumno_id,rol,texto,derivar,valoracion,visto,creado_at").eq("canal", "alumno").gte("creado_at", desde).order("id", { ascending: false }).limit(400),
+      ]);
+      const nom: Record<string, string> = {};
+      for (const a of (als.data || []) as Fila[]) nom[a.id as string] = (a.nombre as string) || "Alumno";
+      const lineas: string[] = []; let n = 0;
+      for (const m of (conv.data || []) as Fila[]) {
+        const t = `[${String(m.creado_at).slice(0, 16).replace("T", " ")}] ${nom[m.alumno_id as string] || "Alumno"} · ${m.rol === "ia" ? "EntrenIAdor" : "Alumno"}: ${String(m.texto).slice(0, 600)}${m.derivar ? " (DERIVADA A JESÚS)" : ""}${m.valoracion === -1 ? " (👎 no le sirvió)" : ""}${m.rol === "ia" && !m.visto && (m.derivar || m.valoracion === -1) ? " [pendiente de revisar]" : ""}`;
+        if (n + t.length > 14000) break; lineas.push(t); n += t.length;
+      }
+      const conIA = ((als.data || []) as Fila[]).filter((a) => a.ia_activa).map((a) => `${a.nombre}${a.ia_acepta_at ? "" : " (aún no lo ha aceptado)"}`);
+      system = `${COACH}
+
+${comun}
+=== ALUMNOS CON EL ENTRENIADOR ACTIVADO ===
+${conIA.join(", ") || "Ninguno todavía"}
+
+=== CONVERSACIONES DE LOS ALUMNOS CON EL ENTRENIADOR (últimos 14 días, de más antigua a más reciente; hoy es ${hoy()}) ===
+${lineas.reverse().join("\n") || "Sin conversaciones todavía."}`;
+    } else {
+      const SEL = "id,nombre,dias_semana,dias(*,bloques_sesion(*,ejercicios_sesion(*,ejercicios(nombre,musculo,descripcion),metodos(nombre,explicacion))))";
+      const [srv, prog, ses, reg, wel, med, chk, dev, plan, ctx] = await Promise.all([
+        admin.from("servicios").select("*").eq("alumno_id", uid).order("id", { ascending: false }).limit(1),
+        admin.from("programas").select(SEL).eq("alumno_id", uid).eq("activo", true).is("contexto_desde", null).order("id", { ascending: false }).limit(1),
+        admin.from("sesiones_hechas").select("fecha,estado,series_hechas,series_total,valoracion,notas,dias(nombre)").eq("alumno_id", uid).gte("fecha", haceDias(21)).order("fecha", { ascending: false }).limit(20),
+        admin.from("registro_diario").select("*").eq("alumno_id", uid).gte("fecha", haceDias(10)).order("fecha", { ascending: false }),
+        admin.from("wellness").select("fecha,tipo,datos").eq("alumno_id", uid).gte("fecha", haceDias(10)).order("fecha", { ascending: false }),
+        admin.from("mediciones").select("*").eq("alumno_id", uid).order("fecha", { ascending: false }).limit(4),
+        admin.from("checkins").select("*").eq("alumno_id", uid).order("semana_inicio", { ascending: false }).limit(2),
+        admin.from("devoluciones").select("*").eq("alumno_id", uid).order("semana_inicio", { ascending: false }).limit(2),
+        admin.from("planificacion").select("seccion,titulo,contenido,visible").eq("alumno_id", uid).order("orden"),
+        // Contextos temporales activos (vacaciones, lesión…) mandan sobre el programa base
+        admin.from("programas").select("contexto_nombre,contexto_desde,contexto_hasta," + SEL).eq("alumno_id", uid).lte("contexto_desde", hoy()).gte("contexto_hasta", hoy()).limit(1),
+      ]);
+      const medObj = ((med.data || []) as Fila[]).filter((m) => m.es_objetivo), medReal = ((med.data || []) as Fila[]).filter((m) => !m.es_objetivo);
+      system = `${BASE}
+
+${comun}
 === DATOS DEL ALUMNO (hoy es ${hoy()}) ===
 Nombre: ${perfil.nombre || "—"}
 Plan contratado: ${txt(srv.data?.[0], 1200)}
@@ -133,8 +185,9 @@ Objetivo de composición: ${txt(medObj, 500)}
 Últimos check-ins semanales: ${txt(chk.data, 1500)}
 Últimas indicaciones de Jesús: ${txt(dev.data, 1500)}
 Planificación (alimentación y demás, tal como la ve el alumno): ${txt(((plan.data || []) as Fila[]).filter((p) => p.visible !== false), 3500)}`;
+    }
 
-    /* Historial alternando alumno/IA, empezando por el alumno */
+    /* Historial alternando usuario/IA, empezando por el usuario */
     const msgs: { role: "user" | "assistant"; content: string }[] = [];
     for (const m of ((hist.data || []) as Fila[]).reverse()) {
       const role = m.rol === "ia" ? "assistant" : "user";
@@ -146,19 +199,28 @@ Planificación (alimentación y demás, tal como la ve el alumno): ${txt(((plan.
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: Deno.env.get("IA_MODELO") || "claude-sonnet-5-5", max_tokens: 900, system, messages: msgs }),
+      body: JSON.stringify({ model: Deno.env.get("IA_MODELO") || "claude-sonnet-5-5", max_tokens: modoCoach ? 1500 : 900, system, messages: msgs }),
     });
     const out = await r.json();
     if (!r.ok) return json({ error: "La IA no ha podido responder: " + (out?.error?.message || r.status) }, 502);
     let texto = ((out.content || []) as Fila[]).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
-    const derivar = /\[DERIVAR\]/i.test(texto);
-    texto = texto.replace(/\[DERIVAR\]/gi, "").trim() || "Esto prefiero que lo veas con Jesús directamente.";
+
+    /* Modo coach: lo que Jesús le enseña se guarda en ia_conocimiento */
+    let aprendido = 0;
+    if (modoCoach) {
+      const apuntes = [...texto.matchAll(/\[APRENDER:\s*([^\]]+)\]/gi)].map((m) => m[1].trim()).filter(Boolean);
+      if (apuntes.length) { const { error } = await admin.from("ia_conocimiento").insert(apuntes.map((a) => ({ categoria: "chat", respuesta: a }))); if (!error) aprendido = apuntes.length; }
+      texto = texto.replace(/\[APRENDER:\s*[^\]]+\]/gi, "").trim() || "Apuntado.";
+    }
+    const derivar = !modoCoach && /\[DERIVAR\]/i.test(texto);
+    if (!modoCoach) texto = texto.replace(/\[DERIVAR\]/gi, "").trim() || "Esto prefiero que lo veas con Jesús directamente.";
 
     const { data: ins, error: ie } = await admin.from("ia_mensajes").insert([
-      { alumno_id: uid, rol: "alumno", texto: pregunta },
-      { alumno_id: uid, rol: "ia", texto, derivar },
+      { alumno_id: uid, rol: "alumno", texto: pregunta, canal },
+      { alumno_id: uid, rol: "ia", texto, derivar, canal, visto: modoCoach },
     ]).select("id,rol,texto,derivar,creado_at");
     if (ie) return json({ error: "No se ha podido guardar la conversación: " + ie.message }, 500);
+
     /* Aviso al móvil de Jesús cuando la IA deriva (si están las claves VAPID) */
     if (derivar && perfil.rol !== "coach") {
       try {
@@ -167,12 +229,12 @@ Planificación (alimentación y demás, tal como la ve el alumno): ${txt(((plan.
           webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT") || "mailto:admin@example.com", pub, priv);
           const { data: coaches } = await admin.from("perfiles").select("id").eq("rol", "coach");
           const { data: subs } = await admin.from("push_suscripciones").select("*").in("alumno_id", (coaches || []).map((c) => c.id));
-          const payload = JSON.stringify({ titulo: `EntenIAdor · ${perfil.nombre || "Alumno"}`, cuerpo: "Ha derivado una consulta a ti: " + pregunta.slice(0, 120), url: "./" });
+          const payload = JSON.stringify({ titulo: `🕵🏻‍♂️ EntrenIAdor · ${perfil.nombre || "Alumno"}`, cuerpo: "Te ha pasado una consulta: " + pregunta.slice(0, 120), url: "./" });
           await Promise.all((subs || []).map((x) => webpush.sendNotification({ endpoint: x.endpoint, keys: { p256dh: x.p256dh, auth: x.auth } }, payload, { TTL: 86400 }).catch(() => {})));
         }
       } catch (_) { /* el aviso es opcional */ }
     }
-    return json({ mensajes: ins, derivar });
+    return json({ mensajes: ins, derivar, aprendido });
   } catch (e) {
     return json({ error: String((e as Error).message || e) }, 500);
   }

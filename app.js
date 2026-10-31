@@ -387,7 +387,7 @@ function tabsAlumno() {
 const ANCHO = matchMedia('(min-width: 900px)');
 ANCHO.addEventListener?.('change', () => { if (S.modo === 'coach' && S.perfil) render(); });
 function claseMain() {
-  if (S.factura || S.obj || S.editor || S.verPlan || S.verSes || S.valEd) return '';
+  if (S.iaCoach || S.factura || S.obj || S.editor || S.verPlan || S.verSes || S.valEd) return '';
   if (S.reporte) return S.reporte.alumno ? '' : 'rejilla';
   if (S.ficha) return !S.fichaSub || S.fichaSub === 'plan' ? 'dos' : '';
   return '';
@@ -421,7 +421,7 @@ function render() {
       <button type="button" class="badge" data-act="inicio" aria-label="Ir al inicio" style="background:none;border:0;padding:0;cursor:pointer;text-align:left;color:inherit;font:inherit"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : esc(S.perfil.metodologia || 'Tu proceso')}</strong></div></button>
       <div class="row" style="gap:8px">${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
       <button class="avatar" data-act="cuenta" aria-label="Mi cuenta">${esCoach ? '<img src="icons/coach.jpg" alt="">' : S.perfil.foto_url ? `<img src="${esc(S.perfil.foto_url)}" alt="">` : esc((S.perfil.nombre || '?').slice(0, 2).toUpperCase())}</button></div>
-    </header>${S.prueba ? vBannerPrueba() : S.vista ? vBannerVista() : vBarraYo()}${coach && ANCHO.matches ? vLateral(actual) : ''}<main id="main" class="${coach ? claseMain() : ''}">${(S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : (!coach && S.ia) ? seguro(IA.vChat) : (!coach && Temperamento.activo()) ? seguro(Temperamento.vista) : seguro(vistas[actual])}</main>${coach ? Clip.barra() : ''}${vBarraEntreno()}`;
+    </header>${S.prueba ? vBannerPrueba() : S.vista ? vBannerVista() : vBarraYo()}${coach && ANCHO.matches ? vLateral(actual) : ''}<main id="main" class="${coach ? claseMain() : ''}">${(S.iaCoach && coach) ? seguro(IA.vCoach) : (S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : (!coach && S.ia) ? seguro(IA.vChat) : (!coach && Temperamento.activo()) ? seguro(Temperamento.vista) : seguro(vistas[actual])}</main>${coach ? Clip.barra() : ''}${vBarraEntreno()}${IA.vFab(coach)}`;
   document.body.classList.toggle('modo-coach', coach);
   if (coach) aplicarFiltroAl();
   $('#tabs').hidden = false;
@@ -920,7 +920,6 @@ function vHoy() {
   <section class="section"><h2>Lo que toca hoy</h2><div class="card">${toca}</div></section>
   ${vPendientesHoy(s)}
   ${Acomp.ultimaIndicacion()}
-  ${IA.vEntrada()}
   ${vProximamente(s)}
   ${s.modulo_futbol ? vFutbolHoy() + vSemanaFutbol(ini, w, p) + (s.modulo_habitos ? Habitos.tarjetaHoy(false) : '') : vRegistroDia(s)}
   ${vCheckinTarjeta()}
@@ -5593,8 +5592,8 @@ document.addEventListener('click', async e => {
     case 'tab': S.ia = false; if (b.dataset.t === 'checkin') { S.tab = 'hoy'; S.dia = null; render(); $('#checkin')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break; }
       S.tab = b.dataset.t; if (!enCurso()) { S.dia = null; S.sesion = null; } S.chipsCargados = false; render(); window.scrollTo(0, 0); break;
     case 'sinWhatsapp': toast('Jesús aún no ha puesto su WhatsApp en la app'); break;
-    case 'ctab': if (S.obj) await aparcarOSalir(); S.reporte = null; S.factura = null; S.ctab = b.dataset.t; S.ficha = null; S.editor = null; render(); window.scrollTo(0, 0); break;
-    case 'modo': if (S.obj) await aparcarOSalir(); S.modo = b.dataset.v; S.ficha = null; S.editor = null; S.fichaSub = null; if (S.modo === 'coach') await cargarCoach(); else if (S.perfil?.rol === 'coach' && !S.prueba && !S.vista) await cargarAlumno(S.user.id); render(); window.scrollTo(0, 0); break;
+    case 'ctab': if (S.obj) await aparcarOSalir(); S.iaCoach = false; S.reporte = null; S.factura = null; S.ctab = b.dataset.t; S.ficha = null; S.editor = null; render(); window.scrollTo(0, 0); break;
+    case 'modo': if (S.obj) await aparcarOSalir(); S.iaCoach = false; S.ia = false; S.modo = b.dataset.v; S.ficha = null; S.editor = null; S.fichaSub = null; if (S.modo === 'coach') await cargarCoach(); else if (S.perfil?.rol === 'coach' && !S.prueba && !S.vista) await cargarAlumno(S.user.id); render(); window.scrollTo(0, 0); break;
     case 'abrirDia': await abrirDia(+b.dataset.id); break;
     case 'cerrarDia': if (enCurso()) { S.tab = 'hoy'; toast('Tu entreno sigue en curso: vuelve desde la barra azul'); } else { S.dia = null; S.sesion = null; } render(); break;
     case 'reanudarEntreno': await reanudarEntreno(); break;
@@ -5688,7 +5687,7 @@ document.addEventListener('click', async e => {
     case 'ali': await guardarDiario({ alimentacion: b.dataset.v }); break;
     case 'chip': { const v = b.dataset.v; S.chips.has(v) ? S.chips.delete(v) : S.chips.add(v); b.setAttribute('aria-pressed', S.chips.has(v)); break; }
     case 'enviarCheckin': await enviarCheckin(); break;
-    case 'ficha': cerrarSheet(); if (S.obj) await aparcarOSalir(); await abrirFicha(b.dataset.id); break;
+    case 'ficha': cerrarSheet(); S.iaCoach = false; if (S.obj) await aparcarOSalir(); await abrirFicha(b.dataset.id); break;
     case 'verAlertas': verAlertas(b.dataset.id); break;
     case 'alIr': alIr(b.dataset.id, b.dataset.m); break;
     case 'checkin': controlFut(); break;
@@ -5701,7 +5700,7 @@ document.addEventListener('click', async e => {
     case 'bvVer': Bienvenida.abrir(0); break;
     case 'alResolver': { const enSheet = !!b.closest('#sheet'), on = b.dataset.on === '1', nota = on ? prompt('¿Cómo lo has atendido? (opcional, ej. «hablado por WhatsApp»)', 'Hablado por WhatsApp') : null; if (on && nota === null) break; await Alertas.resolver(b.dataset.id, b.dataset.m, on, nota); toast(b.dataset.on === '1' ? 'Marcado como solventado' : 'Vuelve a estar pendiente'); render(); if (enSheet) verAlertas(b.dataset.id); break; }
     case 'alFiltro': S.alF.k = S.alF.k === b.dataset.k ? '' : b.dataset.k; if (S.obj) await aparcarOSalir(); S.ficha = null; S.reporte = null; S.factura = null; S.editor = null; S.ctab = 'alumnos'; render(); if (S.alF.k) $('#al-lista')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
-    case 'inicio': if (S.modo === 'coach') { if (S.obj) await aparcarOSalir(); Object.assign(S, { reporte: null, factura: null, ficha: null, editor: null, verSes: null, verPlan: null, valEd: null, fichaSub: null, ctab: 'inicio' }); } else if (!S.dia) S.tab = 'hoy'; cerrarSheet(); render(); window.scrollTo(0, 0); break;
+    case 'inicio': if (S.modo === 'coach') { if (S.obj) await aparcarOSalir(); Object.assign(S, { iaCoach: false, reporte: null, factura: null, ficha: null, editor: null, verSes: null, verPlan: null, valEd: null, fichaSub: null, ctab: 'inicio' }); } else { S.ia = false; if (!S.dia) S.tab = 'hoy'; } cerrarSheet(); render(); window.scrollTo(0, 0); break;
     case 'cerrarFicha': S.ficha = null; S.verSes = null; S.verPlan = null; S.valEd = null; render(); break;
     case 'cerrarVerSesion': S.verSes = null; render(); window.scrollTo(0, 0); break;
     case 'verPlan': verPlan(+b.dataset.p, +b.dataset.d); break;
