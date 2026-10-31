@@ -3603,7 +3603,7 @@ function vEjercicios() {
   let vis = l.filter(x => (S.ejDup ? cuenta[claveEj(x)] > 1 : true) && (!filtro || norm(x.nombre + ' ' + (x.musculo || '')).includes(filtro)) && (S.ejFalta === 'mus' ? !esCardio(x) && !x.musculo_img_url : S.ejFalta === 'foto' ? !esCardio(x) && !x.imagen_url : true));
   if (S.ejDup) vis = vis.slice().sort((a, b) => claveEj(a).localeCompare(claveEj(b)) || (a.nombre || '').localeCompare(b.nombre || ''));
   const fuerza = l.filter(x => !/^cardio ·/i.test(x.nombre || '')), sinV = l.filter(x => !x.video_url).length, sinF = fuerza.filter(x => !x.imagen_url).length, sinM = fuerza.filter(x => !x.musculo_img_url).length;
-  return `${bibTabs()}<section class="stack"><span class="eyebrow">Tu biblioteca</span><h1>Ejercicios</h1><p class="small muted">Lo que cambies aquí se ve al instante en los entrenos de todos tus alumnos.</p></section>
+  return `${bibTabs()}<section class="stack"><span class="eyebrow">Tu biblioteca</span><div class="row"><h1 class="grow">Ejercicios</h1><button class="btn sm" data-act="nuevoEjercicio">＋ Nuevo</button></div><p class="small muted">Lo que cambies aquí se ve al instante en los entrenos de todos tus alumnos.</p></section>
   <section class="section"><div class="kpis"><div class="kpi"><div class="v num">${l.length}</div><div class="l">ejercicios</div></div><div class="kpi"><div class="v num" style="color:${sinV ? 'var(--warn)' : 'var(--ok)'}">${sinV}</div><div class="l">sin vídeo</div></div><button class="kpi" data-act="ejFalta" data-v="foto" aria-pressed="${S.ejFalta === 'foto'}"><div class="v num" style="color:${sinF ? 'var(--warn)' : 'var(--ok)'}">${sinF}</div><div class="l">sin foto</div></button><button class="kpi" data-act="ejFalta" data-v="mus" aria-pressed="${S.ejFalta === 'mus'}"><div class="v num" style="color:${sinM ? 'var(--warn)' : 'var(--ok)'}">${sinM}</div><div class="l">sin músculo</div></button></div>${S.ejFalta ? `<p class="small">Mostrando solo los que no tienen ${S.ejFalta === 'mus' ? 'imagen del músculo' : 'foto'}. <button class="linkbtn small" data-act="ejFalta" data-v="">Ver todos</button></p>` : ''}
   ${S.c.movCat ? `<details class="card" style="margin-top:12px"><summary><b>🦾 Vídeos de movilidad (${S.c.movCat.length})</b> <span class="small muted">· el catálogo que sale al añadir movilidad a un día</span></summary><div class="stack" style="gap:0;margin-top:8px">${S.c.movCat.map(x => `<div class="line" data-act="movItem" data-id="${x.id}" style="cursor:pointer">${(x.imagen_url || miniYoutube(x.video_url)) ? `<img src="${esc(x.imagen_url || miniYoutube(x.video_url))}" alt="" style="width:64px;height:40px;object-fit:cover;border-radius:8px">` : ''}<div class="grow small"><b>${esc(x.titulo)}</b>${x.zona ? ` · <span class="muted">${esc(x.zona)}</span>` : ''}</div><span class="small" style="color:var(--blue-text)">Editar</span></div>`).join('')}<button class="btn sm ghost" data-act="movItem" style="align-self:flex-start;margin-top:8px">＋ Añadir vídeo</button></div></details>` : ''}
   <button class="btn full" data-act="importarImagenes">Actualizar imágenes desde tus hojas</button><p class="note">Pone la imagen del ejercicio, la del músculo y las de cardio y movilidad que tenías en tus hojas, y repara las que no cargan.</p>
@@ -3634,8 +3634,8 @@ async function formIntegrarEj() {
   });
 }
 function formEjercicio(id) {
-  const x = S.c.ejercicios.find(z => z.id === id); if (!x) return;
-  abrirSheet(`<form class="stack" id="f-ej"><h2>${esc(x.nombre)}</h2>
+  const nuevo = id == null, x = nuevo ? { nombre: '' } : S.c.ejercicios.find(z => z.id === id); if (!x) return;
+  abrirSheet(`<form class="stack" id="f-ej"><h2>${nuevo ? 'Nuevo ejercicio' : esc(x.nombre)}</h2>
     <label class="f">Nombre del ejercicio<input type="text" id="e-nom" value="${esc(x.nombre || '')}" required></label>
     ${x.imagen_url ? `<img src="${esc(x.imagen_url)}" alt="" style="width:100%;max-height:200px;object-fit:cover;border-radius:12px">` : ''}
     <label class="f">Foto del ejercicio (desde la galería o la cámara)<input type="file" id="e-foto" accept="image/*"></label>
@@ -3644,7 +3644,7 @@ function formEjercicio(id) {
     <label class="f">Músculo que se trabaja<input type="text" id="e-mus" value="${esc(x.musculo || '')}"></label>
     <label class="f">Descripción o claves de ejecución<textarea id="e-desc">${esc(x.descripcion || '')}</textarea></label>
     <label class="f">Enlace del vídeo (YouTube oculto)<input type="text" id="e-vid" inputmode="url" value="${esc(x.video_url || '')}" placeholder="https://youtu.be/…"></label>
-    <p class="err" id="e-err"></p><button class="btn full" type="submit" id="e-btn">Guardar</button><button class="btn ghost full" type="button" id="e-del" style="color:var(--bad)">Eliminar ejercicio</button></form>`);
+    <p class="err" id="e-err"></p><button class="btn full" type="submit" id="e-btn">Guardar</button><button class="btn ghost full" type="button" id="e-del" style="color:var(--bad)" ${nuevo ? 'hidden' : ''}>Eliminar ejercicio</button></form>`);
   $('#e-del').addEventListener('click', async () => {
     const { count, error: e0 } = await sb.from('ejercicios_sesion').select('id', { count: 'exact', head: true }).eq('ejercicio_id', x.id);
     if (e0) return fallo(e0);
@@ -3660,12 +3660,13 @@ function formEjercicio(id) {
       const nom = $('#e-nom').value.trim(); if (!nom) throw new Error('Escribe el nombre del ejercicio');
       if (normaliza(nom) !== normaliza(x.nombre) && S.c.ejercicios.some(z => z.id !== x.id && normaliza(z.nombre) === normaliza(nom))) throw new Error('Ya existe otro ejercicio con ese nombre (puedes fusionarlos desde la lista)');
       const cambios = { nombre: nom, musculo: $('#e-mus').value.trim() || null, descripcion: $('#e-desc').value.trim() || null, video_url: $('#e-vid').value.trim() || null };
+      if (nuevo) { const r = await sb.from('ejercicios').insert({ nombre: nom }).select().single(); if (r.error) throw r.error; Object.assign(x, r.data); S.c.ejercicios.push(x); }
       const file = $('#e-foto').files[0];
       if (file) cambios.imagen_url = await subirImagenEj(file, `ej-${x.id}`);
       const mfile = $('#e-mfoto').files[0];
       if (mfile) cambios.musculo_img_url = await subirImagenEj(mfile, `mus-${x.id}`, 900);
       const { error } = await sb.from('ejercicios').update(cambios).eq('id', x.id); if (error) throw error;
-      Object.assign(x, cambios); cerrarSheet(); toast('Ejercicio guardado'); await cargarAlumno(S.user.id); render();
+      Object.assign(x, cambios); if (nuevo) S.c.ejercicios.sort((p, q) => p.nombre.localeCompare(q.nombre, 'es')); cerrarSheet(); toast(nuevo ? 'Ejercicio creado' : 'Ejercicio guardado'); await cargarAlumno(S.user.id); render();
     } catch (err) { btn.disabled = false; btn.textContent = 'Guardar'; $('#e-err').textContent = /nombre|Ya existe/.test(err?.message || '') ? err.message : motivoImg(err); console.error(err); }
   });
 }
@@ -5712,6 +5713,7 @@ document.addEventListener('click', async e => {
     case 'nuevaNota': formNota(); break;
     case 'editarPago': formEditarPago(+b.dataset.id); break;
     case 'editarServicio': formServicio(); break;
+    case 'nuevoEjercicio': formEjercicio(null); break;
     case 'editarEjercicio': formEjercicio(+b.dataset.id); break;
     case 'empezarCrono': empezarCrono(); break;
     case 'verImagenes': abrirSheet(`<div class="stack">${b.dataset.s.split('|').map(u => `<img src="${esc(u)}" alt="" style="width:100%;border-radius:12px;background:var(--surface-2)">`).join('')}</div>`); break;
