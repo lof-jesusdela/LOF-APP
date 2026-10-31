@@ -3604,6 +3604,8 @@ const GRUPOS_EJ = [
   ['dorsal', 'Dorsal', /dorsal|jalon|dominada|pull ?over|remo|pulldown|pullup|chin ?up/],
   ['escapular', 'Escapular', /escapul|romboid|trapecio|face pull|retraccion|protraccion|serrato|manguito|rotador|pajaros|y-?raise|wall slide|encogimiento/],
   ['cintura', 'Cintura', /cintura|oblicuo|lateral|rotacion|woodchop|lenadores|pallof|anti ?rotacion|flexion lateral|plancha lateral|core|abdomin/],
+  ['dorsal', 'Dorsal', /dorsal|jalon|dominada|pull ?over|remo|polea al pecho|pulldown|lat\\b/],
+  ['escap', 'Cintura escapular', /escapul|trapecio|romboid|serrato|manguito|rotador|face pull|pajaros|retraccion|encogimiento|y-?t-?w|ytw|proteccion|protraccion/],
   ['hombro', 'Hombro', /hombro|deltoid|elevacion(es)? (lateral|frontal)|face pull|press militar|pajaros|posterior/],
   ['biceps', 'Bíceps', /biceps|curl (de )?(biceps|martillo|predicador|barra|mancuerna|inclinado)|martillo|predicador/],
   ['triceps', 'Tríceps', /triceps|extension(es)? (de )?(triceps|codo)|press frances|jalon (de )?triceps|fondos en banco|patada/],
