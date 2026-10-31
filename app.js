@@ -255,6 +255,17 @@ function vAvisoContexto() {
   return `<section class="section"><div class="card ctx-aviso"><span class="pill gold">Semana adaptada</span><div class="grow"><b>${esc(c.contexto_nombre || 'Contexto especial')}</b><div class="small muted">${c.dias_semana} ${c.dias_semana === 1 ? 'entreno' : 'entrenos'} por semana · ${esc(fCtx(c))}. Tu progreso se mide con este plan: cumplirlo es el 100 %.</div></div></div></section>`;
 }
 
+/* Selector rápido de todos los programas/contextos del alumno (para saltar entre ellos) */
+function vSelectorProgs(alumnoId, actualId) {
+  const f = S.ficha && S.ficha.id === alumnoId ? S.ficha : null; if (!f || !f.programas) return '';
+  const hoy = hoyISO(), lunes = lunesDe(hoy);
+  const it = [];
+  (f.programas || []).slice().reverse().forEach(p => it.push([p.id, (p.activo !== false ? '★ ' : '') + (p.nombre || 'Programa')]));
+  (f.contextos || []).slice().sort((x, y) => y.contexto_desde.localeCompare(x.contexto_desde)).forEach(c => it.push([c.id, (c.contexto_hasta < hoy ? '✓ ' : c.contexto_desde <= lunes ? '● ' : '◷ ') + (c.contexto_nombre || 'Contexto') + ' · ' + fCtx(c)]));
+  (f.guardados || []).forEach(g => it.push([g.id, '🗂 ' + (g.contexto_nombre || g.nombre || 'Guardado')]));
+  if (it.length < 2) return '';
+  return `<div class="stack" style="gap:6px"><span class="small muted">Programas y contextos de este alumno</span><div class="row" style="gap:6px;flex-wrap:wrap">${it.map(([id, t]) => `<button class="btn sm ${id === actualId ? '' : 'ghost'}" data-act="abrirProg" data-id="${id}">${esc(t)}</button>`).join('')}</div></div>`;
+}
 function vContextos(f, a) {
   const l = (f.contextos || contextosDe(a.id)).slice().sort((x, y) => y.contexto_desde.localeCompare(x.contexto_desde)), hoy = hoyISO(), lunes = lunesDe(hoy);
   const est = c => c.contexto_hasta < hoy ? ['', 'Terminado'] : c.contexto_desde <= lunes ? ['gold', 'Activo esta semana'] : ['blue', 'Programado'];
@@ -3104,7 +3115,7 @@ function vFichaSub(f, a) {
     const dpwB = f.prog?.dias_semana || 0, dpw = dpwEn(a.id, lunes, dpwB), dpw4 = [0, 1, 2, 3].reduce((t, k) => t + dpwEn(a.id, sumaDias(lunes, -7 * k), dpwB), 0), P = proceso(srv), linea = s2 => `<div class="line" data-act="verSesion" data-id="${s2.id}" style="cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(s2.fecha))}</span><div class="grow"><div class="small"><b>${esc(nomDia(s2.dias))}</b> · ${esc(s2.dias?.foco || '')} · ${nSeriesReg(s2.registros_series)} series${s2.duracion_min ? ` · ${s2.duracion_min} min` : ''}${s2.cansancio ? ` · cansancio ${s2.cansancio}/5` : ''}${(s2.omitidos || []).length ? ` · ${s2.omitidos.length} no realizado${s2.omitidos.length > 1 ? 's' : ''}` : ''}</div>${s2.nota ? `<div class="small muted">"${esc(s2.nota)}"</div>` : ''}</div><span class="small" style="color:var(--blue-text)">›</span></div>`;
     const semana = f.ses.filter(x => x.fecha >= lunes), bloque = P && !P.antes ? f.ses.filter(x => x.fecha >= P.cc.ini && x.fecha <= P.cc.fin && x.fecha < lunes) : [];
     const unicas = l => new Set(l.map(x => x.fecha + x.dia_id)).size, mes = unicas(f.todas.filter(x => x.fecha >= sumaDias(hoy, -27)));
-    return cab('Entrenamiento') + vZonasFC({ vals: f.val, perfil: a, srv, coach: true }) + vContextos(f, a) + `
+    return cab('Entrenamiento') + vZonasFC({ vals: f.val, perfil: a, srv, coach: true }) + (() => { const h = vSelectorProgs(a.id, null); return h ? `<section class="section"><div class="card">${h}</div></section>` : ''; })() + vContextos(f, a) + `
     <section class="section"><div class="section-head"><h2>Programa</h2><button class="btn sm" data-act="editarPrograma" data-id="${a.id}">${f.prog ? '✎ Editar programa' : 'Crear programa'}</button></div><div class="card small">${f.prog ? `<b>${esc(f.prog.nombre)}</b> · ${dpw || '—'} días por semana` : 'Aún no tiene programa.'}</div></section>
     <section class="section"><h2>Esta semana</h2><div class="card">${dpw ? barra('Entrenos de la semana', unicas(semana), dpw, '') + barra('Últimas 4 semanas', mes, dpw4, '') : ''}${semana.map(linea).join('') || '<div class="empty">Aún no ha entrenado esta semana.</div>'}</div></section>
     ${P && !P.antes ? `<section class="section"><h2>Resto del bloque · ${esc(nomCiclo(P.cc))}</h2><div class="card">${bloque.map(linea).join('') || '<div class="empty">Sin entrenamientos anteriores en este bloque.</div>'}</div></section>` : ''}
@@ -4729,7 +4740,7 @@ function vEditor() {
   if (E.cargando) return '<div class="empty">Cargando programa…</div>';
   const p = E.prog;
   const resumen = e => { const g = gruposDe(e.pauta); return `${e.series} × ${esc(e.repeticiones)}${e.rir != null ? ' · RIR ' + e.rir : ''}${e.peso_ref ? ' · ' + esc(e.peso_ref) : ''} · desc. ${e.descanso_seg ? seg(e.descanso_seg) : 'no'}${g.some(x => x.tramos.length > 1) ? ' · tramos' : ''}`; };
-  return `<section class="stack"><button class="btn sm ghost" data-act="cerrarEditor" style="align-self:flex-start">← Volver</button><span class="eyebrow">${E.plantilla ? 'Plantilla · ' + esc(p?.categoria || 'sin categoría') : E.ctx ? `Contexto temporal de ${esc(a.nombre || '')} · ${esc(fCtx(E.ctx))} · ${E.ctx.dias_semana} entrenos/semana` : 'Programa de ' + esc(a.nombre || '')}</span><h1>${p ? esc(p.nombre) : 'Sin programa'}</h1>
+  return `<section class="stack"><button class="btn sm ghost" data-act="cerrarEditor" style="align-self:flex-start">← Volver</button><span class="eyebrow">${E.plantilla ? 'Plantilla · ' + esc(p?.categoria || 'sin categoría') : E.ctx ? `Contexto temporal de ${esc(a.nombre || '')} · ${esc(fCtx(E.ctx))} · ${E.ctx.dias_semana} entrenos/semana` : 'Programa de ' + esc(a.nombre || '')}</span><h1>${p ? esc(p.nombre) : 'Sin programa'}</h1>${E.alumnoId ? vSelectorProgs(E.alumnoId, p?.id) : ''}
     <div class="row" style="gap:8px;flex-wrap:wrap">${p ? `<button class="btn sm ghost" data-act="nuevoPrograma">Cambiar nombre</button><button class="btn sm" data-act="edDia">Añadir día</button>${p.dias.length ? '<button class="btn sm ghost" data-act="clipProg">📋 Copiar programa</button>' : ''}${Clip.hay() ? `<button class="btn sm gold" data-act="clipPegar">📥 Pegar ${Clip.hay().tipo === 'dia' ? 'día' : 'programa'}</button>` : ''}${editorEsFutbol() && p.dias.length < 7 ? '<button class="btn sm ghost" data-act="semanaCompleta">📅 Completar semana (lunes a domingo)</button>' : ''}${E.plantilla ? `<button class="btn sm gold" data-act="probarPlantilla" data-id="${p.id}">👁 Ver como alumno de prueba</button>` : E.ctx ? '' : '<button class="btn sm gold" data-act="nuevoCiclo">Nuevo ciclo (copiar)</button>'}` : `<button class="btn sm" data-act="nuevoPrograma">Crear programa</button>`}</div>
     ${p && !editorEsFutbol() && !esFlex(p) && p.dias.length ? `<div class="aprox small row" style="gap:8px;flex-wrap:wrap"><span class="grow">Este programa usa días de la semana. Para alumnos que no son futbolistas, mejor <b>Día 1, Día 2…</b>: el alumno elige cuándo los hace.</span><button class="btn sm" data-act="aDiasN">Pasar a Día 1, 2, 3…</button></div>` : ''}
     <p class="note">${E.plantilla ? 'Toca cualquier elemento para editarlo. Los cambios solo afectan a la plantilla: los alumnos que ya la tienen asignada conservan su copia.' : 'Toca cualquier elemento para editarlo. Los cambios los ve el alumno en cuanto vuelve a abrir la app.'}</p></section>
@@ -5708,6 +5719,7 @@ document.addEventListener('click', async e => {
     case 'avisoVisto': { const id = +b.dataset.id; await sb.from('avisos').update({ visto_at: new Date().toISOString() }).eq('id', id); S.d.avisos = (S.d.avisos || []).filter(x => x.id !== id); S.tab = b.dataset.t || 'hoy'; S.dia = null; render(); window.scrollTo(0, 0); break; }
     case 'avisarSemana': b.disabled = true; await avisarSemana(b.dataset.al, b.dataset.l); b.disabled = false; break;
     case 'semAjustar': b.disabled = true; await ajustarSemana(b.dataset.l, !!b.dataset.ant); b.disabled = false; break;
+    case 'abrirProg': await abrirEditor(S.ficha?.id || S.editor?.alumnoId, +b.dataset.id); break;
     case 'sesionesContexto': await abrirEditor(S.ficha.id, +b.dataset.id); break;
     case 'edBloque': formBloque(b.dataset.id ? +b.dataset.id : null, b.dataset.dia ? +b.dataset.dia : null); break;
     case 'edEj': formEjSesion(b.dataset.id ? +b.dataset.id : null, b.dataset.bloque ? +b.dataset.bloque : null); break;
