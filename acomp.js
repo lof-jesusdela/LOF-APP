@@ -150,7 +150,7 @@ const Acomp = (() => {
     const D = S.d || {}, s = D.servicio, hoy = hoyISO(), prox = controlesMensuales(s, sumaDias(hoy, 45)).find(c => c.fecha >= hoy);
     const pres = (D.presenciales || []).filter(p => p.estado === 'programada' && (!p.fecha || p.fecha >= hoy)).sort(ordPres).slice(0, 4);
     const wa = S.whatsapp ? waJesus('Hola Jesús') : null;
-    return `<section class="stack"><span class="eyebrow">Tu acompañamiento</span><h1>Tu coach</h1></section>
+    return `<section class="stack"><span class="eyebrow">Tu acompañamiento</span><h1>Tu coach</h1></section>${IA.vEntrada()}
       <section class="section"><div class="card stack"><div class="row" style="gap:12px;align-items:center"><img src="icons/coach.jpg" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover" onerror="this.remove()"><div class="grow"><b>Jesús de la Obra</b>${S.respuesta ? `<div class="small muted">Te responde ${esc(S.respuesta)}</div>` : ''}</div></div>
         ${wa ? `<a class="btn full" href="${esc(wa)}" target="_blank" rel="noopener">💬 Habla con Jesús por WhatsApp</a>` : '<p class="small muted" style="margin:0">Jesús aún no ha puesto su WhatsApp en la app.</p>'}</div></section>
       <section class="section"><h2>Próximamente</h2><div class="card">

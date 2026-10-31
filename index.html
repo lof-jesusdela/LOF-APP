@@ -550,6 +550,12 @@ input[type=time]{width:100%;background:var(--surface-2);border:1px solid var(--l
 .chk-hoy > .stack .small.muted{color:#C9D3E3}
 .chk-hoy .card{color:var(--fg)}
 nav.tabs a.tab-wa{flex:1;padding:10px 2px 12px;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10.5px;font-weight:700;color:#1E9A5E;text-decoration:none}
+.ia-chat{display:flex;flex-direction:column;gap:10px}
+.ia-msg{max-width:88%;padding:10px 14px;border-radius:16px;line-height:1.45;font-size:15px;background:var(--surface-2,#f1f3f7);align-self:flex-start;border-bottom-left-radius:4px}
+.ia-msg.yo{align-self:flex-end;background:var(--ink,#111);color:#fff;border-bottom-left-radius:16px;border-bottom-right-radius:4px}
+.ia-msg.nuevo{outline:2px solid var(--gold,#c9a227)}
+.ia-msg .pill{font-size:13px}
+.ia-form textarea{resize:none;min-height:48px}
 </style>
 </head>
 <body>
@@ -577,6 +583,7 @@ nav.tabs a.tab-wa{flex:1;padding:10px 2px 12px;display:flex;flex-direction:colum
 <script src="acomp.js"></script>
 <script src="negocio.js"></script>
 <script src="tandas.js"></script>
+<script src="entrenaidor.js"></script>
 <script src="app.js"></script>
 <script>
 /* Si la app se queda en «Cargando…», a los 12 s ofrece limpiar la caché y reintentar (y enseña el error si lo hay) */
