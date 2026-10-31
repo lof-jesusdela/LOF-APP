@@ -414,6 +414,9 @@ Tandas.ed = {
       v.t1 = t0.tp || (Tandas.esIso(t0) ? 'iso' : 'pesado'); v.t2 = t1.tp || (Tandas.esIso(t1) ? 'iso' : 'explosivo');
       v.r1 = v.t1 === 'iso' ? (Tandas.segDe(t0) || 30) : Tandas.limpiaR(t0.r || '') || '7'; v.r2 = v.t2 === 'iso' ? (Tandas.segDe(t1) || 30) : Tandas.limpiaR(t1.r || '') || '10';
       v.kg2 = numero(kgDe(t1)) ?? ''; v.rir2 = t1.rir ?? 0; v.orden = t0.op?.orden || 'lado';
+      v.ser = g.flatMap(gr => { const a = gr.tramos[0] || {}, b = gr.tramos[1] || {}, T1 = a.tp || (Tandas.esIso(a) ? 'iso' : 'pesado'), T2 = b.tp || (Tandas.esIso(b) ? 'iso' : 'explosivo');
+        return [...Array(gr.s || 1)].map(() => ({ t1: T1, r1: T1 === 'iso' ? (Tandas.segDe(a) || 30) : Tandas.limpiaR(a.r || '') || '7', kg: numero(kgDe(a)) ?? '', t2: T2, r2: T2 === 'iso' ? (Tandas.segDe(b) || 30) : Tandas.limpiaR(b.r || '') || '10', kg2: numero(kgDe(b)) ?? '' })); });
+      v.ps = g.length > 1 ? '1' : '0'; if (v.ps === '1') v.s = v.ser.length;
     }
     if (tipo === 'top') {
       const nuevo = g.length > 1 && g[0].s === 1, b = nuevo ? g[1] : null;
@@ -444,9 +447,12 @@ Tandas.ed = {
         this.sel('var', 'Series siguientes', v.var, [['backup', 'Back-off set'], ['drop', 'Dropset'], ['rp', 'Rest-pause']]), this.sel('lados', 'Se hace con', v.lados, [['2', 'Los 2 lados a la vez (2 manos / 2 piernas)'], ['uni', 'Unilateral: 1 mano / pierna y luego la otra'], ['doble', 'Unilateral doble: dos vueltas por lado']]), this.num('bs', 'Nº series back-off', v.bs), this.txt('br', 'Reps back-off', v.br), this.txt('brir', 'RIR back-off', v.brir), this.num('d', 'Descanso entre series (s)', v.d)].join('');
       extra = this.contador('bn', 'Tandas en cada back-off (dropset o rest-pause)', Math.min(Math.max(v.bn, 2), 4), 2, 4) + '<p class="small as-prev" data-prev></p>';
     } else if (M.tipo === 'contraste' || M.tipo === 'ucontraste') {
-      campos = [this.num('s', 'Series', v.s),
-        this.sel('t1', '1ª parte', v.t1, [['pesado', 'Pesado (kilos)'], ['superlento', 'Superlento (6-3-6)'], ['iso', 'Isométrico (tiempo y peso)'], ['explosivo', 'Explosivo']]), this.txt('r1', v.t1 === 'iso' ? 'Segundos' : 'Reps', v.r1), this.num('kg', 'Peso (kg)', v.kg),
-        this.sel('t2', '2ª parte', v.t2, [['explosivo', 'Explosivo'], ['pesado', 'Pesado (kilos)'], ['superlento', 'Superlento (6-3-6)'], ['iso', 'Isométrico (tiempo)']]), this.txt('r2', v.t2 === 'iso' ? 'Segundos' : 'Reps', v.r2), this.num('kg2', 'Peso 2ª parte (kg)', v.kg2, 'data-auto="1"'),
+      const ps = v.ps === '1', S1 = [['pesado', 'Pesado (kilos)'], ['superlento', 'Superlento (6-3-6)'], ['iso', 'Isométrico (tiempo y peso)'], ['explosivo', 'Explosivo']], S2 = [['explosivo', 'Explosivo'], ['pesado', 'Pesado (kilos)'], ['superlento', 'Superlento (6-3-6)'], ['iso', 'Isométrico (tiempo)']];
+      const ser = ps ? [...Array(Math.max(1, v.s))].map((_, k) => v.ser[k] || v.ser[v.ser.length - 1] || {}) : [];
+      campos = [this.num('s', 'Series', v.s), this.sel('ps', 'Ejecución de las series', v.ps || '0', [['0', 'Todas las series iguales'], ['1', 'Cada serie con un contraste distinto']]),
+        ...(ps ? [`<div class="as-ser" style="grid-column:1/-1;display:grid;gap:10px">${ser.map((o, k) => `<div class="stack" style="gap:6px;padding:10px;border:1px solid var(--line);border-radius:12px"><b class="small">Serie ${k + 1}</b><div class="as-grid">${this.sel('t1.' + k, '1ª parte', o.t1, S1)}${this.txt('r1.' + k, o.t1 === 'iso' ? 'Segundos' : 'Reps', o.r1)}${this.num('kg.' + k, 'Peso (kg)', o.kg)}${this.sel('t2.' + k, '2ª parte', o.t2, S2)}${this.txt('r2.' + k, o.t2 === 'iso' ? 'Segundos' : 'Reps', o.r2)}${this.num('kg2.' + k, 'Peso 2ª parte (kg)', o.kg2, 'data-auto="1"')}</div></div>`).join('')}</div>`] : [
+        this.sel('t1', '1ª parte', v.t1, S1), this.txt('r1', v.t1 === 'iso' ? 'Segundos' : 'Reps', v.r1), this.num('kg', 'Peso (kg)', v.kg),
+        this.sel('t2', '2ª parte', v.t2, S2), this.txt('r2', v.t2 === 'iso' ? 'Segundos' : 'Reps', v.r2), this.num('kg2', 'Peso 2ª parte (kg)', v.kg2, 'data-auto="1"')]),
         this.txt('rir', 'RIR', v.rir), this.num('d', 'Descanso entre series (s)', v.d),
         M.tipo === 'ucontraste' ? this.sel('orden', 'Orden', v.orden, [['lado', 'Por lado: derecho (1ª y 2ª parte) y luego izquierdo'], ['fase', 'Por partes: 1ª parte con los dos lados y luego la 2ª']]) : ''].join('');
     } else if (M.tipo === 'doble') {
@@ -485,8 +491,16 @@ Tandas.ed = {
         else if (v === 'drop') [...Array(bn)].forEach((_, k) => out.push(T({ s: k ? undefined : bs, r: (a('br') || '8') + xl, rir: k ? undefined : brir, kg: bk ? this.kg(bk * Math.pow(0.8, k)) : undefined, d: k < bn - 1 ? 0 : d })));
         else [...Array(bn)].forEach((_, k) => out.push(T({ s: k ? undefined : bs, r: (a('br') || '8') + xl, rir: k ? undefined : brir, kg: this.kg(bk), d: k < bn - 1 ? 20 : d })));
         return out; }
-      case 'contraste': case 'ucontraste': { const t1 = a('t1'), t2 = a('t2'), x = M.tipo === 'ucontraste' ? ' x lado' : '';
-        const eti = { superlento: ' (superlento)', explosivo: ' (explosivo)' };
+      case 'contraste': case 'ucontraste': { const x = M.tipo === 'ucontraste' ? ' x lado' : '';
+        const eti = { superlento: ' (superlento)', explosivo: ' (explosivo)' }, op = M.tipo === 'ucontraste' ? { orden: a('orden') || 'lado' } : undefined;
+        if (a('ps') === '1') {   // cada serie con su propio contraste: un grupo de 1 serie por cada una
+          const gv = (f, k) => { const el = panel.querySelector(`[data-a="${f}.${k}"]`); return el ? el.value.trim() : a(f); };
+          return [...Array(s)].flatMap((_, k) => {
+            const t1 = gv('t1', k), t2 = gv('t2', k), kgk = numero(gv('kg', k)), kg2 = numero(gv('kg2', k)) ?? (t1 === 'pesado' && t2 === 'explosivo' && kgk ? kgk * 0.5 : kgk);
+            const r1 = t1 === 'iso' ? `${gv('r1', k) || 30}´´ isométrico` : (gv('r1', k) || '7') + x + (eti[t1] || ''), r2 = t2 === 'iso' ? `${gv('r2', k) || 30}´´ isométrico` : (gv('r2', k) || '10') + x + (eti[t2] || '');
+            return [T({ s: 1, r: r1, rir, kg: this.kg(kgk), d: 0, tp: t1, op }), T({ r: r2, rir: R(a('rir2') || '0') ?? 0, kg: this.kg(kg2), d, tp: t2 })];
+          }); }
+        const t1 = a('t1'), t2 = a('t2');
         const r1 = t1 === 'iso' ? `${a('r1') || 30}´´ isométrico` : (a('r1') || '7') + x + (eti[t1] || ''), r2 = t2 === 'iso' ? `${a('r2') || 30}´´ isométrico` : (a('r2') || '10') + x + (eti[t2] || '');
         const kg2 = n('kg2') ?? (t1 === 'pesado' && t2 === 'explosivo' && kg ? kg * 0.5 : kg);   // pesado→explosivo: 50 %; el resto (p. ej. superlento→explosivo) con el mismo peso
         return [T({ s, r: r1, rir, kg: this.kg(kg), d: 0, tp: t1, op: M.tipo === 'ucontraste' ? { orden: a('orden') || 'lado' } : undefined }), T({ r: r2, rir: R(a('rir2') || '0') ?? 0, kg: this.kg(kg2), d, tp: t2 })]; }
@@ -514,12 +528,12 @@ Tandas.ed = {
     metSel.addEventListener('change', () => { pintar(true); volcar(); });
     cont.addEventListener('input', ev => {
       const panel = cont.querySelector('.as-panel'); if (!panel) return;
-      if (ev.target.dataset.a === 'kg2') ev.target.dataset.auto = ev.target.value.trim() ? '' : '1';
-      if (ev.target.dataset.a === 'kg' || ev.target.dataset.a === 't1' || ev.target.dataset.a === 't2') { const k2 = panel.querySelector('[data-a="kg2"]'); if (k2 && k2.dataset.auto === '1') k2.value = ''; }
+      if (/^kg2(\.\d+)?$/.test(ev.target.dataset.a || '')) ev.target.dataset.auto = ev.target.value.trim() ? '' : '1';
+      if (/^(kg|t1|t2)(\.\d+)?$/.test(ev.target.dataset.a || '')) { const suf = (ev.target.dataset.a.match(/\.\d+$/) || [''])[0], k2 = panel.querySelector(`[data-a="kg2${suf}"]`); if (k2 && k2.dataset.auto === '1') k2.value = ''; }
       if (ev.target.dataset.a === 'rm') { const k = panel.querySelector('[data-a="kg"]'); const rm = numero(ev.target.value); if (k && rm) k.value = fmtNum(this.red(rm * 0.9), 2); }
       volcar();
     });
-    cont.addEventListener('change', ev => { if (/^t[12]$/.test(ev.target.dataset.a || '')) { const l = ev.target.closest('.as-grid').querySelector(`[data-a="r${ev.target.dataset.a[1]}"]`)?.closest('label'); if (l) l.firstChild.textContent = ev.target.value === 'iso' ? 'Segundos' : 'Reps'; volcar(); } if (ev.target.dataset.a === 'var') { const c = cont.querySelector('[data-a-v="bn"]'); if (c) c.textContent = ev.target.value === 'rp' ? 3 : 2; volcar(); } });
+    cont.addEventListener('change', ev => { const da = ev.target.dataset.a || ''; if (da === 'ps' || (da === 's' && cont.querySelector('[data-a="ps"]'))) { volcar(); pintar(false); return; } if (/^t[12](\.\d+)?$/.test(da)) { const l = ev.target.closest('.as-grid').querySelector(`[data-a="r${da[1]}${da.slice(2)}"]`)?.closest('label'); if (l) l.firstChild.textContent = ev.target.value === 'iso' ? 'Segundos' : 'Reps'; volcar(); } if (ev.target.dataset.a === 'var') { const c = cont.querySelector('[data-a-v="bn"]'); if (c) c.textContent = ev.target.value === 'rp' ? 3 : 2; volcar(); } });
     cont.addEventListener('click', ev => {
       const b = ev.target.closest('[data-mas],[data-menos]'); if (!b) return; ev.preventDefault();
       const id = b.dataset.mas || b.dataset.menos, el = cont.querySelector(`[data-a-v="${id}"]`), mx = cont.querySelector(`[data-mas="${id}"]`), v = +el.textContent + (b.dataset.mas ? 1 : -1);
