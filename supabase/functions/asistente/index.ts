@@ -1,6 +1,6 @@
 // Edge Function: asistente de IA de Jesús para los alumnos (chat). Responde con la API de Claude
 // usando la metodología de Jesús (ajustes_privados.ia_instrucciones), sus correcciones y los datos del alumno.
-// Secretos necesarios: ANTHROPIC_API_KEY. Opcional: IA_MODELO (por defecto claude-sonnet-5-5), IA_LIMITE_DIA (por defecto 30), VAPID_* para avisar al coach.
+// Secretos: ANTHROPIC_API_KEY (Claude, de pago) o GEMINI_API_KEY (Gemini, capa gratuita solo para pruebas con el coach). Opcional: IA_MODELO (por defecto claude-sonnet-5-5), IA_LIMITE_DIA (por defecto 30), VAPID_* para avisar al coach.
 // Modos: alumno (por defecto) y coach ({ modo: "coach" }): Jesús habla con su asistente, le pregunta por los chats y le enseña ([APRENDER: …]).
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
@@ -103,8 +103,13 @@ Deno.serve(async (req) => {
     const canal = modoCoach ? "coach" : "alumno";
     const pregunta = String(body.mensaje || "").trim().slice(0, modoCoach ? 4000 : 2000);
     if (!pregunta) return json({ error: "Escribe tu pregunta" }, 400);
-    const key = Deno.env.get("ANTHROPIC_API_KEY");
-    if (!key) return json({ error: "Falta la clave ANTHROPIC_API_KEY en los secretos de la función" }, 500);
+    /* Proveedor: Claude (ANTHROPIC_API_KEY) o, para probar gratis, Gemini (GEMINI_API_KEY).
+       La capa gratuita de Gemini puede reutilizar los datos enviados: por seguridad solo se permite con el coach,
+       salvo que se ponga IA_GEMINI_ALUMNOS=si en los secretos. */
+    const key = Deno.env.get("ANTHROPIC_API_KEY"), gkey = Deno.env.get("GEMINI_API_KEY");
+    const usaGemini = !key && !!gkey;
+    if (!key && !gkey) return json({ error: "Falta la clave ANTHROPIC_API_KEY (o GEMINI_API_KEY para probar gratis) en los secretos de la función" }, 500);
+    if (usaGemini && !modoCoach && Deno.env.get("IA_GEMINI_ALUMNOS") !== "si") return json({ error: "El asistente está en modo de pruebas y solo lo puede usar Jesús." }, 403);
 
     if (!modoCoach) {
       const limite = +(Deno.env.get("IA_LIMITE_DIA") || 30);
@@ -196,14 +201,32 @@ Planificación (alimentación y demás, tal como la ve el alumno): ${txt(((plan.
     }
     if (msgs.length && msgs[msgs.length - 1].role === "user") msgs[msgs.length - 1].content += "\n" + pregunta; else msgs.push({ role: "user", content: pregunta });
 
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: Deno.env.get("IA_MODELO") || "claude-sonnet-5-5", max_tokens: modoCoach ? 1500 : 900, system, messages: msgs }),
-    });
-    const out = await r.json();
-    if (!r.ok) return json({ error: "La IA no ha podido responder: " + (out?.error?.message || r.status) }, 502);
-    let texto = ((out.content || []) as Fila[]).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+    let texto = "";
+    if (usaGemini) {
+      const modelo = Deno.env.get("GEMINI_MODELO") || "gemini-2.5-flash";
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
+        method: "POST",
+        headers: { "x-goog-api-key": gkey!, "content-type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: system }] },
+          contents: msgs.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })),
+          generationConfig: { maxOutputTokens: modoCoach ? 1500 : 900 },
+        }),
+      });
+      const out = await r.json();
+      if (!r.ok) return json({ error: "La IA no ha podido responder: " + (out?.error?.message || r.status) }, 502);
+      texto = ((out.candidates?.[0]?.content?.parts || []) as Fila[]).map((p) => p.text || "").join("\n").trim();
+      if (!texto) return json({ error: "La IA no ha devuelto respuesta (puede haberla bloqueado). Prueba a reformular." }, 502);
+    } else {
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "x-api-key": key!, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({ model: Deno.env.get("IA_MODELO") || "claude-sonnet-5-5", max_tokens: modoCoach ? 1500 : 900, system, messages: msgs }),
+      });
+      const out = await r.json();
+      if (!r.ok) return json({ error: "La IA no ha podido responder: " + (out?.error?.message || r.status) }, 502);
+      texto = ((out.content || []) as Fila[]).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+    }
 
     /* Modo coach: lo que Jesús le enseña se guarda en ia_conocimiento */
     let aprendido = 0;
