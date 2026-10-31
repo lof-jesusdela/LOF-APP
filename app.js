@@ -1067,7 +1067,7 @@ function vEjercicio(e, i, ro) {
     ${ej.imagen_url || ej.musculo_img_url ? `<div class="imgs">${ej.imagen_url ? `<button class="img" data-act="verImagen" data-src="${esc(ej.imagen_url)}" aria-label="Ver imagen del ejercicio"><img src="${esc(ej.imagen_url)}" alt="${esc(ej.nombre)}" loading="lazy" onerror="this.parentNode.hidden=true"><span>Ejercicio</span></button>` : ''}${ej.musculo_img_url ? `<button class="img" data-act="verImagen" data-src="${esc(ej.musculo_img_url)}" aria-label="Ver músculo trabajado"><img src="${esc(ej.musculo_img_url)}" alt="Músculo trabajado" loading="lazy" onerror="this.parentNode.hidden=true"><span>Músculo</span></button>` : ''}</div>` : ''}
     <div class="row" style="align-items:flex-start"><span class="exn num">${i}</span><div class="grow"><h3>${esc(ej.nombre)}</h3>${!ej.musculo_img_url && ej.musculo ? `<div class="small muted">${esc(ej.musculo)}</div>` : ''}</div><div class="stack" style="gap:6px;align-items:flex-end">${vid}${ro ? '' : `<button class="btn sm ghost omitir-b" data-act="omitir" data-es="${e.id}" data-n="${esc(ej.nombre)}">No lo hago</button>`}</div></div>
     <div class="chips ex-chips"><span class="pill">${e.series} ${e.series === 1 ? 'serie' : 'series'}</span>${tandas ? '' : `<span class="pill">${desc ? 'Descanso ' + seg(desc) : 'Sin descanso'}</span>`}${e.metodos ? `<button class="pill gold" data-act="metodo" data-n="${esc(e.metodos.nombre)}">${esc(e.metodos.nombre)} ⓘ</button>` : ''}${e.aproximacion_631 ? '<button class="pill gold" data-act="metodo" data-n="Aproximación 6·3·1">Aproximación 6·3·1 ⓘ</button>' : ''}</div>
-    ${(() => { const mt = e.material ?? ej.material, mi = e.material_img_url ?? ej.material_img_url; return mt || mi ? `<div class="row a-medida small" style="gap:10px;align-items:center">${mi ? `<button class="img mat-img" data-act="verImagen" data-src="${esc(mi)}" aria-label="Ver imagen del material"><img src="${esc(mi)}" alt="Material" loading="lazy" onerror="this.parentNode.hidden=true"></button>` : ''}${mt ? `<span><b>Material:</b> ${esc(mt)}</span>` : '<span><b>Material</b></span>'}</div>` : ''; })()}
+    ${(() => { const mt = e.material ?? ej.material, mi = e.material_img_url ?? ej.material_img_url; return mt || mi ? `<div class="row a-medida small" style="gap:10px;align-items:center">${mi ? String(mi).split(';').filter(Boolean).map(u => `<button class="img mat-img" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver imagen del material"><img src="${esc(u)}" alt="Material" loading="lazy" onerror="this.parentNode.hidden=true"></button>`).join('') : ''}${mt ? `<span><b>Material:</b> ${esc(mt)}</span>` : '<span><b>Material</b></span>'}</div>` : ''; })()}
     ${aj.length ? `<div class="small a-medida"><b>A tu medida:</b> ${aj.map(esc).join(' · ')}</div>` : ''}
     ${e.nota ? `<div class="small ex-nota"><b>Nota de Jesús:</b> ${esc(e.nota)}</div>` : ''}
     ${e.aproximacion_631 && !ro ? vAprox(e) : ''}
@@ -4952,7 +4952,7 @@ function formEjSesion(id, bloqueId) {
   const lib = S.c.ejercicios.filter(x => !x.privado).sort((x, y) => x.nombre.localeCompare(y.nombre, 'es')), todosEj = S.c.ejercicios;
   const opts = q => { const n = normaliza(q || ''); return lib.filter(x => !n || normaliza(x.nombre).includes(n)).map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join(''); };
   const dia = p.dias.find(d => d.bloques_sesion.includes(blq)), hermanos = (dia?.bloques_sesion || []).filter(x => x.tipo === 'fuerza');
-  const st = { foto: null, nfoto: null, mimg: null, mquitar: false, mus: null };
+  const st = { foto: null, nfoto: null, mlista: null, mus: null };
   const libEj = e ? (S.c.ejercicios || []).find(x => x.id === e.ejercicio_id) : null;
   abrirSheet(`<form class="stack" id="f-ejs"><h2>${e ? 'Editar ejercicio' : 'Añadir ejercicio'}</h2>
     <div class="stack" style="gap:6px"><span class="small muted">Ejercicio</span><input type="search" id="es-bus" placeholder="Buscar en tu biblioteca…" autocomplete="off">
@@ -5016,16 +5016,16 @@ function formEjSesion(id, bloqueId) {
   const pintarMus = () => { const u = st.mus ? URL.createObjectURL(st.mus) : actual().mus;
     $('#es-dmw').innerHTML = `<div class="es-prev">${u ? `<img src="${esc(u)}" alt="Músculo">` : '<span class="es-sin">Sin músculo</span>'}<div class="grow stack" style="gap:6px"><span class="small muted">Imagen del músculo que se trabaja</span><label class="btn sm ghost" style="align-self:flex-start"><input type="file" id="es-dm" accept="image/*" hidden>📷 ${u ? 'Cambiar' : 'Añadir'}</label></div></div>`; };
   /* Imagen del material: la de este ejercicio en el programa manda sobre la de la biblioteca ('' = sin imagen aquí) */
-  const mimgActual = () => { if (st.mquitar) return null; if (st.mimg) return URL.createObjectURL(st.mimg); const x = lib.find(z => z.id === +sel.value), u = e?.material_img_url ?? x?.material_img_url; return u || null; };
-  const alcance = () => { const x = lib.find(z => z.id === +sel.value), v = $('#es-mat').value.trim(), cambia = v !== (e?.material ?? x?.material ?? ''); $('#es-mat-o').hidden = !(x && ((v && cambia) || st.mimg || st.mquitar)); $('#es-mat-n').textContent = x ? `«${x.nombre}»` : 'ejercicios iguales'; };
+  const mLista = () => st.mlista || (() => { const x = lib.find(z => z.id === +sel.value), u = e?.material_img_url ?? x?.material_img_url; return u ? String(u).split(';').filter(Boolean).map(url => ({ url })) : []; })();
+  const alcance = () => { const x = lib.find(z => z.id === +sel.value), v = $('#es-mat').value.trim(), cambia = v !== (e?.material ?? x?.material ?? ''); $('#es-mat-o').hidden = !(x && ((v && cambia) || st.mlista)); $('#es-mat-n').textContent = x ? `«${x.nombre}»` : 'ejercicios iguales'; };
   const pintarMat = () => {
-    const u = mimgActual();
-    $('#es-mimg').innerHTML = `<div class="es-prev">${u ? `<img src="${esc(u)}" alt="Material" onerror="this.outerHTML='<span class=&quot;es-sin&quot;>No carga</span>'">` : '<span class="es-sin">Sin imagen</span>'}<div class="grow stack" style="gap:6px;min-width:0"><span class="small muted">Imagen del material (barra, agarre…) · opcional</span><div class="row" style="gap:6px;flex-wrap:wrap"><label class="btn sm ghost"><input type="file" id="es-mfile" accept="image/*" hidden>📷 ${u ? 'Cambiar' : 'Añadir imagen'}</label>${u ? '<button type="button" class="btn sm ghost" id="es-mquita">Quitar</button>' : ''}</div></div></div>`;
+    const l = mLista();
+    $('#es-mimg').innerHTML = `<div class="stack" style="gap:8px"><span class="small muted">Imágenes del material y de los ajustes (barra, agarre, máquina…) · opcional</span><div class="row" style="gap:8px;flex-wrap:wrap">${l.map((m, k) => `<div class="stack" style="gap:4px;align-items:center"><img src="${esc(m.file ? URL.createObjectURL(m.file) : m.url)}" alt="Material" style="width:84px;height:84px;object-fit:cover;border-radius:10px" onerror="this.outerHTML='<span class=&quot;es-sin&quot;>No carga</span>'"><button type="button" class="btn sm ghost" data-mq="${k}">Quitar</button></div>`).join('')}</div><label class="btn sm ghost" style="align-self:flex-start"><input type="file" id="es-mfile" accept="image/*" multiple hidden>📷 ${l.length ? 'Añadir otra' : 'Añadir imagen'}</label></div>`;
     alcance();
   };
-  $('#es-mimg').addEventListener('change', ev => { if (ev.target.id === 'es-mfile' && ev.target.files[0]) { st.mimg = ev.target.files[0]; st.mquitar = false; pintarMat(); } });
-  $('#es-mimg').addEventListener('click', ev => { if (ev.target.id === 'es-mquita') { st.mimg = null; st.mquitar = true; pintarMat(); } });
-  $('#es-mat').addEventListener('input', alcance); sel.addEventListener('change', () => { st.mimg = null; st.mquitar = false; pintarMat(); });
+  $('#es-mimg').addEventListener('change', ev => { if (ev.target.id === 'es-mfile' && ev.target.files.length) { st.mlista = mLista().concat([...ev.target.files].map(file => ({ file }))); pintarMat(); } });
+  $('#es-mimg').addEventListener('click', ev => { const q = ev.target.closest('[data-mq]'); if (q) { st.mlista = mLista().filter((_, k) => k !== +q.dataset.mq); pintarMat(); } });
+  $('#es-mat').addEventListener('input', alcance); sel.addEventListener('change', () => { st.mlista = null; pintarMat(); });
   if (e?.ejercicio_id) { if (![...sel.options].some(o => +o.value === e.ejercicio_id)) sel.insertAdjacentHTML('beforeend', `<option value="${e.ejercicio_id}">${esc(e.ejercicios?.nombre || 'Ejercicio')}</option>`); sel.value = String(e.ejercicio_id); }
   pintarPrev(); pintarMat(); pintarDatos();
   $('#es-dn').addEventListener('input', alcanceDatos); $('#es-dv').addEventListener('input', alcanceDatos);
@@ -5088,15 +5088,15 @@ function formEjSesion(id, bloqueId) {
         if (hay || e?.aprox_kg != null) row.aprox_kg = hay ? numero(ks[1]) : null; }
       const mat = $('#es-mat').value.trim(), nota = $('#es-nota').value.trim(), todos = !$('#es-mat-o').hidden && document.querySelector('input[name="es-ma"]:checked')?.value === 'todos';
       const libX = (S.c.ejercicios || []).find(z => z.id === +ejId), matBib = libX?.material || '';
-      let urlMat; if (st.mimg) { try { urlMat = await subirImagenEj(st.mimg, 'material', 900); } catch (err) { console.error(err); return toast(motivoImg(err)); } }
-      const cambiaImg = !!urlMat || st.mquitar;
+      let urlMat; if (st.mlista) { try { const us = []; for (const m of st.mlista) us.push(m.file ? await subirImagenEj(m.file, 'material', 900) : m.url); urlMat = us.join(';') || undefined; } catch (err) { console.error(err); return toast(motivoImg(err)); } }
+      const cambiaImg = !!st.mlista, mquitar = !!st.mlista && !urlMat;
       if (todos && (mat || cambiaImg)) {
-        const cam = {}; if (mat) cam.material = mat; if (urlMat) cam.material_img_url = urlMat; else if (st.mquitar) cam.material_img_url = null;
+        const cam = {}; if (mat) cam.material = mat; if (urlMat) cam.material_img_url = urlMat; else if (mquitar) cam.material_img_url = null;
         const r = await sb.from('ejercicios').update(cam).eq('id', +ejId); if (r.error) throw r.error;
         if (libX) Object.assign(libX, cam); row.material = null; if (cambiaImg) row.material_img_url = null;
       } else {
         if (mat) row.material = mat === matBib && !e?.material ? null : mat; else if (e && e.material != null) row.material = null;
-        if (urlMat) row.material_img_url = urlMat; else if (st.mquitar) row.material_img_url = libX?.material_img_url && !(e?.material_img_url) ? '' : null;
+        if (urlMat) row.material_img_url = urlMat; else if (mquitar) row.material_img_url = libX?.material_img_url && !(e?.material_img_url) ? '' : null;
       }
       if (nota || (e && e.nota != null)) row.nota = nota || null;
       Object.entries(datos).forEach(([k, v]) => { if (v !== undefined) row[k] = v; });
