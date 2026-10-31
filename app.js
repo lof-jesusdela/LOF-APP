@@ -3595,12 +3595,33 @@ async function borrarMetodo(id) {
   const r = await sb.from('metodos').delete().eq('id', id); if (r.error) return toast('No se ha podido eliminar');
   await cargarCoach(); cerrarSheet(); toast('Método eliminado'); render();
 }
+/* Grupos musculares / patrones para filtrar la biblioteca (por músculo y por nombre) */
+const GRUPOS_EJ = [
+  ['sup', 'Tren superior', /pecho|pectoral|press (de )?banca|aperturas|fondos|espalda|dorsal|remo|jalon|dominada|pull ?over|hombro|deltoid|elevacion(es)? (lateral|frontal)|face pull|biceps|curl|triceps|antebrazo|trapecio|encogimiento|flexion(es)? (de brazos)?|press militar|press (de )?hombro/],
+  ['inf', 'Tren inferior', /cuadricep|isquio|femoral|gluteo|pierna|sentadilla|prensa|leg press|zancada|desplante|peso muerto|hip thrust|puente|gemelo|soleo|pantorrilla|aductor|abductor|extension de cuadriceps|curl femoral|step|bulgara|cadera/],
+  ['pecho', 'Pecho', /pecho|pectoral|press (de )?banca|aperturas|fondos|cruces|flexion(es)? de brazos|push ?up/],
+  ['espalda', 'Espalda', /espalda|dorsal|remo|jalon|dominada|pull ?over|trapecio|romboid|face pull|lumbar|hiperextension/],
+  ['hombro', 'Hombro', /hombro|deltoid|elevacion(es)? (lateral|frontal)|face pull|press militar|pajaros|posterior/],
+  ['biceps', 'Bíceps', /biceps|curl (de )?(biceps|martillo|predicador|barra|mancuerna|inclinado)|martillo|predicador/],
+  ['triceps', 'Tríceps', /triceps|extension(es)? (de )?(triceps|codo)|press frances|jalon (de )?triceps|fondos en banco|patada/],
+  ['antebrazo', 'Antebrazo', /antebrazo|agarre|muneca|farmer/],
+  ['cuadriceps', 'Cuádriceps', /cuadricep|sentadilla|prensa|leg press|extension de (pierna|cuadriceps)|zancada|desplante|hack|bulgara|goblet/],
+  ['isquios', 'Isquios', /isquio|femoral|curl (femoral|de pierna|nordico)|peso muerto rumano|buenos dias|nordic/],
+  ['gluteo', 'Glúteo', /gluteo|hip thrust|puente|patada|abduccion|pull through|peso muerto rumano|bulgara/],
+  ['gemelo', 'Gemelo', /gemelo|soleo|pantorrilla|elevacion(es)? de talon|talones/],
+  ['aduct', 'Aductores/abductores', /aductor|abductor|abduccion|aduccion|copenhagen/],
+  ['core', 'Core', /core|plancha|pallof|anti ?rotacion|dead bug|bird dog|estabilidad|rueda abdominal|ab wheel|lenadores|woodchop/],
+  ['abdomen', 'Abdomen', /abdomin|abs\b|crunch|encogimiento|elevacion(es)? de piernas|recto abdominal|oblicuo|v-?up|tijeras/],
+  ['lumbar', 'Lumbar', /lumbar|hiperextension|extension(es)? lumbar|good morning|buenos dias|superman/],
+  ['cardio', 'Cardio', /^cardio ·|cardio|carrera|bicicleta|remo ergo|eliptica|cinta/],
+];
+const grupoEjOk = (x, g) => { const d = GRUPOS_EJ.find(z => z[0] === g); return !d || d[2].test(norm((x.nombre || '') + ' ' + (x.musculo || '')).replace(/[^a-z0-9·\s-]/g, ' ')); };
 function vEjercicios() {
   if (S.bibVista === 'met') return vMetodos();
   const l = S.c.ejercicios.filter(x => !x.privado), filtro = norm(S.filtroEj || '');
   const claveEj = x => norm(x.nombre || '').replace(/\([^)]*\)/g, ' ').replace(/\b(en maquina|en polea|maquina|polea)\b/g, ' ').replace(/\s+/g, ' ').trim(), cuenta = {}; l.forEach(x => { const k = claveEj(x); cuenta[k] = (cuenta[k] || 0) + 1; });
   const esCardio = x => /^cardio ·/i.test(x.nombre || ''), sel = S.ejSel || [], nDup = l.filter(x => cuenta[claveEj(x)] > 1).length;
-  let vis = l.filter(x => (S.ejDup ? cuenta[claveEj(x)] > 1 : true) && (!filtro || norm(x.nombre + ' ' + (x.musculo || '')).includes(filtro)) && (S.ejFalta === 'mus' ? !esCardio(x) && !x.musculo_img_url : S.ejFalta === 'foto' ? !esCardio(x) && !x.imagen_url : true));
+  let vis = l.filter(x => (S.ejDup ? cuenta[claveEj(x)] > 1 : true) && (!filtro || norm(x.nombre + ' ' + (x.musculo || '')).includes(filtro)) && (!S.ejGrupo || grupoEjOk(x, S.ejGrupo)) && (S.ejFalta === 'mus' ? !esCardio(x) && !x.musculo_img_url : S.ejFalta === 'foto' ? !esCardio(x) && !x.imagen_url : true));
   if (S.ejDup) vis = vis.slice().sort((a, b) => claveEj(a).localeCompare(claveEj(b)) || (a.nombre || '').localeCompare(b.nombre || ''));
   const fuerza = l.filter(x => !/^cardio ·/i.test(x.nombre || '')), sinV = l.filter(x => !x.video_url).length, sinF = fuerza.filter(x => !x.imagen_url).length, sinM = fuerza.filter(x => !x.musculo_img_url).length;
   return `${bibTabs()}<section class="stack"><span class="eyebrow">Tu biblioteca</span><div class="row"><h1 class="grow">Ejercicios</h1><button class="btn sm" data-act="nuevoEjercicio">＋ Nuevo</button></div><p class="small muted">Lo que cambies aquí se ve al instante en los entrenos de todos tus alumnos.</p></section>
@@ -3609,6 +3630,7 @@ function vEjercicios() {
   <button class="btn full" data-act="importarImagenes">Actualizar imágenes desde tus hojas</button><p class="note">Pone la imagen del ejercicio, la del músculo y las de cardio y movilidad que tenías en tus hojas, y repara las que no cargan.</p>
   <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm ${S.ejInt ? 'gold' : 'ghost'}" data-act="ejModoInt">${S.ejInt ? '✕ Salir de integrar' : '🔗 Integrar duplicados'}</button>${S.ejInt ? `<button class="btn sm ghost" data-act="ejDup" aria-pressed="${!!S.ejDup}">${S.ejDup ? 'Ver todos' : `Ver posibles duplicados (${nDup})`}</button>` : ''}</div>
   ${S.ejInt ? `<p class="note">Toca los ejercicios que son el mismo (marca 2 o más). Luego eliges con cuál te quedas: los demás desaparecen y todos los programas pasan a usar el que elijas.</p>` : ''}
+  <div class="row" style="gap:6px;flex-wrap:wrap"><button class="pill ${!S.ejGrupo ? 'gold' : ''}" data-act="ejGrupo" data-v="">Todos</button>${GRUPOS_EJ.map(([k, t]) => `<button class="pill ${S.ejGrupo === k ? 'gold' : ''}" data-act="ejGrupo" data-v="${k}">${t} <span class="small muted">${S.c.ejercicios.filter(z => !z.privado && grupoEjOk(z, k)).length}</span></button>`).join('')}</div>
   <input type="text" id="ej-buscar" placeholder="Buscar por nombre o músculo" value="${esc(S.filtroEj || '')}">
   <div class="card">${vis.map(x => `<div class="line" data-act="${S.ejInt ? 'ejSel' : 'editarEjercicio'}" data-id="${x.id}" style="cursor:pointer${sel.includes(x.id) ? ';background:var(--gold-bg,#fff6dc)' : ''}">${S.ejInt ? `<input type="checkbox" ${sel.includes(x.id) ? 'checked' : ''} style="width:22px;height:22px;flex:none;pointer-events:none" tabindex="-1" aria-label="Seleccionar">` : ''}${x.imagen_url ? `<img src="${esc(x.imagen_url)}" alt="" style="width:48px;height:48px;border-radius:10px;object-fit:cover;flex:none" onerror="this.outerHTML='<span class=&quot;pill bad&quot;>Foto rota</span>'">` : `<div class="ico">${svg('ejercicios')}</div>`}<div class="grow"><h3>${esc(x.nombre)}</h3><div class="small muted">${esc(x.musculo || 'Sin músculo')}</div></div><div class="stack" style="gap:4px;align-items:flex-end"><span class="pill ${x.video_url ? 'ok' : 'warn'}">${x.video_url ? 'Vídeo' : 'Sin vídeo'}</span><span class="pill ${x.imagen_url ? 'ok' : 'warn'}">${x.imagen_url ? 'Foto' : 'Sin foto'}</span>${x.musculo_img_url ? '' : '<span class="pill warn">Sin músculo</span>'}</div></div>`).join('') || '<div class="empty">No hay ejercicios con ese nombre.</div>'}</div>${S.ejInt && sel.length ? `<div style="position:sticky;bottom:76px;padding:10px 0;z-index:5"><button class="btn full gold" data-act="ejIntegrar" ${sel.length < 2 ? 'disabled' : ''}>${sel.length < 2 ? 'Marca al menos 2 ejercicios' : `Integrar ${sel.length} ejercicios en uno`}</button></div>` : ''}</section>`;
 }
@@ -5605,6 +5627,7 @@ document.addEventListener('click', async e => {
     case 'nuevoMetodo': formMetodo(null); break;
     case 'editarMetodo': formMetodo(+b.dataset.id); break;
     case 'borrarMetodo': await borrarMetodo(+b.dataset.id); break;
+    case 'ejGrupo': S.ejGrupo = b.dataset.v || ''; render(); break;
     case 'ejFalta': S.ejFalta = S.ejFalta === b.dataset.v ? '' : b.dataset.v; render(); break;
     case 'edAbrirDia': S.editor.dia = b.dataset.id === 'todos' ? 'todos' : +b.dataset.id || null; render(); window.scrollTo(0, 0); break;
     case 'edCarrera': await nuevaCarrera(+b.dataset.dia); break;
