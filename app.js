@@ -3212,7 +3212,7 @@ function histAvisos(aid) {
     <button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
 }
 /* Banners de la ficha: recuerda cuáles tienes abiertos */
-document.addEventListener('toggle', e => { const d = e.target; if (d?.classList?.contains('fb')) (S.fbAbiertos ||= {})[d.dataset.fb] = d.open; }, true);
+document.addEventListener('toggle', e => { const d = e.target; if (d?.classList?.contains('fb')) ((S.fbAbiertos ||= {})[S.ficha?.id] ||= {})[d.dataset.fb] = d.open; }, true);
 function vFicha() {
   const f = S.ficha, a = S.c.perfiles.find(p => p.id === f.id) || {};
   if (f.cargando) return '<div class="empty">Cargando ficha…</div>';
@@ -3230,8 +3230,8 @@ function vFicha() {
   const pend = e.items.filter(x => !x.ok), hechas = e.items.filter(x => x.ok);
   const DOT = { 2: /semana|motivaci|check|devoluci|indicaci|partido|wellness|sueño|fatiga|molest|futbol|rpe|carga/i, 3: /proceso|extensi|pausa|regreso/i, 4: /entreno|ha cambiado su peso|contexto/i, 5: /alimentaci|ingesta|comida|nutri/i, 6: /h[aá]bito|pasos|temperamento/i, 7: /medici|composici/i, 8: /revisi[oó]n|presencial|cita/i, 9: /pago|cuota/i, 10: /test|valoraci/i, 11: /foto|caso|medida/i };
   const dot = n => { const l = n === 1 ? pend : DOT[n] ? pend.filter(x => DOT[n].test(x.m)) : []; return !l.length ? '' : `<span class="fb-dot ${l.some(x => x.n === 'bad') ? 'bad' : ''} ${l.some(x => x.nueva) ? 'nuevo' : ''}" title="${l.length} ${l.length === 1 ? 'aviso' : 'avisos'}">${l.length}</span>`; };
-  const ab = S.fbAbiertos ||= {};
-  const ban = (id, n, ico, tit, res, html, abierto = false) => `<details class="fb" data-fb="${id}" ${(ab[id] ?? abierto) ? 'open' : ''}><summary><span class="fb-n">${n}</span><span class="fb-ico">${ico}</span><div class="grow fb-t"><b>${tit}</b>${res ? `<small>${res}</small>` : ''}</div>${dot(n)}<span class="fb-chev" aria-hidden="true"></span></summary><div class="fb-body">${html}</div></details>`;
+  const ab = (S.fbAbiertos ||= {})[f.id] ||= {};  // todos cerrados por defecto; se recuerda lo que abres en cada alumno
+  const ban = (id, n, ico, tit, res, html, abierto = false) => `<details class="fb" data-fb="${id}" ${ab[id] ? 'open' : ''}><summary><span class="fb-n">${n}</span><span class="fb-ico">${ico}</span><div class="grow fb-t"><b>${tit}</b>${res ? `<small>${res}</small>` : ''}</div>${dot(n)}<span class="fb-chev" aria-hidden="true"></span></summary><div class="fb-body">${html}</div></details>`;
   const ultM = f.med[0], pagP = pagos.filter(p => !p.pagado_at), pagV = pagP.filter(p => p.vence < hoy);
   const modE = srv?.modulo_entreno ?? true;
   const fb1 = `<div class="stack" style="gap:12px">${Acomp.vResumen(f, a)}
@@ -5686,7 +5686,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v192';
+const APP_VER = 'v193';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
