@@ -93,15 +93,16 @@ const Casos = (() => {
   /* Momentos: inicio del proceso (mes 0) y cada control mensual; ventana de ±7 días alrededor */
   function meses(srv, fotos, tests, hasta = hoyISO()) {
     if (!srv?.inicio) return [];
-    const ms = [{ n: 0, fecha: srv.inicio }, ...controlesMensuales(srv, sumaDias(hasta, 7)).map(c => ({ n: c.n, fecha: c.fecha }))];
+    /* Cada mes va desde 7 días antes de su control hasta el día antes de que empiece el siguiente: lo que suba en ese tiempo cuenta */
+    const ms = [{ n: 0, fecha: srv.inicio }, ...controlesMensuales(srv, sumaDias(hasta, 45)).map(c => ({ n: c.n, fecha: c.fecha }))];
     let seguidos = 0;
-    return ms.map(m => {
-      const ini = sumaDias(m.fecha, -7), fin = sumaDias(m.fecha, 7), dentro = x => x.fecha >= ini && x.fecha <= fin;
-      const vistas = new Set((fotos || []).filter(dentro).map(x => x.vista)), foto = ['frente', 'perfil', 'espalda'].every(v => vistas.has(v)), refl = (tests || []).some(dentro);
+    return ms.map((m, i) => {
+      const sig = ms[i + 1], ini = i === 0 ? sumaDias(m.fecha, -14) : sumaDias(m.fecha, -7), fin = sig ? sumaDias(sig.fecha, -8) : sumaDias(m.fecha, 22), dentro = x => x.fecha >= ini && x.fecha <= fin;
+      const vistas = new Set((fotos || []).filter(dentro).map(x => x.vista)), foto = ['frente', 'perfil', 'espalda'].every(v => vistas.has(v)), refl = (tests || []).some(dentro), fotoParcial = foto ? PTS.foto : Math.round(PTS.foto * vistas.size / 3);
       const abierto = hasta >= ini && hasta <= fin, futuro = hasta < ini, completo = foto && refl;
       if (completo) seguidos++; else if (!abierto && !futuro) seguidos = 0;
       const racha = completo && seguidos % 3 === 0;
-      const pts = (foto ? PTS.foto : 0) + (refl ? PTS.reflexion : 0) + (completo ? PTS.ambos : 0) + (racha ? PTS.racha : 0);
+      const pts = fotoParcial + (refl ? PTS.reflexion : 0) + (completo ? PTS.ambos : 0) + (racha ? PTS.racha : 0);
       return { ...m, ini, fin, foto, refl, completo, racha, pts, abierto, futuro, vistas: vistas.size };
     }).filter(m => !m.futuro);
   }
@@ -120,8 +121,8 @@ const Casos = (() => {
       <div class="stack" style="gap:6px">${PREMIOS.map(([k, t, pts, ic]) => `<div class="row small" style="gap:8px"><span>${ic}</span><span class="grow">${esc(t)} <span class="muted">· ${pts} puntos</span></span>${coach ? '' : P.saldo >= pts ? `<button class="btn sm gold" data-act="canjear" data-k="${k}">Canjear</button>` : `<span class="muted">${Math.max(0, pts - P.saldo)} más</span>`}</div>`).join('')}</div>
       ${pend.length ? `<div class="small">⏳ ${coach ? 'Quiere canjear' : 'Canje pedido'}: ${pend.map(c => esc((PREMIOS.find(p => p[0] === c.premio) || [])[1] || c.premio)).join(', ')}${coach ? '' : ' · Jesús te confirmará cómo aplicarlo.'}</div>` : ''}
       <details class="small"><summary>${coach ? 'Cómo los ha ganado' : 'Cómo se ganan'}</summary><div class="stack" style="gap:4px;margin-top:6px">
-        <div class="muted">En la semana de cada control (7 días antes y después): fotos de frente, perfil y espalda (+${PTS.foto}), tu reflexión del mes (+${PTS.reflexion}) y, si haces las dos, +${PTS.ambos}. Cada 3 meses completos seguidos, +${PTS.racha}. Un mes que falles no borra lo ganado.</div>
-        ${P.ms.slice().reverse().map(m => `<div class="row" style="gap:8px"><span class="grow">${m.n ? 'Control ' + m.n : 'Inicio'} · ${esc(fCorta(m.fecha))}${m.abierto ? ' (en curso)' : ''}</span>${m.foto ? '📸' : ''}${m.refl ? '✍️' : ''}${m.racha ? '🔥' : ''}<b class="num">+${m.pts}</b></div>`).join('')}
+        <div class="muted">Cada mes (desde 7 días antes de su control hasta que empieza el siguiente): fotos de frente, perfil y espalda (+${PTS.foto}; con 1 o 2 fotos, la parte proporcional), tu reflexión del mes (+${PTS.reflexion}) y, si haces las dos, +${PTS.ambos}. Cada 3 meses completos seguidos, +${PTS.racha}. Un mes que falles no borra lo ganado.</div>
+        ${P.ms.slice().reverse().map(m => `<div class="row" style="gap:8px"><span class="grow">${m.n ? 'Control ' + m.n : 'Inicio'} · ${esc(fCorta(m.fecha))}${m.abierto ? ' (en curso)' : ''}</span>${m.foto ? '📸' : m.vistas ? `📸${m.vistas}/3` : ''}${m.refl ? '✍️' : ''}${m.racha ? '🔥' : ''}<b class="num">+${m.pts}</b></div>`).join('')}
         ${(canjes || []).filter(c => c.estado !== 'rechazado').map(c => `<div class="row" style="gap:8px"><span class="grow">Canje · ${esc((PREMIOS.find(p => p[0] === c.premio) || [])[1] || c.premio)} (${c.estado === 'aplicado' ? 'aplicado' : 'pendiente'})</span><b class="num" style="color:var(--bad)">−${c.puntos}</b></div>`).join('')}</div></details>
       ${coach ? '' : '<p class="small muted" style="margin:0">🔒 Tus fotos y tu reflexión son privadas: solo las veis tú y Jesús. Ganas los mismos puntos compartas o no tu caso.</p>'}</div>`;
   }
