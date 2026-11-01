@@ -1529,7 +1529,10 @@ function vPrevia(d) {
       <div class="pv-tags">${[vol && 'Volumen ' + vol.toLowerCase(), intens && 'Intensidad ' + intens.toLowerCase(), d.foco && 'Foco: ' + d.foco, nomT, ...grupos].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).map(t => `<span>${esc(t)}</span>`).join('')}</div>
       <h3 class="pv-h">LO QUE HARÁS</h3>${bloques || '<p class="small muted">Este día aún no tiene ejercicios.</p>'}
     </div>
-    <div class="pv-cta"><button class="btn full pv-go" data-act="previaEmpezar">EMPEZAR</button><button class="linkbtn small" data-act="previaVer">Ver el entreno sin empezar el cronómetro</button></div>
+    <div class="pv-cta">${(() => { const z = S.sesion || {}, hay = Object.keys(z.valores || {}).length, x = z.id && (S.d?.sesiones || []).find(q => q.id === z.id), hecho = z.finMin || x?.duracion_min || x?.cansancio != null;
+      if (hecho && !z.inicio) return `<span class="pv-hecho">✓ Ya lo has hecho${z.finMin ? ' · ' + z.finMin + ' min' : ''}${hay ? ' · ' + nSeriesReg(Object.values(z.valores)) + ' series' : ''}</span><button class="btn full pv-go" data-act="previaVer">VER TU ENTRENO</button><button class="btn full ghost" data-act="previaRepetir">🔁 Repetir entreno</button>`;
+      if (z.inicio || hay) return `<button class="btn full pv-go" data-act="previaVer">CONTINUAR ENTRENO</button>`;
+      return `<button class="btn full pv-go" data-act="previaEmpezar">EMPEZAR</button><button class="linkbtn small" data-act="previaVer">Ver el entreno sin empezar el cronómetro</button>`; })()}</div>
   </div>`;
 }
 function vSesion() {
@@ -1537,7 +1540,7 @@ function vSesion() {
   prepararNavegacion(d);
   const ini = S.sesion?.inicio;
   const como = S.obj ? `<div class="cerrada" style="margin-bottom:10px"><span class="pill gold">${S.sesion?.editar ? 'Editando' : 'Entrenando a'}</span><span class="small grow">${esc(S.obj.nombre)}${S.sesion?.editar ? ' · sesión del ' + esc(fCorta(S.sesion.fecha)) : ''}</span><button class="btn sm ghost" data-act="${S.sesion?.editar ? 'terminar' : 'salirComo'}" style="background:#fff">${S.sesion?.editar ? 'Listo' : 'Salir'}</button></div>` : '';
-  if (S.previa === d.id && !S.sesion?.editar && !ini && !Object.keys(S.sesion?.valores || {}).length) return como + vPrevia(d);   // una sesión «terminada» sin ninguna serie apuntada (p. ej. se pulsó empezar y terminar) no tapa la portada
+  if (S.previa === d.id && !S.sesion?.editar) return como + vPrevia(d);   // la portada sale siempre al abrir el día
   if (S.sesion?.editar) return como + `<section class="stack"><span class="eyebrow">${esc(S.dia.nombre)}</span><h1>${esc(S.dia.titulo || S.dia.foco || S.dia.nombre)}</h1>${cicloSesion()}
     <p class="note">Corrige kg, repeticiones o RIR: los cambios de una serie ya marcada se guardan solos al salir de la casilla. Para añadir una serie que no apuntó, rellénala y marca el check. Para borrarla, quita el check.</p></section>
   <section class="section">${vBloquesDia(d, cont)}
@@ -1580,7 +1583,7 @@ async function abrirDia(id, op = {}) {
   S.previa = editar ? null : id;
   S.tab = 'entreno'; window.scrollTo(0, 0);
   const ids = S.dia.bloques_sesion.flatMap(b => b.ejercicios_sesion.map(e => e.id));
-  const hoyS = op.sesionId ? (S.d.sesiones.find(s => s.id === op.sesionId) || { id: op.sesionId, fecha: fechaS, dia_id: id }) : S.d.sesiones.find(s => s.fecha === fechaS && s.dia_id === id)
+  const hoyS = op.sesionId ? (S.d.sesiones.find(s => s.id === op.sesionId) || { id: op.sesionId, fecha: fechaS, dia_id: id }) : S.d.sesiones.filter(s => s.fecha === fechaS && s.dia_id === id).pop()
     || (!editar && !S.obj ? S.d.sesiones.filter(s => s.dia_id === id && s.estado === 'parcial' && s.fecha < fechaS && s.fecha >= sumaDias(fechaS, -2)).sort((a, b) => b.fecha.localeCompare(a.fecha))[0] : null);
   if (hoyS && hoyS.fecha && hoyS.fecha !== fechaS && !op.sesionId) { S.sesion.fecha = hoyS.fecha; S.sesion.retomada = true; }
   const fechaDe = sid => (S.d.sesiones.find(s => s.id === sid) || {}).fecha;
@@ -5686,7 +5689,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v195';
+const APP_VER = 'v196';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -5994,6 +5997,7 @@ document.addEventListener('click', async e => {
     case 'empezarCrono': empezarCrono(); break;
     case 'previaEmpezar': S.previa = null; render(); window.scrollTo(0, 0); empezarCrono(); break;
     case 'previaVer': S.previa = null; render(); window.scrollTo(0, 0); break;
+    case 'previaRepetir': { const z = S.sesion; Object.entries(z.valores || {}).forEach(([k, r]) => { z.ultimos[k] = r; }); Object.assign(z, { id: null, regs: {}, valores: {}, finMin: null, inicio: null, retomada: false, omitidos: [], comentarios: [] }); S.previa = null; S.paso = null; render(); window.scrollTo(0, 0); empezarCrono(); toast('Nueva sesión: tienes de referencia lo que hiciste'); break; }
     case 'verImagenes': abrirSheet(`<div class="stack">${b.dataset.s.split('|').map(u => `<img src="${esc(u)}" alt="" style="width:100%;border-radius:12px;background:var(--surface-2)">`).join('')}</div>`); break;
     case 'verImagen': abrirSheet(`<div class="stack"><img src="${esc(b.dataset.src)}" alt="" style="width:100%;border-radius:12px;background:var(--surface-2)"><a class="btn ghost full" href="${esc(b.dataset.src)}" target="_blank" rel="noopener">Abrir para guardar o imprimir</a><button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`); break;
     case 'importarImagenes': await importarImagenes(); break;
