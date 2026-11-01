@@ -1472,15 +1472,17 @@ function temaDe(d, sx = '') {
     ['completo', /cuerpo completo|full ?body|fullbody|total/], ['pierna_gluteo', /gluteo/], ['pierna_cadera', /cadera/], ['pierna_rodilla', /rodilla/], ['pierna_delante', /delante|anterior|cuadricep/], ['pierna_detras', /detras|posterior|isquio|femoral/],
     ['sup_espalda_alta', /espalda alta|escapul|trapecio/], ['sup_pecho', /pecho|pectoral/], ['sup_brazos', /brazo|bicep|tricep/], ['sup_hombros', /hombro|deltoid/], ['sup_espalda', /espalda|dorsal/], ['sup_completo', /tren superior|torso/], ['pierna_completo', /tren inferior|pierna/]];   // «core» en el título no decide: se trabaja en casi todos los entrenos
   for (const [k, re] of PAL) { if (!re.test(tit)) continue; if ((k === 'sup_pecho' && sx === 'm') || (k === 'pierna_gluteo' && sx === 'h')) continue; return k; }
-  const bl = d?.bloques_sesion || [], ejs = bl.filter(b => b.tipo === 'fuerza').flatMap(b => b.ejercicios_sesion).map(ejDe);
+  const bl = d?.bloques_sesion || [], ejsS = bl.filter(b => b.tipo === 'fuerza').flatMap(b => b.ejercicios_sesion), ejs = ejsS.map(e => Object.assign(ejDe(e), { _series: +e.series || 1 }));
   if (!ejs.length) { const c = bl.find(b => b.tipo === 'cardio'); return c ? (esCorrer(c.maquina) && !/cinta/i.test(c.maquina || '') ? 'cardio_parque' : 'cardio_gym') : bl.some(b => b.tipo === 'movilidad') ? 'movilidad' : 'recuperacion'; }
   /* El core se trabaja en casi todos los entrenos: solo es la temática si TODO el día es de cintura; si no, manda la parte del tren superior o inferior */
   const esCore = x => grupoEjOk(x, 'core') || grupoEjOk(x, 'abdomen') || grupoEjOk(x, 'lumbar');
   const resto = ejs.filter(x => !esCore(x) || grupoEjOk(x, 'gluteo') || grupoEjOk(x, 'cuadriceps') || grupoEjOk(x, 'isquios'));
   if (!resto.length) return 'core';
-  const n = g => resto.filter(x => grupoEjOk(x, g)).length, sup = n('sup'), inf = n('inf');
-  if (sup && inf && Math.min(sup, inf) >= resto.length * 0.3) return 'completo';
-  if (inf >= sup) { if (sx !== 'h' && n('gluteo') > resto.length / 2) return 'pierna_gluteo'; const rod = n('cuadriceps'), cad = n('isquios') + n('gluteo'); if (rod && cad && Math.min(rod, cad) / Math.max(rod, cad) >= 0.6) return 'pierna_completo'; return rod > cad ? 'pierna_rodilla' : 'pierna_cadera'; }
+  /* Peso de cada ejercicio: sus series y su posición (los primeros del entreno pesan hasta un 50 % más que los últimos) */
+  const N = resto.length; resto.forEach((x, i) => { x._w = x._series * (1 + 0.5 * (N > 1 ? 1 - i / (N - 1) : 1)); });
+  const total = resto.reduce((t, x) => t + x._w, 0), n = g => resto.filter(x => grupoEjOk(x, g)).reduce((t, x) => t + x._w, 0), sup = n('sup'), inf = n('inf');
+  if (sup && inf && Math.min(sup, inf) >= total * 0.3) return 'completo';
+  if (inf >= sup) { if (sx !== 'h' && n('gluteo') > total / 2) return 'pierna_gluteo'; const rod = n('cuadriceps'), cad = n('isquios') + n('gluteo'); if (rod && cad && Math.min(rod, cad) / Math.max(rod, cad) >= 0.6) return 'pierna_completo'; return rod > cad ? 'pierna_rodilla' : 'pierna_cadera'; }
   const op = [['sup_pecho', n('pecho')], ['sup_espalda', n('espalda') + n('dorsal')], ['sup_hombros', n('hombro')], ['sup_brazos', n('biceps') + n('triceps')], ['sup_espalda_alta', n('escap')]].filter(x => !(x[0] === 'sup_pecho' && sx === 'm')).sort((a, b) => b[1] - a[1]);
   return op[0][1] < sup * 0.5 ? 'sup_completo' : op[0][0];
 }
@@ -5570,7 +5572,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v177';
+const APP_VER = 'v178';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
