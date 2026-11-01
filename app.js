@@ -35,7 +35,9 @@ const vPartidoMini = (pt, extra = '') => pt ? `<div class="row small" style="gap
 /* Fecha de esta semana (lunes a domingo) que corresponde al día del programa */
 const fechaDiaSemana = (d, lunes) => { const i = [1, 2, 3, 4, 5, 6, 0].findIndex(k => esDia(d, norm(DIAS[k]))); return i < 0 ? null : sumaDias(lunes, i); };
 /* Nombre que se muestra de un día de entreno: el título libre (Bloque 31) o, si no hay, el día de la semana */
-const nomDia = d => d?.titulo || d?.nombre || '';
+/* Nombre del entreno: el que pongas tú; si no tiene, el de su temática (según sus ejercicios y el sexo del alumno) */
+const nomDia = d => d?.titulo || titAuto(d) || d?.nombre || '';
+const titAuto = d => { try { if (!d?.bloques_sesion?.length || typeof temaDe !== 'function') return ''; const sx = sexoDe(S.editor?.alumnoId || S.obj?.id || (S.modo === 'coach' ? S.ficha?.id : S.user?.id)); return TEMAS.find(t => t[0] === temaDe(d, sx))?.[1] || ''; } catch (_) { return ''; } };
 const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 /* ¿La sesión corresponde a ese día? Acepta «Lunes», «Miércoles / Jueves», «Viernes · Sábado», «Domingo (partido)»… */
 const esDia = (d, n) => norm(d?.nombre).split(/\s*(?:\/|·|,|\by\b)\s*/).some(x => x.split(/[\s(]/)[0] === n);
@@ -1511,7 +1513,7 @@ function vPrevia(d) {
     <div class="pv-hero" style="${img ? `background-image:url('${esc(img)}')` : ''}"><button class="pv-volver" data-act="cerrarDia" aria-label="Volver">←</button></div>
     <div class="pv-card">
       <div class="pv-stats"><div><span>⏱</span><b>~${min} min</b><small>Duración</small></div><div><span>📶</span><b>${esc(intens || '—')}</b><small>Intensidad</small></div><div><span>🔥</span><b>${series || ejs.length || bl.length}</b><small>${series ? 'Series' : 'Bloques'}</small></div></div>
-      <span class="eyebrow">${esc(nomDia(d))}</span><h1 class="pv-tit">${esc(d.titulo || d.foco || d.nombre || 'Entreno')}</h1>
+      <span class="eyebrow">${esc(d.nombre || '')}</span><h1 class="pv-tit">${esc(d.titulo || titAuto(d) || d.foco || d.nombre || 'Entreno')}</h1>
       ${obj ? `<p class="pv-desc">${esc(obj)}</p>` : ''}
       <div class="pv-tags">${[vol && 'Volumen ' + vol.toLowerCase(), intens && 'Intensidad ' + intens.toLowerCase(), d.foco && 'Foco: ' + d.foco, nomT, ...grupos].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).map(t => `<span>${esc(t)}</span>`).join('')}</div>
       <h3 class="pv-h">LO QUE HARÁS</h3>${bloques || '<p class="small muted">Este día aún no tiene ejercicios.</p>'}
@@ -4914,7 +4916,7 @@ function formDia(id) {
   const p = S.editor.prog, d = id ? p.dias.find(x => x.id === id) : null;
   const DS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
   abrirSheet(`<form class="stack" id="f-dia"><h2>${d ? 'Editar día' : 'Nuevo día'}</h2>
-    <label class="f">Nombre del entreno<input type="text" id="d-t" value="${esc(d?.titulo || '')}" placeholder="Ej. Pierna y glúteo, Día A, Fuerza total…" maxlength="60"></label>
+    <label class="f">Nombre del entreno<input type="text" id="d-t" value="${esc(d?.titulo || '')}" placeholder="${d && titAuto(d) ? 'Automático: ' + esc(titAuto(d)) : 'Ej. Pierna y glúteo, Día A, Fuerza total…'}" maxlength="60"></label>
     ${editorEsFutbol() ? `<label class="f">Día de la semana<select id="d-n">${DS.map(x => `<option ${norm(x) === norm(d?.nombre) ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
     <p class="small muted" style="margin-top:-6px">El día de la semana decide cuándo le aparece al alumno en «Hoy». Si dejas el nombre en blanco, se llamará como el día.</p>` : `<p class="small muted" style="margin-top:-6px"><b>${esc(d && /^d[ií]a \d+/i.test(d.nombre || '') ? d.nombre : 'Día ' + ((d ? p.dias.indexOf(d) : p.dias.length) + 1))}</b> · El orden del bloque lo fijas tú con ▲▼ en la lista de días; el alumno decide contigo qué días de la semana los hace.</p>`}
     ${editorEsFutbol() || d?.tipo_dia ? `<div class="stack" style="gap:6px"><span class="small muted">Tipo de día</span><div class="chips" id="d-td">${TIPOS_DIA.map(([k, l, e]) => `<button type="button" data-v="${k}" aria-pressed="${(d?.tipo_dia || 'entreno') === k}">${e} ${l}</button>`).join('')}</div></div>` : ''}
@@ -5578,7 +5580,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v179';
+const APP_VER = 'v180';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
