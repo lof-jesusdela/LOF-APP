@@ -224,7 +224,7 @@ const Tandas = {
     return `<div class="rp-parte${una ? ' una' : ''}">
       ${una ? '' : `<div class="rp-pt">${x.lado && !t.lado ? this.chipLado(x.lado) : ''}${x.vuelta ? `<b>${x.vuelta}ª vuelta</b>` : ''}${x.tipo ? `<b>${esc(this.TIPO[x.tipo])}</b>` : ''}<span class="muted">Objetivo: ${esc(o.txt)}</span>${rirUnico === undefined && x.rir != null && x.rir !== '' ? `<span class="rp-rir-chip">RIR ${esc(String(x.rir))}</span>` : ''}</div>`}
       <div class="rp-campos${sp ? ' uno' : ''}">
-        ${sp ? '' : `<label>Peso (kg)<input id="kg-${id}" data-tanda="1" data-row="${fila}" data-plan="${esc(kgP)}"${bajada ? ' data-bajada="1"' : ''} type="text" inputmode="decimal" placeholder="${esc(phKg)}" value="${esc(val('kg', 'kg'))}" aria-label="Peso en kilos, serie ${n}${nom ? ', ' + esc(nom) : ''}"></label>`}
+        ${sp ? '' : `<label>Peso (kg)<span class="kg-w"><input id="kg-${id}" data-tanda="1" data-row="${fila}" data-plan="${esc(kgP)}"${bajada ? ' data-bajada="1"' : ''} type="text" inputmode="decimal" placeholder="${esc(phKg)}" value="${esc(val('kg', 'kg'))}" aria-label="Peso en kilos, serie ${n}${nom ? ', ' + esc(nom) : ''}"></span></label>`}
         <label>${lblR}<input id="rp-${id}" data-tanda="1" data-row="${fila}" data-obj="${o.num ?? ''}"${o.iso ? ' data-iso="1"' : ''} type="text" inputmode="numeric" placeholder="${esc(String(phRp))}" value="${esc(val('rp', 'repeticiones'))}" aria-label="${lblR}, serie ${n}${nom ? ', ' + esc(nom) : ''}"></label>
       </div></div>`;
   },

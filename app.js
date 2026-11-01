@@ -1049,7 +1049,7 @@ function vEjercicio(e, i, ro) {
         const nc = `<span class="num muted nlab" data-row="${r}" ${k === 0 && !plan ? `id="row-${r}"` : ''}>${k === 0 ? n : t.lado ? '' : '↳'}${t.lado ? `<i>${t.lado}</i>` : ''}</span>`;
         if (plan) return nc + `<span class="cas">${sp ? '—' : esc(kgP || '—')}</span><span class="cas">${esc(rpP || '—')}</span>` + (ult ? '<span></span>' : pausa);
         return nc
-          + (sp ? `<span class="small muted" data-row="${r}" style="text-align:center">—</span>` : `<input id="kg-${id}" data-row="${r}" type="text" inputmode="decimal" placeholder="${esc(kgP)}" aria-label="Kg serie ${n}${T > 1 ? ' tramo ' + (k + 1) : ''}">`)
+          + (sp ? `<span class="small muted" data-row="${r}" style="text-align:center">—</span>` : `<span class="kg-w"><input id="kg-${id}" data-row="${r}" type="text" inputmode="decimal" placeholder="${esc(kgP)}" aria-label="Kg serie ${n}${T > 1 ? ' tramo ' + (k + 1) : ''}"></span>`)
           + `<input id="rp-${id}" data-row="${r}" type="text" inputmode="numeric" placeholder="${esc(rpP)}" aria-label="Repeticiones serie ${n}${T > 1 ? ' tramo ' + (k + 1) : ''}">`
           + (ult ? `<button class="chk" id="ck-${r}" data-act="serie" data-es="${e.id}" data-n="${n}" data-t="${T}" data-sp="${sp ? 1 : 0}" data-d="${descanso}" data-lbl="${esc(ej.nombre)} · serie ${n}" aria-label="Serie ${n} hecha">${CHK}</button>` : pausa);
       }).join('');
