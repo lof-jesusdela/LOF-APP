@@ -1451,21 +1451,34 @@ const Guia = {
   mover(d) { const P = this.pasos(); S.paso = Math.max(0, Math.min(P.length - 1, (S.paso || 0) + d)); this.pintar(); document.getElementById('guia-barra')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 };
 /* ---------- Portada del entreno: antes de empezar, una vista con imagen por temática, datos y todos los bloques de un vistazo ---------- */
-const TEMAS = [['superior', 'Tren superior'], ['inferior', 'Tren inferior'], ['completo', 'Cuerpo completo'], ['core', 'Core y abdomen'], ['gluteo', 'Glúteo'], ['cardio', 'Cardio'], ['movilidad', 'Movilidad'], ['futbol', 'Fútbol'], ['recuperacion', 'Recuperación']];
-function temaDe(d) {
-  if (d?.tematica && TEMAS.some(t => t[0] === d.tematica)) return d.tematica;
+/* Temáticas de portada: [clave, nombre, sexos] · 'hm' = foto de chico y de chica · 'h' / 'm' = solo una · '' = una sola foto común */
+const TEMAS = [
+  ['completo', 'Cuerpo completo', ''], ['core', 'Core y abdomen', ''],
+  ['pierna_cadera', 'Cintura + piernas · foco cadera', 'hm'], ['pierna_rodilla', 'Cintura + piernas · foco rodilla', 'hm'], ['pierna_gluteo', 'Cintura + piernas · foco glúteo', 'm'],
+  ['pierna_delante', 'Cintura + piernas · foco músculos de delante', 'hm'], ['pierna_detras', 'Cintura + piernas · foco músculos de detrás', 'hm'],
+  ['sup_pecho', 'Cintura + tren superior · foco pecho', 'h'], ['sup_brazos', 'Cintura + tren superior · foco brazos', 'hm'], ['sup_hombros', 'Cintura + tren superior · foco hombros', 'hm'], ['sup_espalda', 'Cintura + tren superior · foco espalda', 'hm'],
+  ['cardio_gym', 'Cardio en gym', 'hm'], ['cardio_parque', 'Cardio · correr en parque', 'hm'], ['movilidad', 'Movilidad articular', 'hm'],
+  ['futbol', 'Fútbol', ''], ['recuperacion', 'Recuperación', '']];
+const TEMA_ANT = { gluteo: 'pierna_gluteo', cardio: 'cardio_gym', inferior: 'pierna_cadera', superior: 'sup_espalda' };
+const sexoDe = id => { const p = id && (id === S.perfil?.id ? S.perfil : (S.c?.perfiles || []).find(x => x.id === id)); return p?.sexo === 'mujer' ? 'm' : p?.sexo === 'hombre' ? 'h' : ''; };
+/* Imagen de la temática según el sexo (si falta la suya, la del otro sexo o la común) */
+const imgTema = (k, sx) => { const T = S.temas || {}; return T[`${k}_${sx}`] || T[k + '_' + (sx === 'm' ? 'h' : 'm')] || T[k] || ''; };
+function temaDe(d, sx = '') {
+  const man = TEMA_ANT[d?.tematica] || d?.tematica;
+  if (man && TEMAS.some(t => t[0] === man)) return man;
   const bl = d?.bloques_sesion || [], ejs = bl.filter(b => b.tipo === 'fuerza').flatMap(b => b.ejercicios_sesion).map(ejDe);
-  if (!ejs.length) return bl.some(b => b.tipo === 'cardio') ? 'cardio' : bl.some(b => b.tipo === 'movilidad') ? 'movilidad' : 'recuperacion';
-  const n = g => ejs.filter(x => grupoEjOk(x, g)).length, sup = n('sup'), inf = n('inf'), core = n('core') + n('abdomen'), glu = n('gluteo');
+  if (!ejs.length) { const c = bl.find(b => b.tipo === 'cardio'); return c ? (esCorrer(c.maquina) && !/cinta/i.test(c.maquina || '') ? 'cardio_parque' : 'cardio_gym') : bl.some(b => b.tipo === 'movilidad') ? 'movilidad' : 'recuperacion'; }
+  const n = g => ejs.filter(x => grupoEjOk(x, g)).length, sup = n('sup'), inf = n('inf'), core = n('core') + n('abdomen');
   if (core > ejs.length / 2) return 'core';
-  if (glu > ejs.length / 2) return 'gluteo';
   if (sup && inf && Math.min(sup, inf) >= ejs.length * 0.3) return 'completo';
-  return sup >= inf ? 'superior' : 'inferior';
+  if (inf >= sup) { if (sx !== 'h' && n('gluteo') > ejs.length / 2) return 'pierna_gluteo'; return n('cuadriceps') > n('isquios') + n('gluteo') ? 'pierna_rodilla' : 'pierna_cadera'; }
+  const op = [['sup_pecho', n('pecho')], ['sup_espalda', n('espalda') + n('dorsal')], ['sup_hombros', n('hombro')], ['sup_brazos', n('biceps') + n('triceps')]].filter(x => !(x[0] === 'sup_pecho' && sx === 'm')).sort((a, b) => b[1] - a[1]);
+  return op[0][0];
 }
 function vPrevia(d) {
-  const tema = temaDe(d), nomT = TEMAS.find(t => t[0] === tema)?.[1] || '', bl = d.bloques_sesion || [];
+  const sx = sexoDe(S.obj?.id || S.user?.id), tema = temaDe(d, sx), nomT = TEMAS.find(t => t[0] === tema)?.[1] || '', bl = d.bloques_sesion || [];
   const fz = bl.filter(b => b.tipo === 'fuerza'), ejs = fz.flatMap(b => b.ejercicios_sesion);
-  const img = S.temas?.[tema] || ejs.map(e => ejDe(e).imagen_url).find(Boolean) || '';
+  const img = imgTema(tema, sx) || ejs.map(e => ejDe(e).imagen_url).find(Boolean) || '';
   const series = ejs.reduce((t, e) => t + (+e.series || 0), 0);
   const min = Math.round(ejs.reduce((t, e) => t + (+e.series || 0) * (45 + (e.descanso_seg ?? 60)), 0) / 60 + bl.filter(b => b.tipo !== 'fuerza').reduce((t, b) => t + (parseInt(b.duracion) || 5), 0));
   const rirs = ejs.map(e => e.rir).filter(x => x != null && x !== '' && !isNaN(+x)).map(Number), rirM = rirs.length ? rirs.reduce((a, b) => a + b, 0) / rirs.length : null;
@@ -4259,7 +4272,7 @@ async function cargarPres() {
 }
 /* Reserva con Calendly: el alumno elige hueco (llega a Google Calendar de Jesús) y la app lo apunta */
 const AGARRES = [['supino', 'Supino'], ['neutro', 'Neutro'], ['prono', 'Prono']];
-async function cargarAjustes() { try { const { data } = await sb.from('ajustes').select('*'); S.agarres = Object.fromEntries(AGARRES.map(([k]) => [k, (data || []).find(x => x.clave === 'agarre_' + k)?.valor || ''])); S.temas = Object.fromEntries(TEMAS.map(([k]) => [k, (data || []).find(x => x.clave === 'tema_' + k)?.valor || ''])); S.calendly = (data || []).find(x => x.clave === 'calendly')?.valor || window.LOF_CONFIG?.calendly || ''; S.whatsapp = (data || []).find(x => x.clave === 'whatsapp')?.valor || ''; S.respuesta = (data || []).find(x => x.clave === 'respuesta')?.valor || ''; } catch (e) { } }
+async function cargarAjustes() { try { const { data } = await sb.from('ajustes').select('*'); S.agarres = Object.fromEntries(AGARRES.map(([k]) => [k, (data || []).find(x => x.clave === 'agarre_' + k)?.valor || ''])); S.temas = Object.fromEntries((data || []).filter(x => /^tema_/.test(x.clave)).map(x => [x.clave.slice(5), x.valor])); S.calendly = (data || []).find(x => x.clave === 'calendly')?.valor || window.LOF_CONFIG?.calendly || ''; S.whatsapp = (data || []).find(x => x.clave === 'whatsapp')?.valor || ''; S.respuesta = (data || []).find(x => x.clave === 'respuesta')?.valor || ''; } catch (e) { } }
 function formCalendly() {
   abrirSheet(`<form class="stack" id="f-cal"><h2>Calendly</h2>
     <p class="small">Pega el enlace de tu evento de Calendly para los entrenamientos presenciales (el que conectas a tu Google Calendar).</p>
@@ -4877,15 +4890,17 @@ function formDia(id) {
     ${editorEsFutbol() ? `<label class="f">Día de la semana<select id="d-n">${DS.map(x => `<option ${norm(x) === norm(d?.nombre) ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
     <p class="small muted" style="margin-top:-6px">El día de la semana decide cuándo le aparece al alumno en «Hoy». Si dejas el nombre en blanco, se llamará como el día.</p>` : `<p class="small muted" style="margin-top:-6px"><b>${esc(d && /^d[ií]a \d+/i.test(d.nombre || '') ? d.nombre : 'Día ' + ((d ? p.dias.indexOf(d) : p.dias.length) + 1))}</b> · El orden del bloque lo fijas tú con ▲▼ en la lista de días; el alumno decide contigo qué días de la semana los hace.</p>`}
     ${editorEsFutbol() || d?.tipo_dia ? `<div class="stack" style="gap:6px"><span class="small muted">Tipo de día</span><div class="chips" id="d-td">${TIPOS_DIA.map(([k, l, e]) => `<button type="button" data-v="${k}" aria-pressed="${(d?.tipo_dia || 'entreno') === k}">${e} ${l}</button>`).join('')}</div></div>` : ''}
-    <div class="stack" style="gap:6px"><label class="f">Temática (imagen de portada del entreno)<select id="d-tm"><option value="">Automática${d ? ' · ahora: ' + esc(TEMAS.find(t => t[0] === temaDe({ ...d, tematica: null }))?.[1] || '') : ''}</option>${TEMAS.map(([k, t]) => `<option value="${k}" ${d?.tematica === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label><div id="d-tmimg"></div></div>
+    <div class="stack" style="gap:6px"><label class="f">Temática (imagen de portada del entreno)<select id="d-tm"><option value="">Automática${d ? ' · ahora: ' + esc(TEMAS.find(t => t[0] === temaDe({ ...d, tematica: null }, sexoDe(S.editor?.alumnoId)))?.[1] || '') : ''}</option>${TEMAS.map(([k, t]) => `<option value="${k}" ${(TEMA_ANT[d?.tematica] || d?.tematica) === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label><div id="d-tmimg"></div></div>
     <label class="f">Objetivo del día<textarea id="d-obj">${esc(d?.objetivo || '')}</textarea></label>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><label class="f">Volumen<input type="text" id="d-vol" value="${esc(d?.volumen || '')}" placeholder="Alto"></label><label class="f">Intensidad<input type="text" id="d-int" value="${esc(d?.intensidad || '')}" placeholder="Alta"></label><label class="f">Foco<input type="text" id="d-foco" value="${esc(d?.foco || '')}" placeholder="Fuerza"></label></div>
     <button class="btn full" type="submit">Guardar</button>${d ? '<button class="btn ghost full" type="button" id="d-del" style="color:var(--bad)">Eliminar día</button>' : ''}</form>`);
-  const pintaTema = () => { const k = $('#d-tm').value || (d ? temaDe({ ...d, tematica: null }) : 'superior'), u = S.temas?.[k], t = TEMAS.find(x => x[0] === k)?.[1];
-    $('#d-tmimg').innerHTML = `<div class="row" style="gap:10px;align-items:center">${u ? `<img src="${esc(u)}" alt="" style="width:96px;height:60px;object-fit:cover;border-radius:8px">` : '<span class="small muted">Sin imagen</span>'}<label class="btn sm ghost"><input type="file" id="d-tmf" accept="image/*" hidden>📷 ${u ? 'Cambiar' : 'Poner'} imagen de «${esc(t)}»</label></div><p class="small muted" style="margin:4px 0 0">La imagen es común: sale en todos los entrenos de esta temática.</p>`; };
+  const temaSel = () => $('#d-tm').value || (d ? temaDe({ ...d, tematica: null }, sexoDe(S.editor?.alumnoId)) : 'completo');
+  const pintaTema = () => { const k = temaSel(), T = TEMAS.find(x => x[0] === k) || ['', '', ''], ranuras = T[2] ? T[2].split('').map(x => [k + '_' + x, x === 'h' ? 'Chico' : 'Chica']) : [[k, 'Imagen']];
+    $('#d-tmimg').innerHTML = `<div class="row" style="gap:14px;flex-wrap:wrap">${ranuras.map(([c, l]) => { const u = S.temas?.[c]; return `<div class="stack" style="gap:4px;align-items:flex-start"><span class="small muted">${l}</span>${u ? `<img src="${esc(u)}" alt="" style="width:110px;height:68px;object-fit:cover;border-radius:8px">` : '<span class="small muted" style="width:110px;height:68px;display:flex;align-items:center;justify-content:center;background:var(--surface-2);border-radius:8px">Sin imagen</span>'}<label class="btn sm ghost"><input type="file" data-tc="${c}" accept="image/*" hidden>📷 ${u ? 'Cambiar' : 'Poner'}</label></div>`; }).join('')}</div>
+      <p class="small muted" style="margin:4px 0 0">${T[2] === 'hm' ? 'A cada alumno le sale la de su sexo (según su ficha). ' : ''}La imagen es común: sale en todos los entrenos de «${esc(T[1])}».</p>`; };
   pintaTema(); $('#d-tm').addEventListener('change', pintaTema);
-  $('#d-tmimg').addEventListener('change', async ev => { const f = ev.target.files?.[0]; if (!f) return; const k = $('#d-tm').value || (d ? temaDe({ ...d, tematica: null }) : 'superior');
-    try { const u = await subirImagenEj(f, 'tema-' + k, 1400); const { error } = await sb.from('ajustes').upsert([{ clave: 'tema_' + k, valor: u }], { onConflict: 'clave' }); if (error) throw error; (S.temas ||= {})[k] = u; pintaTema(); toast('Imagen de la temática guardada'); } catch (err) { fallo(err); } });
+  $('#d-tmimg').addEventListener('change', async ev => { const f = ev.target.files?.[0], c = ev.target.dataset.tc; if (!f || !c) return;
+    try { const u = await subirImagenEj(f, 'tema-' + c, 1400); const { error } = await sb.from('ajustes').upsert([{ clave: 'tema_' + c, valor: u }], { onConflict: 'clave' }); if (error) throw error; (S.temas ||= {})[c] = u; pintaTema(); toast('Imagen de la temática guardada'); } catch (err) { fallo(err); } });
   $('#d-td')?.addEventListener('click', ev => { const x = ev.target.closest('[data-v]'); if (!x) return; document.querySelectorAll('#d-td [data-v]').forEach(y => y.setAttribute('aria-pressed', y === x)); });
   $('#f-dia').addEventListener('submit', async e => {
     e.preventDefault();
@@ -5532,7 +5547,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v170';
+const APP_VER = 'v171';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
