@@ -1456,7 +1456,7 @@ const TEMAS = [
   ['completo', 'Cuerpo completo', 'hm'], ['core', 'Core y abdomen', 'hm'],
   ['pierna_cadera', 'Cintura + piernas · foco cadera', 'hm'], ['pierna_rodilla', 'Cintura + piernas · foco rodilla', 'hm'], ['pierna_gluteo', 'Cintura + piernas · foco glúteo', 'm'],
   ['pierna_delante', 'Cintura + piernas · foco músculos de delante', 'hm'], ['pierna_detras', 'Cintura + piernas · foco músculos de detrás', 'hm'],
-  ['sup_pecho', 'Cintura + tren superior · foco pecho', 'h'], ['sup_brazos', 'Cintura + tren superior · foco brazos', 'hm'], ['sup_hombros', 'Cintura + tren superior · foco hombros', 'hm'], ['sup_espalda', 'Cintura + tren superior · foco espalda', 'hm'],
+  ['sup_pecho', 'Cintura + tren superior · foco pecho', 'h'], ['sup_brazos', 'Cintura + tren superior · foco brazos', 'hm'], ['sup_hombros', 'Cintura + tren superior · foco hombros', 'hm'], ['sup_espalda', 'Cintura + tren superior · foco espalda', 'hm'], ['sup_espalda_alta', 'Cintura + tren superior · foco espalda alta', 'hm'],
   ['cardio_gym', 'Cardio en gym', 'hm'], ['cardio_parque', 'Cardio · correr en parque', 'hm'], ['movilidad', 'Movilidad articular', 'hm'],
   ['futbol', 'Fútbol', 'hm'], ['recuperacion', 'Recuperación', 'hm']];
 const TEMA_ANT = { gluteo: 'pierna_gluteo', cardio: 'cardio_gym', inferior: 'pierna_cadera', superior: 'sup_espalda' };
@@ -1472,7 +1472,7 @@ function temaDe(d, sx = '') {
   if (core > ejs.length / 2) return 'core';
   if (sup && inf && Math.min(sup, inf) >= ejs.length * 0.3) return 'completo';
   if (inf >= sup) { if (sx !== 'h' && n('gluteo') > ejs.length / 2) return 'pierna_gluteo'; return n('cuadriceps') > n('isquios') + n('gluteo') ? 'pierna_rodilla' : 'pierna_cadera'; }
-  const op = [['sup_pecho', n('pecho')], ['sup_espalda', n('espalda') + n('dorsal')], ['sup_hombros', n('hombro')], ['sup_brazos', n('biceps') + n('triceps')]].filter(x => !(x[0] === 'sup_pecho' && sx === 'm')).sort((a, b) => b[1] - a[1]);
+  const op = [['sup_pecho', n('pecho')], ['sup_espalda', n('espalda') + n('dorsal')], ['sup_hombros', n('hombro')], ['sup_brazos', n('biceps') + n('triceps')], ['sup_espalda_alta', n('escap')]].filter(x => !(x[0] === 'sup_pecho' && sx === 'm')).sort((a, b) => b[1] - a[1]);
   return op[0][0];
 }
 function vPrevia(d) {
@@ -5547,7 +5547,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v172';
+const APP_VER = 'v173';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
