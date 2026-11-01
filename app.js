@@ -83,7 +83,9 @@ document.addEventListener('submit', e => {
 }, true);
 function fallo(err, msg) {
   console.error(err); if (err?.message === 'vista_alumno') return toast(TXT_VISTA);
-  const m = msg || 'No se ha podido guardar. Revisa tu conexión e inténtalo de nuevo.';
+  const em = String(err?.message || err?.error_description || err || '');
+  const red = !em || /fetch|network|load failed|timeout|offline/i.test(em);
+  const m = msg || (red ? 'No se ha podido guardar. Revisa tu conexión e inténtalo de nuevo.' : /duplicate key|unique/i.test(em) ? 'No se ha podido guardar: ya existe otro con ese mismo nombre en tu biblioteca. Cambia el nombre o elige «Solo en este ejercicio».' : /column|schema cache|does not exist/i.test(em) ? `No se ha podido guardar: a la base de datos le falta un bloque por ejecutar (${em.slice(0, 120)}).` : /row-level|policy|permission/i.test(em) ? 'No se ha podido guardar: Supabase no da permiso para este cambio.' : `No se ha podido guardar (${em.slice(0, 140)}).`);
   if (!$('#sheet').hidden) { estadoSheet('No se ha podido guardar', 'err'); const v = $('#sheet-err'); const html = `<div class="small" id="sheet-err" role="alert" style="color:var(--bad);background:rgba(229,72,77,.08);border-radius:10px;padding:8px 10px;margin-bottom:10px">⚠️ ${esc(m)} Tus datos siguen aquí.</div>`; v ? v.outerHTML = html : $('#sheet-in').querySelector('.sheet-top')?.insertAdjacentHTML('afterend', html); $('#sheet-in').querySelectorAll('[data-guardando]').forEach(b => { b.textContent = b.dataset.txt; delete b.dataset.guardando; b.disabled = false; }); }
   toast(m);
 }
@@ -5656,7 +5658,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v183';
+const APP_VER = 'v184';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
