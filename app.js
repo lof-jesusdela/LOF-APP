@@ -1453,12 +1453,12 @@ const Guia = {
 /* ---------- Portada del entreno: antes de empezar, una vista con imagen por temática, datos y todos los bloques de un vistazo ---------- */
 /* Temáticas de portada: [clave, nombre, sexos] · 'hm' = foto de chico y de chica · 'h' / 'm' = solo una · '' = una sola foto común */
 const TEMAS = [
-  ['completo', 'Cuerpo completo', ''], ['core', 'Core y abdomen', ''],
+  ['completo', 'Cuerpo completo', 'hm'], ['core', 'Core y abdomen', 'hm'],
   ['pierna_cadera', 'Cintura + piernas · foco cadera', 'hm'], ['pierna_rodilla', 'Cintura + piernas · foco rodilla', 'hm'], ['pierna_gluteo', 'Cintura + piernas · foco glúteo', 'm'],
   ['pierna_delante', 'Cintura + piernas · foco músculos de delante', 'hm'], ['pierna_detras', 'Cintura + piernas · foco músculos de detrás', 'hm'],
   ['sup_pecho', 'Cintura + tren superior · foco pecho', 'h'], ['sup_brazos', 'Cintura + tren superior · foco brazos', 'hm'], ['sup_hombros', 'Cintura + tren superior · foco hombros', 'hm'], ['sup_espalda', 'Cintura + tren superior · foco espalda', 'hm'],
   ['cardio_gym', 'Cardio en gym', 'hm'], ['cardio_parque', 'Cardio · correr en parque', 'hm'], ['movilidad', 'Movilidad articular', 'hm'],
-  ['futbol', 'Fútbol', ''], ['recuperacion', 'Recuperación', '']];
+  ['futbol', 'Fútbol', 'hm'], ['recuperacion', 'Recuperación', 'hm']];
 const TEMA_ANT = { gluteo: 'pierna_gluteo', cardio: 'cardio_gym', inferior: 'pierna_cadera', superior: 'sup_espalda' };
 const sexoDe = id => { const p = id && (id === S.perfil?.id ? S.perfil : (S.c?.perfiles || []).find(x => x.id === id)); return p?.sexo === 'mujer' ? 'm' : p?.sexo === 'hombre' ? 'h' : ''; };
 /* Imagen de la temática según el sexo (si falta la suya, la del otro sexo o la común) */
@@ -5547,7 +5547,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v171';
+const APP_VER = 'v172';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
