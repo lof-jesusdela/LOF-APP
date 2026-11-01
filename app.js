@@ -2008,6 +2008,7 @@ async function cargarCoach() {
     S.c.contextos = cx.error ? [] : (cx.data || []).filter(esContexto); }
   { const mt = await sb.from('metodos').select('*').order('nombre'); S.c.metodos = mt.data || []; Tandas.dinamicos(S.c.metodos); }
   { const mc = await sb.from('movilidad_catalogo').select('*').order('titulo'); S.c.movCat = mc.error ? null : (mc.data || []); }
+  { const t = await sb.from('tareas_coach').select('*').is('hecha_at', null); S.c.tareas = t.error ? null : (t.data || []); }
   S.c.facturas = fa.data || []; S.c.facturasError = !!fa.error; S.c.fiscal = Object.fromEntries((ap.data || []).map(x => [x.clave, x.valor]));
 }
 /* Datos de una semana (lunes a domingo) de un alumno */
@@ -3146,6 +3147,47 @@ function vFotosComida(dl) {
   pedirFotos(con.flatMap(r => r.fotos));
   return `<section class="section"><h2>Fotos de comidas · 14 días</h2><div class="card stack" style="gap:12px">${con.map(r => `<div class="stack" style="gap:6px"><span class="small muted">${esc(fLarga(r.fecha))}</span><div class="plan-imgs">${miniFotos(r.fotos)}</div></div>`).join('')}</div></section>`;
 }
+/* ---------- Tareas del coach por alumno (no las ve el alumno): plazo y prioridad; salen también en «Tu día» ---------- */
+const PRIO = { alta: ['Alta', 'bad', 0], media: ['Media', 'warn', 1], baja: ['Baja', '', 2] };
+const ordTareas = (a, b) => (a.vence || '9999').localeCompare(b.vence || '9999') || (PRIO[a.prioridad]?.[2] ?? 1) - (PRIO[b.prioridad]?.[2] ?? 1);
+const filaTarea = (t, conNombre) => { const hoy = hoyISO(), venc = t.vence && t.vence < hoy, p = PRIO[t.prioridad] || PRIO.media, al = conNombre ? (S.c.perfiles.find(x => x.id === t.alumno_id)?.nombre || 'Alumno') : '';
+  return `<div class="line tarea" style="align-items:flex-start;gap:10px"><button class="ag-chk" data-act="tareaHecha" data-id="${t.id}" aria-label="Marcar como hecha"></button><div class="grow stack" style="gap:3px">${conNombre ? `<button class="linkbtn small" data-act="ficha" data-id="${t.alumno_id}" style="align-self:flex-start;font-weight:700">${esc(al)}</button>` : ''}<span class="small">${esc(t.texto)}</span><span class="row small" style="gap:6px;flex-wrap:wrap"><span class="pill ${p[1]}">${p[0]}</span>${t.vence ? `<span class="${venc ? '' : 'muted'}" style="${venc ? 'color:var(--bad);font-weight:700' : ''}">${venc ? 'Vencida · ' : 'Para el '}${esc(fCorta(t.vence))}</span>` : '<span class="muted">Sin fecha</span>'}</span></div><button class="btn sm ghost" data-act="tareaEditar" data-id="${t.id}" aria-label="Editar">✎</button></div>`; };
+function vTareasFicha(a) {
+  if (S.c.tareas === null) return '<div class="card small muted">Para usar tareas por alumno, ejecuta el Bloque 75 en Supabase.</div>';
+  const l = (S.c.tareas || []).filter(t => t.alumno_id === a.id).sort(ordTareas);
+  return `<div class="card stack"><div class="row"><b class="grow">Tareas (solo tú las ves)</b><button class="btn sm ghost" data-act="tareaEditar" data-al="${a.id}">＋ Tarea</button></div>${l.map(t => filaTarea(t, false)).join('') || '<div class="small muted">Sin tareas pendientes con este alumno.</div>'}</div>`;
+}
+function vTareasAlumnos() {
+  if (!S.c?.tareas?.length) return '';
+  const l = S.c.tareas.slice().sort(ordTareas), venc = l.filter(t => t.vence && t.vence < hoyISO()).length;
+  return `<section class="section"><div class="section-head"><h2>Tareas de alumnos · ${l.length}</h2>${venc ? `<span class="pill bad">${venc} vencida${venc === 1 ? '' : 's'}</span>` : ''}</div><div class="card">${l.slice(0, 12).map(t => filaTarea(t, true)).join('')}${l.length > 12 ? `<div class="small muted" style="padding:8px 0">y ${l.length - 12} más…</div>` : ''}</div></section>`;
+}
+function formTarea(id, alumnoId) {
+  const t = id ? (S.c.tareas || []).find(x => x.id === id) : null, aid = t?.alumno_id || alumnoId;
+  abrirSheet(`<form class="stack" id="f-tar"><h2>${t ? 'Editar tarea' : 'Nueva tarea'}</h2><p class="small muted" style="margin-top:-8px">${esc(S.c.perfiles.find(x => x.id === aid)?.nombre || '')} · solo la ves tú</p>
+    <label class="f">Qué tienes que hacer<textarea id="ta-t" rows="3" required placeholder="Ej. Cambiarle el bloque de pierna, revisar su técnica de sentadilla…">${esc(t?.texto || '')}</textarea></label>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="f">Fecha límite<input type="date" id="ta-v" value="${esc(t?.vence || '')}"></label><label class="f">Prioridad<select id="ta-p">${Object.entries(PRIO).map(([k, v]) => `<option value="${k}" ${(t?.prioridad || 'media') === k ? 'selected' : ''}>${v[0]}</option>`).join('')}</select></label></div>
+    <button class="btn full">Guardar</button>${t ? '<button type="button" class="btn ghost full" id="ta-del" style="color:var(--bad)">Borrar tarea</button>' : ''}</form>`);
+  $('#f-tar').addEventListener('submit', async e => { e.preventDefault();
+    const row = { texto: $('#ta-t').value.trim(), vence: $('#ta-v').value || null, prioridad: $('#ta-p').value }; if (!row.texto) return;
+    const r = t ? await sb.from('tareas_coach').update(row).eq('id', t.id).select().single() : await sb.from('tareas_coach').insert({ ...row, alumno_id: aid }).select().single();
+    if (r.error) return fallo(r.error, 'Falta ejecutar el Bloque 75 en Supabase.');
+    S.c.tareas = [...(S.c.tareas || []).filter(x => x.id !== r.data.id), r.data]; cerrarSheet(); toast('Tarea guardada'); render(); });
+  $('#ta-del')?.addEventListener('click', async () => { const { error } = await sb.from('tareas_coach').delete().eq('id', t.id); if (error) return fallo(error); S.c.tareas = S.c.tareas.filter(x => x.id !== t.id); cerrarSheet(); render(); });
+}
+async function tareaHecha(id) {
+  const { error } = await sb.from('tareas_coach').update({ hecha_at: new Date().toISOString() }).eq('id', id); if (error) return fallo(error);
+  S.c.tareas = (S.c.tareas || []).filter(x => x.id !== id); toast('Tarea hecha ✓'); render();
+}
+function histAvisos(aid) {
+  const a = S.c.perfiles.find(x => x.id === aid); if (!a) return; const e = estadoAlumno(a), st = Alertas.de(aid), l = e.items.filter(x => x.ok);
+  abrirSheet(`<div class="stack"><span class="eyebrow">Historial de avisos</span><h2>${esc(a.nombre)}</h2><p class="small muted" style="margin-top:-8px">Avisos que ya solventaste. Puedes deshacer cualquiera para que vuelva a la lista.</p>
+    ${l.length ? vListaAlertas(aid, { ...e, items: l }, true) : '<div class="empty">Sin avisos solventados.</div>'}
+    ${l.some(x => st.notas?.[x.k]?.t) ? `<div class="card stack small">${l.filter(x => st.notas?.[x.k]?.t).map(x => `<div><b>${esc(fCorta(st.notas[x.k].f || ''))}</b> · ${esc(st.notas[x.k].t)}</div>`).join('')}</div>` : ''}
+    <button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
+}
+/* Banners de la ficha: recuerda cuáles tienes abiertos */
+document.addEventListener('toggle', e => { const d = e.target; if (d?.classList?.contains('fb')) (S.fbAbiertos ||= {})[d.dataset.fb] = d.open; }, true);
 function vFicha() {
   const f = S.ficha, a = S.c.perfiles.find(p => p.id === f.id) || {};
   if (f.cargando) return '<div class="empty">Cargando ficha…</div>';
@@ -3160,39 +3202,66 @@ function vFicha() {
   const nivelE = dpw ? (cur.entrenos >= dpw ? 'ok' : pre.entrenos >= dpwPre ? '' : pre.entrenos >= dpwPre / 2 ? 'warn' : 'bad') : '';
   const tile = (sub, t, v, l1, l2, niv) => `<button class="kpi rep tile ${niv}" data-act="fichaSub" data-s="${sub}"><div class="l">${t} ›</div><b class="num">${v}</b><div class="small muted">${l1}</div>${l2 ? `<div class="small muted">${l2}</div>` : ''}</button>`;
   const fF = iso => fecha(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
-  return `<section class="stack"><button class="btn sm ghost" data-act="cerrarFicha" style="align-self:flex-start">← Alumnos</button><span class="eyebrow">Ficha del alumno</span><div class="row" style="gap:14px;align-items:center">${avatarDe(a, 64)}<h1 class="grow" style="margin:0">${esc(a.nombre)}</h1></div>
-    <div class="small muted">${esc(a.email)} · alta ${esc(fCorta(a.fecha_alta))}${a.nombre_fiscal ? ' · ' + esc(a.nombre_fiscal) : ''}</div>
-    <div class="row" style="flex-wrap:wrap;gap:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como ${esc(nom)}</button><button class="btn sm gold" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm" data-act="abrirReporte" data-id="${a.id}">📋 Reporting semanal</button><button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}<button class="btn sm ghost" data-act="pausarAcceso" data-id="${a.id}" data-on="${a.acceso_pausado ? 0 : 1}">${a.acceso_pausado ? '🔓 Devolver el acceso' : '🔒 Quitar el acceso (conserva el perfil)'}</button></div>${a.activo === false ? '<div class="aprox small" style="margin-top:10px">Antiguo alumno: no le llegan avisos de seguimiento al coach. Sus datos siguen guardados y puede seguir usando la app. Reactívalo si vuelve a empezar un proceso.</div>' : ''}</section>
-  ${Acomp.vResumen(f, a)}
-  ${Negocio.vRecordatorios(a.id)}
-  ${e.items.length ? `<section class="section"><div class="card stack"><div class="row"><span class="eyebrow grow">Para revisar</span>${e.motivos.length ? '' : '<span class="pill ok">✅ Todo al día</span>'}</div>${vListaAlertas(a.id, e, true)}</div></section>` : ''}
-  <section class="section"><div class="section-head"><h2>Plan</h2><button class="btn sm ghost" data-act="editarServicio">✎ Editar</button></div><div class="card stack">
+  const pend = e.items.filter(x => !x.ok), hechas = e.items.filter(x => x.ok);
+  const DOT = { 2: /semana|motivaci|check|devoluci|indicaci|partido|wellness|sueño|fatiga|molest|futbol|rpe|carga/i, 3: /proceso|extensi|pausa|regreso/i, 4: /entreno|ha cambiado su peso|contexto/i, 5: /alimentaci|ingesta|comida|nutri/i, 6: /h[aá]bito|pasos|temperamento/i, 7: /medici|composici/i, 8: /revisi[oó]n|presencial|cita/i, 9: /pago|cuota/i, 10: /test|valoraci/i, 11: /foto|caso|medida/i };
+  const dot = n => { const l = pend.filter(x => DOT[n].test(x.m)); return !l.length ? '' : `<span class="fb-dot ${l.some(x => x.n === 'bad') ? 'bad' : ''} ${l.some(x => x.nueva) ? 'nuevo' : ''}" title="${l.length} ${l.length === 1 ? 'aviso' : 'avisos'}">${l.length}</span>`; };
+  const ab = S.fbAbiertos ||= {};
+  const ban = (id, n, ico, tit, res, html, abierto = false) => `<details class="fb" data-fb="${id}" ${(ab[id] ?? abierto) ? 'open' : ''}><summary><span class="fb-n">${n}</span><span class="fb-ico">${ico}</span><div class="grow fb-t"><b>${tit}</b>${res ? `<small>${res}</small>` : ''}</div>${dot(n)}<span class="fb-chev" aria-hidden="true"></span></summary><div class="fb-body">${html}</div></details>`;
+  const ultM = f.med[0], pagP = pagos.filter(p => !p.pagado_at), pagV = pagP.filter(p => p.vence < hoy);
+  const modE = srv?.modulo_entreno ?? true;
+  const fb1 = `<div class="stack" style="gap:12px">${Acomp.vResumen(f, a)}
+    <div class="card stack"><div class="row"><b class="grow">Avisos</b>${pend.length ? `<span class="pill ${e.nivel}">${pend.length} pendiente${pend.length === 1 ? '' : 's'}</span>` : '<span class="pill ok">✅ Todo al día</span>'}</div>
+      ${pend.length ? vListaAlertas(a.id, e, false) : '<p class="small muted" style="margin:0">Sin avisos pendientes. Los que solventas desaparecen de aquí y quedan en el historial.</p>'}
+      ${hechas.length ? `<button class="linkbtn small" data-act="histAvisos" data-id="${a.id}" style="align-self:flex-start">🗂 Historial de avisos solventados (${hechas.length})</button>` : ''}</div>
+    ${vTareasFicha(a)}
+    <div class="card stack"><div class="row"><b class="grow">Notas privadas</b><button class="btn sm ghost" data-act="nuevaNota">＋ Nota</button></div>${f.notas.map(n => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(n.fecha))}</span><div class="small grow">${esc(n.texto)}</div></div>`).join('') || '<div class="small muted">Solo tú ves estas notas.</div>'}</div>
+    ${Negocio.vRecordatorios(a.id)}</div>`;
+  const resumen1 = [pend.length ? `${pend.length} aviso${pend.length === 1 ? '' : 's'}` : 'Sin avisos', (S.c.tareas || []).filter(t => t.alumno_id === a.id).length ? `${(S.c.tareas || []).filter(t => t.alumno_id === a.id).length} tarea(s)` : '', f.notas.length ? `${f.notas.length} nota(s)` : ''].filter(Boolean).join(' · ');
+  const fb2 = `${srv?.modulo_futbol ? vFutbolFicha(a) : ''}
+  <section class="section"><h2>Cumplimiento</h2><div class="kpis">
+    ${(srv?.modulo_entreno ?? true) ? tile('entreno', 'Entrenamiento', dpw ? `${cur.entrenos}/${dpw}` : cur.entrenos, 'esta semana', dpw ? `semana pasada ${pre.entrenos}/${dpw}` : '', nivelE) : ''}
+    ${srv?.modulo_nutricion && !midoCoach(a.id) ? tile('alimentacion', 'Alimentación', '—', esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || ''), 'aún no se mide', '') : srv?.modulo_nutricion ? tile('alimentacion', 'Alimentación', ing7.pct != null ? ing7.pct + ' %' : '—', ing7.dias ? `${ing7.hechas}/${ing7.total} ingestas` : 'sin registros', Nutricion.nuevasDe(a.id) ? `🍽 ${Nutricion.nuevasDe(a.id)} creación${Nutricion.nuevasDe(a.id) > 1 ? 'es' : ''} nueva${Nutricion.nuevasDe(a.id) > 1 ? 's' : ''}` : evN ? evN[1] + ' · 7 días' : '', evN?.[0] || '') : ''}
+    ${conPasos(srv) || srv?.modulo_habitos ? tile('habitos', srv?.modulo_habitos ? 'Hábitos y pasos' : 'Pasos', pasos7 != null ? fmtNum(pasos7, 0) : '—', `pasos de media · 7 días`, `objetivo ${fmtNum(obj, 0)}`, pasos7 == null ? '' : pasos7 >= obj ? 'ok' : pasos7 >= obj * .7 ? 'warn' : 'bad') : ''}
+  </div></section>
+  ${Acomp.vCheckinsFicha(f, chks)}`;
+  const fb3 = `  <section class="section"><div class="section-head"><h2>Plan</h2><button class="btn sm ghost" data-act="editarServicio">✎ Editar</button></div><div class="card stack">
     <button class="plan-b" data-act="fichaSub" data-s="plan"><div class="grow"><h3>${esc(srv?.producto || 'Sin plan asignado')} <span style="color:var(--blue-text)">›</span></h3><div class="small" style="color:var(--blue-text)">Ver toda su planificación${(() => { const m = [(srv?.modulo_entreno ?? true) && 'entrenamiento', srv?.modulo_nutricion && 'alimentación', srv?.modulo_habitos && 'hábitos'].filter(Boolean); return m.length ? ': ' + m.join(', ').replace(/, ([^,]*)$/, ' y $1') : ''; })()}</div></div></button>
     <div class="row"><div class="grow"><div class="small muted">${[f.prog && `${esc(f.prog.nombre)}${dpw ? ` · ${dpw} días por semana` : ''}`, srv?.modulo_nutricion && 'con nutrición', (srv?.modulo_presencial || srv?.sesiones_incluidas) && `${srv.sesiones_incluidas || ''} presenciales`.trim()].filter(Boolean).join(' · ') || 'Sin programa'}</div></div>${P && !P.sinFin ? `<b class="num" style="font-family:var(--display);font-size:24px">${P.pctTotal} %</b>` : ''}</div>
     ${P ? `<div class="track gordo"><i style="width:${P.pctTotal}%"></i></div><div class="row small muted"><span class="grow">${P.antes ? 'Empieza' : 'Inicio'} ${esc(fF(srv.inicio))}${!P.antes && !P.fuera ? ` · semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''}</span>${P.sinFin ? '' : `<span>Final ${esc(fF(P.ciclos[P.ciclos.length - 1].fin))}</span>`}</div>` : '<p class="small muted">Pon la fecha de inicio y la duración en "Editar".</p>'}
     ${extensionesDe(srv).length ? `<div class="small">${extensionesDe(srv).map(x => `<span class="pill gold">${esc(x.nombre || 'Extensión')} · ${x.semanas} sem · desde ${esc(fCorta(x.desde))}</span>`).join(' ')}</div>` : ''}
     ${(() => { const af = avisoFin(srv); return af ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>${af.terminado ? `Su proceso terminó el ${esc(fCorta(af.fin))}` : `Le quedan ${af.dias} días de proceso`}</b> (final ${esc(fF(af.fin))}). Si sigue contigo, añádele una extensión: continúa con sus bloques y su historial.</div><button class="btn sm gold" data-act="extension">＋ Añadir extensión</button></div>` : srv?.inicio ? '<button class="linkbtn small" data-act="extension" style="align-self:flex-start">＋ Añadir extensión del proceso</button>' : ''; })()}
     ${e.control ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>Toca su revisión mensual ${e.control.n}</b> (${esc(fCorta(e.control.fecha))}): llamada o videollamada de 10-15 minutos para ver cómo se siente, sus objetivos y su composición corporal.</div><button class="btn sm gold" data-act="revision" data-n="${e.control.n}">Registrar revisión</button></div>` : ''}
-  </div></section>
-  ${srv?.modulo_futbol ? vFutbolFicha(a) : ''}
-  <section class="section"><h2>Cumplimiento</h2><div class="kpis">
-    ${(srv?.modulo_entreno ?? true) ? tile('entreno', 'Entrenamiento', dpw ? `${cur.entrenos}/${dpw}` : cur.entrenos, 'esta semana', dpw ? `semana pasada ${pre.entrenos}/${dpw}` : '', nivelE) : ''}
-    ${srv?.modulo_nutricion && !midoCoach(a.id) ? tile('alimentacion', 'Alimentación', '—', esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || ''), 'aún no se mide', '') : srv?.modulo_nutricion ? tile('alimentacion', 'Alimentación', ing7.pct != null ? ing7.pct + ' %' : '—', ing7.dias ? `${ing7.hechas}/${ing7.total} ingestas` : 'sin registros', Nutricion.nuevasDe(a.id) ? `🍽 ${Nutricion.nuevasDe(a.id)} creación${Nutricion.nuevasDe(a.id) > 1 ? 'es' : ''} nueva${Nutricion.nuevasDe(a.id) > 1 ? 's' : ''}` : evN ? evN[1] + ' · 7 días' : '', evN?.[0] || '') : ''}
-    ${conPasos(srv) || srv?.modulo_habitos ? tile('habitos', srv?.modulo_habitos ? 'Hábitos y pasos' : 'Pasos', pasos7 != null ? fmtNum(pasos7, 0) : '—', `pasos de media · 7 días`, `objetivo ${fmtNum(obj, 0)}`, pasos7 == null ? '' : pasos7 >= obj ? 'ok' : pasos7 >= obj * .7 ? 'warn' : 'bad') : ''}
-  </div></section>
-  ${Temperamento.bloqueFicha(f, a)}
-  <section class="section"><div class="section-head"><h2>Composición corporal</h2><div class="row" style="gap:6px"><button class="btn sm ghost" data-act="objetivoComp">🎯 Objetivo</button><button class="btn sm ghost" data-act="nuevaMedicion">＋ Medición</button></div></div>
+  </div></section>`;
+  const fb4 = `${vBloqueActual(f, a)}<div style="padding:0 2px"><button class="btn ghost full" data-act="fichaSub" data-s="entreno">Programas, contextos y zonas de FC ›</button></div>${IA.vFicha(f, a)}`;
+  const fb5 = `<div class="card stack"><div class="small muted">${ing7.pct != null ? `Últimos 7 días: <b>${ing7.pct} %</b> de ingestas bien (${esc(evN[1] || '')})` : esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || 'Plan de alimentación')}</div><button class="btn full" data-act="fichaSub" data-s="alimentacion">Abrir su nutrición ›</button></div>`;
+  const fb6 = `${Temperamento.bloqueFicha(f, a)}${conPasos(srv) || srv?.modulo_habitos ? `<div style="padding:0 2px"><button class="btn ghost full" data-act="fichaSub" data-s="habitos">${srv?.modulo_habitos ? 'Hábitos y pasos' : 'Pasos'} ›</button></div>` : ''}`;
+  const fb7 = `  <section class="section"><div class="section-head"><h2>Composición corporal</h2><div class="row" style="gap:6px"><button class="btn sm ghost" data-act="objetivoComp">🎯 Objetivo</button><button class="btn sm ghost" data-act="nuevaMedicion">＋ Medición</button></div></div>
     ${vGraficaComp(f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), a, f.medObj) || '<div class="card empty">Sin mediciones todavía.</div>'}
-    ${vObjetivoComp(f.medObj, f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), true)}
-    <button class="btn ghost full" data-act="fichaSub" data-s="composicion">Medidas, fotos y caso de éxito ›</button></section>
-  ${vTestsFicha(f)}
-  ${vBloqueActual(f, a)}
-  ${IA.vFicha(f, a)}
-  ${vRevisionesFicha(a)}
-  ${vPresenciales(srv, f.pres, true)}
-  ${Acomp.vCheckinsFicha(f, chks)}
-  <section class="section"><div class="section-head"><h2>Plan de pagos</h2><button class="btn sm ghost" data-act="nuevoPago">＋ Cuota</button></div><div class="card">${pagos.map(lineaPago).join('') || '<div class="empty">Sin cuotas registradas.</div>'}</div></section>
-  <section class="section"><div class="section-head"><h2>Notas privadas</h2><button class="btn sm ghost" data-act="nuevaNota">＋ Nota</button></div><div class="card">${f.notas.map(n => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(n.fecha))}</span><div class="small grow">${esc(n.texto)}</div></div>`).join('') || '<div class="empty">Solo tú ves estas notas.</div>'}</div></section>`;
+    ${vObjetivoComp(f.medObj, f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), true)}</section>`;
+  const fb8 = `${vRevisionesFicha(a)}${vPresenciales(srv, f.pres, true)}`;
+  const fb9 = `<section class="section"><div class="section-head"><h2>Cuotas</h2><button class="btn sm ghost" data-act="nuevoPago">＋ Cuota</button></div><div class="card">${pagos.map(lineaPago).join('') || '<div class="empty">Sin cuotas registradas.</div>'}</div></section>`;
+  const fb11 = `<div class="card stack"><div class="small muted">Medidas de contorno, fotos de progreso, permisos de imagen y su caso de éxito.</div><button class="btn full" data-act="fichaSub" data-s="composicion">Abrir medidas, fotos y caso de éxito ›</button></div>`;
+  const nivTxt = { ok: 'En camino', warn: 'Atención', bad: 'Revisar' }[e.nivel];
+  return `<section class="fh"><button class="btn sm ghost" data-act="cerrarFicha" style="align-self:flex-start">← Alumnos</button>
+    <div class="fh-top">${avatarDe(a, 72)}<div class="grow" style="min-width:0"><span class="eyebrow">Ficha del alumno</span><h1 style="margin:2px 0 4px">${esc(a.nombre)}</h1>
+      <div class="row" style="gap:6px;flex-wrap:wrap"><span class="pill ${e.nivel}">${nivTxt}</span>${srv?.producto ? `<span class="pill blue">${esc(srv.producto)}</span>` : ''}${P && !P.antes && !P.fuera ? `<span class="pill">Semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}</span>` : ''}${a.acceso_pausado ? '<span class="pill bad">Acceso pausado</span>' : ''}</div></div></div>
+    <div class="fh-kpis"><div><b class="num">${dpw ? `${cur.entrenos}/${dpw}` : cur.entrenos}</b><small>entrenos semana</small></div><div><b class="num">${pasos7 != null ? fmtNum(pasos7, 0) : '—'}</b><small>pasos · 7 días</small></div><div><b class="num">${ing7.pct != null ? ing7.pct + ' %' : '—'}</b><small>alimentación</small></div><div><b class="num">${ultM?.peso != null ? fmtNum(ultM.peso, 1) : '—'}</b><small>kg · ${ultM ? esc(fCorta(ultM.fecha)) : 'sin medir'}</small></div></div>
+    <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn sm gold" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como ${esc(nom)}</button><button class="btn sm" data-act="abrirReporte" data-id="${a.id}">📋 Reporting</button></div>
+    <details class="fh-mas"><summary class="small">Más acciones · ${esc(a.email || '')} · alta ${esc(fCorta(a.fecha_alta))}</summary><div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}<button class="btn sm ghost" data-act="pausarAcceso" data-id="${a.id}" data-on="${a.acceso_pausado ? 0 : 1}">${a.acceso_pausado ? '🔓 Devolver el acceso' : '🔒 Quitar el acceso (conserva el perfil)'}</button></div></details>
+    ${a.activo === false ? '<div class="aprox small">Antiguo alumno: no le llegan avisos de seguimiento al coach. Sus datos siguen guardados y puede seguir usando la app. Reactívalo si vuelve a empezar un proceso.</div>' : ''}</section>
+  <section class="section fb-lista span">
+    ${ban('resumen', 1, '🔔', 'Resumen y avisos', resumen1, fb1, true)}
+    ${ban('checkins', 2, '✅', 'Check-ins y cumplimiento', `${dpw ? `${cur.entrenos}/${dpw} entrenos` : ''}${chks[0] ? ` · último check-in ${esc(fCorta(chks[0].semana_inicio))}` : ''}`, fb2, true)}
+    ${ban('plan', 3, '📑', 'Plan contratado y bloques', `${esc(srv?.producto || 'Sin plan')}${P && !P.antes && !P.fuera ? ` · semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''}`, fb3)}
+    ${modE ? ban('entreno', 4, '🏋️', 'Entrenamiento · bloque actual', `${esc(f.prog?.nombre || 'Sin programa')}${dpw ? ` · ${cur.entrenos}/${dpw} esta semana` : ''}`, fb4) : ''}
+    ${srv?.modulo_nutricion ? ban('nutri', 5, '🥗', 'Nutrición', ing7.pct != null ? `${ing7.pct} % de ingestas bien · 7 días` : 'Plan de alimentación', fb5) : ''}
+    ${srv?.modulo_habitos || conPasos(srv) || Temperamento.bloqueFicha(f, a) ? ban('habitos', 6, '🧭', 'Hábitos y temperamento', pasos7 != null ? `${fmtNum(pasos7, 0)} pasos de media · objetivo ${fmtNum(obj, 0)}` : '', fb6) : ''}
+    ${ban('progreso', 7, '📈', 'Progreso y composición corporal', ultM ? `Última medición ${esc(fCorta(ultM.fecha))}${ultM.peso != null ? ' · ' + fmtNum(ultM.peso, 1) + ' kg' : ''}${ultM.grasa_pct != null ? ' · ' + fmtNum(ultM.grasa_pct, 1) + ' % grasa' : ''}` : 'Sin mediciones', fb7)}
+    ${ban('calendario', 8, '📅', 'Calendario de sesiones y revisiones', e.control ? `Toca revisión mensual ${e.control.n}` : '', fb8, true)}
+    ${ban('pagos', 9, '💳', 'Plan de pagos', pagV.length ? `<span style="color:var(--bad)">${pagV.length} vencida${pagV.length === 1 ? '' : 's'}</span>` : pagP.length ? `${pagP.length} pendiente${pagP.length === 1 ? '' : 's'}` : pagos.length ? 'Todo pagado' : 'Sin cuotas', fb9)}
+    ${ban('tests', 10, '🧪', 'Tests y valoraciones', '', vTestsFicha(f))}
+    ${ban('medidas', 11, '📸', 'Medidas, fotos y casos de éxito', '', fb11)}
+  </section>`;
 }
 /* Sub-pantallas de la ficha: entrenamiento, alimentación, hábitos y composición */
 async function abrirSub(sub) {
@@ -5580,7 +5649,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v180';
+const APP_VER = 'v181';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -5724,6 +5793,9 @@ document.addEventListener('click', async e => {
   switch (a) {
     case 'ia': await IA.accion(b); break;
     case 'duoElegir': duoElegir(); break;
+    case 'tareaEditar': formTarea(b.dataset.id ? +b.dataset.id : null, b.dataset.al || S.ficha?.id); break;
+    case 'tareaHecha': await tareaHecha(+b.dataset.id); break;
+    case 'histAvisos': histAvisos(b.dataset.id); break;
     case 'duoIr': await duoIr(b.dataset.id); break;
     case 'tab': S.ia = false; if (b.dataset.t === 'checkin') { S.tab = 'hoy'; S.dia = null; render(); $('#checkin')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break; }
       S.tab = b.dataset.t; if (!enCurso()) { S.dia = null; S.sesion = null; } S.chipsCargados = false; render(); window.scrollTo(0, 0); break;
