@@ -72,7 +72,7 @@ const Nutricion = (() => {
 
   /* ---------- Utilidades de vista ---------- */
   const docDe = (n, k) => n.plan.find(x => x.clave === k);
-  const tiene = x => !!x && (!!x.contenido || !!(x.imagenes || []).length || !!(x.datos?.ctx || []).length);
+  const tiene = x => !!x && (!!x.contenido || !!(x.imagenes || []).length || !!(x.datos?.ctx || []).length || !!(x.datos?.guias || []).length || !!(x.datos?.menus || []).length || !!(x.datos?.sup || []).length || !!x.datos?.hidratacion);
   const ctxDe = n => (docDe(n, 'contextos')?.datos?.ctx || []).filter(c => c.n);
   const g = v => v != null && v !== '' ? fmtNum(+v, 0) + ' g' : '—';
   const alimentosTxt = x => (x.alimentos || []).map(a => a.n + (a.q ? ` (${a.q})` : '')).join(', ');
@@ -137,6 +137,7 @@ const Nutricion = (() => {
       ${sems.length > 1 ? `<div class="row small" style="gap:6px;flex-wrap:wrap;align-items:center"><span class="muted">Esta semana:</span>${sems.map((p, k) => `<button class="pill ${k === semSel(n) ? 'gold' : ''}" data-act="nuSem" data-i="${k}">${esc(p.nombre || 'Semana ' + (k + 1))}</button>`).join('')}</div>` : ''}
       ${auto === i ? '<p class="small muted" style="margin:0">📅 Es el que te toca hoy según tu semana tipo. Si tu día ha cambiado, toca otro.</p>' : ''}
       ${c.d ? `<p class="small muted" style="margin:0">${esc(c.d)}</p>` : ''}${vMacros(c, ing)}
+      <button class="btn full" data-act="nuCalc">🧮 Calcula tu plato con lo que quieres comer</button>
       <div class="row" style="gap:8px;flex-wrap:wrap">${ir('menus', '🍽️ Ver mis menús')}${ir('equivalencias', '✋ Equivalencias')}${ir('platos', '🥗 Montar un plato')}</div></div></section>`;
   }
   function vDocs(docs) {
@@ -157,6 +158,7 @@ const Nutricion = (() => {
     const ctx = k === 'contextos' ? ctxDe(n) : [];
     return `<section class="stack">${vuelta}<span class="eyebrow">Tu plan de alimentación</span><h1>${esc(meta?.[1] || x.titulo)}</h1>${meta?.[2] ? `<p class="small muted" style="margin:0">${esc(meta[2])}</p>` : ''}</section>
       ${ctx.length ? vTablaCtx(ctx, comidasDia(d?.servicio)) : ''}
+      ${k === 'equivalencias' && (x.datos?.guias || []).length ? vGuias(x, n) : ''}${k === 'menus' && (x.datos?.menus || []).length ? vMenus(x, n) : ''}${k === 'suplementacion' && ((x.datos?.sup || []).length || x.datos?.hidratacion) ? vSup(x) : ''}
       ${x.contenido ? `<section class="section"><div class="card nu-texto">${parrafos(x.contenido)}</div></section>` : ''}
       ${pdfs.length ? `<section class="section"><div class="stack" style="gap:8px">${pdfs.map((u, i) => `<a class="btn full" href="${esc(u)}" target="_blank" rel="noopener">📄 Abrir ${pdfs.length > 1 ? 'el documento ' + (i + 1) : 'el documento'} (PDF)</a>`).join('')}</div><p class="small muted">Se abre en tu móvil: desde ahí puedes guardarlo o imprimirlo.</p></section>` : ''}
       ${imgs.length ? `<section class="section"><div class="nu-imgs">${imgs.map(u => `<button class="img" data-act="verImagen" data-src="${esc(u)}" aria-label="Ampliar imagen"><img src="${esc(u)}" alt="" loading="lazy"></button>`).join('')}</div><p class="small muted">Toca una imagen para verla en grande, guardarla o imprimirla.</p></section>` : ''}`;
@@ -325,8 +327,11 @@ const Nutricion = (() => {
       case 'nuCerrar': S.nDoc = null; render(); window.scrollTo(0, 0); break;
       case 'nuCtx': S.nCtx = +b.dataset.i; try { localStorage.setItem('lof-nctx', hoyISO() + '|' + S.nCtx); } catch (err) { /* sin almacenamiento */ } render(); break;
       case 'nuDia': S.nDia = b.dataset.f; render(); break;
+      case 'nuCalc': formPlato(); break;
       case 'nuInc': formInc(b.dataset.k); break;
       case 'nuIncIni': { const v = $('#inc-ini')?.value; if (!v) return toast('Elige la fecha'); try { await guardarResumen(S.ficha, d => { d.inicio = v; }); await cargarPlanificacion(S.ficha); render(); toast('Fecha guardada'); } catch (err) { fallo(err); } break; }
+      case 'nuGuia': S.nGuia = +b.dataset.i; render(); break;
+      case 'nuImportar': formImportar(); break;
       case 'nuSem': try { localStorage.setItem('lof-nsem', lunesDe(hoyISO()) + '|' + b.dataset.i); localStorage.removeItem('lof-nctx'); } catch (err) { /* */ } S.nCtx = null; render(); break;
       case 'nuNueva': formComida(); break;
       case 'nuEditar': formComida(+b.dataset.id); break;
@@ -365,6 +370,7 @@ const Nutricion = (() => {
         <span class="eyebrow" style="margin-top:6px">Semana 2 · análisis y estrategia</span>
         <button class="line inc-l" data-act="nuInc" data-k="reunion" style="width:100%;text-align:left;cursor:pointer"><span class="inc-ic">🤝</span><div class="grow"><b class="small">Reunión personalizada</b><div class="small muted">${it.reunion?.fecha ? esc(fCorta(it.reunion.fecha)) + ' · ' : ''}Lo que hace bien, lo que le limita y sus 3–4 prioridades</div></div><span class="pill ${INC_EST[it.reunion?.estado || 'pendiente'][1]}">${it.reunion?.estado === 'validado' ? 'Hecha' : it.reunion?.estado === 'recibido' ? 'Programada' : 'Pendiente'}</span></button>
         ${ENTREGAS.map(([k, t]) => { const p = pub(k); return `<button class="line inc-l" data-act="editarApartado" data-sec="alimentacion" data-k="${k}" style="width:100%;text-align:left;cursor:pointer"><span class="inc-ic">${(DOCS.find(d => d[0] === k) || [])[3] || '📄'}</span><div class="grow"><b class="small">${esc(t)}</b><div class="small muted">${p[0] === 'Publicado' ? `${esc(nom)} ya lo ve en Nutrición` : p[0] === 'Borrador' ? 'Guardado, aún no lo ve' : 'Sin subir todavía'}</div></div><span class="pill ${p[1]}">${p[0]}</span></button>`; }).join('')}
+        <button class="btn full" data-act="nuImportar">📥 Importar su plan desde ChatGPT</button>
         <p class="note">Las notas y archivos de la semana 1 son privados. ${esc(nom)} solo ve en qué punto está cada paso.</p></div></section>`;
   }
   function formInc(k) {
@@ -419,5 +425,251 @@ const Nutricion = (() => {
         <div class="inc-a ${pub('suplementacion') ? 'ok' : ''}"><span class="inc-ic">${pub('suplementacion') ? '✓' : '💊'}</span><div class="grow"><b>Plan de suplementación</b><small>${pub('suplementacion') ? 'Ya lo tienes en «Tu plan»' : 'Si ya tenemos tu analítica, te lo entregamos individualizado.'}</small></div></div></div>
       <p class="small muted" style="margin:0">No es una dieta estricta: es una estrategia personalizada, comiendo lo que te gusta y sin efecto rebote.</p></div></section>`;
   }
-  return { fase, faseDe, faseCoach, mide, FASES, vIncCoach: aislar(vIncCoach), formInc, esInc, guardarResumen, vista: aislar(vista), vCoach: aislar(vCoach), cargar, cargarFicha, cargarCoach, datosPrevia, nuevasDe, DOCS, esPdf, ctxDe };
+  /* ---------- Calcula tu plato ----------
+     El alumno elige contexto, comida y alimentos; se calculan los gramos para acercarse a los macros de esa comida
+     (como la calculadora de pesos del entreno). Composición media por 100 g de tablas de composición (orientativa:
+     marca y cocción la cambian). u = medida casera [nombre singular, nombre plural, gramos]. */
+  const ALI = [
+    // proteínas
+    ['Pollo (pechuga) en crudo', 110, 23, 0, 1.5, 'P', ['filete tamaño palma', 'filetes tamaño palma', 130]],
+    ['Pollo (pechuga) cocinado', 165, 31, 0, 3.6, 'P', ['filete tamaño palma', 'filetes tamaño palma', 100]],
+    ['Pavo (pechuga) en crudo', 105, 24, 0, 1, 'P', ['filete tamaño palma', 'filetes tamaño palma', 130]],
+    ['Ternera magra en crudo', 130, 21, 0, 5, 'P', ['filete tamaño palma', 'filetes tamaño palma', 130]],
+    ['Ternera magra cocinada', 180, 29, 0, 7, 'P', ['filete tamaño palma', 'filetes tamaño palma', 100]],
+    ['Lomo de cerdo en crudo', 140, 21, 0, 6, 'P', ['filete tamaño palma', 'filetes tamaño palma', 130]],
+    ['Salmón en crudo', 200, 20, 0, 13, 'P', ['lomo mediano', 'lomos medianos', 150]],
+    ['Pescado blanco en crudo (merluza, bacalao…)', 80, 17, 0, 1, 'P', ['filete mediano', 'filetes medianos', 150]],
+    ['Atún al natural (escurrido)', 110, 25, 0, 1, 'P', ['lata pequeña', 'latas pequeñas', 60]],
+    ['Gambas o langostinos pelados', 85, 18, 0, 1, 'P', ['taza', 'tazas', 150]],
+    ['Huevo entero', 145, 12.5, 0.7, 10, 'P', ['huevo', 'huevos', 50]],
+    ['Claras de huevo', 50, 11, 0.7, 0.2, 'P', ['clara', 'claras', 33]],
+    ['Jamón serrano', 240, 31, 0, 13, 'P', ['loncha fina', 'lonchas finas', 10]],
+    ['Queso fresco batido 0 %', 46, 8, 3.5, 0.2, 'P', ['tarrina', 'tarrinas', 250]],
+    ['Yogur alto en proteína', 60, 10, 4, 0.2, 'P', ['envase', 'envases', 200]],
+    ['Tofu firme', 120, 13, 2, 7, 'P', ['taza en dados', 'tazas en dados', 150]],
+    ['Proteína en polvo (whey)', 380, 78, 6, 6, 'P', ['cacito', 'cacitos', 30]],
+    // hidratos
+    ['Arroz blanco cocido', 130, 2.7, 28, 0.3, 'C', ['taza', 'tazas', 190]],
+    ['Arroz integral cocido', 112, 2.6, 23, 0.9, 'C', ['taza', 'tazas', 190]],
+    ['Pasta cocida', 150, 5.5, 30, 0.9, 'C', ['taza', 'tazas', 145]],
+    ['Patata cocida', 80, 2, 17, 0.1, 'C', ['patata mediana', 'patatas medianas', 180]],
+    ['Boniato cocido', 86, 1.6, 20, 0.1, 'C', ['boniato mediano', 'boniatos medianos', 200]],
+    ['Yuca cocida', 125, 1, 30, 0.3, 'C', ['taza en trozos', 'tazas en trozos', 185]],
+    ['Quinoa cocida', 120, 4.4, 21, 1.9, 'C', ['taza', 'tazas', 185]],
+    ['Cuscús cocido', 112, 3.8, 23, 0.2, 'C', ['taza', 'tazas', 160]],
+    ['Ñoquis', 133, 3, 28, 0.5, 'C', ['taza', 'tazas', 180]],
+    ['Pan integral', 240, 10, 41, 3.5, 'C', ['rebanada', 'rebanadas', 30]],
+    ['Pan blanco', 265, 9, 49, 3.2, 'C', ['rebanada', 'rebanadas', 30]],
+    ['Copos de avena', 370, 13, 60, 7, 'C', ['taza', 'tazas', 80]],
+    ['Tortitas de arroz', 380, 8, 81, 3, 'C', ['tortita', 'tortitas', 8]],
+    ['Maíz cocido', 96, 3.4, 19, 1.5, 'C', ['taza', 'tazas', 165]],
+    ['Lentejas cocidas', 116, 9, 17, 0.4, 'C', ['taza', 'tazas', 200]],
+    ['Garbanzos cocidos', 140, 8, 19, 2.6, 'C', ['taza', 'tazas', 200]],
+    ['Alubias cocidas', 110, 7.5, 16, 0.5, 'C', ['taza', 'tazas', 200]],
+    ['Plátano', 89, 1.1, 21, 0.3, 'C', ['plátano mediano', 'plátanos medianos', 110]],
+    ['Manzana', 52, 0.3, 12, 0.2, 'C', ['manzana mediana', 'manzanas medianas', 150]],
+    ['Naranja', 47, 0.9, 10, 0.1, 'C', ['naranja mediana', 'naranjas medianas', 160]],
+    ['Fresas', 32, 0.7, 6, 0.3, 'C', ['taza', 'tazas', 150]],
+    ['Arándanos', 57, 0.7, 12, 0.3, 'C', ['taza', 'tazas', 145]],
+    ['Dátiles', 280, 2.5, 66, 0.4, 'C', ['dátil', 'dátiles', 8]],
+    ['Miel', 304, 0.3, 82, 0, 'C', ['cucharada', 'cucharadas', 20]],
+    // grasas
+    ['Aceite de oliva virgen extra', 884, 0, 0, 100, 'G', ['cucharada', 'cucharadas', 13.5]],
+    ['Aguacate (pulpa)', 160, 2, 2, 15, 'G', ['aguacate mediano', 'aguacates medianos', 140]],
+    ['Nueces', 654, 15, 7, 65, 'G', ['puñado pequeño', 'puñados pequeños', 20]],
+    ['Almendras', 580, 21, 9, 50, 'G', ['puñado pequeño', 'puñados pequeños', 20]],
+    ['Crema de cacahuete 100 %', 590, 25, 15, 50, 'G', ['cucharada rasa', 'cucharadas rasas', 15]],
+    ['Aceitunas', 145, 1, 0.5, 15, 'G', ['aceituna', 'aceitunas', 4]],
+    ['Queso curado', 400, 26, 0.5, 33, 'G', ['loncha fina', 'lonchas finas', 15]],
+    ['Chocolate negro 85 %', 600, 10, 20, 50, 'G', ['onza', 'onzas', 10]],
+    // lácteos y verdura
+    ['Leche semidesnatada', 46, 3.3, 4.8, 1.6, 'L', ['vaso', 'vasos', 250]],
+    ['Leche entera', 64, 3.2, 4.7, 3.6, 'L', ['vaso', 'vasos', 250]],
+    ['Kéfir natural', 60, 3.3, 4, 3.5, 'L', ['vaso pequeño', 'vasos pequeños', 200]],
+    ['Yogur griego natural', 120, 4, 4, 10, 'L', ['envase', 'envases', 125]],
+    ['Verdura variada (ensalada, brócoli, judías…)', 30, 2, 4, 0.3, 'V', ['plato', 'platos', 250]],
+    ['Calabaza o zanahoria cocida', 25, 0.8, 5, 0.1, 'V', ['taza', 'tazas', 150]]
+  ].map(([n, kcal, p, c, gr, t, u]) => ({ n, kcal, p, c, g: gr, t, u }));
+  const FRAC = [[0, ''], [0.25, '¼'], [1 / 3, '⅓'], [0.5, '½'], [2 / 3, '⅔'], [0.75, '¾']];
+  function equivVisual(a, gramos) {
+    const x = gramos / a.u[2]; if (x < 0.2) return `${fmtNum(gramos, 0)} g`;
+    const ent = Math.floor(x), r = x - ent, [fv, fs] = FRAC.reduce((m, f) => Math.abs(f[0] - r) < Math.abs(m[0] - r) ? f : m, [1, '']), n = fv === 1 ? ent + 1 : ent;
+    const txt = (n ? String(n) : '') + (fv !== 1 && fs ? (n ? ' ' : '') + fs : '');
+    return `≈ ${txt || '¼'} ${(n > 1 || (n === 1 && fs && fv !== 1)) ? a.u[1] : a.u[0]}`;
+  }
+  /* Reparto de los macros del contexto en sus ingestas: por defecto a partes iguales; «reparto» del contexto (ej. 70,30) si lo hay */
+  function objetivoComida(c, k, nIng) {
+    const rep = String(c.rep || '').split(/[,;/ ]+/).map(Number).filter(v => v > 0), n = Math.max(1, +c.ing || nIng || 1);
+    const w = rep.length === n ? rep[k] / rep.reduce((a, b) => a + b, 0) : 1 / n;
+    return { p: (+c.p || 0) * w, c: (+c.c || 0) * w, g: (+c.g || 0) * w, kcal: (+c.kcal || 0) * w, w };
+  }
+  /* Resolución iterativa: cada alimento ajusta su macro principal (P, C o G) descontando lo que aportan los demás; la verdura va fija */
+  function calcular(sel, obj) {
+    const q = sel.map(s => s.fijo != null ? s.fijo : s.a.t === 'V' ? s.a.u[2] : 0);
+    const rol = s => s.a.t === 'P' ? 'p' : s.a.t === 'C' ? 'c' : s.a.t === 'G' ? 'g' : null;
+    for (let it = 0; it < 40; it++) {
+      ['c', 'p', 'g'].forEach(m => {
+        const idx = sel.map((s, i) => i).filter(i => rol(sel[i]) === m && sel[i].fijo == null); if (!idx.length) return;
+        const otros = sel.reduce((t, s, i) => t + (idx.includes(i) ? 0 : s.a[m] * q[i] / 100), 0), falta = Math.max(0, obj[m] - otros);
+        idx.forEach(i => { q[i] = falta / idx.length / (sel[i].a[m] || 1) * 100; });
+      });
+    }
+    const red = (a, v) => a.t === 'G' && v < 40 ? Math.round(v) : Math.round(v / 5) * 5;
+    const gr = sel.map((s, i) => s.fijo != null ? s.fijo : red(s.a, q[i]));
+    const tot = ['kcal', 'p', 'c', 'g'].reduce((o, m) => ({ ...o, [m]: sel.reduce((t, s, i) => t + s.a[m] * gr[i] / 100, 0) }), {});
+    return { gr, tot };
+  }
+  const st0 = () => ({ ctx: null, k: 0, sel: [] });
+  function formPlato() {
+    const d = S.modo === 'coach' && S.ficha ? datosPrevia(S.ficha) : S.d, n = d?.nutri || vacio(), l = ctxDe(n);
+    if (!l.length) return toast('Aún no tienes contextos con macros en tu plan');
+    const st = S.calc ||= st0(); if (st.ctx == null || st.ctx >= l.length) st.ctx = Math.min(selCtx(n), l.length - 1);
+    const pinta = () => {
+      const c = l[st.ctx], nI = Math.max(1, +c.ing || comidasDia(d?.servicio)), obj = objetivoComida(c, Math.min(st.k, nI - 1), nI);
+      const r = st.sel.length ? calcular(st.sel, obj) : null;
+      $('#calc-cuerpo').innerHTML = `<div class="stack" style="gap:6px"><span class="small"><b>¿Qué tipo de día es?</b></span><div class="chips">${l.map((x, i) => `<button type="button" class="pill ${i === st.ctx ? 'blue' : ''}" data-cctx="${i}">${esc(x.n)}</button>`).join('')}</div></div>
+        <div class="stack" style="gap:6px"><span class="small"><b>¿Qué comida?</b></span><div class="chips">${[...Array(nI)].map((_, i) => `<button type="button" class="pill ${i === Math.min(st.k, nI - 1) ? 'blue' : ''}" data-ck="${i}">Comida ${i + 1}</button>`).join('')}</div>
+          <div class="calc-obj small">Objetivo de esta comida: <b>${fmtNum(obj.kcal, 0)} kcal</b> · P ${fmtNum(obj.p, 0)} g · C ${fmtNum(obj.c, 0)} g · G ${fmtNum(obj.g, 0)} g${obj.w < 1 && !c.rep ? ' <span class="muted">(reparto a partes iguales)</span>' : ''}</div></div>
+        <div class="stack" style="gap:6px"><span class="small"><b>¿Qué quieres comer?</b> <span class="muted">Elige una proteína, un hidrato y una grasa (y verdura si quieres)</span></span>
+          <input type="search" id="calc-q" list="calc-ali" placeholder="Escribe un alimento: pollo, arroz, aguacate…" autocomplete="off"><datalist id="calc-ali">${ALI.map(a => `<option value="${esc(a.n)}">`).join('')}</datalist>
+          <div class="chips">${['Pollo (pechuga) cocinado', 'Arroz blanco cocido', 'Patata cocida', 'Huevo entero', 'Aceite de oliva virgen extra', 'Verdura variada (ensalada, brócoli, judías…)'].filter(x => !st.sel.some(s => s.a.n === x)).map(x => `<button type="button" class="pill" data-cadd="${esc(x)}">＋ ${esc(x.split(' (')[0])}</button>`).join('')}</div></div>
+        ${r ? `<div class="calc-res">${st.sel.map((s, i) => `<div class="calc-al"><div class="grow"><b>${esc(s.a.n)}</b><span>${equivVisual(s.a, r.gr[i])}</span></div><div class="calc-g"><b class="num">${fmtNum(r.gr[i], 0)} g</b>${s.a.t === 'V' || s.fijo != null ? `<small>${s.fijo != null ? 'fijado' : 'fijo'}</small>` : ''}</div><button type="button" class="btn sm ghost" data-cfix="${i}" aria-label="Fijar cantidad">✎</button><button type="button" class="btn sm ghost" data-cdel="${i}" aria-label="Quitar">✕</button></div>`).join('')}
+          <div class="calc-tot small">Total: <b>${fmtNum(r.tot.kcal, 0)} kcal</b> · P ${fmtNum(r.tot.p, 0)} g · C ${fmtNum(r.tot.c, 0)} g · G ${fmtNum(r.tot.g, 0)} g ${Math.abs(r.tot.kcal - obj.kcal) <= Math.max(40, obj.kcal * 0.08) ? '<span class="pill ok">✓ encaja</span>' : `<span class="pill warn">${r.tot.kcal > obj.kcal ? '+' : ''}${fmtNum(r.tot.kcal - obj.kcal, 0)} kcal</span>`}</div>
+          ${!st.sel.some(s => s.a.t === 'P') ? '<p class="small" style="color:var(--warn);margin:0">Añade una fuente de proteína para completar.</p>' : ''}${!st.sel.some(s => s.a.t === 'C') && obj.c > 15 ? '<p class="small" style="color:var(--warn);margin:0">Añade un hidrato para completar.</p>' : ''}${!st.sel.some(s => s.a.t === 'G') && obj.g > 8 ? '<p class="small muted" style="margin:0">La grasa la completa la propia proteína o añade aceite, aguacate o frutos secos.</p>' : ''}
+          <button type="button" class="btn full" id="calc-diario">🍽 Apuntar este plato en mi diario</button></div>` : ''}
+        <p class="note">Cantidades orientativas con valores medios de tablas de composición: la marca, la receta y la cocción los cambian. Si tu plan de Jesús dice otra cantidad, manda la de tu plan.</p>`;
+    };
+    abrirSheet(`<div class="stack"><h2>🧮 Calcula tu plato</h2><div id="calc-cuerpo" class="stack" style="gap:14px"></div><button type="button" class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
+    pinta();
+    const cuerpo = $('#calc-cuerpo');
+    const add = nom => { const a = ALI.find(x => norm(x.n) === norm(nom)) || ALI.find(x => norm(x.n).includes(norm(nom))); if (!a) return toast('No encuentro ese alimento: prueba con otro nombre'); if (st.sel.some(s => s.a.n === a.n)) return; if (st.sel.length >= 5) return toast('Máximo 5 alimentos'); st.sel.push({ a }); pinta(); };
+    cuerpo.addEventListener('click', async ev => {
+      const t = ev.target.closest('button'); if (!t) return;
+      if (t.dataset.cctx != null) { st.ctx = +t.dataset.cctx; pinta(); }
+      else if (t.dataset.ck != null) { st.k = +t.dataset.ck; pinta(); }
+      else if (t.dataset.cadd) add(t.dataset.cadd);
+      else if (t.dataset.cdel != null) { st.sel.splice(+t.dataset.cdel, 1); pinta(); }
+      else if (t.dataset.cfix != null) { const s = st.sel[+t.dataset.cfix], v = prompt(`¿Cuántos gramos de ${s.a.n}? (vacío = que lo calcule la app)`, s.fijo ?? ''); if (v === null) return; s.fijo = numero(v) ?? null; pinta(); }
+      else if (t.id === 'calc-diario') {
+        const c = l[st.ctx], nI = Math.max(1, +c.ing || comidasDia(d?.servicio)), r = calcular(st.sel, objetivoComida(c, Math.min(st.k, nI - 1), nI));
+        if (S.modo === 'coach') return toast('Vista previa: el alumno lo apunta desde su app');
+        const { error } = await sb.from('comidas_registro').insert({ alumno_id: S.user.id, fecha: hoyISO(), momento: 'Otro', contexto: c.n, alimentos: st.sel.map((s, i) => ({ n: s.a.n, q: `${fmtNum(r.gr[i], 0)} g` })), encaja: mide(fase(d)) ? 2 : null, nota: `Calculado para la comida ${Math.min(st.k, nI - 1) + 1} (${fmtNum(r.tot.kcal, 0)} kcal)` });
+        if (error) return fallo(error, AVISO); cerrarSheet(); toast('Apuntado en tu diario'); await cargar(S.user.id, S.d); render();
+      }
+    });
+    cuerpo.addEventListener('change', ev => { if (ev.target.id === 'calc-q' && ev.target.value.trim()) { add(ev.target.value.trim()); } });
+    cuerpo.addEventListener('keydown', ev => { if (ev.target.id === 'calc-q' && ev.key === 'Enter') { ev.preventDefault(); if (ev.target.value.trim()) add(ev.target.value.trim()); } });
+  }
+  /* ---------- Importar el plan que prepara ChatGPT (formato «LOF nutri 1») ----------
+     ChatGPT entrega, además del PDF, un bloque JSON con contextos, semanas, guías por macro, menús y suplementos.
+     Se pega aquí, se revisa y se guarda como BORRADOR en los apartados del alumno (no lo ve hasta publicar). */
+  const PROMPT_GPT = `Además del informe en PDF, entrégame al final un bloque de código JSON (sin comentarios ni texto dentro) con este formato exacto. Usa null cuando un dato no exista; no inventes valores. Cantidades de alimento en gramos (o ml para líquidos) indicando si es cocinado, crudo, seco o escurrido.
+
+{
+  "lof": "nutri-1",
+  "alumno": "Nombre del alumno",
+  "fecha": "AAAA-MM-DD",
+  "medidas": { "taza_ml": 250, "cucharada_ml": 15, "cucharadita_ml": 5, "palma": "sin dedos, grosor 1–1,5 cm" },
+  "ingestas": 3,
+  "resumen": "Texto breve del contexto y plan de acción (lo que lee el alumno)",
+  "contextos": [
+    { "nombre": "Entrenas y trabajas", "cuando": "Lunes, miércoles y viernes", "kcal": 2400, "p": 180, "c": 240, "g": 80, "ingestas": 3,
+      "reparto": [ { "ingesta": "Comida", "kcal": 900, "p": 60, "c": 100, "g": 25 } ], "nota": "" }
+  ],
+  "semanas": [ { "nombre": "Semana normal", "dias": ["Contexto lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"] } ],
+  "guias": [
+    { "macro": "c", "titulo": "Carbohidratos", "contexto_ref": "Día de menor actividad", "ref_g_por_ingesta": 41, "nota": "Mensaje «quédate con esto»",
+      "alimentos": [ { "nombre": "Patata cocida", "g": 240, "unidad": "g", "estado": "cocinado", "equivalencia": "2 patatas pequeñas", "complemento": false } ] }
+  ],
+  "menus": [ { "contexto": "Entrenas y trabajas", "ingesta": "Comida", "opciones": [ { "nombre": "Arroz con pollo y verduras", "ingredientes": [ { "n": "Arroz cocido", "q": "145 g" } ], "preparacion": "Breve" } ] } ],
+  "suplementos": [ { "nombre": "Creatina monohidrato", "dosis": "5 g", "frecuencia": "al día", "momento": "Con una comida", "duracion": "Uso continuo", "revision": "12 semanas", "objetivo": "Fuerza y acciones repetidas" } ],
+  "hidratacion": "Texto breve o null"
+}
+
+Reglas: "macro" es "p", "c" o "g" (o "mixto" para legumbres, lácteos y huevos). "ref_g_por_ingesta" son los gramos de ese macronutriente que aporta cada fila en una ingesta del contexto de referencia. "complemento": true para las raciones de acompañamiento (las marcadas con *). Las semanas usan exactamente los nombres de los contextos. No incluyas datos clínicos ni notas privadas.`;
+  const num = v => v == null || v === '' ? null : typeof v === 'number' ? v : numero(String(v));
+  function leerJSON(t) {
+    const m = String(t || '').match(/\{[\s\S]*\}/); if (!m) throw new Error('No encuentro el bloque { … } en lo que has pegado.');
+    let o; try { o = JSON.parse(m[0]); } catch (e) { throw new Error('El bloque no es JSON válido (' + e.message.slice(0, 80) + '). Copia el bloque de código completo de ChatGPT.'); }
+    return o;
+  }
+  /* Reparto entre comidas en % (formato del editor: «70,30»), a partir de las kcal (o la proteína) de cada ingesta */
+  const repPct = l => { const v = (l || []).map(r => num(r.kcal) ?? num(r.p)).filter(x => x != null && x > 0), t = v.reduce((a, b) => a + b, 0); return v.length > 1 && t ? v.map(x => Math.round(x / t * 100)).join(',') : ''; };
+  function normalizar(o, nombreAlumno) {
+    const av = [], ok = [];
+    if (o.alumno && nombreAlumno && !norm(nombreAlumno).split(' ').some(p => p.length > 2 && norm(o.alumno).includes(p))) av.push(`⚠️ El documento es de «${o.alumno}» y estás en la ficha de ${nombreAlumno}. Revisa que sea el alumno correcto.`);
+    const ctx = (o.contextos || []).map(c => ({ n: String(c.nombre || '').trim(), d: c.cuando || '', kcal: num(c.kcal), p: num(c.p), c: num(c.c), g: num(c.g), ing: num(c.ingestas) || num(o.ingestas), rep: repPct(c.reparto), nota: c.nota || '' })).filter(c => c.n);
+    ctx.forEach(c => { if (c.p != null && c.c != null && c.g != null && c.kcal != null) { const calc = Math.round(4 * c.p + 4 * c.c + 9 * c.g); if (calc !== c.kcal) av.push(`«${c.n}»: ${fmtNum(c.kcal, 0)} kcal escritas frente a ${fmtNum(calc, 0)} calculadas con los macros (se guarda lo escrito).`); } });
+    const nombres = new Set(ctx.map(c => norm(c.n)));
+    const semana = (o.semanas || []).map(s => ({ nombre: s.nombre || '', dias: (s.dias || []).slice(0, 7).map(x => String(x || '').trim()) })).filter(s => s.dias.some(Boolean));
+    semana.forEach(s => s.dias.forEach((d, i) => { if (d && !nombres.has(norm(d))) av.push(`Semana «${s.nombre}», día ${i + 1}: «${d}» no coincide con ningún contexto.`); }));
+    const guias = (o.guias || []).map(gu => ({ macro: ['p', 'c', 'g', 'mixto'].includes(gu.macro) ? gu.macro : 'mixto', titulo: gu.titulo || '', ref: num(gu.ref_g_por_ingesta), ctxRef: gu.contexto_ref || '', nota: gu.nota || '',
+      alimentos: (gu.alimentos || []).map(a => ({ n: String(a.nombre || '').trim(), g: num(a.g), u: a.unidad || 'g', est: a.estado || '', eq: a.equivalencia || '', comp: !!a.complemento })).filter(a => a.n) })).filter(gu => gu.alimentos.length);
+    guias.forEach(gu => { if (gu.ref == null && gu.macro !== 'mixto') av.push(`Guía «${gu.titulo}»: falta «ref_g_por_ingesta»; las cantidades no se podrán adaptar a cada contexto.`); const sinG = gu.alimentos.filter(a => a.g == null && !a.comp).length; if (sinG) av.push(`Guía «${gu.titulo}»: ${sinG} alimento(s) sin gramos.`); });
+    const menus = (o.menus || []).map(m => ({ ctx: m.contexto || '', ing: m.ingesta || '', ops: (m.opciones || []).map(p => ({ n: p.nombre || '', ingr: (p.ingredientes || []).map(i => ({ n: i.n || i.nombre || '', q: i.q || i.cantidad || '' })), prep: p.preparacion || '' })) })).filter(m => m.ops.length);
+    const sup = (o.suplementos || []).map(s => ({ n: s.nombre || '', dosis: s.dosis || '', frec: s.frecuencia || '', mom: s.momento || '', dur: s.duracion || '', rev: s.revision || '', obj: s.objetivo || '' })).filter(s => s.n);
+    if (ctx.length) ok.push(`${ctx.length} contexto${ctx.length > 1 ? 's' : ''}`); if (semana.length) ok.push(`${semana.length} semana${semana.length > 1 ? 's' : ''} tipo`); if (guias.length) ok.push(`${guias.length} guía${guias.length > 1 ? 's' : ''} con ${guias.reduce((t, gu) => t + gu.alimentos.length, 0)} alimentos`); if (menus.length) ok.push(`${menus.length} bloque${menus.length > 1 ? 's' : ''} de menús`); if (sup.length) ok.push(`${sup.length} suplemento${sup.length > 1 ? 's' : ''}`);
+    return { ctx, semana, guias, menus, sup, medidas: o.medidas || null, resumen: o.resumen || '', hidratacion: o.hidratacion || '', fecha: o.fecha || hoyISO(), ingestas: num(o.ingestas), av, ok };
+  }
+  function formImportar() {
+    const f = S.ficha, a = (S.c?.perfiles || []).find(p => p.id === f?.id) || {}; if (!f) return;
+    abrirSheet(`<div class="stack"><h2>📥 Importar su plan desde ChatGPT</h2>
+      <p class="small muted" style="margin-top:-8px">Pega el bloque de datos que te da ChatGPT junto al PDF. Se guarda como <b>borrador</b>: ${esc((a.nombre || '').split(' ')[0])} no ve nada hasta que publiques cada apartado.</p>
+      <details class="card"><summary class="small"><b>¿Qué le pido a ChatGPT?</b> · copia esta instrucción una vez en tu conversación</summary><textarea id="imp-p" rows="8" readonly style="font-size:12px;margin-top:8px">${esc(PROMPT_GPT)}</textarea><button class="btn sm ghost" type="button" id="imp-cp" style="margin-top:6px">📋 Copiar instrucción</button></details>
+      <textarea id="imp-t" rows="10" placeholder="Pega aquí el bloque { … } de ChatGPT" style="font-size:12px"></textarea>
+      <div id="imp-r"></div><button class="btn full" id="imp-a">Revisar antes de guardar</button></div>`);
+    $('#imp-cp').addEventListener('click', async () => { try { await navigator.clipboard.writeText(PROMPT_GPT); toast('Copiado'); } catch (e) { $('#imp-p').select(); toast('Selecciona y copia'); } });
+    let res = null;
+    $('#imp-a').addEventListener('click', async () => {
+      const box = $('#imp-r'), btn = $('#imp-a');
+      if (res && btn.dataset.paso === 'guardar') { btn.disabled = true; btn.textContent = 'Guardando…'; try { await guardarImport(f, res); cerrarSheet(); toast('Guardado como borrador: revisa y publica cada apartado'); await cargarPlanificacion(f); render(); } catch (err) { btn.disabled = false; btn.textContent = 'Guardar como borrador'; box.insertAdjacentHTML('beforeend', `<p class="err">No se ha podido guardar (${esc(err.message || '')})</p>`); } return; }
+      try { res = normalizar(leerJSON($('#imp-t').value), a.nombre); } catch (err) { box.innerHTML = `<p class="err">${esc(err.message)}</p>`; return; }
+      box.innerHTML = `<div class="card stack small"><b>Encontrado:</b> ${res.ok.join(' · ') || 'nada útil'}${res.av.length ? `<div class="stack" style="gap:4px;margin-top:6px">${res.av.map(x => `<div style="color:var(--warn)">${esc(x)}</div>`).join('')}</div>` : '<div style="color:var(--ok)">✓ Sin incoherencias detectadas</div>'}
+        <div class="muted">Se guardará en: ${[res.resumen && 'Informe de contexto', (res.ctx.length || res.semana.length) && 'Contextos', res.guias.length && 'Equivalencias visuales', res.menus.length && 'Menús', (res.sup.length || res.hidratacion) && 'Suplementación'].filter(Boolean).join(', ')}. Los textos y PDF que ya tengas en esos apartados se conservan.</div></div>`;
+      btn.dataset.paso = 'guardar'; btn.textContent = 'Guardar como borrador';
+    });
+  }
+  async function guardarImport(f, r) {
+    const plan = f.plan || [], base = clave => plan.find(x => x.clave === clave);
+    const up = async (clave, titulo, orden, cambios) => {
+      const x = base(clave), now = new Date().toISOString();
+      const fila = x?.id ? { ...cambios, datos: { ...(x.datos || {}), ...(cambios.datos || {}) }, visible: false, actualizado_at: now } : { alumno_id: f.id, seccion: 'alimentacion', clave, titulo, imagenes: [], orden, visible: false, actualizado_at: now, ...cambios };
+      const q = x?.id ? await sb.from('planificacion').update(fila).eq('id', x.id) : await sb.from('planificacion').insert(fila); if (q.error) throw q.error;
+    };
+    const ord = k => DOCS.findIndex(d => d[0] === k), tit = k => (DOCS.find(d => d[0] === k) || [])[1];
+    const meta = { origen: 'chatgpt', importado: hoyISO(), fecha_doc: r.fecha };
+    if (r.resumen) await up('contexto', tit('contexto'), ord('contexto'), { contenido: r.resumen, datos: { meta } });
+    if (r.ctx.length || r.semana.length) await up('contextos', tit('contextos'), ord('contextos'), { datos: { ctx: r.ctx, semana: r.semana, meta } });
+    if (r.guias.length) await up('equivalencias', tit('equivalencias'), ord('equivalencias'), { datos: { guias: r.guias, medidas: r.medidas, meta } });
+    if (r.menus.length) await up('menus', tit('menus'), ord('menus'), { datos: { menus: r.menus, meta } });
+    if (r.sup.length || r.hidratacion) await up('suplementacion', tit('suplementacion'), ord('suplementacion'), { datos: { sup: r.sup, hidratacion: r.hidratacion, meta } });
+  }
+
+  /* ---------- Vistas del alumno para los datos estructurados ---------- */
+  const MACRO = { c: ['Hidratos', '🍚'], p: ['Proteínas', '🍗'], g: ['Grasas', '🥑'], mixto: ['Mixtos', '🥚'] };
+  const objetivoIng = (c, macro) => c && c[macro] != null ? +c[macro] / (+c.ing || comidasDia(S.d?.servicio) || 3) : null;
+  function vGuias(x, n) {
+    const gs = x.datos.guias, l = ctxDe(n), i = Math.min(selCtx(n), Math.max(0, l.length - 1)), c = l[i], tab = Math.min(S.nGuia || 0, gs.length - 1), gu = gs[tab];
+    const obj = objetivoIng(c, gu.macro), fac = obj && gu.ref ? obj / gu.ref : null, md = x.datos.medidas;
+    const cant = a => { if (a.g == null) return '—'; const v = a.comp || !fac ? a.g : Math.round(a.g * fac / 5) * 5; return `${fmtNum(v, 0)} ${esc(a.u || 'g')}`; };
+    return `<section class="section"><div class="card stack">
+      ${l.length ? `<div class="stack" style="gap:6px"><span class="small muted">Cantidades para una ingesta de tu día:</span><div class="chips">${l.map((z, k) => `<button class="pill ${k === i ? 'blue' : ''}" data-act="nuCtx" data-i="${k}">${esc(z.n)}</button>`).join('')}</div></div>` : ''}
+      <div class="chips nu-gtabs">${gs.map((z, k) => `<button class="pill ${k === tab ? 'gold' : ''}" data-act="nuGuia" data-i="${k}">${(MACRO[z.macro] || MACRO.mixto)[1]} ${esc(z.titulo || (MACRO[z.macro] || MACRO.mixto)[0])}</button>`).join('')}</div>
+      ${obj ? `<div class="aprox small">Objetivo por ingesta en «${esc(c.n)}»: <b>≈ ${fmtNum(obj, 0)} g de ${(MACRO[gu.macro] || MACRO.mixto)[0].toLowerCase()}</b>${fac && Math.abs(fac - 1) > 0.05 ? ` · cantidades ajustadas ×${fmtNum(fac, 2)} respecto a tu guía` : ''}. Elige <b>una</b> fila (o combina medias raciones).</div>` : gu.macro === 'mixto' ? '<div class="aprox small">Cuentan en varios macronutrientes a la vez: úsalos como complemento y ajusta el resto del plato.</div>' : ''}
+      <div class="nu-guia">${gu.alimentos.map(a => `<div class="nu-gf ${a.comp ? 'comp' : ''}"><div class="grow"><b>${esc(a.n)}</b>${a.est ? ` <span class="muted small">· ${esc(a.est)}</span>` : ''}<div class="small muted">${esc(a.eq || '')}${a.eq && !a.comp && fac && Math.abs(fac - 1) > 0.05 ? ` <b>×${fmtNum(Math.round(fac * 4) / 4, 2)}</b>` : ''}${a.comp ? ' · acompañamiento' : ''}</div></div><b class="num">${cant(a)}</b></div>`).join('')}</div>
+      ${gu.nota ? `<div class="nu-quedate small"><b>Quédate con esto</b><br>${esc(gu.nota)}</div>` : ''}
+      ${md ? `<p class="small muted" style="margin:0">Tus medidas: taza ${md.taza_ml ?? '—'} ml · cucharada ${md.cucharada_ml ?? '—'} ml${md.cucharadita_ml ? ' · cucharadita ' + md.cucharadita_ml + ' ml' : ''}${md.palma ? ' · palma: ' + esc(md.palma) : ''}. Medidas aproximadas: no son intercambios exactos.</p>` : ''}
+      <button class="btn ghost" data-act="nuCalc">🧮 Calcula tu plato con otros alimentos</button></div></section>`;
+  }
+  function vMenus(x, n) {
+    const l = ctxDe(n), i = Math.min(selCtx(n), Math.max(0, l.length - 1)), c = l[i], ms = x.datos.menus, mios = c ? ms.filter(m => !m.ctx || norm(m.ctx) === norm(c.n)) : ms, ver = mios.length ? mios : ms;
+    return `<section class="section"><div class="card stack">${l.length ? `<div class="chips">${l.map((z, k) => `<button class="pill ${k === i ? 'blue' : ''}" data-act="nuCtx" data-i="${k}">${esc(z.n)}</button>`).join('')}</div>` : ''}
+      ${ver.map(m => `<div class="stack" style="gap:6px"><span class="eyebrow">${esc(m.ing || 'Comida')}${!mios.length && m.ctx ? ' · ' + esc(m.ctx) : ''}</span>${m.ops.length > 1 ? '<span class="small muted">Elige una opción</span>' : ''}${m.ops.map(p => `<details class="nu-op"><summary><b>${esc(p.n || 'Opción')}</b></summary><ul class="small">${p.ingr.map(g => `<li>${esc(g.n)}${g.q ? ` · <b>${esc(g.q)}</b>` : ''}</li>`).join('')}</ul>${p.prep ? `<p class="small muted">${esc(p.prep)}</p>` : ''}</details>`).join('')}</div>`).join('')}</div></section>`;
+  }
+  function vSup(x) {
+    const l = x.datos.sup || [];
+    return `<section class="section"><div class="stack" style="gap:10px">${l.map(s => `<div class="card stack nu-sup" style="gap:4px"><div class="row"><b class="grow">💊 ${esc(s.n)}</b><span class="pill gold">${esc([s.dosis, s.frec].filter(Boolean).join(' · '))}</span></div>${s.mom ? `<div class="small">🕒 ${esc(s.mom)}</div>` : ''}${s.obj ? `<div class="small muted">${esc(s.obj)}</div>` : ''}${s.dur || s.rev ? `<div class="small muted">${esc([s.dur, s.rev && 'Revisar: ' + s.rev].filter(Boolean).join(' · '))}</div>` : ''}</div>`).join('') || '<div class="card small muted">Sin suplementos indicados.</div>'}
+      ${x.datos.hidratacion ? `<div class="card small"><b>💧 Hidratación</b><br>${esc(x.datos.hidratacion)}</div>` : ''}<p class="small muted">Si notas cualquier molestia, deja de tomarlo y escríbele a Jesús. Si olvidas una toma, no la dupliques.</p></div></section>`;
+  }
+  return { fase, faseDe, faseCoach, mide, FASES, formImportar, formPlato, calcular, ALI, objetivoComida, equivVisual, vIncCoach: aislar(vIncCoach), formInc, esInc, guardarResumen, vista: aislar(vista), vCoach: aislar(vCoach), cargar, cargarFicha, cargarCoach, datosPrevia, nuevasDe, DOCS, esPdf, ctxDe };
 })();
