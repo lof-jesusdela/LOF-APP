@@ -1450,11 +1450,51 @@ const Guia = {
   },
   mover(d) { const P = this.pasos(); S.paso = Math.max(0, Math.min(P.length - 1, (S.paso || 0) + d)); this.pintar(); document.getElementById('guia-barra')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 };
+/* ---------- Portada del entreno: antes de empezar, una vista con imagen por temática, datos y todos los bloques de un vistazo ---------- */
+const TEMAS = [['superior', 'Tren superior'], ['inferior', 'Tren inferior'], ['completo', 'Cuerpo completo'], ['core', 'Core y abdomen'], ['gluteo', 'Glúteo'], ['cardio', 'Cardio'], ['movilidad', 'Movilidad'], ['futbol', 'Fútbol'], ['recuperacion', 'Recuperación']];
+function temaDe(d) {
+  if (d?.tematica && TEMAS.some(t => t[0] === d.tematica)) return d.tematica;
+  const bl = d?.bloques_sesion || [], ejs = bl.filter(b => b.tipo === 'fuerza').flatMap(b => b.ejercicios_sesion).map(ejDe);
+  if (!ejs.length) return bl.some(b => b.tipo === 'cardio') ? 'cardio' : bl.some(b => b.tipo === 'movilidad') ? 'movilidad' : 'recuperacion';
+  const n = g => ejs.filter(x => grupoEjOk(x, g)).length, sup = n('sup'), inf = n('inf'), core = n('core') + n('abdomen'), glu = n('gluteo');
+  if (core > ejs.length / 2) return 'core';
+  if (glu > ejs.length / 2) return 'gluteo';
+  if (sup && inf && Math.min(sup, inf) >= ejs.length * 0.3) return 'completo';
+  return sup >= inf ? 'superior' : 'inferior';
+}
+function vPrevia(d) {
+  const tema = temaDe(d), nomT = TEMAS.find(t => t[0] === tema)?.[1] || '', bl = d.bloques_sesion || [];
+  const fz = bl.filter(b => b.tipo === 'fuerza'), ejs = fz.flatMap(b => b.ejercicios_sesion);
+  const img = S.temas?.[tema] || ejs.map(e => ejDe(e).imagen_url).find(Boolean) || '';
+  const series = ejs.reduce((t, e) => t + (+e.series || 0), 0);
+  const min = Math.round(ejs.reduce((t, e) => t + (+e.series || 0) * (45 + (e.descanso_seg ?? 60)), 0) / 60 + bl.filter(b => b.tipo !== 'fuerza').reduce((t, b) => t + (parseInt(b.duracion) || 5), 0));
+  const rirs = ejs.map(e => e.rir).filter(x => x != null && x !== '' && !isNaN(+x)).map(Number), rirM = rirs.length ? rirs.reduce((a, b) => a + b, 0) / rirs.length : null;
+  const intens = d.intensidad || (rirM == null ? '' : rirM <= 1 ? 'Alta' : rirM <= 2 ? 'Media-alta' : 'Moderada');
+  const vol = d.volumen || (series ? (series >= 20 ? 'Alto' : series >= 12 ? 'Medio' : 'Bajo') : '');
+  const grupos = GRUPOS_EJ.filter(([k]) => !['sup', 'inf', 'cardio'].includes(k)).map(([k, t]) => [t, ejs.filter(e => grupoEjOk(ejDe(e), k)).length]).filter(x => x[1]).sort((a, b) => b[1] - a[1]).slice(0, 4).map(x => x[0]);
+  const obj = d.objetivo || '';
+  const fila = (src, nom, sub) => `<div class="pv-ej">${src ? `<img src="${esc(src)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'pv-sin'}))">` : '<span class="pv-sin"></span>'}<div class="grow"><b>${esc(nom)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</div></div>`;
+  const bloques = bl.map(b => `<div class="pv-bl"><h4>${esc(b.nombre || b.letra || '')}</h4>${b.tipo === 'fuerza'
+    ? b.ejercicios_sesion.map(e => { const x = ejDe(e); return fila(x.imagen_url, x.nombre || 'Ejercicio', `${e.series} ${e.series === 1 ? 'serie' : 'series'}${e.repeticiones ? ' · ' + e.repeticiones + ' reps' : ''}${e.metodos?.nombre ? ' · ' + e.metodos.nombre : ''}`); }).join('')
+    : fila(b.imagen_url || fotosCardio(b)[0] || miniYoutube(b.video_url), b.maquina || b.nombre || '', b.duracion || '')}</div>`).join('');
+  return `<div class="pv">
+    <div class="pv-hero" style="${img ? `background-image:url('${esc(img)}')` : ''}"><button class="pv-volver" data-act="cerrarDia" aria-label="Volver">←</button></div>
+    <div class="pv-card">
+      <div class="pv-stats"><div><span>⏱</span><b>~${min} min</b><small>Duración</small></div><div><span>📶</span><b>${esc(intens || '—')}</b><small>Intensidad</small></div><div><span>🔥</span><b>${series || ejs.length || bl.length}</b><small>${series ? 'Series' : 'Bloques'}</small></div></div>
+      <span class="eyebrow">${esc(nomDia(d))}</span><h1 class="pv-tit">${esc(d.titulo || d.foco || d.nombre || 'Entreno')}</h1>
+      ${obj ? `<p class="pv-desc">${esc(obj)}</p>` : ''}
+      <div class="pv-tags">${[vol && 'Volumen ' + vol.toLowerCase(), intens && 'Intensidad ' + intens.toLowerCase(), d.foco && 'Foco: ' + d.foco, nomT, ...grupos].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).map(t => `<span>${esc(t)}</span>`).join('')}</div>
+      <h3 class="pv-h">LO QUE HARÁS</h3>${bloques || '<p class="small muted">Este día aún no tiene ejercicios.</p>'}
+    </div>
+    <div class="pv-cta"><button class="btn full pv-go" data-act="previaEmpezar">EMPEZAR</button><button class="linkbtn small" data-act="previaVer">Ver el entreno sin empezar el cronómetro</button></div>
+  </div>`;
+}
 function vSesion() {
   const d = S.dia, cont = { n: 0 };
   prepararNavegacion(d);
   const ini = S.sesion?.inicio;
   const como = S.obj ? `<div class="cerrada" style="margin-bottom:10px"><span class="pill gold">${S.sesion?.editar ? 'Editando' : 'Entrenando a'}</span><span class="small grow">${esc(S.obj.nombre)}${S.sesion?.editar ? ' · sesión del ' + esc(fCorta(S.sesion.fecha)) : ''}</span><button class="btn sm ghost" data-act="${S.sesion?.editar ? 'terminar' : 'salirComo'}" style="background:#fff">${S.sesion?.editar ? 'Listo' : 'Salir'}</button></div>` : '';
+  if (S.previa === d.id && !S.sesion?.editar && !ini && !S.sesion?.finMin && !Object.keys(S.sesion?.valores || {}).length) return como + vPrevia(d);
   if (S.sesion?.editar) return como + `<section class="stack"><span class="eyebrow">${esc(S.dia.nombre)}</span><h1>${esc(S.dia.titulo || S.dia.foco || S.dia.nombre)}</h1>${cicloSesion()}
     <p class="note">Corrige kg, repeticiones o RIR: los cambios de una serie ya marcada se guardan solos al salir de la casilla. Para añadir una serie que no apuntó, rellénala y marca el check. Para borrarla, quita el check.</p></section>
   <section class="section">${vBloquesDia(d, cont)}
@@ -1494,6 +1534,7 @@ async function abrirDia(id, op = {}) {
   const prev = S.sesion?.diaId === id && S.sesion.fecha === fechaS && !!S.sesion.editar === editar ? S.sesion : null;   // al volver a la misma sesión se conserva lo escrito sin confirmar
   S.sesion = { id: null, regs: {}, valores: {}, ultimos: {}, inicio: null, fecha: fechaS, editar, diaId: id, borr: prev?.borr || {}, abiertas: prev?.abiertas || {} }; S.paso = null;
   if (!editar) try { const v = +localStorage.getItem(claveCrono()); if (v) S.sesion.inicio = v; } catch (e) { }
+  S.previa = editar ? null : id;
   S.tab = 'entreno'; window.scrollTo(0, 0);
   const ids = S.dia.bloques_sesion.flatMap(b => b.ejercicios_sesion.map(e => e.id));
   const hoyS = op.sesionId ? (S.d.sesiones.find(s => s.id === op.sesionId) || { id: op.sesionId, fecha: fechaS, dia_id: id }) : S.d.sesiones.find(s => s.fecha === fechaS && s.dia_id === id)
@@ -4218,7 +4259,7 @@ async function cargarPres() {
 }
 /* Reserva con Calendly: el alumno elige hueco (llega a Google Calendar de Jesús) y la app lo apunta */
 const AGARRES = [['supino', 'Supino'], ['neutro', 'Neutro'], ['prono', 'Prono']];
-async function cargarAjustes() { try { const { data } = await sb.from('ajustes').select('*'); S.agarres = Object.fromEntries(AGARRES.map(([k]) => [k, (data || []).find(x => x.clave === 'agarre_' + k)?.valor || ''])); S.calendly = (data || []).find(x => x.clave === 'calendly')?.valor || window.LOF_CONFIG?.calendly || ''; S.whatsapp = (data || []).find(x => x.clave === 'whatsapp')?.valor || ''; S.respuesta = (data || []).find(x => x.clave === 'respuesta')?.valor || ''; } catch (e) { } }
+async function cargarAjustes() { try { const { data } = await sb.from('ajustes').select('*'); S.agarres = Object.fromEntries(AGARRES.map(([k]) => [k, (data || []).find(x => x.clave === 'agarre_' + k)?.valor || ''])); S.temas = Object.fromEntries(TEMAS.map(([k]) => [k, (data || []).find(x => x.clave === 'tema_' + k)?.valor || ''])); S.calendly = (data || []).find(x => x.clave === 'calendly')?.valor || window.LOF_CONFIG?.calendly || ''; S.whatsapp = (data || []).find(x => x.clave === 'whatsapp')?.valor || ''; S.respuesta = (data || []).find(x => x.clave === 'respuesta')?.valor || ''; } catch (e) { } }
 function formCalendly() {
   abrirSheet(`<form class="stack" id="f-cal"><h2>Calendly</h2>
     <p class="small">Pega el enlace de tu evento de Calendly para los entrenamientos presenciales (el que conectas a tu Google Calendar).</p>
@@ -4836,17 +4877,24 @@ function formDia(id) {
     ${editorEsFutbol() ? `<label class="f">Día de la semana<select id="d-n">${DS.map(x => `<option ${norm(x) === norm(d?.nombre) ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
     <p class="small muted" style="margin-top:-6px">El día de la semana decide cuándo le aparece al alumno en «Hoy». Si dejas el nombre en blanco, se llamará como el día.</p>` : `<p class="small muted" style="margin-top:-6px"><b>${esc(d && /^d[ií]a \d+/i.test(d.nombre || '') ? d.nombre : 'Día ' + ((d ? p.dias.indexOf(d) : p.dias.length) + 1))}</b> · El orden del bloque lo fijas tú con ▲▼ en la lista de días; el alumno decide contigo qué días de la semana los hace.</p>`}
     ${editorEsFutbol() || d?.tipo_dia ? `<div class="stack" style="gap:6px"><span class="small muted">Tipo de día</span><div class="chips" id="d-td">${TIPOS_DIA.map(([k, l, e]) => `<button type="button" data-v="${k}" aria-pressed="${(d?.tipo_dia || 'entreno') === k}">${e} ${l}</button>`).join('')}</div></div>` : ''}
+    <div class="stack" style="gap:6px"><label class="f">Temática (imagen de portada del entreno)<select id="d-tm"><option value="">Automática${d ? ' · ahora: ' + esc(TEMAS.find(t => t[0] === temaDe({ ...d, tematica: null }))?.[1] || '') : ''}</option>${TEMAS.map(([k, t]) => `<option value="${k}" ${d?.tematica === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label><div id="d-tmimg"></div></div>
     <label class="f">Objetivo del día<textarea id="d-obj">${esc(d?.objetivo || '')}</textarea></label>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><label class="f">Volumen<input type="text" id="d-vol" value="${esc(d?.volumen || '')}" placeholder="Alto"></label><label class="f">Intensidad<input type="text" id="d-int" value="${esc(d?.intensidad || '')}" placeholder="Alta"></label><label class="f">Foco<input type="text" id="d-foco" value="${esc(d?.foco || '')}" placeholder="Fuerza"></label></div>
     <button class="btn full" type="submit">Guardar</button>${d ? '<button class="btn ghost full" type="button" id="d-del" style="color:var(--bad)">Eliminar día</button>' : ''}</form>`);
+  const pintaTema = () => { const k = $('#d-tm').value || (d ? temaDe({ ...d, tematica: null }) : 'superior'), u = S.temas?.[k], t = TEMAS.find(x => x[0] === k)?.[1];
+    $('#d-tmimg').innerHTML = `<div class="row" style="gap:10px;align-items:center">${u ? `<img src="${esc(u)}" alt="" style="width:96px;height:60px;object-fit:cover;border-radius:8px">` : '<span class="small muted">Sin imagen</span>'}<label class="btn sm ghost"><input type="file" id="d-tmf" accept="image/*" hidden>📷 ${u ? 'Cambiar' : 'Poner'} imagen de «${esc(t)}»</label></div><p class="small muted" style="margin:4px 0 0">La imagen es común: sale en todos los entrenos de esta temática.</p>`; };
+  pintaTema(); $('#d-tm').addEventListener('change', pintaTema);
+  $('#d-tmimg').addEventListener('change', async ev => { const f = ev.target.files?.[0]; if (!f) return; const k = $('#d-tm').value || (d ? temaDe({ ...d, tematica: null }) : 'superior');
+    try { const u = await subirImagenEj(f, 'tema-' + k, 1400); const { error } = await sb.from('ajustes').upsert([{ clave: 'tema_' + k, valor: u }], { onConflict: 'clave' }); if (error) throw error; (S.temas ||= {})[k] = u; pintaTema(); toast('Imagen de la temática guardada'); } catch (err) { fallo(err); } });
   $('#d-td')?.addEventListener('click', ev => { const x = ev.target.closest('[data-v]'); if (!x) return; document.querySelectorAll('#d-td [data-v]').forEach(y => y.setAttribute('aria-pressed', y === x)); });
   $('#f-dia').addEventListener('submit', async e => {
     e.preventDefault();
     const row = { nombre: $('#d-n') ? $('#d-n').value : (d && /^d[ií]a \d+/i.test(d.nombre || '') ? d.nombre : 'Día ' + ((d ? p.dias.indexOf(d) : p.dias.length) + 1)), objetivo: $('#d-obj').value.trim() || null, volumen: $('#d-vol').value.trim() || null, intensidad: $('#d-int').value.trim() || null, foco: $('#d-foco').value.trim() || null };
     const tit = $('#d-t').value.trim() || null; if (tit || d?.titulo) row.titulo = tit;
+    const tm = $('#d-tm').value || null; if (tm || d?.tematica) row.tematica = tm;
     const td = document.querySelector('#d-td [aria-pressed="true"]')?.dataset.v; if (td && (td !== 'entreno' || d?.tipo_dia)) row.tipo_dia = td;
     const { error } = d ? await sb.from('dias').update(row).eq('id', d.id) : await sb.from('dias').insert({ ...row, programa_id: p.id, numero: (Math.max(0, ...p.dias.map(x => x.numero)) + 1) });
-    if (error) return fallo(error, /tipo_dia/.test(error.message || '') ? 'Falta ejecutar el Bloque 49 en Supabase.' : /titulo/.test(error.message || '') ? 'Para poner nombre libre al entreno falta ejecutar el Bloque 31 en Supabase.' : undefined);
+    if (error) return fallo(error, /tematica/.test(error.message || '') ? 'Falta ejecutar el Bloque 74 en Supabase.' : /tipo_dia/.test(error.message || '') ? 'Falta ejecutar el Bloque 49 en Supabase.' : /titulo/.test(error.message || '') ? 'Para poner nombre libre al entreno falta ejecutar el Bloque 31 en Supabase.' : undefined);
     cerrarSheet(); toast('Día guardado'); refrescarEditor();
   });
   $('#d-del')?.addEventListener('click', async ev => { const b = ev.currentTarget; if (!b.dataset.ok) { b.dataset.ok = 1; b.textContent = 'Pulsa otra vez: se borrará el día con todos sus ejercicios'; return; } cerrarSheet(); await quitarDia2(d.id); });
@@ -5783,6 +5831,8 @@ document.addEventListener('click', async e => {
     case 'nuevoEjercicio': formEjercicio(null); break;
     case 'editarEjercicio': formEjercicio(+b.dataset.id); break;
     case 'empezarCrono': empezarCrono(); break;
+    case 'previaEmpezar': S.previa = null; render(); window.scrollTo(0, 0); empezarCrono(); break;
+    case 'previaVer': S.previa = null; render(); window.scrollTo(0, 0); break;
     case 'verImagenes': abrirSheet(`<div class="stack">${b.dataset.s.split('|').map(u => `<img src="${esc(u)}" alt="" style="width:100%;border-radius:12px;background:var(--surface-2)">`).join('')}</div>`); break;
     case 'verImagen': abrirSheet(`<div class="stack"><img src="${esc(b.dataset.src)}" alt="" style="width:100%;border-radius:12px;background:var(--surface-2)"><a class="btn ghost full" href="${esc(b.dataset.src)}" target="_blank" rel="noopener">Abrir para guardar o imprimir</a><button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`); break;
     case 'importarImagenes': await importarImagenes(); break;
