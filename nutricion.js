@@ -186,7 +186,7 @@ const Nutricion = (() => {
       <p class="small muted" style="margin:0">${f === 'recogida' ? `Apunta cada comida con una foto, marcando alimentos o las dos cosas. Llevas <b>${new Set(n.comidas.filter(x => x.fecha >= sumaDias(hoyISO(), -6)).map(x => x.fecha)).size} de 7 días</b> con algo apuntado.` : 'No es obligatorio y no cuenta como cumplimiento. Apunta lo que comes cuando te ayude a ser consciente o tengas dudas. En cada comida puedes marcar si encaja con tu plan: así Jesús ve la calidad, no solo la cantidad.'}</p>
       <div class="reg-dias" role="group" aria-label="Día" style="--n:7">${dias.map(f => `<button type="button" data-act="nuDia" data-f="${f}" aria-pressed="${f === sel}" class="${n.comidas.some(x => x.fecha === f) ? 'hecho' : ''}"><small>${DIA3[fecha(f).getDay()]}</small><b class="num">${fecha(f).getDate()}</b></button>`).join('')}</div>
       ${l.length ? `<div>${l.map(x => lineaComida(x, false)).join('')}</div>` : `<p class="small muted" style="margin:0">${sel === hoyISO() ? 'Hoy' : 'Ese día'} no has apuntado nada.</p>`}
-      <button class="btn" data-act="nuNueva">＋ Apuntar una comida</button></div></section>
+      <button class="btn" data-act="nuFoto7">📷 Subir foto de una comida</button><button class="btn ghost" data-act="nuNueva">＋ Apuntar con detalle (alimentos, creación propia…)</button></div></section>
       <section class="section"><div class="section-head"><h2>Tus creaciones</h2></div><div class="card stack">
         ${mias.length ? `<div>${mias.slice().reverse().map(x => `<div class="line" style="align-items:flex-start" data-act="nuEditar" data-id="${x.id}"><div class="grow stack" style="gap:2px"><span class="small"><b>${esc(x.plato || 'Plato sin nombre')}</b> <span class="muted">· ${esc(fCorta(x.fecha))}</span></span>${alimentosTxt(x) ? `<span class="small muted">${esc(alimentosTxt(x))}</span>` : ''}${x.coach_nota ? `<span class="small"><b>Jesús:</b> ${esc(x.coach_nota)}</span>` : ''}</div>${estadoCreacion(x)}</div>`).join('')}</div>` : ''}
         <p class="small muted" style="margin:0">¿Has inventado un plato que encaja con tu plan? Apúntalo y marca «Es una creación mía». Jesús la revisará y, si encaja con tu plan, puede añadirla a tus menús. Verás aquí en qué punto está.</p></div></section>`;
@@ -332,6 +332,11 @@ const Nutricion = (() => {
       case 'nuIncIni': { const v = $('#inc-ini')?.value; if (!v) return toast('Elige la fecha'); try { await guardarResumen(S.ficha, d => { d.inicio = v; }); await cargarPlanificacion(S.ficha); render(); toast('Fecha guardada'); } catch (err) { fallo(err); } break; }
       case 'nuGuia': S.nGuia = +b.dataset.i; render(); break;
       case 'nuImportar': formImportar(); break;
+      case 'nuFoto7': formFoto7(); break;
+      case 'nuR7Obs': formR7Obs(+b.dataset.id); break;
+      case 'nuR7Conc': formR7Conc(); break;
+      case 'nuR7Copia': await copiarR7(); break;
+      case 'nuR7Mov': { const r = resumenInc(S.ficha?.plan || []), base = S.r7ini || (r.inicio && r.inicio <= hoyISO() ? r.inicio : sumaDias(hoyISO(), -6)); S.r7ini = sumaDias(base, +b.dataset.d); render(); break; }
       case 'nuSem': try { localStorage.setItem('lof-nsem', lunesDe(hoyISO()) + '|' + b.dataset.i); localStorage.removeItem('lof-nctx'); } catch (err) { /* */ } S.nCtx = null; render(); break;
       case 'nuNueva': formComida(); break;
       case 'nuEditar': formComida(+b.dataset.id); break;
@@ -671,5 +676,104 @@ Reglas: "macro" es "p", "c" o "g" (o "mixto" para legumbres, lácteos y huevos).
     return `<section class="section"><div class="stack" style="gap:10px">${l.map(s => `<div class="card stack nu-sup" style="gap:4px"><div class="row"><b class="grow">💊 ${esc(s.n)}</b><span class="pill gold">${esc([s.dosis, s.frec].filter(Boolean).join(' · '))}</span></div>${s.mom ? `<div class="small">🕒 ${esc(s.mom)}</div>` : ''}${s.obj ? `<div class="small muted">${esc(s.obj)}</div>` : ''}${s.dur || s.rev ? `<div class="small muted">${esc([s.dur, s.rev && 'Revisar: ' + s.rev].filter(Boolean).join(' · '))}</div>` : ''}</div>`).join('') || '<div class="card small muted">Sin suplementos indicados.</div>'}
       ${x.datos.hidratacion ? `<div class="card small"><b>💧 Hidratación</b><br>${esc(x.datos.hidratacion)}</div>` : ''}<p class="small muted">Si notas cualquier molestia, deja de tomarlo y escríbele a Jesús. Si olvidas una toma, no la dupliques.</p></div></section>`;
   }
-  return { fase, faseDe, faseCoach, mide, FASES, formImportar, formPlato, calcular, ALI, objetivoComida, equivVisual, vIncCoach: aislar(vIncCoach), formInc, esInc, guardarResumen, vista: aislar(vista), vCoach: aislar(vCoach), cargar, cargarFicha, cargarCoach, datosPrevia, nuevasDe, DOCS, esPdf, ctxDe };
+  /* ---------- Registro de 7 días: foto rápida (alumno) + vista semanal y conclusiones (coach) ----------
+     El alumno sube la foto con hora, nº de ingesta y observación (columnas hora y n_ingesta del Bloque 77;
+     sin ese bloque se guardan en momento «Ingesta N» y al principio de la nota).
+     Las observaciones del coach por foto y sus conclusiones son SOLO suyas (fila privada «inc-registro7»)
+     hasta que publique el apartado «registro7». Nada de esto lo genera la IA. */
+  const horaDe = x => x.hora ? String(x.hora).slice(0, 5) : (/^(\d{1,2}:\d{2})\s·/.exec(x.nota || '') || [])[1] || (x.created_at ? new Date(x.created_at).toTimeString().slice(0, 5) : '');
+  const ingDe = x => x.n_ingesta || +(/^Ingesta (\d+)/.exec(x.momento || '') || [])[1] || null;
+  const notaLimpia = x => String(x.nota || '').replace(/^\d{1,2}:\d{2}\s·\s?/, '');
+  function formFoto7() {
+    const n = S.d?.nutri; if (!n) return;
+    const dias = ventana(), dia0 = dias.includes(S.nDia) ? S.nDia : hoyISO(), ahora = new Date().toTimeString().slice(0, 5);
+    const sig = d => (n.comidas.filter(x => x.fecha === d).map(ingDe).filter(Boolean).reduce((a, b) => Math.max(a, b), 0) || 0) + 1;
+    const st = { files: [], ing: Math.min(8, sig(dia0)) };
+    abrirSheet(`<form class="stack" id="f-f7"><h2>📷 Subir una comida</h2><p class="small muted" style="margin-top:-8px">Foto de todo lo que comes o bebes, tal cual, sin cambiar nada. Jesús lo revisará personalmente.</p>
+      <label class="btn full" id="f7-fl"><input type="file" id="f7-f" accept="image/*" multiple hidden>📷 Hacer o elegir foto</label><div id="f7-prev" class="nu-foto"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="f">Día<select id="f7-d">${dias.slice().reverse().map(d => `<option value="${d}" ${d === dia0 ? 'selected' : ''}>${d === hoyISO() ? 'Hoy' : d === sumaDias(hoyISO(), -1) ? 'Ayer' : esc(fLarga(d))}</option>`).join('')}</select></label><label class="f">Hora<input type="time" id="f7-h" value="${ahora}"></label></div>
+      <div class="stack" style="gap:6px"><span class="small"><b>¿Qué ingesta del día es?</b></span><div class="choice f7-ing" role="group">${[1, 2, 3, 4, 5, 6, 7, 8].map(i => `<button type="button" data-ing="${i}" aria-pressed="${i === st.ing}">${i}ª</button>`).join('')}</div></div>
+      <label class="f"><span>Observación <span class="muted">(opcional)</span></span><textarea id="f7-o" rows="3" placeholder="Si en la foto no se ve bien: qué es, cantidades, salsas, aceite, bebida, dónde comiste…"></textarea></label>
+      <p class="err" id="f7-err"></p><button class="btn full" id="f7-b">Guardar</button></form>`);
+    const form = $('#f-f7');
+    const pinta = () => { $('#f7-prev').innerHTML = st.files.map((f, k) => `<span style="position:relative;display:inline-block;margin:0 6px 6px 0"><img src="${esc(URL.createObjectURL(f))}" alt="" style="max-width:110px;max-height:110px;border-radius:10px"><button type="button" data-qf="${k}" class="pill" style="position:absolute;top:2px;right:2px">✕</button></span>`).join(''); $('#f7-fl').lastChild.textContent = st.files.length ? '📷 Añadir otra foto' : '📷 Hacer o elegir foto'; };
+    $('#f7-f').addEventListener('change', e => { st.files.push(...e.target.files); e.target.value = ''; pinta(); });
+    $('#f7-d').addEventListener('change', e => { st.ing = Math.min(8, sig(e.target.value)); form.querySelectorAll('[data-ing]').forEach(b => b.setAttribute('aria-pressed', +b.dataset.ing === st.ing)); });
+    form.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.ing) { st.ing = +b.dataset.ing; form.querySelectorAll('[data-ing]').forEach(z => z.setAttribute('aria-pressed', z === b)); } if (b.dataset.qf != null) { st.files.splice(+b.dataset.qf, 1); pinta(); } });
+    form.addEventListener('submit', async e => {
+      e.preventDefault(); const obs = $('#f7-o').value.trim(), dia = $('#f7-d').value, hora = $('#f7-h').value || null;
+      if (!st.files.length && !obs) { $('#f7-err').textContent = 'Añade una foto (o escribe qué has comido).'; return; }
+      const btn = $('#f7-b'); btn.disabled = true; btn.textContent = 'Subiendo…';
+      try {
+        const rutas = [];
+        for (const fl of st.files) { const blob = await reducirImagen(fl, 1280), ruta = `${S.user.id}/menu/${dia}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}.jpg`; const up = await sb.storage.from('comidas').upload(ruta, blob, { contentType: 'image/jpeg' }); if (up.error) throw up.error; rutas.push(ruta); }
+        const base = { alumno_id: S.user.id, fecha: dia, momento: 'Ingesta ' + st.ing, alimentos: [], foto: rutas.join(';') || null, nota: obs || null, compartido: false };
+        let r = await sb.from('comidas_registro').insert({ ...base, hora, n_ingesta: st.ing }).select().single();
+        if (r.error && /hora|n_ingesta|column/i.test(r.error.message || '')) r = await sb.from('comidas_registro').insert({ ...base, nota: (hora ? hora + ' · ' : '') + (obs || '') || null }).select().single();
+        if (r.error) throw r.error;
+        n.comidas = [...n.comidas, r.data]; if (rutas.length) await pedirFotos(rutas);
+        S.nDia = dia; cerrarSheet(); toast('¡Subida! Gracias'); render();
+      } catch (err) { console.error(err); btn.disabled = false; btn.textContent = 'Guardar'; $('#f7-err').textContent = 'No se ha podido subir' + (err?.message && !/fetch|network/i.test(err.message) ? ` (${err.message.slice(0, 100)})` : '. Revisa la conexión.'); }
+    });
+  }
+  /* Vista semanal del coach: 7 columnas (días) × filas (ingesta 1, 2, 3…) */
+  function vSemana7(f, a) {
+    if (!f.comidas) return '';
+    const r = resumenInc(f.plan || []), ini0 = S.r7ini || (r.inicio && r.inicio <= hoyISO() ? r.inicio : sumaDias(hoyISO(), -6)), dias = [...Array(7)].map((_, i) => sumaDias(ini0, i));
+    const l = f.comidas.filter(x => x.fecha >= dias[0] && x.fecha <= dias[6] && !x.compartido), priv = (f.plan || []).find(z => z.clave === 'inc-registro7')?.datos || {}, obs = priv.obs || {};
+    const fila = x => ingDe(x) || 9;
+    const maxI = Math.max(3, ...l.map(fila).filter(v => v < 9)), filas = [...Array(maxI)].map((_, i) => i + 1).concat(l.some(x => fila(x) === 9) ? [9] : []);
+    const celda = (d, i) => l.filter(x => x.fecha === d && fila(x) === i).sort((p, q) => horaDe(p).localeCompare(horaDe(q))).map(x => { const fs = fotosDe(x), us = fs.map(fotoUrl).filter(Boolean); return `<div class="r7-c ${obs[x.id] ? 'con' : ''}">${us[0] ? `<button class="img r7-img" data-act="verImagenes" data-s="${esc(us.join('|'))}"><img src="${esc(us[0])}" alt="" loading="lazy">${us.length > 1 ? `<span class="pill">+${us.length - 1}</span>` : ''}</button>` : fs.length ? '<span class="r7-sin">📷</span>' : ''}<div class="r7-t"><b>${esc(horaDe(x))}</b>${x.contexto ? ` · ${esc(x.contexto)}` : ''}${notaLimpia(x) ? `<span>${esc(notaLimpia(x))}</span>` : ''}${(x.alimentos || []).length ? `<span>${esc(alimentosTxt(x))}</span>` : ''}</div><button class="r7-obs" data-act="nuR7Obs" data-id="${x.id}" title="Tu observación (privada)">${obs[x.id] ? '📝 ' + esc(obs[x.id].slice(0, 60)) + (obs[x.id].length > 60 ? '…' : '') : '＋ observación'}</button></div>`; }).join('');
+    const conc = priv.conc || {}, hayConc = Object.values(conc).some(v => Array.isArray(v) ? v.some(Boolean) : v);
+    return `<section class="section"><div class="section-head"><h2>Registro de 7 días · su semana</h2><div class="row" style="gap:6px"><button class="btn sm ghost" data-act="nuR7Mov" data-d="-7">‹</button><button class="btn sm ghost" data-act="nuR7Mov" data-d="7">›</button></div></div>
+      <div class="small muted" style="margin:-6px 0 8px">${esc(fLarga(dias[0]))} – ${esc(fLarga(dias[6]))} · ${l.length} registros en ${new Set(l.map(x => x.fecha)).size} de 7 días</div>
+      <div class="r7-wrap"><div class="r7-grid" style="--n:${dias.length}"><div class="r7-h"></div>${dias.map(d => `<div class="r7-h"><b>${DIA3[fecha(d).getDay()]}</b> ${fecha(d).getDate()}</div>`).join('')}
+        ${filas.map(i => `<div class="r7-f">${i === 9 ? 'Sin nº' : i + 'ª'}</div>${dias.map(d => `<div class="r7-cel">${celda(d, i)}</div>`).join('')}`).join('')}</div></div>
+      <div class="card stack" style="margin-top:12px"><div class="row"><b class="grow">Tus conclusiones del registro</b><span class="pill ${hayConc ? 'blue' : ''}">${hayConc ? 'Escritas' : 'Pendientes'}</span></div>
+        <p class="small muted" style="margin:0">Son tuyas: feedback del desayuno y del resto de comidas, contexto de la semana y sus 3–4 primeros pasos. Se guardan en privado; cuando quieras se las publicas en «Análisis del registro de 7 días».</p>
+        <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="nuR7Conc">✎ ${hayConc ? 'Editar' : 'Escribir'} conclusiones</button><button class="btn sm ghost" data-act="nuR7Copia">📋 Copiar todo para ChatGPT</button></div></div></section>`;
+  }
+  async function guardarPriv7(f, cambia) {
+    const x = (f.plan || []).find(z => z.clave === 'inc-registro7'), d = JSON.parse(JSON.stringify(x?.datos || {})); cambia(d);
+    const q = x?.id ? await sb.from('planificacion').update({ datos: d, actualizado_at: new Date().toISOString() }).eq('id', x.id) : await sb.from('planificacion').insert({ alumno_id: f.id, seccion: 'alimentacion', clave: 'inc-registro7', titulo: INC.find(z => z[0] === 'registro7')[1], datos: d, imagenes: [], orden: 90, visible: false });
+    if (q.error) throw q.error; await cargarPlanificacion(f);
+  }
+  function formR7Obs(id) {
+    const f = S.ficha, x = f?.comidas?.find(c => c.id === id); if (!x) return; const obs = ((f.plan || []).find(z => z.clave === 'inc-registro7')?.datos || {}).obs || {};
+    const us = fotosDe(x).map(fotoUrl).filter(Boolean);
+    abrirSheet(`<form class="stack" id="f-r7o"><h2>Tu observación</h2><p class="small muted" style="margin-top:-8px">${esc(fLarga(x.fecha))} · ${ingDe(x) ? ingDe(x) + 'ª ingesta' : esc(x.momento || '')} · ${esc(horaDe(x))} · <b>solo la ves tú</b></p>
+      ${us.length ? `<div class="nu-imgs">${us.map(u => `<button type="button" class="img" data-act="verImagen" data-src="${esc(u)}"><img src="${esc(u)}" alt=""></button>`).join('')}</div>` : ''}${notaLimpia(x) ? `<div class="aprox small"><b>Lo que dice:</b> ${esc(notaLimpia(x))}</div>` : ''}
+      <textarea id="r7o-t" rows="4" placeholder="Qué ves: estructura del plato, proteína, verdura, ultraprocesados, horario…">${esc(obs[id] || '')}</textarea><button class="btn full">Guardar</button></form>`);
+    $('#f-r7o').addEventListener('submit', async e => { e.preventDefault(); const t = $('#r7o-t').value.trim(); try { await guardarPriv7(f, d => { d.obs = { ...(d.obs || {}) }; if (t) d.obs[id] = t; else delete d.obs[id]; }); cerrarSheet(); render(); } catch (err) { fallo(err); } });
+  }
+  const CONC = [['desayuno', 'Feedback del desayuno'], ['comidas', 'Feedback del resto de comidas'], ['contexto', 'Contexto general de la semana'], ['bien', 'Lo que hace bien'], ['limita', 'Lo que le está limitando']];
+  function formR7Conc() {
+    const f = S.ficha, c = ((f?.plan || []).find(z => z.clave === 'inc-registro7')?.datos || {}).conc || {}, pasos = c.pasos || [];
+    abrirSheet(`<form class="stack" id="f-r7c"><h2>Conclusiones del registro de 7 días</h2><p class="small muted" style="margin-top:-8px">Privadas hasta que las publiques.</p>
+      ${CONC.map(([k, t]) => `<label class="f">${t}<textarea data-k="${k}" rows="3">${esc(c[k] || '')}</textarea></label>`).join('')}
+      <div class="stack" style="gap:6px"><b class="small">Primeros pasos para tener resultados rápidos (3–4)</b>${[0, 1, 2, 3].map(i => `<input type="text" data-p="${i}" value="${esc(pasos[i] || '')}" placeholder="Paso ${i + 1}">`).join('')}</div>
+      <button class="btn full" type="submit" value="guardar">Guardar (privado)</button><button class="btn ghost full" type="submit" value="publicar">Guardar y publicar al alumno como «Análisis de tu registro»</button></form>`);
+    $('#f-r7c').addEventListener('submit', async e => {
+      e.preventDefault(); const pub = e.submitter?.value === 'publicar', conc = {}; document.querySelectorAll('#f-r7c [data-k]').forEach(t => { conc[t.dataset.k] = t.value.trim(); }); conc.pasos = [...document.querySelectorAll('#f-r7c [data-p]')].map(i => i.value.trim()).filter(Boolean);
+      try {
+        await guardarPriv7(f, d => { d.conc = conc; });
+        if (pub) {
+          const txt = [...CONC.filter(([k]) => conc[k] && k !== 'limita').map(([k, t]) => `${t.toUpperCase()}\n${conc[k]}`), conc.limita ? `LO QUE TE ESTÁ LIMITANDO\n${conc.limita}` : '', conc.pasos.length ? `TUS PRIMEROS PASOS\n${conc.pasos.map(p => '- ' + p).join('\n')}` : ''].filter(Boolean).join('\n\n');
+          const x = (f.plan || []).find(z => z.clave === 'registro7'), fila = { contenido: txt, visible: true, actualizado_at: new Date().toISOString() };
+          const q = x?.id ? await sb.from('planificacion').update(fila).eq('id', x.id) : await sb.from('planificacion').insert({ ...fila, alumno_id: f.id, seccion: 'alimentacion', clave: 'registro7', titulo: 'Análisis del registro de 7 días y estilo de vida', imagenes: [], orden: 1 });
+          if (q.error) throw q.error; await cargarPlanificacion(f);
+        }
+        cerrarSheet(); toast(pub ? 'Publicado: lo ve en su pestaña Nutrición' : 'Conclusiones guardadas'); render();
+      } catch (err) { fallo(err); }
+    });
+  }
+  async function copiarR7() {
+    const f = S.ficha, a = (S.c?.perfiles || []).find(p => p.id === f.id) || {}, r = resumenInc(f.plan || []), ini0 = S.r7ini || (r.inicio && r.inicio <= hoyISO() ? r.inicio : sumaDias(hoyISO(), -6)), dias = [...Array(7)].map((_, i) => sumaDias(ini0, i));
+    const priv = (f.plan || []).find(z => z.clave === 'inc-registro7')?.datos || {}, obs = priv.obs || {}, c = priv.conc || {};
+    const l = (f.comidas || []).filter(x => x.fecha >= dias[0] && x.fecha <= dias[6] && !x.compartido);
+    const t = [`REGISTRO DE 7 DÍAS · ${a.nombre || ''} · ${dias[0]} a ${dias[6]}`, ...dias.map(d => { const z = l.filter(x => x.fecha === d).sort((p, q) => (ingDe(p) || 9) - (ingDe(q) || 9) || horaDe(p).localeCompare(horaDe(q))); return `\n${fLarga(d)}${z.length ? '' : ': sin registros'}\n` + z.map(x => `- ${ingDe(x) ? ingDe(x) + 'ª ingesta' : x.momento || 'Comida'}${horaDe(x) ? ' · ' + horaDe(x) : ''}${x.contexto ? ' · ' + x.contexto : ''}${notaLimpia(x) ? ' · Alumno: ' + notaLimpia(x) : ''}${(x.alimentos || []).length ? ' · ' + alimentosTxt(x) : ''}${obs[x.id] ? ' · Jesús: ' + obs[x.id] : ''}`).join('\n'); }),
+      '\nCONCLUSIONES DE JESÚS', ...CONC.filter(([k]) => c[k]).map(([k, tt]) => `${tt}: ${c[k]}`), (c.pasos || []).length ? 'Primeros pasos:\n' + c.pasos.map((p, i) => `${i + 1}. ${p}`).join('\n') : ''].filter(v => v !== '').join('\n');
+    try { await navigator.clipboard.writeText(t); toast('Copiado: pégalo en ChatGPT junto al resto de su información'); } catch (e) { abrirSheet(`<div class="stack"><h2>Copia este texto</h2><textarea rows="16" style="font-size:12px">${esc(t)}</textarea></div>`); }
+  }
+  return { fase, faseDe, faseCoach, mide, FASES, vSemana7: aislar(vSemana7), formImportar, formPlato, calcular, ALI, objetivoComida, equivVisual, vIncCoach: aislar(vIncCoach), formInc, esInc, guardarResumen, vista: aislar(vista), vCoach: aislar(vCoach), cargar, cargarFicha, cargarCoach, datosPrevia, nuevasDe, DOCS, esPdf, ctxDe };
 })();
