@@ -3047,7 +3047,7 @@ async function cargarPlanificacion(f) {
 function apartadosDe(f, sec) {
   const l = (f.plan || []).filter(x => x.seccion === sec);
   const base = APARTADOS[sec].map(([k, t], i) => l.find(x => x.clave === k) || { seccion: sec, clave: k, titulo: t, orden: i, vacio: true });
-  return [...base, ...l.filter(x => !APARTADOS[sec].some(([k]) => k === x.clave))];
+  return [...base, ...l.filter(x => !APARTADOS[sec].some(([k]) => k === x.clave) && !Nutricion.esInc(x))];
 }
 function vApartado(f, x, abierto, extra = '') {
   const imgs = (x.imagenes || []).filter(r => !Nutricion.esPdf(r)).map(r => f.planImg?.[r]).filter(Boolean), pdfs = (x.imagenes || []).filter(Nutricion.esPdf).map(r => f.planImg?.[r]).filter(Boolean);
@@ -3324,6 +3324,7 @@ function vFichaSub(f, a) {
     return cab('Alimentación') + `
     <section class="section"><button class="card reporte-b" data-act="fichaSub" data-s="plan"><div class="ico gold">${svg('checkin')}</div><div class="grow" style="text-align:left"><b>Su plan de alimentación</b><div class="small muted">Contexto y feedback, registro de 7 días, analítica, contextos, equivalencias, menús, platos y suplementación</div></div><span class="small" style="color:var(--blue-text)">Editar ›</span></button>
       <button class="linkbtn small" data-act="nuPrev" style="margin-top:8px">👁 Ver su pestaña Nutrición tal como la ve ${esc(nom)}</button></section>
+    ${Nutricion.vIncCoach(f, a)}
     ${Nutricion.vCoach(f, a)}
     ${(() => { const mide = midoCoach(a.id), fase = Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || '';
       return `<section class="section"><div class="section-head"><h2>${mide ? 'Seguimiento por ingestas' : 'Registro de observación'}</h2><button class="btn sm ghost" data-act="editarComidas">${n} ingestas/día · cambiar</button></div><div class="card">
@@ -5682,7 +5683,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v187';
+const APP_VER = 'v188';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}

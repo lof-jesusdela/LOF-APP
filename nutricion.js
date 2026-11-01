@@ -110,9 +110,9 @@ const Nutricion = (() => {
     const d = dd || S.d, n = d?.nutri || vacio();
     if (S.nDoc) return vDoc(n, S.nDoc, d);
     const docs = [...DOCS.map(([k, t, s, ic]) => ({ x: docDe(n, k), k, t, s, ic })).filter(o => tiene(o.x)),
-      ...n.plan.filter(x => !DOCS.some(([k]) => k === x.clave) && tiene(x)).map(x => ({ x, k: x.clave, t: x.titulo, s: '', ic: '📌' }))];
+      ...n.plan.filter(x => !DOCS.some(([k]) => k === x.clave) && !esInc(x) && tiene(x)).map(x => ({ x, k: x.clave, t: x.titulo, s: '', ic: '📌' }))];
     const cab = prev ? '' : `<section class="stack"><span class="eyebrow">Tu plan de alimentación</span><h1>Nutrición</h1><p class="small muted">Tu guía para comer bien sin pensarlo demasiado. Vuelve aquí siempre que tengas una duda.</p></section>`;
-    return cab + vFase(d) + vHoyCtx(n, d) + vDocs(docs) + (prev ? '' : vDiario(n, d));
+    return cab + vFase(d) + vIncAlumno(n, d) + vHoyCtx(n, d) + vDocs(docs) + (prev ? '' : vDiario(n, d));
   }
   function vFase(d) {
     const f = fase(d); if (!f) return '';
@@ -325,6 +325,8 @@ const Nutricion = (() => {
       case 'nuCerrar': S.nDoc = null; render(); window.scrollTo(0, 0); break;
       case 'nuCtx': S.nCtx = +b.dataset.i; try { localStorage.setItem('lof-nctx', hoyISO() + '|' + S.nCtx); } catch (err) { /* sin almacenamiento */ } render(); break;
       case 'nuDia': S.nDia = b.dataset.f; render(); break;
+      case 'nuInc': formInc(b.dataset.k); break;
+      case 'nuIncIni': { const v = $('#inc-ini')?.value; if (!v) return toast('Elige la fecha'); try { await guardarResumen(S.ficha, d => { d.inicio = v; }); await cargarPlanificacion(S.ficha); render(); toast('Fecha guardada'); } catch (err) { fallo(err); } break; }
       case 'nuSem': try { localStorage.setItem('lof-nsem', lunesDe(hoyISO()) + '|' + b.dataset.i); localStorage.removeItem('lof-nctx'); } catch (err) { /* */ } S.nCtx = null; render(); break;
       case 'nuNueva': formComida(); break;
       case 'nuEditar': formComida(+b.dataset.id); break;
@@ -337,5 +339,85 @@ const Nutricion = (() => {
   });
 
   const aislar = fn => (...args) => { try { return fn(...args); } catch (err) { console.error(err); return `<section class="section"><div class="card small muted">No se ha podido mostrar esta parte de Nutrición. Cierra y vuelve a abrir la app.</div></section>`; } };
-  return { fase, faseDe, faseCoach, mide, FASES, vista: aislar(vista), vCoach: aislar(vCoach), cargar, cargarFicha, cargarCoach, datosPrevia, nuevasDe, DOCS, esPdf, ctxDe };
+  /* ---------- Incorporación · primeros 14 días ----------
+     Semana 1: 5 entradas (composición, estilo de vida, registro de 7 días, analítica, preferencias).
+     Semana 2: reunión, entrega del plan (apartados publicados) y suplementación.
+     Cada entrada se guarda como fila privada de planificación (clave «inc-…», no visible: notas y archivos solo del coach)
+     y un resumen sin contenido (clave «incorporacion», visible) para que el alumno vea en qué punto está. */
+  const INC = [['composicion', 'Composición corporal', '📏', 'Peso, % de grasa, percentil y objetivos realistas'], ['estilo', 'Cuestionario de estilo de vida', '📝', 'Trabajo, descanso, entrenamiento, estrés, hábitos, digestión'], ['registro7', 'Registro de alimentación · 7 días', '📷', 'Todo lo que come y bebe, mejor con fotos'], ['analitica', 'Analítica de sangre y orina', '🩸', 'Y de heces si hiciera falta'], ['preferencias', 'Preferencias alimentarias', '🥦', 'Qué alimentos le gustan y cuáles no; alergias e intolerancias']];
+  const INC_EST = { pendiente: ['Pendiente', ''], recibido: ['Recibido', 'blue'], revision: ['Revisar', 'warn'], validado: ['Validado', 'ok'], no_disponible: ['No disponible', ''], no_aplica: ['No aplica', ''] };
+  const ENTREGAS = [['contexto', 'Informe de contexto y plan de acción'], ['contextos', 'Contextos y macros'], ['equivalencias', 'Guía visual de equivalencias'], ['menus', 'Menús por contexto'], ['platos', 'Cómo construir tus platos'], ['suplementacion', 'Plan de suplementación']];
+  const esInc = x => /^inc-|^incorporacion$/.test(x?.clave || '');
+  const incHecho = e => ['recibido', 'revision', 'validado', 'no_aplica', 'no_disponible'].includes(e);
+  const resumenInc = plan => plan.find(x => x.clave === 'incorporacion')?.datos || {};
+  const diaInc = r => r.inicio ? Math.max(1, Math.floor((fecha(hoyISO()) - fecha(r.inicio)) / 864e5) + 1) : null;
+  function vIncCoach(f, a) {
+    const plan = f.plan; if (!plan) return '<section class="section"><div class="card small muted">Cargando su incorporación…</div></section>';
+    const r = resumenInc(plan), it = r.items || {}, dia = diaInc(r), nom = (a?.nombre || '').split(' ')[0];
+    const filaE = ([k, t, ic, s]) => { const x = plan.find(z => z.clave === 'inc-' + k), e = it[k]?.estado || 'pendiente', st = INC_EST[e], nf = (x?.imagenes || []).length;
+      return `<button class="line inc-l" data-act="nuInc" data-k="${k}" style="width:100%;text-align:left;cursor:pointer"><span class="inc-ic">${ic}</span><div class="grow"><b class="small">${esc(t)}</b><div class="small muted">${it[k]?.fecha ? esc(fCorta(it[k].fecha)) + ' · ' : ''}${nf ? `${nf} archivo${nf > 1 ? 's' : ''} · ` : ''}${it[k]?.calidad ? esc(it[k].calidad) + ' · ' : ''}${x?.contenido ? 'con notas' : esc(s)}</div></div><span class="pill ${st[1]}">${st[0]}</span></button>`; };
+    const pub = k => { const x = plan.find(z => z.clave === k); return !x || !(x.contenido || (x.imagenes || []).length || (x.datos?.ctx || []).length) ? ['Vacío', ''] : x.visible === false ? ['Borrador', 'warn'] : ['Publicado', 'ok']; };
+    const hechos = INC.filter(([k]) => incHecho(it[k]?.estado)).length;
+    return `<section class="section"><div class="section-head"><h2>Primeros 14 días</h2><span class="small muted">${dia ? `Día ${Math.min(dia, 99)}${dia <= 14 ? ' de 14' : ''}` : ''}</span></div>
+      <div class="card stack" style="gap:10px"><div class="row small" style="gap:8px;flex-wrap:wrap;align-items:center"><span class="grow">Inicio de su incorporación</span><input type="date" id="inc-ini" value="${esc(r.inicio || '')}" style="max-width:170px"><button class="btn sm ghost" data-act="nuIncIni">Guardar</button></div>
+        <div class="inc-bar"><i style="width:${Math.round(hechos / INC.length * 100)}%"></i></div>
+        <span class="eyebrow">Semana 1 · toma de datos · ${hechos}/${INC.length}</span>${INC.map(filaE).join('')}
+        <span class="eyebrow" style="margin-top:6px">Semana 2 · análisis y estrategia</span>
+        <button class="line inc-l" data-act="nuInc" data-k="reunion" style="width:100%;text-align:left;cursor:pointer"><span class="inc-ic">🤝</span><div class="grow"><b class="small">Reunión personalizada</b><div class="small muted">${it.reunion?.fecha ? esc(fCorta(it.reunion.fecha)) + ' · ' : ''}Lo que hace bien, lo que le limita y sus 3–4 prioridades</div></div><span class="pill ${INC_EST[it.reunion?.estado || 'pendiente'][1]}">${it.reunion?.estado === 'validado' ? 'Hecha' : it.reunion?.estado === 'recibido' ? 'Programada' : 'Pendiente'}</span></button>
+        ${ENTREGAS.map(([k, t]) => { const p = pub(k); return `<button class="line inc-l" data-act="editarApartado" data-sec="alimentacion" data-k="${k}" style="width:100%;text-align:left;cursor:pointer"><span class="inc-ic">${(DOCS.find(d => d[0] === k) || [])[3] || '📄'}</span><div class="grow"><b class="small">${esc(t)}</b><div class="small muted">${p[0] === 'Publicado' ? `${esc(nom)} ya lo ve en Nutrición` : p[0] === 'Borrador' ? 'Guardado, aún no lo ve' : 'Sin subir todavía'}</div></div><span class="pill ${p[1]}">${p[0]}</span></button>`; }).join('')}
+        <p class="note">Las notas y archivos de la semana 1 son privados. ${esc(nom)} solo ve en qué punto está cada paso.</p></div></section>`;
+  }
+  function formInc(k) {
+    const f = S.ficha, def = k === 'reunion' ? ['reunion', 'Reunión personalizada', '🤝', 'Presencial o digital'] : INC.find(z => z[0] === k); if (!f || !def) return;
+    const x = (f.plan || []).find(z => z.clave === 'inc-' + k) || {}, r = resumenInc(f.plan || []), cur = (r.items || {})[k] || {};
+    const est = k === 'reunion' ? [['pendiente', 'Pendiente'], ['recibido', 'Programada'], ['validado', 'Hecha']] : Object.entries(INC_EST).map(([v, [t]]) => [v, t]);
+    abrirSheet(`<form class="stack" id="f-inc"><h2>${def[2]} ${esc(def[1])}</h2><p class="small muted" style="margin-top:-8px">${esc(def[3])}</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="f">Estado<select id="inc-e">${est.map(([v, t]) => `<option value="${v}" ${(cur.estado || 'pendiente') === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label><label class="f">Fecha<input type="date" id="inc-f" value="${esc(cur.fecha || '')}"></label></div>
+      ${k === 'reunion' ? '' : `<label class="f">Calidad de la información<select id="inc-q"><option value="">Sin valorar</option>${['Completa', 'Parcial', 'Insuficiente'].map(v => `<option ${cur.calidad === v ? 'selected' : ''}>${v}</option>`).join('')}</select></label>`}
+      <label class="f">Notas (solo tú)<textarea id="inc-n" rows="6" placeholder="${k === 'reunion' ? 'Lo que hace bien, lo que le limita, prioridades acordadas…' : k === 'analitica' ? 'Valores destacados con su unidad y rango del laboratorio, fecha de extracción…' : 'Lo más importante de lo recibido…'}">${esc(x.contenido || '')}</textarea></label>
+      ${(x.imagenes || []).length ? `<div class="stack" style="gap:6px"><span class="small"><b>Archivos</b> · marca los que quieras quitar</span><div class="plan-imgs">${x.imagenes.map((p, i) => `<label class="plan-q">${esPdf(p) ? `<a class="plan-pdf" href="${esc(f.planImg?.[p] || '#')}" target="_blank" rel="noopener">📄 PDF</a>` : `<img src="${esc(f.planImg?.[p] || '')}" alt="">`}<span><input type="checkbox" data-quitar="${i}"> Quitar</span></label>`).join('')}</div></div>` : ''}
+      ${k === 'reunion' ? '' : '<label class="f">Añadir fotos o PDF (informes, capturas, analítica, cuestionario…)<input type="file" id="inc-a" accept="image/*,application/pdf" multiple></label>'}
+      <p class="err" id="inc-err"></p><button class="btn full" id="inc-b">Guardar</button></form>`);
+    $('#f-inc').addEventListener('submit', async e => {
+      e.preventDefault(); const btn = $('#inc-b'); btn.disabled = true; btn.textContent = 'Guardando…';
+      try {
+        const quitar = [...document.querySelectorAll('#f-inc [data-quitar]:checked')].map(c => x.imagenes[+c.dataset.quitar]);
+        const imagenes = (x.imagenes || []).filter(p => !quitar.includes(p));
+        for (const file of ($('#inc-a')?.files || [])) {
+          const pdf = /pdf/i.test(file.type) || /\.pdf$/i.test(file.name), blob = pdf ? file : await reducirImagen(file, 1800), ruta = `${f.id}/inc-${k}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${pdf ? 'pdf' : 'jpg'}`;
+          const up = await sb.storage.from('planificacion').upload(ruta, blob, { contentType: pdf ? 'application/pdf' : 'image/jpeg' }); if (up.error) throw up.error; imagenes.push(ruta);
+        }
+        if (quitar.length) await sb.storage.from('planificacion').remove(quitar);
+        const estado = $('#inc-e').value, item = { estado, fecha: $('#inc-f').value || (estado !== 'pendiente' ? hoyISO() : null), calidad: $('#inc-q')?.value || null };
+        const fila = { alumno_id: f.id, seccion: 'alimentacion', clave: 'inc-' + k, titulo: def[1], contenido: $('#inc-n').value.trim() || null, imagenes, orden: 90, visible: false, actualizado_at: new Date().toISOString() };
+        let q = x.id ? await sb.from('planificacion').update(fila).eq('id', x.id) : await sb.from('planificacion').insert(fila); if (q.error) throw q.error;
+        await guardarResumen(f, d => { d.items = { ...(d.items || {}), [k]: item }; if (!d.inicio && estado !== 'pendiente') d.inicio = item.fecha; });
+        cerrarSheet(); toast('Guardado'); await cargarPlanificacion(f); render();
+      } catch (err) { btn.disabled = false; btn.textContent = 'Guardar'; $('#inc-err').textContent = 'No se ha podido guardar' + (err?.message ? ` (${err.message.slice(0, 120)})` : ''); console.error(err); }
+    });
+  }
+  async function guardarResumen(f, cambia) {
+    const x = (f.plan || []).find(z => z.clave === 'incorporacion'), d = JSON.parse(JSON.stringify(x?.datos || {})); cambia(d);
+    const fila = { alumno_id: f.id, seccion: 'alimentacion', clave: 'incorporacion', titulo: 'Primeros 14 días', datos: d, imagenes: [], orden: 91, visible: true, actualizado_at: new Date().toISOString() };
+    const q = x?.id ? await sb.from('planificacion').update({ datos: d, actualizado_at: fila.actualizado_at }).eq('id', x.id) : await sb.from('planificacion').insert(fila);
+    if (q.error) throw q.error;
+  }
+  /* Lo que ve el alumno: en qué punto están sus 14 primeros días */
+  function vIncAlumno(n, d) {
+    const r = resumenInc(n.plan), it = r.items || {}, f = fase(d);
+    if (!r.items && !r.inicio) return '';
+    const pub = k => { const x = docDe(n, k); return !!x && tiene(x); };
+    const planListo = ['contextos', 'equivalencias', 'menus', 'contexto'].some(pub);
+    if (f === 'activo' && planListo && INC.every(([k]) => incHecho(it[k]?.estado))) return '';
+    const dia = diaInc(r), TXT = { composicion: 'Mediremos tu porcentaje de grasa y fijaremos objetivos realistas.', estilo: 'Rellena el cuestionario: trabajo, descanso, estrés, digestión…', registro7: 'Apunta todo lo que comes y bebes, mejor con foto, sin cambiar nada.', analitica: 'Te indicaremos qué parámetros necesitamos analizar.', preferencias: 'Dinos qué alimentos te gustan y cuáles no.' };
+    const fila = ([k, t, ic]) => { const e = it[k]?.estado || 'pendiente', ok = incHecho(e); return `<div class="inc-a ${ok ? 'ok' : ''}"><span class="inc-ic">${ok ? '✓' : ic}</span><div class="grow"><b>${esc(t)}</b><small>${ok ? (e === 'no_aplica' ? 'No hace falta en tu caso' : e === 'no_disponible' ? 'Seguimos sin este dato, no pasa nada' : 'Recibido') : esc(TXT[k])}</small></div>${!ok && k === 'registro7' ? '<button class="btn sm" data-act="nuIrDiario">Apuntar</button>' : ''}</div>`; };
+    return `<section class="section"><div class="card inc-alu stack"><div class="row"><div class="grow"><span class="eyebrow">Tus primeros 14 días</span><h3 style="margin:2px 0 0">Primero te conocemos. Después construimos tu estrategia.</h3></div>${dia && dia <= 14 ? `<span class="pill gold">Día ${dia}/14</span>` : ''}</div>
+      <div class="inc-sem"><b>Semana 1 · Toma de datos</b>${INC.map(fila).join('')}</div>
+      <div class="inc-sem"><b>Semana 2 · Análisis y estrategia</b>
+        <div class="inc-a ${it.reunion?.estado === 'validado' ? 'ok' : ''}"><span class="inc-ic">${it.reunion?.estado === 'validado' ? '✓' : '🤝'}</span><div class="grow"><b>Reunión personalizada</b><small>${it.reunion?.estado === 'validado' ? 'Hecha' : it.reunion?.estado === 'recibido' ? 'Programada' + (it.reunion?.fecha ? ' · ' + esc(fCorta(it.reunion.fecha)) : '') : 'Revisaremos juntos lo que haces bien, lo que te limita y tus 3–4 prioridades.'}</small></div></div>
+        <div class="inc-a ${planListo ? 'ok' : ''}"><span class="inc-ic">${planListo ? '✓' : '🍽️'}</span><div class="grow"><b>Entrega de tu plan personalizado</b><small>${planListo ? 'Ya lo tienes aquí abajo, en «Tu plan»' : 'Menú adaptado a tu contexto, guía visual de cantidades y estructura de platos.'}</small></div></div>
+        <div class="inc-a ${pub('suplementacion') ? 'ok' : ''}"><span class="inc-ic">${pub('suplementacion') ? '✓' : '💊'}</span><div class="grow"><b>Plan de suplementación</b><small>${pub('suplementacion') ? 'Ya lo tienes en «Tu plan»' : 'Si ya tenemos tu analítica, te lo entregamos individualizado.'}</small></div></div></div>
+      <p class="small muted" style="margin:0">No es una dieta estricta: es una estrategia personalizada, comiendo lo que te gusta y sin efecto rebote.</p></div></section>`;
+  }
+  return { fase, faseDe, faseCoach, mide, FASES, vIncCoach: aislar(vIncCoach), formInc, esInc, guardarResumen, vista: aislar(vista), vCoach: aislar(vCoach), cargar, cargarFicha, cargarCoach, datosPrevia, nuevasDe, DOCS, esPdf, ctxDe };
 })();
