@@ -5207,7 +5207,7 @@ function formEjSesion(id, bloqueId) {
   const libEj = e ? (S.c.ejercicios || []).find(x => x.id === e.ejercicio_id) : null;
   abrirSheet(`<form class="stack" id="f-ejs"><h2>${e ? 'Editar ejercicio' : 'Añadir ejercicio'}</h2>
     <div class="stack" style="gap:6px"><span class="small muted">Ejercicio</span><input type="search" id="es-bus" placeholder="Buscar por nombre o músculo (glúteo, espalda, pierna…)" autocomplete="off">
-      <div class="chips es-gr" id="es-gr" style="gap:4px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px">${[['', 'Todos'], ...GRUPOS_EJ.filter(([k]) => k !== 'cardio').map(([k, t]) => [k, t])].map(([k, t]) => `<button type="button" class="pill" data-g="${k}" aria-pressed="${k === '' }" style="white-space:nowrap">${esc(t)}</button>`).join('')}</div>
+      <div class="chips es-gr" id="es-grm" style="gap:4px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px">${[['', 'Todos'], ...GRUPOS_EJ.filter(([k]) => k !== 'cardio').map(([k, t]) => [k, t])].map(([k, t]) => `<button type="button" class="pill" data-g="${k}" aria-pressed="${k === '' }" style="white-space:nowrap">${esc(t)}</button>`).join('')}</div>
       <select id="es-ej" aria-label="Ejercicio"><option value="">— Elige de tu biblioteca —</option><option value="nuevo">＋ Crear un ejercicio nuevo…</option>${opts('')}</select></div>
     <div id="es-prev"></div>
     <div class="stack" id="es-datos" style="gap:10px" hidden>
@@ -5296,7 +5296,7 @@ function formEjSesion(id, bloqueId) {
     if (v && v !== 'nuevo' && [...sel.options].some(o => o.value === v)) sel.value = v; else if (sel.options.length === 3) sel.value = sel.options[2].value; else if (v === 'nuevo') sel.value = 'nuevo';
     pintarPrev();
   });
-  $('#es-gr').addEventListener('click', ev => { const b = ev.target.closest('[data-g]'); if (!b) return; grupoSel = b.dataset.g; document.querySelectorAll('#es-gr [data-g]').forEach(x => x.setAttribute('aria-pressed', x === b)); $('#es-bus').dispatchEvent(new Event('input')); });
+  $('#es-grm').addEventListener('click', ev => { const b = ev.target.closest('[data-g]'); if (!b) return; grupoSel = b.dataset.g; document.querySelectorAll('#es-grm [data-g]').forEach(x => x.setAttribute('aria-pressed', x === b)); $('#es-bus').dispatchEvent(new Event('input')); });
   $('#es-prev').addEventListener('change', ev => { if (ev.target.id === 'es-foto' && ev.target.files[0]) { st.foto = ev.target.files[0]; pintarPrev(); } });
   $('#es-prev').addEventListener('click', ev => { if (ev.target.id === 'es-img') ev.target.classList.toggle('grande'); });
   $('#es-nfoto').addEventListener('change', ev => { st.nfoto = ev.target.files[0] || null; $('#es-nprev').innerHTML = st.nfoto ? `<img class="es-nimg" src="${esc(URL.createObjectURL(st.nfoto))}" alt="">` : ''; });
@@ -5682,7 +5682,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v186';
+const APP_VER = 'v187';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
