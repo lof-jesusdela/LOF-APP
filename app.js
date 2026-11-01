@@ -3204,7 +3204,7 @@ function vFicha() {
   const fF = iso => fecha(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
   const pend = e.items.filter(x => !x.ok), hechas = e.items.filter(x => x.ok);
   const DOT = { 2: /semana|motivaci|check|devoluci|indicaci|partido|wellness|sueño|fatiga|molest|futbol|rpe|carga/i, 3: /proceso|extensi|pausa|regreso/i, 4: /entreno|ha cambiado su peso|contexto/i, 5: /alimentaci|ingesta|comida|nutri/i, 6: /h[aá]bito|pasos|temperamento/i, 7: /medici|composici/i, 8: /revisi[oó]n|presencial|cita/i, 9: /pago|cuota/i, 10: /test|valoraci/i, 11: /foto|caso|medida/i };
-  const dot = n => { const l = pend.filter(x => DOT[n].test(x.m)); return !l.length ? '' : `<span class="fb-dot ${l.some(x => x.n === 'bad') ? 'bad' : ''} ${l.some(x => x.nueva) ? 'nuevo' : ''}" title="${l.length} ${l.length === 1 ? 'aviso' : 'avisos'}">${l.length}</span>`; };
+  const dot = n => { const l = n === 1 ? pend : DOT[n] ? pend.filter(x => DOT[n].test(x.m)) : []; return !l.length ? '' : `<span class="fb-dot ${l.some(x => x.n === 'bad') ? 'bad' : ''} ${l.some(x => x.nueva) ? 'nuevo' : ''}" title="${l.length} ${l.length === 1 ? 'aviso' : 'avisos'}">${l.length}</span>`; };
   const ab = S.fbAbiertos ||= {};
   const ban = (id, n, ico, tit, res, html, abierto = false) => `<details class="fb" data-fb="${id}" ${(ab[id] ?? abierto) ? 'open' : ''}><summary><span class="fb-n">${n}</span><span class="fb-ico">${ico}</span><div class="grow fb-t"><b>${tit}</b>${res ? `<small>${res}</small>` : ''}</div>${dot(n)}<span class="fb-chev" aria-hidden="true"></span></summary><div class="fb-body">${html}</div></details>`;
   const ultM = f.med[0], pagP = pagos.filter(p => !p.pagado_at), pagV = pagP.filter(p => p.vence < hoy);
@@ -5170,12 +5170,18 @@ function formEjSesion(id, bloqueId) {
   const e = id ? blq.ejercicios_sesion.find(x => x.id === id) : null;
   const pauta = e?.pauta?.length ? e.pauta : [{ s: 3, r: '10', rir: 2, kg: '', d: 90 }];
   const lib = S.c.ejercicios.filter(x => !x.privado).sort((x, y) => x.nombre.localeCompare(y.nombre, 'es')), todosEj = S.c.ejercicios;
-  const opts = q => { const n = normaliza(q || ''); return lib.filter(x => !n || normaliza(x.nombre).includes(n)).map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join(''); };
+  /* Búsqueda por nombre, músculo o grupo muscular (p. ej. «glúteo», «espalda», «pierna»), y filtro rápido por grupo */
+  let grupoSel = '';
+  const ALIAS_G = { pierna: 'inf', piernas: 'inf', 'tren inferior': 'inf', 'tren superior': 'sup', torso: 'sup', abs: 'abdomen', abdominales: 'abdomen', gemelos: 'gemelo', isquiotibiales: 'isquios', femoral: 'isquios', cuadriceps: 'cuadriceps', espalda: 'espalda', hombros: 'hombro', brazos: 'biceps' };
+  const gruposDeQ = n => { if (!n || n.length < 3) return []; const g = GRUPOS_EJ.filter(([k, t]) => normaliza(t).includes(n) || n.includes(normaliza(t))).map(([k]) => k); if (ALIAS_G[n]) g.push(ALIAS_G[n]); if (n === 'brazos' || n === 'brazo') g.push('triceps'); return g; };
+  const casa = (x, n) => { if (grupoSel && !grupoEjOk(x, grupoSel)) return false; if (!n) return true; if (normaliza(x.nombre + ' ' + (x.musculo || '')).includes(n)) return true; return gruposDeQ(n).some(g => grupoEjOk(x, g)); };
+  const opts = q => { const n = normaliza(q || '').trim(); return lib.filter(x => casa(x, n)).map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join(''); };
   const dia = p.dias.find(d => d.bloques_sesion.includes(blq)), hermanos = (dia?.bloques_sesion || []).filter(x => x.tipo === 'fuerza');
   const st = { foto: null, nfoto: null, mlista: null, mus: null };
   const libEj = e ? (S.c.ejercicios || []).find(x => x.id === e.ejercicio_id) : null;
   abrirSheet(`<form class="stack" id="f-ejs"><h2>${e ? 'Editar ejercicio' : 'Añadir ejercicio'}</h2>
-    <div class="stack" style="gap:6px"><span class="small muted">Ejercicio</span><input type="search" id="es-bus" placeholder="Buscar en tu biblioteca…" autocomplete="off">
+    <div class="stack" style="gap:6px"><span class="small muted">Ejercicio</span><input type="search" id="es-bus" placeholder="Buscar por nombre o músculo (glúteo, espalda, pierna…)" autocomplete="off">
+      <div class="chips es-gr" id="es-gr" style="gap:4px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px">${[['', 'Todos'], ...GRUPOS_EJ.filter(([k]) => k !== 'cardio').map(([k, t]) => [k, t])].map(([k, t]) => `<button type="button" class="pill" data-g="${k}" aria-pressed="${k === '' }" style="white-space:nowrap">${esc(t)}</button>`).join('')}</div>
       <select id="es-ej" aria-label="Ejercicio"><option value="">— Elige de tu biblioteca —</option><option value="nuevo">＋ Crear un ejercicio nuevo…</option>${opts('')}</select></div>
     <div id="es-prev"></div>
     <div class="stack" id="es-datos" style="gap:10px" hidden>
@@ -5264,6 +5270,7 @@ function formEjSesion(id, bloqueId) {
     if (v && v !== 'nuevo' && [...sel.options].some(o => o.value === v)) sel.value = v; else if (sel.options.length === 3) sel.value = sel.options[2].value; else if (v === 'nuevo') sel.value = 'nuevo';
     pintarPrev();
   });
+  $('#es-gr').addEventListener('click', ev => { const b = ev.target.closest('[data-g]'); if (!b) return; grupoSel = b.dataset.g; document.querySelectorAll('#es-gr [data-g]').forEach(x => x.setAttribute('aria-pressed', x === b)); $('#es-bus').dispatchEvent(new Event('input')); });
   $('#es-prev').addEventListener('change', ev => { if (ev.target.id === 'es-foto' && ev.target.files[0]) { st.foto = ev.target.files[0]; pintarPrev(); } });
   $('#es-prev').addEventListener('click', ev => { if (ev.target.id === 'es-img') ev.target.classList.toggle('grande'); });
   $('#es-nfoto').addEventListener('change', ev => { st.nfoto = ev.target.files[0] || null; $('#es-nprev').innerHTML = st.nfoto ? `<img class="es-nimg" src="${esc(URL.createObjectURL(st.nfoto))}" alt="">` : ''; });
@@ -5649,7 +5656,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v181';
+const APP_VER = 'v182';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
