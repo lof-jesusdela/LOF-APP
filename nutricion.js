@@ -91,10 +91,18 @@ const Nutricion = (() => {
     });
     cierra(); return out.join('');
   }
+  /* Semana tipo: qué contexto toca hoy (si hay varias, la que el alumno marque para esta semana) */
+  const semanasDe = n => (docDe(n, 'contextos')?.datos?.semana || []).filter(p => (p.dias || []).some(Boolean));
+  function semSel(n) { const l = semanasDe(n); if (l.length < 2) return 0; try { const [f, i] = (localStorage.getItem('lof-nsem') || '').split('|'); if (f === lunesDe(hoyISO())) return Math.min(+i || 0, l.length - 1); } catch (e) { /* */ } return 0; }
+  function ctxPorSemana(n) {
+    const sem = semanasDe(n)[semSel(n)]; if (!sem) return -1;
+    const nom = norm(sem.dias[(new Date().getDay() + 6) % 7] || ''); if (!nom) return -1;
+    return ctxDe(n).findIndex(c => norm(c.n) === nom);
+  }
   function selCtx(n) {
     if (S.nCtx != null) return S.nCtx;
     try { const [f, i] = (localStorage.getItem('lof-nctx') || '').split('|'); if (f === hoyISO()) return +i || 0; } catch (e) { /* sin almacenamiento */ }
-    return 0;
+    const k = ctxPorSemana(n); return k >= 0 ? k : 0;
   }
 
   /* ---------- Pestaña del alumno ---------- */
@@ -122,10 +130,12 @@ const Nutricion = (() => {
   }
   function vHoyCtx(n, d) {
     const l = ctxDe(n); if (!l.length) return '';
-    const i = Math.min(selCtx(n), l.length - 1), c = l[i], ing = comidasDia(d?.servicio);
+    const i = Math.min(selCtx(n), l.length - 1), c = l[i], ing = +c.ing || comidasDia(d?.servicio), sems = semanasDe(n), auto = ctxPorSemana(n);
     const ir = (k, t) => tiene(docDe(n, k)) ? `<button class="btn sm ghost" data-act="nuDoc" data-k="${k}">${t}</button>` : '';
     return `<section class="section"><div class="card stack nu-hoy"><span class="eyebrow">¿Qué tipo de día tienes hoy?</span>
       <div class="chips" role="group" aria-label="Contexto de hoy">${l.map((x, k) => `<button class="pill ${k === i ? 'blue' : ''}" data-act="nuCtx" data-i="${k}" aria-pressed="${k === i}">${esc(x.n)}</button>`).join('')}</div>
+      ${sems.length > 1 ? `<div class="row small" style="gap:6px;flex-wrap:wrap;align-items:center"><span class="muted">Esta semana:</span>${sems.map((p, k) => `<button class="pill ${k === semSel(n) ? 'gold' : ''}" data-act="nuSem" data-i="${k}">${esc(p.nombre || 'Semana ' + (k + 1))}</button>`).join('')}</div>` : ''}
+      ${auto === i ? '<p class="small muted" style="margin:0">📅 Es el que te toca hoy según tu semana tipo. Si tu día ha cambiado, toca otro.</p>' : ''}
       ${c.d ? `<p class="small muted" style="margin:0">${esc(c.d)}</p>` : ''}${vMacros(c, ing)}
       <div class="row" style="gap:8px;flex-wrap:wrap">${ir('menus', '🍽️ Ver mis menús')}${ir('equivalencias', '✋ Equivalencias')}${ir('platos', '🥗 Montar un plato')}</div></div></section>`;
   }
@@ -315,6 +325,7 @@ const Nutricion = (() => {
       case 'nuCerrar': S.nDoc = null; render(); window.scrollTo(0, 0); break;
       case 'nuCtx': S.nCtx = +b.dataset.i; try { localStorage.setItem('lof-nctx', hoyISO() + '|' + S.nCtx); } catch (err) { /* sin almacenamiento */ } render(); break;
       case 'nuDia': S.nDia = b.dataset.f; render(); break;
+      case 'nuSem': try { localStorage.setItem('lof-nsem', lunesDe(hoyISO()) + '|' + b.dataset.i); localStorage.removeItem('lof-nctx'); } catch (err) { /* */ } S.nCtx = null; render(); break;
       case 'nuNueva': formComida(); break;
       case 'nuEditar': formComida(+b.dataset.id); break;
       case 'nuPdfCtx': await pdfContextos(b); break;
