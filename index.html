@@ -613,6 +613,14 @@ nav.tabs a.tab-wa{flex:1;padding:10px 2px 12px;display:flex;flex-direction:colum
 .inc-a{display:flex;align-items:center;gap:12px;padding:8px 0}.inc-a b{display:block;font-size:14px}.inc-a small{display:block;color:var(--muted);font-size:12.5px;line-height:1.35}
 .inc-a.ok .inc-ic{background:var(--ok,#16a34a);color:#fff;font-weight:800}
 .calc-obj{background:var(--surface-2,#eef1f6);border-radius:10px;padding:8px 10px}
+.op .op-fila{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}.op-ic{font-size:22px;width:30px;text-align:center}
+.op-nota{min-width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font:700 20px var(--display,inherit);background:var(--line);color:var(--ink,#111)}
+.op-nota.ok{background:#dcf5e3;color:#147a3a}.op-nota.warn{background:#fdf0d5;color:#9a6200}.op-nota.bad{background:#fde2e1;color:#b42318}.op-nota.grande{min-width:56px;height:56px;font-size:26px}
+.op-up{color:var(--ok);font-weight:600}.op-down{color:var(--bad);font-weight:600}
+.op-cuenta{display:flex;flex-direction:column;align-items:center;background:var(--ink,#111);color:#fff;border-radius:14px;padding:8px 12px;min-width:86px;text-align:center}.op-cuenta b{font-size:24px;line-height:1}.op-cuenta small{font-size:11px}.op-cuenta .muted{color:#bbb}
+.op-media{align-items:center}.op-tab{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}.op-tab th,.op-tab td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left}.op-tab th{font-size:11px;color:var(--muted);font-weight:600}
+.op-n{display:inline-block;min-width:20px;padding:1px 5px;border-radius:6px;font-weight:700;font-size:12px;text-align:center;background:var(--line)}.op-n.ok{background:#dcf5e3;color:#147a3a}.op-n.warn{background:#fdf0d5;color:#9a6200}.op-n.bad{background:#fde2e1;color:#b42318}
+.op-bar .op-cinco td{background:rgba(20,122,58,.06);font-weight:600}.op-prev{display:block;margin-top:2px}
 .calc-res{display:flex;flex-direction:column;gap:8px;border:1px solid var(--gold,#c9a227);border-radius:14px;padding:12px}
 .calc-al{display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line);padding-bottom:8px}.calc-al b{display:block;font-size:14px}.calc-al span{font-size:13px;color:var(--muted)}
 .calc-g{text-align:right}.calc-g b{font-size:20px;font-family:var(--display)}.calc-g small{display:block;font-size:11px;color:var(--muted)}
@@ -668,6 +676,7 @@ nav.tabs a.tab-wa{flex:1;padding:10px 2px 12px;display:flex;flex-direction:colum
 <script src="negocio.js"></script>
 <script src="tandas.js"></script>
 <script src="entrenaidor.js"></script>
+<script src="oposicion.js"></script>
 <script src="app.js"></script>
 <script>
 /* Si la app se queda en «Cargando…», a los 12 s ofrece limpiar la caché y reintentar (y enseña el error si lo hay) */

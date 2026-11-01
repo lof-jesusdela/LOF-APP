@@ -931,6 +931,7 @@ function vHoy() {
   ${esWeekCard()}
   <section class="section"><h2>Lo que toca hoy</h2><div class="card">${toca}</div></section>
   ${vPendientesHoy(s)}
+  ${s.oposicion ? Oposicion.tarjeta(false) : ''}
   ${Acomp.ultimaIndicacion()}
   ${vProximamente(s)}
   ${s.modulo_futbol ? vFutbolHoy() + vSemanaFutbol(ini, w, p) + (s.modulo_habitos ? Habitos.tarjetaHoy(false) : '') : vRegistroDia(s)}
@@ -3283,6 +3284,7 @@ function vFicha() {
     ${a.activo === false ? '<div class="aprox small">Antiguo alumno: no le llegan avisos de seguimiento al coach. Sus datos siguen guardados y puede seguir usando la app. Reactívalo si vuelve a empezar un proceso.</div>' : ''}</section>
   <section class="section fb-lista span">
     ${ban('resumen', 1, '🔔', 'Resumen y avisos', resumen1, fb1, true)}
+    ${srv?.oposicion ? ban('oposicion', '👮', '🎯', 'Oposición · pruebas físicas', Oposicion.resumen(true), Oposicion.tarjeta(true)) : ''}
     ${ban('checkins', 2, '✅', 'Check-ins y cumplimiento', `${dpw ? `${cur.entrenos}/${dpw} entrenos` : ''}${chks[0] ? ` · último check-in ${esc(fCorta(chks[0].semana_inicio))}` : ''}`, fb2, true)}
     ${ban('plan', 3, '📑', 'Plan contratado y bloques', `${esc(srv?.producto || 'Sin plan')}${P && !P.antes && !P.fuera ? ` · semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''}`, fb3)}
     ${modE ? ban('entreno', 4, '🏋️', 'Entrenamiento · bloque actual', `${esc(f.prog?.nombre || 'Sin programa')}${dpw ? ` · ${cur.entrenos}/${dpw} esta semana` : ''}`, fb4) : ''}
@@ -3710,7 +3712,7 @@ function formServicio() {
     <label class="f" id="sv-pasos-w" ${conPasos(s) ? '' : 'hidden'}>Objetivo de pasos diarios<input type="number" id="sv-pasos" min="0" step="500" value="${s.objetivo_pasos || ''}" placeholder="${PASOS_DEF}"></label>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Hora de acostarse objetivo<input type="time" id="sv-dormir" value="${esc(s.sueno_dormir || '')}" placeholder="23:00"></label><label class="f">Hora de levantarse objetivo<input type="time" id="sv-levantar" value="${esc(s.sueno_levantar || '')}" placeholder="08:00"></label></div>
     <label class="f">Sesiones presenciales incluidas (bono)<input type="number" id="sv-pres" min="0" max="200" value="${s.sesiones_incluidas || ''}" placeholder="Ej. 15"></label>
-    <div class="stack" style="gap:8px">${[['entreno', 'Entrenamiento', s.modulo_entreno ?? true], ['nutricion', 'Nutrición · plan de alimentación (pestaña Nutrición y registro de comidas)', s.modulo_nutricion], ['presencial', 'Sesiones presenciales', s.modulo_presencial], ['habitos', 'Hábitos · programa de hábitos (pestaña Hábitos; bonus). Los pasos van aparte', s.modulo_habitos], ['futbol', 'Elite Player · seguimiento de futbolista (wellness, partidos y carga)', s.modulo_futbol]].map(([k, l, v]) => `<label class="row small"><input type="checkbox" id="sv-${k}" ${v ? 'checked' : ''} style="width:20px;height:20px"> ${l}</label>`).join('')}</div>
+    <div class="stack" style="gap:8px">${[['entreno', 'Entrenamiento', s.modulo_entreno ?? true], ['nutricion', 'Nutrición · plan de alimentación (pestaña Nutrición y registro de comidas)', s.modulo_nutricion], ['presencial', 'Sesiones presenciales', s.modulo_presencial], ['habitos', 'Hábitos · programa de hábitos (pestaña Hábitos; bonus). Los pasos van aparte', s.modulo_habitos], ['futbol', 'Elite Player · seguimiento de futbolista (wellness, partidos y carga)', s.modulo_futbol], ['oposicion', 'Oposición · Policía Nacional (pruebas físicas, simulacros y nota oficial)', !!s.oposicion]].map(([k, l, v]) => `<label class="row small"><input type="checkbox" id="sv-${k}" ${v ? 'checked' : ''} style="width:20px;height:20px"> ${l}</label>`).join('')}</div>
     <label class="f" id="sv-fase-w" ${s.modulo_nutricion ? '' : 'hidden'}>Fase de la alimentación<select id="sv-fase"><option value="">Automática (activo si tiene plan visible; si no, en preparación)</option>${Object.entries(Nutricion.FASES).map(([k, [l]]) => `<option value="${k}" ${s.nutri_fase === k ? 'selected' : ''}>${l}</option>`).join('')}</select><span class="small muted">En recogida y en preparación no se mide el cumplimiento: el alumno solo registra.</span></label>
     <label class="f" id="sv-com-w" ${s.modulo_nutricion ? '' : 'hidden'}>Comidas de su plan al día <span class="muted">(registro de comidas cumplidas)</span><input type="number" id="sv-com" min="1" max="8" value="${comidasDia(s)}"></label>
     <div class="card stack" id="sv-prev-w" style="padding:12px;gap:8px"><b class="small">✅ Entrenos ya realizados</b>
@@ -3732,6 +3734,7 @@ function formServicio() {
       modulo_entreno: $('#sv-entreno').checked, modulo_nutricion: $('#sv-nutricion').checked, modulo_presencial: $('#sv-presencial').checked, activo: true };
     if ($('#sv-habitos').checked || s.modulo_habitos) row.modulo_habitos = $('#sv-habitos').checked;
     if ($('#sv-futbol').checked || s.modulo_futbol) row.modulo_futbol = $('#sv-futbol').checked;
+    if ($('#sv-oposicion').checked || s.oposicion) row.oposicion = $('#sv-oposicion').checked ? (s.oposicion || 'policia_nacional') : null;
     if ($('#sv-dormir').value || s.sueno_dormir) row.sueno_dormir = $('#sv-dormir').value || null;
     if ($('#sv-levantar').value || s.sueno_levantar) row.sueno_levantar = $('#sv-levantar').value || null;
     const op = numero($('#sv-pasos').value); if (op) row.objetivo_pasos = op;
@@ -3743,6 +3746,7 @@ function formServicio() {
     if (!error && !s.id) await sb.from('perfiles').update({ activo: true }).eq('id', S.ficha.id);
     if (error && /modulo_habitos/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 66 en Supabase.');
     if (error && /modulo_futbol/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 21 en Supabase.');
+    if (error && /oposicion/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 78 en Supabase.');
     if (error && /sueno_/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 24 en Supabase.');
     if (error && /comidas_dia/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 11 en Supabase.');
     if (error && /pasos_activo/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 56 en Supabase.');
@@ -4665,6 +4669,7 @@ const PLANTILLAS = {
   ritmos: { titulo: 'Test de carrera de 5 minutos · ritmos', cols: 'valor', datos: ['Distancia en 5 minutos', 'Ritmo medio (min/km)', 'Velocidad aeróbica máxima (VAM)'],
     protocolo: 'Calentamiento: en pista o zona con distancia conocida, 10 minutos a ritmo bajo y 5 minutos subiendo el ritmo de forma progresiva. Después, unos 200 m de cambios de ritmo casi máximos (20-30 m) con 20-30 m de recuperación.\n\nParte principal: 5 minutos recorriendo la mayor distancia posible.' },
   carrera: { titulo: 'Análisis de carrera', cols: 'valor', datos: ['Caminata a 6 km/h', 'Carrera a 12 km/h'], protocolo: 'Grabamos de lado, de espaldas y de frente caminando y corriendo en cinta.' },
+  policia: { titulo: 'Pruebas físicas · Policía Nacional', cols: 'valor', datos: ['Carrera 1000 m', 'Circuito de agilidad', 'Barra'], protocolo: 'Carrera de 1000 m (min:seg), circuito de agilidad (segundos) y barra: suspensión en segundos (mujeres) o dominadas (hombres). Cada prueba puntúa de 0 a 10 según el baremo oficial; hace falta media de 5 y un 0 elimina.' },
   otra: { titulo: 'Otra prueba', cols: 'valor', datos: [], protocolo: '' }
 };
 const ordenarValoraciones = l => { l.forEach(v => (v.pruebas || []).sort((a, b) => (a.orden || 0) - (b.orden || 0))); return l.sort((a, b) => b.fecha.localeCompare(a.fecha)); };
@@ -5693,7 +5698,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v197';
+const APP_VER = 'v198';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
