@@ -1537,7 +1537,7 @@ function vSesion() {
   prepararNavegacion(d);
   const ini = S.sesion?.inicio;
   const como = S.obj ? `<div class="cerrada" style="margin-bottom:10px"><span class="pill gold">${S.sesion?.editar ? 'Editando' : 'Entrenando a'}</span><span class="small grow">${esc(S.obj.nombre)}${S.sesion?.editar ? ' · sesión del ' + esc(fCorta(S.sesion.fecha)) : ''}</span><button class="btn sm ghost" data-act="${S.sesion?.editar ? 'terminar' : 'salirComo'}" style="background:#fff">${S.sesion?.editar ? 'Listo' : 'Salir'}</button></div>` : '';
-  if (S.previa === d.id && !S.sesion?.editar && !ini && !S.sesion?.finMin && !Object.keys(S.sesion?.valores || {}).length) return como + vPrevia(d);
+  if (S.previa === d.id && !S.sesion?.editar && !ini && !Object.keys(S.sesion?.valores || {}).length) return como + vPrevia(d);   // una sesión «terminada» sin ninguna serie apuntada (p. ej. se pulsó empezar y terminar) no tapa la portada
   if (S.sesion?.editar) return como + `<section class="stack"><span class="eyebrow">${esc(S.dia.nombre)}</span><h1>${esc(S.dia.titulo || S.dia.foco || S.dia.nombre)}</h1>${cicloSesion()}
     <p class="note">Corrige kg, repeticiones o RIR: los cambios de una serie ya marcada se guardan solos al salir de la casilla. Para añadir una serie que no apuntó, rellénala y marca el check. Para borrarla, quita el check.</p></section>
   <section class="section">${vBloquesDia(d, cont)}
@@ -5686,7 +5686,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v194';
+const APP_VER = 'v195';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
