@@ -508,21 +508,95 @@ const Nutricion = (() => {
     const w = rep.length === n ? rep[k] / rep.reduce((a, b) => a + b, 0) : 1 / n;
     return { p: (+c.p || 0) * w, c: (+c.c || 0) * w, g: (+c.g || 0) * w, kcal: (+c.kcal || 0) * w, w };
   }
-  /* Resolución iterativa: cada alimento ajusta su macro principal (P, C o G) descontando lo que aportan los demás; la verdura va fija */
+  /* Límites de sentido común por comida: [mín, máx] en gramos, paso de redondeo y «ud» = se cuenta en unidades enteras
+     (huevos, rebanadas, latas…). «comp» = alimento complemento (aporta varios macros, p. ej. el huevo con pollo): va en
+     unidades razonables y la fuente principal completa el resto. Así nunca salen 4 huevos ni 60 g de aceite. */
+  const LIM_T = { P: [80, 220, 10], C: [50, 350, 10], G: [0, 20, 5], L: [0, 500, 25], V: [0, 500, 25] };
+  const LIM = {
+    'Pollo (pechuga) en crudo': [90, 260], 'Pollo (pechuga) cocinado': [70, 200], 'Pavo (pechuga) en crudo': [90, 260],
+    'Ternera magra en crudo': [90, 250], 'Ternera magra cocinada': [70, 200], 'Lomo de cerdo en crudo': [90, 250],
+    'Salmón en crudo': [100, 220], 'Pescado blanco en crudo (merluza, bacalao…)': [100, 300], 'Gambas o langostinos pelados': [80, 250],
+    'Atún al natural (escurrido)': [1, 3, 1, 'ud'], 'Huevo entero': [1, 3, 1, 'ud', 0.35], 'Claras de huevo': [2, 8, 1, 'ud'],
+    'Jamón serrano': [20, 80, 10], 'Queso fresco batido 0 %': [100, 350, 25], 'Yogur alto en proteína': [1, 2, 1, 'ud'],
+    'Tofu firme': [80, 250], 'Proteína en polvo (whey)': [15, 45, 5],
+    'Patata cocida': [80, 500], 'Boniato cocido': [80, 450], 'Yuca cocida': [80, 350], 'Quinoa cocida': [60, 300], 'Cuscús cocido': [60, 300],
+    'Ñoquis': [80, 300], 'Pan integral': [1, 4, 1, 'ud'], 'Pan blanco': [1, 4, 1, 'ud'], 'Copos de avena': [20, 120, 5], 'Tortitas de arroz': [1, 6, 1, 'ud'],
+    'Maíz cocido': [50, 250], 'Lentejas cocidas': [80, 300], 'Garbanzos cocidos': [80, 300], 'Alubias cocidas': [80, 300],
+    'Plátano': [0.5, 2, 0.5, 'ud'], 'Manzana': [0.5, 2, 0.5, 'ud'], 'Naranja': [1, 2, 1, 'ud'], 'Fresas': [50, 300], 'Arándanos': [50, 200],
+    'Dátiles': [1, 6, 1, 'ud'], 'Miel': [5, 30, 5],
+    'Aceite de oliva virgen extra': [0, 20, 5], 'Aguacate (pulpa)': [0, 140, 10], 'Nueces': [0, 30, 5], 'Almendras': [0, 30, 5],
+    'Crema de cacahuete 100 %': [0, 30, 5], 'Aceitunas': [0, 15, 1, 'ud'], 'Queso curado': [0, 3, 1, 'ud'], 'Chocolate negro 85 %': [0, 3, 1, 'ud'],
+  };
+  /* Límites en gramos: { min, max, paso, ud, comp } */
+  function lim(a) {
+    const b = LIM_T[a.t] || [0, 500, 10], o = LIM[a.n] || [], ud = o[3] === 'ud', k = ud ? a.u[2] : 1;
+    return { min: (o[0] ?? b[0]) * k, max: (o[1] ?? b[1]) * k, paso: (o[2] ?? b[2]) * k, ud, comp: o[4] || 0 };
+  }
+  const rolDe = a => a.t === 'P' ? 'p' : a.t === 'C' ? 'c' : a.t === 'G' ? 'g' : null;
+  const NOM_M = { p: 'proteína', c: 'hidratos', g: 'grasa' };
+  /* Cálculo por prioridades:
+     1) Verdura y lácteos: una ración. Complementos (huevo junto a otra proteína): 1–2 unidades, ~⅓ de la proteína.
+     2) Cada macro lo completa su fuente principal descontando lo que ya aportan los demás, sin salirse de sus límites.
+     3) Lo que se cuenta en unidades se redondea a unidades enteras y se recalcula el resto.
+     4) Si no se puede llegar sin exagerar, se avisa en lugar de inventar cantidades. */
   function calcular(sel, obj) {
-    const q = sel.map(s => s.fijo != null ? s.fijo : s.a.t === 'V' ? s.a.u[2] : 0);
-    const rol = s => s.a.t === 'P' ? 'p' : s.a.t === 'C' ? 'c' : s.a.t === 'G' ? 'g' : null;
-    for (let it = 0; it < 40; it++) {
-      ['c', 'p', 'g'].forEach(m => {
-        const idx = sel.map((s, i) => i).filter(i => rol(sel[i]) === m && sel[i].fijo == null); if (!idx.length) return;
-        const otros = sel.reduce((t, s, i) => t + (idx.includes(i) ? 0 : s.a[m] * q[i] / 100), 0), falta = Math.max(0, obj[m] - otros);
-        idx.forEach(i => { q[i] = falta / idx.length / (sel[i].a[m] || 1) * 100; });
+    const L = sel.map(s => lim(s.a)), fijo = sel.map(s => s.fijo != null), q = sel.map((s, i) => s.fijo != null ? s.fijo : 0);
+    const hayOtra = m => i => sel.some((s, j) => j !== i && rolDe(s.a) === m && !L[j].comp);
+    sel.forEach((s, i) => {
+      if (fijo[i]) return;
+      if (s.a.t === 'V' || s.a.t === 'L') { q[i] = s.a.u[2]; fijo[i] = true; }
+      else if (L[i].comp && hayOtra(rolDe(s.a))(i)) {
+        const m = rolDe(s.a), u = s.a.u[2], n = Math.round(obj[m] * L[i].comp / (s.a[m] * u / 100));
+        q[i] = Math.min(2, Math.max(1, n)) * u; fijo[i] = true;
+      }
+    });
+    const resolver = () => {
+      for (let it = 0; it < 30; it++) ['p', 'c', 'g'].forEach(m => {
+        const idx = sel.map((s, i) => i).filter(i => !fijo[i] && rolDe(sel[i].a) === m); if (!idx.length) return;
+        const otros = sel.reduce((t, s, i) => t + (idx.includes(i) ? 0 : s.a[m] * q[i] / 100), 0);
+        let falta = Math.max(0, obj[m] - otros), libres = idx.slice();
+        // reparto: la primera fuente elegida es la principal (peso 1), las demás acompañan (peso 0,6); respetando máximos
+        for (let pase = 0; pase < 4 && libres.length && falta > 0.01; pase++) {
+          const w = libres.map(i => i === idx[0] ? 1 : 0.6), tw = w.reduce((a, b) => a + b, 0); let sobra = 0;
+          libres = libres.filter((i, k) => {
+            const g = falta * w[k] / tw / (sel[i].a[m] || 1) * 100;
+            if (g > L[i].max) { q[i] = L[i].max; sobra += (g - L[i].max) * sel[i].a[m] / 100; return false; }
+            q[i] = g; return true;
+          });
+          falta = sobra;
+        }
+        if (!libres.length && falta > 0.01) return;
+        idx.forEach(i => { if (!libres.includes(i) && q[i] < L[i].max) q[i] = Math.min(q[i], L[i].max); });
       });
-    }
-    const red = (a, v) => a.t === 'G' && v < 40 ? Math.round(v) : Math.round(v / 5) * 5;
-    const gr = sel.map((s, i) => s.fijo != null ? s.fijo : red(s.a, q[i]));
+    };
+    resolver();
+    // unidades enteras (o medias) primero y se vuelve a ajustar lo que va en gramos
+    sel.forEach((s, i) => { if (!fijo[i] && L[i].ud) { q[i] = Math.min(L[i].max, Math.max(L[i].min, Math.round(q[i] / L[i].paso) * L[i].paso)); fijo[i] = true; } });
+    resolver();
+    const gr = sel.map((s, i) => {
+      if (s.fijo != null) return s.fijo;
+      if (fijo[i]) return Math.round(q[i]);
+      const l = L[i]; let v = Math.round(q[i] / l.paso) * l.paso;
+      if (s.a.t === 'G' && v < l.paso) return 0;                 // la grasa ya la ponen los demás
+      return Math.min(l.max, Math.max(l.min, v));                 // nunca un plato ridículo (30 g de pollo) ni exagerado
+    });
     const tot = ['kcal', 'p', 'c', 'g'].reduce((o, m) => ({ ...o, [m]: sel.reduce((t, s, i) => t + s.a[m] * gr[i] / 100, 0) }), {});
-    return { gr, tot };
+    // avisos honestos cuando no cuadra sin exagerar
+    const avisos = [];
+    ['p', 'c', 'g'].forEach(m => {
+      const dif = tot[m] - obj[m], tol = m === 'g' ? Math.max(6, obj[m] * 0.25) : Math.max(8, obj[m] * 0.15);
+      if (Math.abs(dif) <= tol || obj[m] < 5) return;
+      const fuentes = sel.map((s, i) => i).filter(i => rolDe(sel[i].a) === m && !L[i].comp);
+      if (dif < 0) {
+        const tope = fuentes.filter(i => gr[i] >= L[i].max - 0.5).map(i => sel[i].a.n.split(' (')[0].toLowerCase());
+        avisos.push(!fuentes.length ? `Faltan ~${fmtNum(-dif, 0)} g de ${NOM_M[m]}: añade una fuente (${m === 'p' ? 'pollo, atún, claras, yogur proteico…' : m === 'c' ? 'arroz, patata, pan, fruta…' : 'aceite, aguacate, frutos secos…'}).`
+          : tope.length ? `Faltan ~${fmtNum(-dif, 0)} g de ${NOM_M[m]}: ${tope.join(' y ')} ya está en una ración generosa. Mejor añade otra fuente que poner más cantidad.` : `Faltan ~${fmtNum(-dif, 0)} g de ${NOM_M[m]}.`);
+      } else {
+        const top = sel.map((s, i) => [i, s.a[m] * gr[i] / 100]).filter(([i]) => rolDe(sel[i].a) !== m || L[i].comp).sort((a, b) => b[1] - a[1])[0];
+        avisos.push(`Te pasas ~${fmtNum(dif, 0)} g de ${NOM_M[m]}${top && top[1] > 2 ? ` por ${sel[top[0]].a.n.split(' (')[0].toLowerCase()}` : ''}${m === 'g' ? '. Cocina sin aceite o elige una opción más magra.' : m === 'p' ? '. No pasa nada: la proteína de más no es un problema.' : '.'}`);
+      }
+    });
+    return { gr, tot, avisos };
   }
   const st0 = () => ({ ctx: null, k: 0, sel: [] });
   function formPlato() {
@@ -538,9 +612,9 @@ const Nutricion = (() => {
         <div class="stack" style="gap:6px"><span class="small"><b>¿Qué quieres comer?</b> <span class="muted">Elige una proteína, un hidrato y una grasa (y verdura si quieres)</span></span>
           <input type="search" id="calc-q" list="calc-ali" placeholder="Escribe un alimento: pollo, arroz, aguacate…" autocomplete="off"><datalist id="calc-ali">${ALI.map(a => `<option value="${esc(a.n)}">`).join('')}</datalist>
           <div class="chips">${['Pollo (pechuga) cocinado', 'Arroz blanco cocido', 'Patata cocida', 'Huevo entero', 'Aceite de oliva virgen extra', 'Verdura variada (ensalada, brócoli, judías…)'].filter(x => !st.sel.some(s => s.a.n === x)).map(x => `<button type="button" class="pill" data-cadd="${esc(x)}">＋ ${esc(x.split(' (')[0])}</button>`).join('')}</div></div>
-        ${r ? `<div class="calc-res">${st.sel.map((s, i) => `<div class="calc-al"><div class="grow"><b>${esc(s.a.n)}</b><span>${equivVisual(s.a, r.gr[i])}</span></div><div class="calc-g"><b class="num">${fmtNum(r.gr[i], 0)} g</b>${s.a.t === 'V' || s.fijo != null ? `<small>${s.fijo != null ? 'fijado' : 'fijo'}</small>` : ''}</div><button type="button" class="btn sm ghost" data-cfix="${i}" aria-label="Fijar cantidad">✎</button><button type="button" class="btn sm ghost" data-cdel="${i}" aria-label="Quitar">✕</button></div>`).join('')}
-          <div class="calc-tot small">Total: <b>${fmtNum(r.tot.kcal, 0)} kcal</b> · P ${fmtNum(r.tot.p, 0)} g · C ${fmtNum(r.tot.c, 0)} g · G ${fmtNum(r.tot.g, 0)} g ${Math.abs(r.tot.kcal - obj.kcal) <= Math.max(40, obj.kcal * 0.08) ? '<span class="pill ok">✓ encaja</span>' : `<span class="pill warn">${r.tot.kcal > obj.kcal ? '+' : ''}${fmtNum(r.tot.kcal - obj.kcal, 0)} kcal</span>`}</div>
-          ${!st.sel.some(s => s.a.t === 'P') ? '<p class="small" style="color:var(--warn);margin:0">Añade una fuente de proteína para completar.</p>' : ''}${!st.sel.some(s => s.a.t === 'C') && obj.c > 15 ? '<p class="small" style="color:var(--warn);margin:0">Añade un hidrato para completar.</p>' : ''}${!st.sel.some(s => s.a.t === 'G') && obj.g > 8 ? '<p class="small muted" style="margin:0">La grasa la completa la propia proteína o añade aceite, aguacate o frutos secos.</p>' : ''}
+        ${r ? `<div class="calc-res">${st.sel.map((s, i) => `<div class="calc-al"><div class="grow"><b>${esc(s.a.n)}</b><span>${r.gr[i] ? equivVisual(s.a, r.gr[i]) : 'No hace falta: ya lo cubren los demás alimentos'}</span></div><div class="calc-g"><b class="num">${r.gr[i] ? fmtNum(r.gr[i], 0) + ' g' : '—'}</b>${s.fijo != null ? '<small>fijado</small>' : s.a.t === 'V' || s.a.t === 'L' ? '<small>1 ración</small>' : ''}</div><button type="button" class="btn sm ghost" data-cfix="${i}" aria-label="Fijar cantidad">✎</button><button type="button" class="btn sm ghost" data-cdel="${i}" aria-label="Quitar">✕</button></div>`).join('')}
+          <div class="calc-tot small">Total: <b>${fmtNum(r.tot.kcal, 0)} kcal</b> · P ${fmtNum(r.tot.p, 0)} g · C ${fmtNum(r.tot.c, 0)} g · G ${fmtNum(r.tot.g, 0)} g ${Math.abs(r.tot.kcal - obj.kcal) <= Math.max(40, obj.kcal * 0.08) && !r.avisos.length ? '<span class="pill ok">✓ encaja</span>' : `<span class="pill warn">${r.tot.kcal > obj.kcal ? '+' : ''}${fmtNum(r.tot.kcal - obj.kcal, 0)} kcal</span>`}</div>
+          ${r.avisos.map(x => `<p class="small" style="color:var(--warn);margin:0">${esc(x)}</p>`).join('')}
           <button type="button" class="btn full" id="calc-diario">🍽 Apuntar este plato en mi diario</button></div>` : ''}
         <p class="note">Cantidades orientativas con valores medios de tablas de composición: la marca, la receta y la cocción los cambian. Si tu plan de Jesús dice otra cantidad, manda la de tu plan.</p>`;
     };
