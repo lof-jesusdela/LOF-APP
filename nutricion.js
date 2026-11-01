@@ -598,6 +598,13 @@ const Nutricion = (() => {
     });
     return { gr, tot, avisos };
   }
+  /* Explica que la cantidad de una fuente ya descuenta lo que ponen los alimentos mixtos (la grasa de la yema, la proteína del queso…) */
+  function descuento(sel, gr, i) {
+    const m = rolDe(sel[i].a); if (!m || lim(sel[i].a).comp && sel.some((s, j) => j !== i && rolDe(s.a) === m)) return '';
+    const otros = sel.map((s, j) => [s.a.n.split(' (')[0].toLowerCase(), j === i || rolDe(s.a) === m && !lim(s.a).comp ? 0 : s.a[m] * gr[j] / 100]).filter(x => x[1] >= 2);
+    if (!otros.length) return '';
+    return `<small class="calc-desc">↳ Ya descuenta ${fmtNum(otros.reduce((t, x) => t + x[1], 0), 0)} g de ${NOM_M[m]} que ponen ${otros.map(x => x[0]).join(' y ')}</small>`;
+  }
   const st0 = () => ({ ctx: null, k: 0, sel: [] });
   function formPlato() {
     const d = S.modo === 'coach' && S.ficha ? datosPrevia(S.ficha) : S.d, n = d?.nutri || vacio(), l = ctxDe(n);
@@ -612,7 +619,7 @@ const Nutricion = (() => {
         <div class="stack" style="gap:6px"><span class="small"><b>¿Qué quieres comer?</b> <span class="muted">Elige una proteína, un hidrato y una grasa (y verdura si quieres)</span></span>
           <input type="search" id="calc-q" list="calc-ali" placeholder="Escribe un alimento: pollo, arroz, aguacate…" autocomplete="off"><datalist id="calc-ali">${ALI.map(a => `<option value="${esc(a.n)}">`).join('')}</datalist>
           <div class="chips">${['Pollo (pechuga) cocinado', 'Arroz blanco cocido', 'Patata cocida', 'Huevo entero', 'Aceite de oliva virgen extra', 'Verdura variada (ensalada, brócoli, judías…)'].filter(x => !st.sel.some(s => s.a.n === x)).map(x => `<button type="button" class="pill" data-cadd="${esc(x)}">＋ ${esc(x.split(' (')[0])}</button>`).join('')}</div></div>
-        ${r ? `<div class="calc-res">${st.sel.map((s, i) => `<div class="calc-al"><div class="grow"><b>${esc(s.a.n)}</b><span>${r.gr[i] ? equivVisual(s.a, r.gr[i]) : 'No hace falta: ya lo cubren los demás alimentos'}</span></div><div class="calc-g"><b class="num">${r.gr[i] ? fmtNum(r.gr[i], 0) + ' g' : '—'}</b>${s.fijo != null ? '<small>fijado</small>' : s.a.t === 'V' || s.a.t === 'L' ? '<small>1 ración</small>' : ''}</div><button type="button" class="btn sm ghost" data-cfix="${i}" aria-label="Fijar cantidad">✎</button><button type="button" class="btn sm ghost" data-cdel="${i}" aria-label="Quitar">✕</button></div>`).join('')}
+        ${r ? `<div class="calc-res">${st.sel.map((s, i) => `<div class="calc-al"><div class="grow"><b>${esc(s.a.n)}</b><span>${r.gr[i] ? equivVisual(s.a, r.gr[i]) : 'No hace falta: ya lo cubren los demás alimentos'}</span>${r.gr[i] ? `<small class="calc-ap">Aporta P ${fmtNum(s.a.p * r.gr[i] / 100, 0)} · C ${fmtNum(s.a.c * r.gr[i] / 100, 0)} · G ${fmtNum(s.a.g * r.gr[i] / 100, 0)} g</small>` : ''}${descuento(st.sel, r.gr, i)}</div><div class="calc-g"><b class="num">${r.gr[i] ? fmtNum(r.gr[i], 0) + ' g' : '—'}</b>${s.fijo != null ? '<small>fijado</small>' : s.a.t === 'V' || s.a.t === 'L' ? '<small>1 ración</small>' : ''}</div><button type="button" class="btn sm ghost" data-cfix="${i}" aria-label="Fijar cantidad">✎</button><button type="button" class="btn sm ghost" data-cdel="${i}" aria-label="Quitar">✕</button></div>`).join('')}
           <div class="calc-tot small">Total: <b>${fmtNum(r.tot.kcal, 0)} kcal</b> · P ${fmtNum(r.tot.p, 0)} g · C ${fmtNum(r.tot.c, 0)} g · G ${fmtNum(r.tot.g, 0)} g ${Math.abs(r.tot.kcal - obj.kcal) <= Math.max(40, obj.kcal * 0.08) && !r.avisos.length ? '<span class="pill ok">✓ encaja</span>' : `<span class="pill warn">${r.tot.kcal > obj.kcal ? '+' : ''}${fmtNum(r.tot.kcal - obj.kcal, 0)} kcal</span>`}</div>
           ${r.avisos.map(x => `<p class="small" style="color:var(--warn);margin:0">${esc(x)}</p>`).join('')}
           <button type="button" class="btn full" id="calc-diario">🍽 Apuntar este plato en mi diario</button></div>` : ''}
