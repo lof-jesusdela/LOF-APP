@@ -1466,6 +1466,11 @@ const imgTema = (k, sx) => { const T = S.temas || {}; return T[`${k}_${sx}`] || 
 function temaDe(d, sx = '') {
   const man = TEMA_ANT[d?.tematica] || d?.tematica;
   if (man && TEMAS.some(t => t[0] === man)) return man;
+  const tit = norm([d?.titulo, d?.foco, d?.nombre].filter(Boolean).join(' '));
+  const PAL = [['recuperacion', /recupera|descarga|regenera/], ['movilidad', /movilidad|articular|estiramiento/], ['futbol', /futbol|partido|campo/], ['cardio_parque', /parque|correr|carrera|rodaje/], ['cardio_gym', /cardio|cinta|eliptica|bici/],
+    ['completo', /cuerpo completo|full ?body|fullbody|total/], ['pierna_gluteo', /gluteo/], ['pierna_cadera', /cadera/], ['pierna_rodilla', /rodilla/], ['pierna_delante', /delante|anterior|cuadricep/], ['pierna_detras', /detras|posterior|isquio|femoral/],
+    ['sup_espalda_alta', /espalda alta|escapul|trapecio/], ['sup_pecho', /pecho|pectoral/], ['sup_brazos', /brazo|bicep|tricep/], ['sup_hombros', /hombro|deltoid/], ['sup_espalda', /espalda|dorsal/], ['core', /\bcore\b|abdom/]];
+  for (const [k, re] of PAL) { if (!re.test(tit)) continue; if ((k === 'sup_pecho' && sx === 'm') || (k === 'pierna_gluteo' && sx === 'h')) continue; return k; }
   const bl = d?.bloques_sesion || [], ejs = bl.filter(b => b.tipo === 'fuerza').flatMap(b => b.ejercicios_sesion).map(ejDe);
   if (!ejs.length) { const c = bl.find(b => b.tipo === 'cardio'); return c ? (esCorrer(c.maquina) && !/cinta/i.test(c.maquina || '') ? 'cardio_parque' : 'cardio_gym') : bl.some(b => b.tipo === 'movilidad') ? 'movilidad' : 'recuperacion'; }
   const n = g => ejs.filter(x => grupoEjOk(x, g)).length, sup = n('sup'), inf = n('inf'), core = n('core') + n('abdomen');
@@ -3632,7 +3637,15 @@ function formServicio() {
 
 /* ---------- Biblioteca de ejercicios (coach) ---------- */
 /* Pestañas de la biblioteca: Ejercicios | Métodos */
-const bibTabs = () => `<div class="chips" role="group" aria-label="Biblioteca" style="margin-bottom:12px"><button aria-pressed="${S.bibVista !== 'met'}" data-act="bibVista" data-v="ej">Ejercicios</button><button aria-pressed="${S.bibVista === 'met'}" data-act="bibVista" data-v="met">Métodos</button></div>`;
+const bibTabs = () => `<div class="chips" role="group" aria-label="Biblioteca" style="margin-bottom:12px"><button aria-pressed="${!S.bibVista || S.bibVista === 'ej'}" data-act="bibVista" data-v="ej">Ejercicios</button><button aria-pressed="${S.bibVista === 'met'}" data-act="bibVista" data-v="met">Métodos</button><button aria-pressed="${S.bibVista === 'tem'}" data-act="bibVista" data-v="tem">Portadas de entreno</button></div>`;
+/* Portadas: una imagen por temática (chico y chica); a cada alumno le sale la suya según la temática de la sesión */
+function vTemas() {
+  const ran = T => T[2] ? T[2].split('').map(x => [T[0] + '_' + x, x === 'h' ? 'Chico' : 'Chica']) : [[T[0], 'Imagen']];
+  return `${bibTabs()}<section class="stack"><span class="eyebrow">Tu biblioteca</span><h1>Portadas de entreno</h1><p class="small muted">Sube una foto por temática. Cada sesión toma su temática de la que elijas al editar el día, del título del entreno (p. ej. «foco cadera», «espalda alta») o de sus ejercicios, y a cada alumno le sale la foto de su sexo.</p></section>
+  <section class="section"><div class="card">${TEMAS.map(T => `<div class="line" style="flex-wrap:wrap;gap:12px;align-items:flex-start"><b class="grow" style="min-width:200px">${esc(T[1])}</b><div class="row" style="gap:12px">${ran(T).map(([c, l]) => { const u = S.temas?.[c]; return `<div class="stack" style="gap:4px;align-items:center"><span class="small muted">${l}</span>${u ? `<img src="${esc(u)}" alt="" style="width:96px;height:60px;object-fit:cover;border-radius:8px">` : '<span class="small muted" style="width:96px;height:60px;display:flex;align-items:center;justify-content:center;background:var(--surface-2);border-radius:8px">Sin foto</span>'}<label class="btn sm ghost"><input type="file" data-tema="${c}" accept="image/*" hidden>📷 ${u ? 'Cambiar' : 'Poner'}</label></div>`; }).join('')}</div></div>`).join('')}</div></section>`;
+}
+document.addEventListener('change', async ev => { const c = ev.target.dataset?.tema, f = ev.target.files?.[0]; if (!c || !f) return;
+  try { toast('Subiendo…'); const u = await subirImagenEj(f, 'tema-' + c, 1400); const { error } = await sb.from('ajustes').upsert([{ clave: 'tema_' + c, valor: u }], { onConflict: 'clave' }); if (error) throw error; (S.temas ||= {})[c] = u; render(); toast('Portada guardada'); } catch (err) { fallo(err); } });
 const BASE_ETQ = { '': 'Series normales (solo explicación para el alumno)', ...Tandas.BASES };
 const BASE_FIJA = { 'Rest-pause': 'tandas', 'Cluster': 'tandas', 'Myo reps': 'tandas', 'Dropset': 'drop', 'Unilateral': 'lados', 'Unilateral lento': 'lados', 'Superlento': '', 'Unilateral superlento': 'lados', 'Unilateral doble': 'lados', 'Contrastes': 'tandas', 'Unilateral contraste': 'lados', 'Forzadas': '', 'Topset': '', 'Isométrico': 'iso', 'Superserie': '' };
 function vMetodos() {
@@ -3703,6 +3716,7 @@ const GRUPOS_EJ = [
 const grupoEjOk = (x, g) => { const d = GRUPOS_EJ.find(z => z[0] === g); return !d || d[2].test(norm((x.nombre || '') + ' ' + (x.musculo || '')).replace(/[^a-z0-9·\s-]/g, ' ')); };
 function vEjercicios() {
   if (S.bibVista === 'met') return vMetodos();
+  if (S.bibVista === 'tem') return vTemas();
   const l = S.c.ejercicios.filter(x => !x.privado), filtro = norm(S.filtroEj || '');
   const claveEj = x => norm(x.nombre || '').replace(/\([^)]*\)/g, ' ').replace(/\b(en maquina|en polea|maquina|polea)\b/g, ' ').replace(/\s+/g, ' ').trim(), cuenta = {}; l.forEach(x => { const k = claveEj(x); cuenta[k] = (cuenta[k] || 0) + 1; });
   const esCardio = x => /^cardio ·/i.test(x.nombre || ''), sel = S.ejSel || [], nDup = l.filter(x => cuenta[claveEj(x)] > 1).length;
@@ -5547,7 +5561,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v173';
+const APP_VER = 'v174';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
