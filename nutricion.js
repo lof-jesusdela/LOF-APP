@@ -361,11 +361,43 @@ const Nutricion = (() => {
   const incHecho = e => ['recibido', 'revision', 'validado', 'no_aplica', 'no_disponible'].includes(e);
   const resumenInc = plan => plan.find(x => x.clave === 'incorporacion')?.datos || {};
   const diaInc = r => r.inicio ? Math.max(1, Math.floor((fecha(hoyISO()) - fecha(r.inicio)) / 864e5) + 1) : null;
+  /* Composición corporal de referencia para la incorporación: la medición sobre la que se fijaron los objetivos
+     (la última hasta el día en que se creó el objetivo; si no consta, la primera medición) */
+  function refComp(f, a) {
+    const med = conKgGrasa((f?.med || []).slice().sort((x, y) => String(x.fecha).localeCompare(String(y.fecha)))), obj = f?.medObj || null;
+    if (!med.length) return { ref: null, obj };
+    const dia = String(obj?.created_at || obj?.creado_at || '').slice(0, 10), antes = dia ? med.filter(m => m.fecha <= dia) : [];
+    const ref = antes.length ? antes[antes.length - 1] : med[0];
+    const cl = clasifGrasa(ref.grasa_pct, a?.sexo, edadDe(a?.fecha_nacimiento, ref.fecha));
+    return { ref, obj, cl, edad: edadDe(a?.fecha_nacimiento, ref.fecha) };
+  }
+  const CAMPOS_REF = [['peso', 'Peso', ' kg'], ['grasa_pct', '% grasa', ' %'], ['grasa_kg', 'Kg de grasa', ' kg'], ['cintura', 'Cintura', ' cm'], ['cadera', 'Cadera', ' cm'], ['abd_bajo', 'Abdomen bajo', ' cm']];
+  function textoComp(c, a) {
+    if (!c.ref) return '';
+    const r = c.ref, o = c.obj || {}, mm = r.peso && r.grasa_kg != null ? r.peso - r.grasa_kg : null;
+    const l = [`Composición corporal de referencia (${fCorta(r.fecha)})${a?.sexo ? ` · ${a.sexo}` : ''}${c.edad != null ? `, ${c.edad} años` : ''}`];
+    CAMPOS_REF.forEach(([k, t, u]) => { if (r[k] != null) l.push(`- ${t}: ${fmtNum(r[k])}${u}${o[k] != null ? ` → objetivo ${fmtNum(Number(o[k]))}${u}` : ''}`); });
+    if (mm != null) l.push(`- Masa magra: ${fmtNum(mm)} kg`);
+    if (c.cl) l.push(`- Percentil de grasa: ${c.cl.l} (rango saludable ${RANGOS_GRASA[a.sexo].find(x => (c.edad ?? 30) <= x[0]).slice(1, 3).join('–')} %, tramo ${c.cl.tramo} años)`);
+    if (c.obj) l.push(`- Objetivo${o.fecha ? ` para el ${fCorta(o.fecha)}` : ''}${o.nota ? `: ${o.nota}` : ''}`);
+    return l.join('\n');
+  }
+  function vRefComp(c, a) {
+    if (!c.ref) return `<div class="card small muted">Aún no tiene mediciones. Añade la valoración inicial en «Composición corporal» de su ficha y aquí aparecerá sola.</div>`;
+    const r = c.ref, o = c.obj || {};
+    return `<div class="card stack" style="gap:6px"><div class="row" style="gap:8px"><b class="grow small">Medición de referencia · ${esc(fCorta(r.fecha))}</b>${c.cl ? `<span class="pill ${c.cl.n}">${esc(c.cl.l)}</span>` : ''}</div>
+      ${CAMPOS_REF.filter(([k]) => r[k] != null).map(([k, t, u]) => `<div class="row small"><span class="grow">${t}</span><b>${fmtNum(r[k])}${u}</b>${o[k] != null ? `<span class="muted">&nbsp;→ 🎯 ${fmtNum(Number(o[k]))}${u}</span>` : ''}</div>`).join('')}
+      ${c.obj ? (o.nota ? `<p class="small" style="margin:0">🎯 ${esc(o.nota)}</p>` : '') : '<p class="small" style="color:var(--warn);margin:0">Falta fijar el objetivo de composición corporal (botón 🎯 Objetivo en su ficha).</p>'}
+      <button type="button" class="btn sm ghost" id="inc-cc" style="align-self:flex-start">📋 Copiar para ChatGPT</button></div>`;
+  }
   function vIncCoach(f, a) {
     const plan = f.plan; if (!plan) return '<section class="section"><div class="card small muted">Cargando su incorporación…</div></section>';
-    const r = resumenInc(plan), it = r.items || {}, dia = diaInc(r), nom = (a?.nombre || '').split(' ')[0];
+    const r = resumenInc(plan), it0 = r.items || {}, dia = diaInc(r), nom = (a?.nombre || '').split(' ')[0], cc = refComp(f, a);
+    // la composición corporal se rellena sola con la medición de referencia y el objetivo de su ficha
+    const it = { ...it0, composicion: it0.composicion?.estado && it0.composicion.estado !== 'pendiente' ? it0.composicion : cc.ref ? { ...(it0.composicion || {}), estado: cc.obj ? 'recibido' : 'revision', fecha: cc.ref.fecha } : it0.composicion };
+    const resComp = cc.ref ? `Ref. ${fCorta(cc.ref.fecha)}: ${[cc.ref.peso != null && fmtNum(cc.ref.peso) + ' kg', cc.ref.grasa_pct != null && fmtNum(cc.ref.grasa_pct) + ' %'].filter(Boolean).join(' · ')}${cc.cl ? ' (' + cc.cl.l + ')' : ''}${cc.obj ? ` → 🎯 ${[cc.obj.peso != null && fmtNum(Number(cc.obj.peso)) + ' kg', cc.obj.grasa_pct != null && fmtNum(Number(cc.obj.grasa_pct)) + ' %'].filter(Boolean).join(' · ')}` : ' · falta objetivo'}` : '';
     const filaE = ([k, t, ic, s]) => { const x = plan.find(z => z.clave === 'inc-' + k), e = it[k]?.estado || 'pendiente', st = INC_EST[e], nf = (x?.imagenes || []).length;
-      return `<button class="line inc-l" data-act="nuInc" data-k="${k}" style="width:100%;text-align:left;cursor:pointer"><span class="inc-ic">${ic}</span><div class="grow"><b class="small">${esc(t)}</b><div class="small muted">${it[k]?.fecha ? esc(fCorta(it[k].fecha)) + ' · ' : ''}${nf ? `${nf} archivo${nf > 1 ? 's' : ''} · ` : ''}${it[k]?.calidad ? esc(it[k].calidad) + ' · ' : ''}${x?.contenido ? 'con notas' : esc(s)}</div></div><span class="pill ${st[1]}">${st[0]}</span></button>`; };
+      return `<button class="line inc-l" data-act="nuInc" data-k="${k}" style="width:100%;text-align:left;cursor:pointer"><span class="inc-ic">${ic}</span><div class="grow"><b class="small">${esc(t)}</b><div class="small muted">${k === 'composicion' && resComp ? esc(resComp) : `${it[k]?.fecha ? esc(fCorta(it[k].fecha)) + ' · ' : ''}${nf ? `${nf} archivo${nf > 1 ? 's' : ''} · ` : ''}${it[k]?.calidad ? esc(it[k].calidad) + ' · ' : ''}${x?.contenido ? 'con notas' : esc(s)}`}</div></div><span class="pill ${st[1]}">${st[0]}</span></button>`; };
     const pub = k => { const x = plan.find(z => z.clave === k); return !x || !(x.contenido || (x.imagenes || []).length || (x.datos?.ctx || []).length) ? ['Vacío', ''] : x.visible === false ? ['Borrador', 'warn'] : ['Publicado', 'ok']; };
     const hechos = INC.filter(([k]) => incHecho(it[k]?.estado)).length;
     return `<section class="section"><div class="section-head"><h2>Primeros 14 días</h2><span class="small muted">${dia ? `Día ${Math.min(dia, 99)}${dia <= 14 ? ' de 14' : ''}` : ''}</span></div>
@@ -383,12 +415,14 @@ const Nutricion = (() => {
     const x = (f.plan || []).find(z => z.clave === 'inc-' + k) || {}, r = resumenInc(f.plan || []), cur = (r.items || {})[k] || {};
     const est = k === 'reunion' ? [['pendiente', 'Pendiente'], ['recibido', 'Programada'], ['validado', 'Hecha']] : Object.entries(INC_EST).map(([v, [t]]) => [v, t]);
     abrirSheet(`<form class="stack" id="f-inc"><h2>${def[2]} ${esc(def[1])}</h2><p class="small muted" style="margin-top:-8px">${esc(def[3])}</p>
+      ${k === 'composicion' ? vRefComp(refComp(f, (S.c?.perfiles || []).find(p => p.id === f.id)), (S.c?.perfiles || []).find(p => p.id === f.id)) : ''}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="f">Estado<select id="inc-e">${est.map(([v, t]) => `<option value="${v}" ${(cur.estado || 'pendiente') === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label><label class="f">Fecha<input type="date" id="inc-f" value="${esc(cur.fecha || '')}"></label></div>
       ${k === 'reunion' ? '' : `<label class="f">Calidad de la información<select id="inc-q"><option value="">Sin valorar</option>${['Completa', 'Parcial', 'Insuficiente'].map(v => `<option ${cur.calidad === v ? 'selected' : ''}>${v}</option>`).join('')}</select></label>`}
       <label class="f">Notas (solo tú)<textarea id="inc-n" rows="6" placeholder="${k === 'reunion' ? 'Lo que hace bien, lo que le limita, prioridades acordadas…' : k === 'analitica' ? 'Valores destacados con su unidad y rango del laboratorio, fecha de extracción…' : 'Lo más importante de lo recibido…'}">${esc(x.contenido || '')}</textarea></label>
       ${(x.imagenes || []).length ? `<div class="stack" style="gap:6px"><span class="small"><b>Archivos</b> · marca los que quieras quitar</span><div class="plan-imgs">${x.imagenes.map((p, i) => `<label class="plan-q">${esPdf(p) ? `<a class="plan-pdf" href="${esc(f.planImg?.[p] || '#')}" target="_blank" rel="noopener">📄 PDF</a>` : `<img src="${esc(f.planImg?.[p] || '')}" alt="">`}<span><input type="checkbox" data-quitar="${i}"> Quitar</span></label>`).join('')}</div></div>` : ''}
       ${k === 'reunion' ? '' : '<label class="f">Añadir fotos o PDF (informes, capturas, analítica, cuestionario…)<input type="file" id="inc-a" accept="image/*,application/pdf" multiple></label>'}
       <p class="err" id="inc-err"></p><button class="btn full" id="inc-b">Guardar</button></form>`);
+    $('#inc-cc')?.addEventListener('click', async () => { const al = (S.c?.perfiles || []).find(p => p.id === f.id), t = textoComp(refComp(f, al), al); try { await navigator.clipboard.writeText(t); toast('Copiado'); } catch (e) { prompt('Copia el texto', t); } });
     $('#f-inc').addEventListener('submit', async e => {
       e.preventDefault(); const btn = $('#inc-b'); btn.disabled = true; btn.textContent = 'Guardando…';
       try {
