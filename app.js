@@ -5532,12 +5532,15 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
+const APP_VER = 'v170';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
     ${S.perfil.rol === 'coach' && !S.prueba && !S.vista ? '<button class="btn ghost full" data-act="miFicha">✎ Mi ficha: editar mi plan, entrenos y datos</button>' : ''}
     <button class="btn ghost full" data-act="cambiarClave">Cambiar contraseña</button>
     <button class="btn ghost full" data-act="salir">Cerrar sesión</button>
+    <button class="btn ghost full" data-act="actualizarApp">🔄 Buscar actualización</button>
+    <p class="small muted" style="text-align:center;margin:0">Versión de la app: <b>${APP_VER}</b></p>
     <p class="note">Para instalarla como app: en iPhone, Safari → Compartir → "Añadir a pantalla de inicio". En Android, Chrome → menú ⋮ → "Instalar aplicación".</p></div>`);
 }
 
@@ -5870,6 +5873,7 @@ document.addEventListener('click', async e => {
     case 'pagar': await marcarPagado(+b.dataset.id, b); break;
     case 'deshacerPago': await deshacerPago(+b.dataset.id, b); break;
     case 'recordar': await copiarRecordatorio(+b.dataset.id); break;
+    case 'actualizarApp': toast('Actualizando…'); try { (await navigator.serviceWorker?.getRegistrations() || []).forEach(r => r.unregister()); (await caches.keys()).forEach(k => caches.delete(k)); } catch (e) { } location.replace(location.pathname + '?v=' + Date.now()); break;
     case 'cuenta': if (S.prueba) { await salirPrueba(); break; } if (S.vista) { await salirVista(); break; } vCuenta(); break;
     case 'miFicha': cerrarSheet(); if (S.vista) await salirVista(); S.modo = 'coach'; if (!S.c) await cargarCoach(); if (!S.c.perfiles.some(x => x.id === S.user.id)) return toast('No encuentro tu perfil: cierra sesión y vuelve a entrar'); S.ctab = 'alumnos'; await abrirFicha(S.user.id); break;
     case 'editarYo': await editarYo(); break;
