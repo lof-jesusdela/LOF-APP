@@ -395,7 +395,7 @@ function claseMain() {
 function vLateral(actual) {
   if (!S.c?.perfiles) return '';
   const orden = { bad: 0, warn: 1, ok: 2 };
-  const als = S.c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach').map(a => ({ a, e: estadoAlumno(a) })).sort((x, y) => rangoReciente()(x.a.id) - rangoReciente()(y.a.id) || orden[x.e.nivel] - orden[y.e.nivel] || (x.a.nombre || '').localeCompare(y.a.nombre || ''));
+  const als = S.c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach').map(a => ({ a, e: estadoAlumno(a) })).sort((x, y) => orden[x.e.nivel] - orden[y.e.nivel] || (x.a.nombre || '').localeCompare(y.a.nombre || ''));
   const nav = [['inicio', 'Tu día'], ['alumnos', 'Alumnos'], ['plantillas', 'Plantillas'], ['ejercicios', 'Ejercicios'], ['pagos', 'Economía']];
   return `<aside class="lateral" aria-label="Navegación del coach">
     <nav class="lat-nav">${nav.map(([k, l]) => `<button data-act="ctab" data-t="${k}" ${actual === k && !S.ficha && !S.reporte && !S.editor && !S.obj ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span></button>`).join('')}<button data-act="abrirReporte" ${S.reporte && !S.reporte.alumno ? 'aria-current="page"' : ''}>${svg('checkin')}<span>Reporting semanal</span></button>${futbolistas().length ? `<button data-act="checkin">${svg('checkin')}<span>Control futbolistas</span></button>` : ''}</nav>
