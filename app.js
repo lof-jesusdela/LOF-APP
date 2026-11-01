@@ -1067,6 +1067,7 @@ function vEjercicio(e, i, ro) {
     ${ej.imagen_url || ej.musculo_img_url ? `<div class="imgs">${ej.imagen_url ? `<button class="img" data-act="verImagen" data-src="${esc(ej.imagen_url)}" aria-label="Ver imagen del ejercicio"><img src="${esc(ej.imagen_url)}" alt="${esc(ej.nombre)}" loading="lazy" onerror="this.parentNode.hidden=true"><span>Ejercicio</span></button>` : ''}${ej.musculo_img_url ? `<button class="img" data-act="verImagen" data-src="${esc(ej.musculo_img_url)}" aria-label="Ver músculo trabajado"><img src="${esc(ej.musculo_img_url)}" alt="Músculo trabajado" loading="lazy" onerror="this.parentNode.hidden=true"><span>Músculo</span></button>` : ''}</div>` : ''}
     <div class="row" style="align-items:flex-start"><span class="exn num">${i}</span><div class="grow"><h3>${esc(ej.nombre)}</h3>${!ej.musculo_img_url && ej.musculo ? `<div class="small muted">${esc(ej.musculo)}</div>` : ''}</div><div class="stack" style="gap:6px;align-items:flex-end">${vid}${ro ? '' : `<button class="btn sm ghost omitir-b" data-act="omitir" data-es="${e.id}" data-n="${esc(ej.nombre)}">No lo hago</button>`}</div></div>
     <div class="chips ex-chips"><span class="pill">${e.series} ${e.series === 1 ? 'serie' : 'series'}</span>${tandas ? '' : `<span class="pill">${desc ? 'Descanso ' + seg(desc) : 'Sin descanso'}</span>`}${e.metodos ? `<button class="pill gold" data-act="metodo" data-n="${esc(e.metodos.nombre)}">${esc(e.metodos.nombre)} ⓘ</button>` : ''}${e.aproximacion_631 ? '<button class="pill gold" data-act="metodo" data-n="Aproximación 6·3·1">Aproximación 6·3·1 ⓘ</button>' : ''}</div>
+    ${(() => { const ag = AGARRES.find(x => x[0] === e.agarre); if (!ag) return ''; const u = S.agarres?.[ag[0]]; return `<div class="row a-medida small" style="gap:10px;align-items:center">${u ? `<button class="img mat-img" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver imagen del agarre"><img src="${esc(u)}" alt="Agarre ${ag[1]}" loading="lazy" onerror="this.parentNode.hidden=true"></button>` : ''}<span><b>Agarre:</b> ${ag[1]}</span></div>`; })()}
     ${(() => { const mt = e.material ?? ej.material, mi = e.material_img_url ?? ej.material_img_url; return mt || mi ? `<div class="row a-medida small" style="gap:10px;align-items:center">${mi ? String(mi).split(';').filter(Boolean).map(u => `<button class="img mat-img" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver imagen del material"><img src="${esc(u)}" alt="Material" loading="lazy" onerror="this.parentNode.hidden=true"></button>`).join('') : ''}${mt ? `<span><b>Material:</b> ${esc(mt)}</span>` : '<span><b>Material</b></span>'}</div>` : ''; })()}
     ${aj.length ? `<div class="small a-medida"><b>A tu medida:</b> ${aj.map(esc).join(' · ')}</div>` : ''}
     ${e.nota ? `<div class="small ex-nota"><b>Nota de Jesús:</b> ${esc(e.nota)}</div>` : ''}
@@ -4215,7 +4216,8 @@ async function cargarPres() {
   S.ficha.pres = data || []; render();
 }
 /* Reserva con Calendly: el alumno elige hueco (llega a Google Calendar de Jesús) y la app lo apunta */
-async function cargarAjustes() { try { const { data } = await sb.from('ajustes').select('*'); S.calendly = (data || []).find(x => x.clave === 'calendly')?.valor || window.LOF_CONFIG?.calendly || ''; S.whatsapp = (data || []).find(x => x.clave === 'whatsapp')?.valor || ''; S.respuesta = (data || []).find(x => x.clave === 'respuesta')?.valor || ''; } catch (e) { } }
+const AGARRES = [['supino', 'Supino'], ['neutro', 'Neutro'], ['prono', 'Prono']];
+async function cargarAjustes() { try { const { data } = await sb.from('ajustes').select('*'); S.agarres = Object.fromEntries(AGARRES.map(([k]) => [k, (data || []).find(x => x.clave === 'agarre_' + k)?.valor || ''])); S.calendly = (data || []).find(x => x.clave === 'calendly')?.valor || window.LOF_CONFIG?.calendly || ''; S.whatsapp = (data || []).find(x => x.clave === 'whatsapp')?.valor || ''; S.respuesta = (data || []).find(x => x.clave === 'respuesta')?.valor || ''; } catch (e) { } }
 function formCalendly() {
   abrirSheet(`<form class="stack" id="f-cal"><h2>Calendly</h2>
     <p class="small">Pega el enlace de tu evento de Calendly para los entrenamientos presenciales (el que conectas a tu Google Calendar).</p>
@@ -5033,6 +5035,9 @@ function formEjSesion(id, bloqueId) {
     <div class="stack" style="gap:8px"><span class="small muted">Pauta serie a serie. Usa "Tramo sin parar" para las tandas de un método (dropset, cluster, rest-pause…).</span><div id="es-tramos" class="stack" style="gap:10px">${pauta.map((t, i) => filaTramo(t, i === 0)).join('')}</div><button type="button" class="btn sm ghost" id="es-add" style="align-self:flex-start">+ Añadir fila</button></div>
     <label class="f">Ajustes a su medida<input type="text" id="es-aj" value="${esc(e?.ajustes || '')}" placeholder="Ej. Silla: 5 · pies altos"></label>
     <div class="stack" style="gap:8px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2)">
+      <div class="stack" style="gap:6px"><label class="f">Tipo de agarre<select id="es-agarre"><option value="">— Sin especificar —</option>${AGARRES.map(([k, t]) => `<option value="${k}" ${e?.agarre === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+        <div class="row" id="es-agimgs" style="gap:10px;flex-wrap:wrap">${AGARRES.map(([k, t]) => `<div class="stack" style="gap:4px;align-items:center"><span class="small muted">${t}</span>${S.agarres?.[k] ? `<img src="${esc(S.agarres[k])}" alt="${t}" style="width:64px;height:64px;object-fit:cover;border-radius:10px">` : '<span class="es-sin" style="width:64px;height:64px">Sin foto</span>'}<label class="btn sm ghost" style="padding:4px 8px"><input type="file" accept="image/*" data-ag="${k}" hidden>📷</label></div>`).join('')}</div>
+        <span class="small muted">La foto de cada agarre es la misma para todos los ejercicios con ese agarre.</span></div>
       <label class="f">Material (barra, agarre, accesorio…)<input type="text" id="es-mat" list="es-mat-l" value="${esc(e?.material ?? libEj?.material ?? '')}" placeholder="Ej. Barra recta · agarre neutro" autocomplete="off"></label>
       <datalist id="es-mat-l">${MATERIALES.map(m => `<option value="${esc(m)}">`).join('')}</datalist>
       <div id="es-mimg"></div>
@@ -5075,6 +5080,11 @@ function formEjSesion(id, bloqueId) {
     $('#es-mimg').innerHTML = `<div class="stack" style="gap:8px"><span class="small muted">Imágenes del material y de los ajustes (barra, agarre, máquina…) · opcional</span><div class="row" style="gap:8px;flex-wrap:wrap">${l.map((m, k) => `<div class="stack" style="gap:4px;align-items:center"><img src="${esc(m.file ? URL.createObjectURL(m.file) : m.url)}" alt="Material" style="width:84px;height:84px;object-fit:cover;border-radius:10px" onerror="this.outerHTML='<span class=&quot;es-sin&quot;>No carga</span>'"><button type="button" class="btn sm ghost" data-mq="${k}">Quitar</button></div>`).join('')}</div><label class="btn sm ghost" style="align-self:flex-start"><input type="file" id="es-mfile" accept="image/*" multiple hidden>📷 ${l.length ? 'Añadir otra' : 'Añadir imagen'}</label></div>`;
     alcance();
   };
+  $('#es-agimgs').addEventListener('change', async ev => {
+    const k = ev.target.dataset?.ag, f = ev.target.files?.[0]; if (!k || !f) return;
+    try { const u = await subirImagenEj(f, 'agarre-' + k, 700); const { error } = await sb.from('ajustes').upsert([{ clave: 'agarre_' + k, valor: u }], { onConflict: 'clave' }); if (error) throw error; (S.agarres ||= {})[k] = u; const t = ev.target.closest('.stack'); const im = t.querySelector('img,.es-sin'); im.outerHTML = `<img src="${esc(u)}" alt="${k}" style="width:64px;height:64px;object-fit:cover;border-radius:10px">`; toast('Foto del agarre guardada: se verá en todos los ejercicios con ese agarre'); }
+    catch (err) { console.error(err); toast(motivoImg(err)); }
+  });
   $('#es-mimg').addEventListener('change', ev => { if (ev.target.id === 'es-mfile' && ev.target.files.length) { st.mlista = mLista().concat([...ev.target.files].map(file => ({ file }))); pintarMat(); } });
   $('#es-mimg').addEventListener('click', ev => { const q = ev.target.closest('[data-mq]'); if (q) { st.mlista = mLista().filter((_, k) => k !== +q.dataset.mq); pintarMat(); } });
   $('#es-mat').addEventListener('input', alcance); sel.addEventListener('change', () => { st.mlista = null; pintarMat(); });
@@ -5132,7 +5142,7 @@ function formEjSesion(id, bloqueId) {
       else if (vb && +vb !== blq.id) destino = hermanos.find(x => x.id === +vb) || blq;
       const filas = [...document.querySelectorAll('#es-tramos [data-tramo]')].map((f, i) => leerFilaTramo(f, i));
       const rirNum = filas.map(t => t.rir).find(v => typeof v === 'number');
-      const row = { ejercicio_id: +ejId, pauta: filas, series: filas.reduce((t, x) => t + (x.s || 0), 0), repeticiones: filas[0].r, rir: rirNum ?? null,
+      const row = { agarre: $('#es-agarre').value || null, ejercicio_id: +ejId, pauta: filas, series: filas.reduce((t, x) => t + (x.s || 0), 0), repeticiones: filas[0].r, rir: rirNum ?? null,
         peso_ref: filas.find(t => t.kg)?.kg || null, descanso_seg: filas[filas.length - 1].d, metodo_id: numero($('#es-met').value), ajustes: $('#es-aj').value.trim() || null,
         grupo: $('#es-gr').value.trim() || null, aproximacion_631: $('#es-631').checked };
       { const ks = [...document.querySelectorAll('.es-631kgs')].map(x => x.value.trim().replace(',', '.')), hay = ks.some(Boolean);
@@ -5160,9 +5170,10 @@ function formEjSesion(id, bloqueId) {
         const r2 = { ...row }; delete r2.aprox_kgs; delete r2.aprox_kg; ({ error } = await guardaEj(r2));
         if (!error) toast('Guardado, pero sin los pesos de la aproximación: ejecuta los Bloques 67 y 68 en Supabase');
       }
+      if (error && /agarre/.test(error.message || '')) throw new Error('Falta ejecutar el Bloque 73 en Supabase para guardar el tipo de agarre.');
       if (error) throw error;
       cerrarSheet(); toast('Ejercicio guardado'); refrescarEditor();
-    } catch (err) { fallo(err, /nombre|video_url|musculo_img_url/i.test(err.message || '') ? 'Falta ejecutar el Bloque 46 en Supabase para guardar nombre, vídeo o músculo solo en este programa.' : /privado|imagen_url/i.test(err.message || '') ? 'Falta ejecutar el Bloque 43 en Supabase para guardar fotos o ejercicios solo de este programa.' : /material|nota|column/i.test(err.message || '') ? 'Falta ejecutar el Bloque 39 en Supabase para guardar el material y la descripción.' : /bucket|row-level|security/i.test(err.message || '') ? 'Supabase no deja subir imágenes: ejecuta el Bloque 38.' : undefined); }
+    } catch (err) { fallo(err, /agarre/i.test(err.message || '') ? 'Falta ejecutar el Bloque 73 en Supabase para guardar el tipo de agarre.' : /nombre|video_url|musculo_img_url/i.test(err.message || '') ? 'Falta ejecutar el Bloque 46 en Supabase para guardar nombre, vídeo o músculo solo en este programa.' : /privado|imagen_url/i.test(err.message || '') ? 'Falta ejecutar el Bloque 43 en Supabase para guardar fotos o ejercicios solo de este programa.' : /material|nota|column/i.test(err.message || '') ? 'Falta ejecutar el Bloque 39 en Supabase para guardar el material y la descripción.' : /bucket|row-level|security/i.test(err.message || '') ? 'Supabase no deja subir imágenes: ejecuta el Bloque 38.' : undefined); }
   });
   $('#es-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para quitarlo'; return; } const { error } = await sb.from('ejercicios_sesion').delete().eq('id', e.id); if (error) return fallo(error, 'No se puede quitar: ya tiene series registradas. Puedes cambiarlo por otro ejercicio.'); cerrarSheet(); toast('Ejercicio quitado'); refrescarEditor(); });
 }
@@ -5283,7 +5294,7 @@ function formDuplicar(id) {
       const nuevo = { ...data, ejercicios_sesion: [] };
       for (const [i, x] of blq.ejercicios_sesion.entries()) {
         const f = { bloque_id: data.id, orden: i + 1 };
-        ['ejercicio_id', 'series', 'repeticiones', 'rir', 'peso_ref', 'descanso_seg', 'metodo_id', 'ajustes', 'aproximacion_631', 'aprox_kg', 'aprox_kgs', 'grupo', 'pauta', 'material', 'material_img_url', 'nota', 'imagen_url', 'nombre', 'video_url', 'musculo_img_url'].forEach(k => { if (x[k] != null) f[k] = x[k]; });
+        ['ejercicio_id', 'series', 'repeticiones', 'rir', 'peso_ref', 'descanso_seg', 'metodo_id', 'ajustes', 'aproximacion_631', 'aprox_kg', 'aprox_kgs', 'grupo', 'pauta', 'material', 'material_img_url', 'agarre', 'nota', 'imagen_url', 'nombre', 'video_url', 'musculo_img_url'].forEach(k => { if (x[k] != null) f[k] = x[k]; });
         const r = await sb.from('ejercicios_sesion').insert(f); if (r.error) throw r.error;
       }
       dia.bloques_sesion.splice(pos, 0, nuevo); await reletrar(dia);
