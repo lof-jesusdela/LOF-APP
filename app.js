@@ -1478,13 +1478,19 @@ function temaDe(d, sx = '') {
   const esCore = x => grupoEjOk(x, 'core') || grupoEjOk(x, 'abdomen') || grupoEjOk(x, 'lumbar');
   const resto = ejs.filter(x => !esCore(x) || grupoEjOk(x, 'gluteo') || grupoEjOk(x, 'cuadriceps') || grupoEjOk(x, 'isquios'));
   if (!resto.length) return 'core';
-  /* Peso de cada ejercicio: sus series y su posición (los primeros del entreno pesan hasta un 50 % más que los últimos) */
-  const N = resto.length; resto.forEach((x, i) => { x._w = x._series * (1 + 0.5 * (N > 1 ? 1 - i / (N - 1) : 1)); });
+  /* Peso de cada ejercicio: sus series y su posición (el primero del entreno pesa el doble que el último) */
+  const N = resto.length; resto.forEach((x, i) => { x._w = x._series * (1 + (N > 1 ? 1 - i / (N - 1) : 1)); });
   const total = resto.reduce((t, x) => t + x._w, 0), n = g => resto.filter(x => grupoEjOk(x, g)).reduce((t, x) => t + x._w, 0), sup = n('sup'), inf = n('inf');
   if (sup && inf && Math.min(sup, inf) >= total * 0.3) return 'completo';
   if (inf >= sup) { if (sx !== 'h' && n('gluteo') > total / 2) return 'pierna_gluteo'; const rod = n('cuadriceps'), cad = n('isquios') + n('gluteo'); if (rod && cad && Math.min(rod, cad) / Math.max(rod, cad) >= 0.6) return 'pierna_completo'; return rod > cad ? 'pierna_rodilla' : 'pierna_cadera'; }
-  const op = [['sup_pecho', n('pecho')], ['sup_espalda', n('espalda') + n('dorsal')], ['sup_hombros', n('hombro')], ['sup_brazos', n('biceps') + n('triceps')], ['sup_espalda_alta', n('escap')]].filter(x => !(x[0] === 'sup_pecho' && sx === 'm')).sort((a, b) => b[1] - a[1]);
-  return op[0][1] < sup * 0.5 ? 'sup_completo' : op[0][0];
+  /* Tren superior: cada ejercicio cuenta solo para su músculo principal (una dominada o un remo son espalda aunque también trabaje el bíceps) */
+  const PRIM = ['dorsal', 'escap', 'pecho', 'hombro', 'triceps', 'biceps', 'antebrazo'], g1 = {};
+  resto.filter(x => grupoEjOk(x, 'sup')).forEach(x => { const g = PRIM.find(p => grupoEjOk(x, p)); if (g) g1[g] = (g1[g] || 0) + x._w; });
+  const espalda = (g1.dorsal || 0) + (g1.escap || 0), brazos = (g1.biceps || 0) + (g1.triceps || 0) + (g1.antebrazo || 0);
+  const op = [['espalda', espalda], ['sup_pecho', sx === 'm' ? 0 : g1.pecho || 0], ['sup_hombros', g1.hombro || 0], ['sup_brazos', brazos]].sort((a, b) => b[1] - a[1]);
+  const totSup = op.reduce((t, x) => t + x[1], 0);
+  if (!totSup || op[0][1] < totSup * 0.4) return 'sup_completo';
+  return op[0][0] === 'espalda' ? ((g1.dorsal || 0) >= (g1.escap || 0) ? 'sup_espalda' : 'sup_espalda_alta') : op[0][0];
 }
 function vPrevia(d) {
   const sx = sexoDe(S.obj?.id || S.user?.id), tema = temaDe(d, sx), nomT = TEMAS.find(t => t[0] === tema)?.[1] || '', bl = d.bloques_sesion || [];
@@ -5572,7 +5578,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v178';
+const APP_VER = 'v179';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
