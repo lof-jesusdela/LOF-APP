@@ -1513,7 +1513,11 @@ function vPrevia(d) {
   const min = Math.round(ejs.reduce((t, e) => t + (+e.series || 0) * (45 + (e.descanso_seg ?? 60)), 0) / 60 + bl.filter(b => b.tipo !== 'fuerza').reduce((t, b) => t + (parseInt(b.duracion) || 5), 0));
   const rirs = ejs.map(e => e.rir).filter(x => x != null && x !== '' && !isNaN(+x)).map(Number), rirM = rirs.length ? rirs.reduce((a, b) => a + b, 0) / rirs.length : null;
   const intens = d.intensidad || (rirM == null ? '' : rirM <= 1 ? 'Alta' : rirM <= 2 ? 'Media-alta' : 'Moderada');
-  const vol = d.volumen || (series ? (series >= 20 ? 'Alto' : series >= 12 ? 'Medio' : 'Bajo') : '');
+  /* Si el coach pone el volumen en tiempo («75 minutos», «1 h 15», «60'»), esa es la duración que se muestra; si no, se estima */
+  const tMan = (() => { const v = norm(d.volumen || ''); if (!/\d/.test(v) || !/min|'|’|\d\s*h\b|hora|^\s*\d+\s*$/.test(v)) return null; const h = v.match(/(\d+(?:[.,]\d+)?)\s*(?:h\b|hora)/), m = v.match(/(\d+)\s*(?:min|'|’)/) || (!h && v.match(/^\s*(\d+)\s*$/)) || (h && v.match(/(?:h|horas?)\s*(?:y\s*)?(\d+)/));
+    const t = (h ? parseFloat(h[1].replace(',', '.')) * 60 : 0) + (m ? +m[1] : 0); return t > 0 ? Math.round(t) : null; })();
+  const minT = tMan ?? min;
+  const vol = tMan ? '' : d.volumen || (series ? (series >= 20 ? 'Alto' : series >= 12 ? 'Medio' : 'Bajo') : '');
   const grupos = GRUPOS_EJ.filter(([k]) => !['sup', 'inf', 'cardio'].includes(k)).map(([k, t]) => [t, ejs.filter(e => grupoEjOk(ejDe(e), k)).length]).filter(x => x[1]).sort((a, b) => b[1] - a[1]).slice(0, 4).map(x => x[0]);
   const obj = d.objetivo || S.temasDesc?.[tema] || '';
   const fila = (src, nom, sub) => `<div class="pv-ej">${src ? `<img src="${esc(src)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'pv-sin'}))">` : '<span class="pv-sin"></span>'}<div class="grow"><b>${esc(nom)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</div></div>`;
@@ -1523,7 +1527,7 @@ function vPrevia(d) {
   return `<div class="pv">
     <div class="pv-hero" style="${img ? `background-image:url('${esc(img)}')` : ''}"><button class="pv-volver" data-act="cerrarDia" aria-label="Volver">←</button></div>
     <div class="pv-card">
-      <div class="pv-stats"><div><span>⏱</span><b>~${min} min</b><small>Duración</small></div><div><span>📶</span><b>${esc(intens || '—')}</b><small>Intensidad</small></div><div><span>🔥</span><b>${series || ejs.length || bl.length}</b><small>${series ? 'Series' : 'Bloques'}</small></div></div>
+      <div class="pv-stats"><div><span>⏱</span><b>${tMan ? '' : '~'}${minT} min</b><small>Duración</small></div><div><span>📶</span><b>${esc(intens || '—')}</b><small>Intensidad</small></div><div><span>🔥</span><b>${series || ejs.length || bl.length}</b><small>${series ? 'Series' : 'Bloques'}</small></div></div>
       <span class="eyebrow">${esc(d.nombre || '')}</span><h1 class="pv-tit">${esc(d.titulo || titAuto(d) || d.foco || d.nombre || 'Entreno')}</h1>
       ${obj ? `<p class="pv-desc">${esc(obj)}</p>` : ''}
       <div class="pv-tags">${[vol && 'Volumen ' + vol.toLowerCase(), intens && 'Intensidad ' + intens.toLowerCase(), d.foco && 'Foco: ' + d.foco, nomT, ...grupos].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).map(t => `<span>${esc(t)}</span>`).join('')}</div>
@@ -5689,7 +5693,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v196';
+const APP_VER = 'v197';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
