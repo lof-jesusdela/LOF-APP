@@ -395,7 +395,7 @@ function claseMain() {
 function vLateral(actual) {
   if (!S.c?.perfiles) return '';
   const orden = { bad: 0, warn: 1, ok: 2 };
-  const als = S.c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach').map(a => ({ a, e: estadoAlumno(a) })).sort((x, y) => orden[x.e.nivel] - orden[y.e.nivel] || (x.a.nombre || '').localeCompare(y.a.nombre || ''));
+  const als = S.c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach').map(a => ({ a, e: estadoAlumno(a) })).sort((x, y) => rangoReciente()(x.a.id) - rangoReciente()(y.a.id) || orden[x.e.nivel] - orden[y.e.nivel] || (x.a.nombre || '').localeCompare(y.a.nombre || ''));
   const nav = [['inicio', 'Tu día'], ['alumnos', 'Alumnos'], ['plantillas', 'Plantillas'], ['ejercicios', 'Ejercicios'], ['pagos', 'Economía']];
   return `<aside class="lateral" aria-label="Navegación del coach">
     <nav class="lat-nav">${nav.map(([k, l]) => `<button data-act="ctab" data-t="${k}" ${actual === k && !S.ficha && !S.reporte && !S.editor && !S.obj ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span></button>`).join('')}<button data-act="abrirReporte" ${S.reporte && !S.reporte.alumno ? 'aria-current="page"' : ''}>${svg('checkin')}<span>Reporting semanal</span></button>${futbolistas().length ? `<button data-act="checkin">${svg('checkin')}<span>Control futbolistas</span></button>` : ''}</nav>
@@ -421,7 +421,7 @@ function render() {
       <button type="button" class="badge" data-act="inicio" aria-label="Ir al inicio" style="background:none;border:0;padding:0;cursor:pointer;text-align:left;color:inherit;font:inherit"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : esc(S.perfil.metodologia || 'Tu proceso')}</strong></div></button>
       <div class="row" style="gap:8px">${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
       <button class="avatar" data-act="cuenta" aria-label="Mi cuenta">${esCoach ? '<img src="icons/coach.jpg" alt="">' : S.perfil.foto_url ? `<img src="${esc(S.perfil.foto_url)}" alt="">` : esc((S.perfil.nombre || '?').slice(0, 2).toUpperCase())}</button></div>
-    </header>${S.prueba ? vBannerPrueba() : S.vista ? vBannerVista() : vBarraYo()}${coach && ANCHO.matches ? vLateral(actual) : ''}<main id="main" class="${coach ? claseMain() : ''}">${(S.iaCoach && coach) ? seguro(IA.vCoach) : (S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : (!coach && S.ia) ? seguro(IA.vChat) : (!coach && Temperamento.activo()) ? seguro(Temperamento.vista) : seguro(vistas[actual])}</main>${coach ? Clip.barra() : ''}${vBarraEntreno()}${IA.vFab(coach)}`;
+    </header>${S.prueba ? vBannerPrueba() : S.vista ? vBannerVista() : vBarraYo()}${coach && ANCHO.matches ? vLateral(actual) : ''}<main id="main" class="${coach ? claseMain() : ''}">${(S.iaCoach && coach) ? seguro(IA.vCoach) : (S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vDuo() + vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vFicha() : (!coach && S.ia) ? seguro(IA.vChat) : (!coach && Temperamento.activo()) ? seguro(Temperamento.vista) : seguro(vistas[actual])}</main>${coach ? Clip.barra() : ''}${vBarraEntreno()}${IA.vFab(coach)}`;
   document.body.classList.toggle('modo-coach', coach);
   if (coach) aplicarFiltroAl();
   $('#tabs').hidden = false;
@@ -1213,6 +1213,7 @@ function vAprox(e) {
 /* El coach entra en el entreno de un alumno (en directo o para corregir una sesión) */
 async function entrarComo(alumnoId) {
   const a = S.c.perfiles.find(p => p.id === alumnoId) || { id: alumnoId, nombre: 'Alumno' };
+  marcarReciente(alumnoId);
   S.propio = { d: S.d, dia: S.dia, sesion: S.sesion, tab: S.tab };
   S.obj = { id: a.id, nombre: a.nombre, ficha: S.ficha };
   stopTimer(); S.dia = null; S.sesion = null;
@@ -1225,6 +1226,27 @@ async function salirComo() {
   await cargarCoach(); await abrirFicha(ficha.id);
 }
 /* Salir del entreno con un alumno sin terminarlo: queda aparcado y se retoma desde la barra «Volver al entreno» */
+/* Alumnos abiertos hace poco (más reciente primero): ordenan la lista y el selector de entreno doble */
+const recientes = () => { try { const l = JSON.parse(localStorage.getItem('lof-recientes')); return Array.isArray(l) ? l : []; } catch (_) { return []; } };
+const marcarReciente = id => { try { localStorage.setItem('lof-recientes', JSON.stringify([id, ...recientes().filter(x => x !== id)].slice(0, 60))); } catch (_) {} };
+const rangoReciente = () => { const r = recientes(); return id => { const i = r.indexOf(id); return i < 0 ? 1e9 : i; }; };
+/* Entrenar a dos alumnos a la vez: franja para cambiar de uno a otro con un toque, sin salir ni buscar */
+function vDuo() {
+  if (!S.obj || S.perfil?.rol !== 'coach') return '';
+  const n = x => (x?.nombre || '').split(' ')[0] || 'Alumno', o = S.aparcado;
+  return `<div class="duo" role="group" aria-label="Alumnos en entreno"><span class="duo-it on">● ${esc(n(S.obj))}</span>${o ? `<button type="button" class="duo-it" data-act="volverEntreno">⇄ ${esc(n(o.obj))}</button>` : `<button type="button" class="duo-it" data-act="duoElegir">＋ Otro alumno a la vez</button>`}</div>`;
+}
+function duoElegir() {
+  const rk = rangoReciente(), als = (S.c?.perfiles || []).filter(p => p.activo !== false && p.rol !== 'coach' && p.id !== S.obj?.id).sort((a, b) => rk(a.id) - rk(b.id) || (a.nombre || '').localeCompare(b.nombre || '', 'es'));
+  abrirSheet(`<div class="stack"><h2>Entrenar también a…</h2><p class="small muted">Tu entreno con ${esc((S.obj?.nombre || '').split(' ')[0])} queda en pausa y podrás cambiar de uno a otro con la franja de arriba.</p>
+    <input type="search" id="duo-q" placeholder="Buscar alumno…" autocomplete="off">
+    <div class="card" style="max-height:55vh;overflow:auto">${als.map(a => `<button type="button" class="line duo-fila" data-act="duoIr" data-id="${a.id}" data-n="${esc(normaliza(a.nombre))}" style="width:100%;text-align:left"><b class="grow">${esc(a.nombre)}</b>${rk(a.id) < 1e9 ? '<span class="small muted">reciente</span>' : ''}</button>`).join('')}</div>
+    <button class="btn ghost full" data-act="cerrarSheet">Cancelar</button></div>`);
+}
+document.addEventListener('input', e => { if (e.target.id === 'duo-q') { const q = normaliza(e.target.value); document.querySelectorAll('.duo-fila').forEach(f => { f.hidden = !!q && !f.dataset.n.includes(q); }); } });
+async function duoIr(id) {
+  cerrarSheet(); await aparcarOSalir(); await entrenarAhora(id);
+}
 async function aparcarOSalir() {
   if (!S.obj) return;
   if (!S.dia || S.sesion?.editar) return salirComo();
@@ -2043,7 +2065,7 @@ function aplicarFiltroAl() {
 function vAlumnos() {
   const c = S.c, als = c.perfiles.filter(p => p.activo !== false);
   const est = als.map(a => ({ a, e: estadoAlumno(a) })), orden = { bad: 0, warn: 1, ok: 2 };
-  est.sort((x, y) => orden[x.e.nivel] - orden[y.e.nivel]);
+  const rk = rangoReciente(); est.sort((x, y) => rk(x.a.id) - rk(y.a.id) || orden[x.e.nivel] - orden[y.e.nivel]);
   const lab = { ok: 'En camino', warn: 'Atención', bad: 'Revisar' };
   const venc = c.pagos.filter(p => !p.pagado_at && p.vence < hoyISO()), vencIds = new Set(venc.map(p => p.alumno_id));
   const progs = [...new Set(c.servicios.filter(x => als.some(a => a.id === x.alumno_id)).map(x => x.producto).filter(Boolean))].sort();
@@ -2065,6 +2087,7 @@ function vAlumnos() {
 }
 
 async function abrirFicha(id) {
+  marcarReciente(id);
   S.ficha = { id, cargando: true }; S.verSes = null; S.verPlan = null; S.fichaSub = null; render(); window.scrollTo(0, 0);
   const [med, ses, notas, prog, srv, todas] = await Promise.all([
     sb.from('mediciones').select('*').eq('alumno_id', id).order('fecha', { ascending: false }),
@@ -5589,6 +5612,8 @@ document.addEventListener('click', async e => {
   const a = b.dataset.act;
   switch (a) {
     case 'ia': await IA.accion(b); break;
+    case 'duoElegir': duoElegir(); break;
+    case 'duoIr': await duoIr(b.dataset.id); break;
     case 'tab': S.ia = false; if (b.dataset.t === 'checkin') { S.tab = 'hoy'; S.dia = null; render(); $('#checkin')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break; }
       S.tab = b.dataset.t; if (!enCurso()) { S.dia = null; S.sesion = null; } S.chipsCargados = false; render(); window.scrollTo(0, 0); break;
     case 'sinWhatsapp': toast('Jesús aún no ha puesto su WhatsApp en la app'); break;
