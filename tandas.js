@@ -174,7 +174,7 @@ const Tandas = {
   vista(e, ej, sp) {
     const z = S.sesion, M = this.met(e), SER = this.estructura(e), N = SER.length, abiertas = (z.abiertas ||= {});
     const partes = SER.flatMap(s => s.tandas.flatMap(t => t.partes)), rirs = partes.map(x => x.rir == null || x.rir === '' ? null : String(x.rir));
-    const rirUnico = rirs.every(x => x === rirs[0]) ? rirs[0] : undefined;
+    const rirUnico = undefined;   // con método el RIR se ve junto a cada tanda (sin repetirlo arriba)
     const entreT = SER.flatMap(s => s.tandas.slice(0, -1).map(t => t.d ?? 0)), entreS = SER.slice(0, -1).map(s => s.tandas[s.tandas.length - 1].d ?? 60);
     const primera = SER.findIndex((s, i) => this.estadoSerie(z, s, `${e.id}-${i + 1}`).est !== 'on');
     if (!(e.id in abiertas)) abiertas[e.id] = primera < 0 ? -1 : primera + 1;
@@ -199,7 +199,7 @@ const Tandas = {
         <div class="rp-cuerpo">${tandas}</div></div>`;
     }).join('');
     const eT = this.rango(entreT, true), eS = this.rango(entreS, true);
-    const rit = partes.find(x => x.ritmo)?.ritmo, info = [M.info, rit ? `Ritmo de ejecución: ${rit}` : M.tempo ? this.TEMPO : ''].filter(Boolean), pos = partes.find(x => x.pos)?.pos;
+    const rit = partes.find(x => x.ritmo)?.ritmo, info = [rit ? `Ritmo de ejecución: ${rit}` : M.tempo ? this.TEMPO : ''].filter(Boolean), pos = partes.find(x => x.pos)?.pos;
     return `<div class="rp-met small">${info.map(x => `<span>${esc(x)}</span>`).join('')}</div>
       ${pos ? `<div class="rp-rir">${this.ICO.rir}<div><b>Posición a mantener</b><span class="small">${esc(pos)}</span></div></div>` : ''}
       ${eT || (eS && N > 1) ? `<div class="rp-desc">${this.ICO.reloj}${eT ? `<div><span class="small">Entre ${M.tipo === 'uni' || M.tipo === 'ucontraste' ? 'lados' : 'tandas'}:</span><b>${esc(eT)}</b></div>` : ''}${eT && eS && N > 1 ? '<div class="rp-sep"></div>' : ''}${eS && N > 1 ? `<div><span class="small">Entre series:</span><b>${esc(eS)}</b></div>` : ''}</div>` : ''}
