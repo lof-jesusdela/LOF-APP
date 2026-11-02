@@ -492,7 +492,7 @@ function ingestasSemana(reg, ini, srv) {
 /* Recordatorio del check-in: sábado por la tarde y domingo, si aún no se ha enviado */
 /* Check-in pendiente: el domingo, el de esta semana; de lunes a sábado, el de la semana que acaba de terminar si no se envió */
 function checkinPend() {
-  const D = S.d, srv = D?.servicio; if (!D || !srv || S.vista || Acomp.estado(srv).k === 'pausado' || srv.modulo_futbol) return null;
+  const D = S.d, srv = D?.servicio; if (!D || !srv || Acomp.estado(srv).k === 'pausado' || srv.modulo_futbol) return null;
   const l = lunesDe(hoyISO()), obj = new Date().getDay() === 0 ? l : sumaDias(l, -7);
   if (srv.inicio && srv.inicio > sumaDias(obj, 6)) return null;
   return (D.checkins || []).some(c => c.semana_inicio === obj) ? null : obj;
@@ -845,7 +845,7 @@ function vPendientesHoy(s) {
   if (s.modulo_nutricion && fase === 'recogida') lineas.push(['🍽', 'Registro de 7 días de comidas', 'Jesús te lo ha pedido para preparar tu plan', 'data-act="tab" data-t="nutri"', 'Apuntar']);
   const tarjetas = [Acomp.tarjetaDevolucionHoy(), Casos.lineaHoy(), Casos.tarjetaHoy(true), Bienvenida.tarjeta()].join('');
   if (!lineas.length && !tarjetas.trim()) return '';
-  return `${lineas.length ? `<section class="section"><div class="card pend" role="alert"><div class="pend-cab"><span class="pend-ic">⚠️</span><h2>Pendiente</h2><span class="pend-n">${lineas.length}</span></div><p class="small pend-sub">Esto es lo que te falta por hacer. Cuanto antes lo rellenes, mejor puede ayudarte Jesús.</p>${lineas.map(([ic, t, d, at, b]) => `<div class="pend-linea"><span class="pend-i">${ic}</span><div class="grow"><b>${t}</b><div class="small">${d}</div></div><button class="btn sm pend-btn" ${at}>${b}</button></div>`).join('')}</div></section>` : ''}${tarjetas}`;
+  return `${lineas.length ? `<section class="section"><div class="card pend" role="alert"><div class="pend-cab"><span class="pend-ic">⚠️</span><h2>Pendiente</h2><span class="pend-n">${lineas.length}</span></div><p class="small pend-sub">Es prioritario: hazlo hoy. Sin esto, Jesús no puede ver tu semana real ni ajustar tu plan.</p>${lineas.map(([ic, t, d, at, b]) => `<div class="pend-linea"><span class="pend-i">${ic}</span><div class="grow"><b>${t}</b><div class="small">${d}</div></div><button class="btn sm pend-btn" ${at}>${b}</button></div>`).join('')}</div></section>` : ''}${tarjetas}`;
 }
 /* Próximamente: revisión mensual, entrenos con Jesús (saldo, próxima reserva y un solo botón) */
 function vProximamente(s) {
@@ -5735,7 +5735,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v205';
+const APP_VER = 'v206';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}

@@ -188,7 +188,7 @@ const MenuSemana = (() => {
       Promise.resolve(sb.from('plan_nutri_semana').select('semana_inicio').eq('alumno_id', S.user.id).gte('semana_inicio', lunesDe(hoyISO()))).then(r => { S.d.pnSemanas = (r.data || []).map(x => x.semana_inicio); render(); }, () => { S.d.pnSemanas = []; });
     }
   }
-  const aplica = () => { const s = S.d?.servicio || {}; return !(S.modo === 'coach' || S.vista || !s.modulo_nutricion || s.modulo_futbol || Acomp.estado(s).k === 'pausado'); };
+  const aplica = () => { const s = S.d?.servicio || {}; return !(S.modo === 'coach' || !s.modulo_nutricion || s.modulo_futbol || Acomp.estado(s).k === 'pausado'); };
   /* Segundo check-in: solo el domingo, para escribir el menú de la semana que empieza */
   function tarjeta() {
     if (!aplica() || new Date().getDay() !== 0) return '';
