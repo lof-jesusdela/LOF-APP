@@ -757,15 +757,20 @@ function vRitmosVAM(o = {}) {
 }
 const FASES = [['calentamiento', 'Calentamiento'], ['principal', 'Parte principal'], ['enfriamiento', 'Enfriamiento']];
 const TIPOS_PRINCIPAL = ['Zona 1', 'Zona 2', 'Zona 3', 'Zona 4', 'Zona 5', 'Escaleras', 'Cuestas'];
-const INDICADORES = [['tiempo', 'Tiempo total', '20 min'], ['distancia', 'Distancia', '5 km'], ['series', 'Series', '3'], ['reps', 'Repeticiones', '8 x 200 m'], ['rec', 'Recuperación', '1 min trotando'], ['ritmo', 'Ritmo por km', '5:30'], ['fc', 'Frecuencia cardiaca', '150 ppm']];
+const TIPOS_TRAMO = ['Continuo', 'Progresivo', 'Series', 'Zona 1', 'Zona 2', 'Zona 3', 'Zona 4', 'Zona 5', 'Escaleras', 'Cuestas', 'Recuperación activa'];
+/* carrera: {fases:[{fase,tramos}]} (nuevo) o {fase,tramos} (antiguo, un bloque por fase) */
+const carreraFases = c => !c ? [] : Array.isArray(c.fases) ? c.fases : c.tramos?.length ? [{ fase: c.fase || '', tramos: c.tramos }] : [];
+const carreraTieneTramos = c => carreraFases(c).some(f => (f.tramos || []).length);
+const INDICADORES = [['zonas', 'Zonas (de → a)', 'Z1 → Z3'], ['tiempo', 'Tiempo total', '20 min'], ['distancia', 'Distancia', '5 km'], ['series', 'Series', '3'], ['reps', 'Repeticiones', '8 x 200 m'], ['rec', 'Recuperación', '1 min trotando'], ['ritmo', 'Ritmo por km', '5:30'], ['fc', 'Frecuencia cardiaca', '150 ppm']];
 const zonaN = t => +(/^zona\s*(\d)/i.exec(t || '')?.[1] || 0);
 /* Lo que ve el alumno: cada tramo con solo los indicadores rellenados */
 function vCarrera(c, o = {}) {
-  const vam = 'vam' in o ? o.vam : vamDe(), mx = 'mx' in o ? o.mx : fcMaxDe();
-  return (c.tramos || []).map(t => { const z = zonaN(t.tipo), zt = z ? zonaCarrera(z, vam, mx) : '', ind = INDICADORES.filter(([k]) => t.ind?.[k]);
-    return `<div class="stack" style="gap:8px;padding:12px;border:1px solid var(--line);border-radius:12px">${(c.tramos.length > 1 || t.tipo !== 'Continuo') && t.tipo ? `<div class="row"><span class="pill ${z ? 'blue' : 'gold'}">${esc(t.tipo)}</span>${zt ? `<span class="small muted">${esc(zt)}</span>` : ''}</div>` : ''}
+  const vam = 'vam' in o ? o.vam : vamDe(), mx = 'mx' in o ? o.mx : fcMaxDe(), fases = carreraFases(c).filter(f => (f.tramos || []).length), cab = fases.length > 1 || (c.fases && fases.length);
+  const tr = (t, n) => { const z = zonaN(t.tipo), zt = z ? zonaCarrera(z, vam, mx) : '', ind = INDICADORES.filter(([k]) => t.ind?.[k]);
+    return `<div class="stack" style="gap:8px;padding:12px;border:1px solid var(--line);border-radius:12px">${(n > 1 || t.tipo !== 'Continuo') && t.tipo ? `<div class="row"><span class="pill ${z ? 'blue' : 'gold'}">${esc(t.tipo)}</span>${zt ? `<span class="small muted">${esc(zt)}</span>` : ''}</div>` : ''}
       ${ind.length ? `<div class="kpis" style="grid-template-columns:repeat(${Math.min(3, ind.length)},1fr)">${ind.map(([k, l]) => `<div class="kpi"><div class="l">${l}</div><b${k === 'fc' ? ' style="color:var(--bad)"' : ''}>${esc(k === 'ritmo' && /^\d+:\d\d$/.test(t.ind[k]) ? t.ind[k] + ' min/km' : t.ind[k])}</b></div>`).join('')}</div>` : ''}
-      ${t.obs ? `<p class="note" style="margin:0">${esc(t.obs)}</p>` : ''}</div>`; }).join('');
+      ${t.obs ? `<p class="note" style="margin:0">${esc(t.obs)}</p>` : ''}</div>`; };
+  return fases.map(f => `${cab && f.fase ? `<span class="eyebrow">${esc(FASES.find(x => x[0] === f.fase)?.[1] || f.fase)}</span>` : ''}${f.tramos.map(t => tr(t, f.tramos.length)).join('')}`).join('');
 }
 /* Datos de FC de la persona del editor (si se abrió desde su ficha) */
 function fcEditor() {
@@ -1455,7 +1460,7 @@ function vBloque(b, cont, ro) {
     return `<div class="card stack"><div class="row"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}</h3></div>
       ${imgBloque(b)}
       ${b.tipo === 'invisible' && b.duracion ? `<div class="kpis" style="grid-template-columns:1fr"><div class="kpi"><div class="l">Duración</div><b>${esc(b.duracion)}</b></div></div>` : ''}
-      ${b.tipo === 'cardio' && b.carrera?.tramos?.length ? vCarrera(b.carrera) : b.tipo === 'cardio' ? `<div class="kpis" style="grid-template-columns:1fr 1fr"><div class="kpi"><div class="l">Duración</div><b>${esc(b.duracion || '—')}</b></div><div class="kpi"><div class="l">Frecuencia cardiaca</div><b style="color:var(--bad)">${esc(fcTexto(b.fc_objetivo) || '—')}</b></div></div><div class="small muted">${esc([b.maquina, b.objetivo].filter(Boolean).join(' · '))}</div>` : ''}
+      ${b.tipo === 'cardio' && carreraTieneTramos(b.carrera) ? vCarrera(b.carrera) : b.tipo === 'cardio' ? `<div class="kpis" style="grid-template-columns:1fr 1fr"><div class="kpi"><div class="l">Duración</div><b>${esc(b.duracion || '—')}</b></div><div class="kpi"><div class="l">Frecuencia cardiaca</div><b style="color:var(--bad)">${esc(fcTexto(b.fc_objetivo) || '—')}</b></div></div><div class="small muted">${esc([b.maquina, b.objetivo].filter(Boolean).join(' · '))}</div>` : ''}
       ${b.detalle ? `<p class="note">${esc(b.detalle)}</p>` : ''}
       ${b.video_url ? `<a class="btn sm ghost" style="align-self:flex-start" href="${esc(b.video_url)}" target="_blank" rel="noopener">Ver vídeo</a>` : ''}</div>`;
   }
@@ -5143,28 +5148,27 @@ ${editorEsFutbol() || b?.momento ? `    <label class="f">Momento (día de partid
     <label class="row small" id="b-mqg" hidden style="gap:8px"><input type="checkbox" id="b-mqs" checked style="width:20px;height:20px"> <span>Usar esta foto siempre para <b id="b-mqn"></b></span></label>
     <p class="err" id="b-err"></p><button class="btn full" type="submit" id="b-btn">Guardar</button>${b ? '<button class="btn ghost full" type="button" id="b-del" style="color:var(--bad)">Eliminar bloque</button>' : ''}</form>`);
   const maqSel = () => { const v = $('#b-mq').value; if (v === 'Correr') { const m = [...document.querySelectorAll('input[name="b-cor"]:checked')].map(x => x.value); return m.length ? 'Correr · ' + m.join(' + ') : 'Correr'; } return v === 'otra' ? ($('#b-ma').value.trim() || null) : v || null; };
-  /* Sesión de carrera: fase y tramos con los indicadores que elijas */
-  const RUN = JSON.parse(JSON.stringify(b?.carrera || { fase: '', tramos: [] }));
-  const leerRun = () => { document.querySelectorAll('#b-run [data-tr]').forEach(el => { const t = RUN.tramos[+el.dataset.tr]; if (!t) return; t.ind = {}; el.querySelectorAll('[data-iv]').forEach(i => { const on = el.querySelector(`[data-ic="${i.dataset.iv}"]`)?.checked; if (on) t.ind[i.dataset.iv] = i.value.trim(); }); t.obs = el.querySelector('[data-obs]')?.value.trim() || ''; }); };
+  /* Sesión de carrera completa en un bloque: calentamiento, parte principal y enfriamiento, cada uno con sus tramos */
+  const RUN = { fases: FASES.map(([k]) => ({ fase: k, tramos: JSON.parse(JSON.stringify(carreraFases(b?.carrera).find(f => f.fase === k)?.tramos || [])) })) };
+  const sinFase = carreraFases(b?.carrera).find(f => !FASES.some(x => x[0] === f.fase)); if (sinFase) RUN.fases[1].tramos.push(...JSON.parse(JSON.stringify(sinFase.tramos)));
+  const leerRun = () => { document.querySelectorAll('#b-run [data-tr]').forEach(el => { const t = RUN.fases[+el.dataset.f]?.tramos[+el.dataset.tr]; if (!t) return; t.ind = {}; el.querySelectorAll('[data-iv]').forEach(i => { const on = el.querySelector(`[data-ic="${i.dataset.iv}"]`)?.checked; if (on) t.ind[i.dataset.iv] = i.value.trim(); }); t.obs = el.querySelector('[data-obs]')?.value.trim() || ''; }); };
   const pintarRun = () => {
     const w = $('#b-run'), on = $('#b-t').value === 'cardio' && $('#b-mq').value === 'Correr'; w.hidden = !on; if (!on) return;
-    if (!RUN.fase) RUN.fase = /calent/i.test($('#b-n').value) ? 'calentamiento' : /enfri|calma/i.test($('#b-n').value) ? 'enfriamiento' : /principal/i.test($('#b-n').value) ? 'principal' : '';
-    if (RUN.fase && RUN.fase !== 'principal' && !RUN.tramos.length) RUN.tramos = [{ tipo: 'Continuo', ind: {}, obs: '' }];
-    const tipos = RUN.tramos.map(t => t.tipo);
-    w.innerHTML = `<b class="small">Sesión de carrera</b>
-      <label class="f">Fase<select id="b-fase"><option value="">— Sin fase —</option>${FASES.map(([k, l]) => `<option value="${k}" ${RUN.fase === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-      ${RUN.fase === 'principal' ? `<div class="stack" style="gap:6px"><span class="small muted">¿Qué incluye la parte principal? Marca las que quieras</span><div class="chips">${TIPOS_PRINCIPAL.map(t => `<button type="button" data-act="runTipo" data-v="${t}" aria-pressed="${tipos.includes(t)}">${t}</button>`).join('')}</div></div>` : ''}
-      ${RUN.tramos.map((t, i) => { const z = zonaN(t.tipo), zt = z ? zonaCarrera(z, FC.vam, FC.mx) : ''; return `<div class="stack" data-tr="${i}" style="gap:8px;border-top:1px solid var(--line);padding-top:10px">
-        <div class="row"><span class="pill ${z ? 'blue' : 'gold'}">${esc(t.tipo)}</span><span class="small muted grow">${esc(zt || (z ? 'Sin test VAM ni FC máxima: escribe ritmo y pulso' : ''))}</span></div>
+    w.innerHTML = `<b class="small">Sesión de carrera</b><span class="small muted">Monta aquí todo lo que va a correr: calentamiento, parte principal y enfriamiento, con tantos tramos como necesites.</span>
+      ${RUN.fases.map((F, fi) => `<div class="stack" style="gap:8px;border-top:2px solid var(--line);padding-top:10px"><span class="eyebrow">${FASES[fi][1]}</span>
+      ${F.tramos.map((t, i) => { const z = zonaN(t.tipo), zt = z ? zonaCarrera(z, FC.vam, FC.mx) : ''; return `<div class="stack" data-f="${fi}" data-tr="${i}" style="gap:8px;border:1px solid var(--line);border-radius:12px;padding:10px">
+        <div class="row"><span class="pill ${z ? 'blue' : 'gold'}">${esc(t.tipo)}</span><span class="small muted grow">${esc(zt || (z ? 'Sin test VAM ni FC máxima: escribe ritmo y pulso' : ''))}</span><button type="button" class="btn ghost" data-act="runQuita" data-f="${fi}" data-i="${i}" style="color:var(--bad);padding:4px 10px" aria-label="Quitar tramo">✕</button></div>
         <div class="chips">${INDICADORES.map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-ic="${k}" ${t.ind?.[k] != null ? 'checked' : ''} style="width:20px;height:20px"> ${l}</label>`).join('')}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${INDICADORES.map(([k, l, ph]) => `<label class="f" data-iw="${k}" ${t.ind?.[k] != null ? '' : 'hidden'}>${l}<input type="text" data-iv="${k}" value="${esc(t.ind?.[k] || '')}" placeholder="${esc(z && k === 'ritmo' && FC.vam ? zonaCarrera(z, FC.vam, null).split(' ')[0] : z && k === 'fc' && FC.mx ? zonaCarrera(z, null, FC.mx) : ph)}"></label>`).join('')}</div>
-        <label class="f">Observaciones${RUN.fase === 'principal' ? ' de ' + esc(t.tipo.toLowerCase()) : ''}<textarea data-obs rows="2" placeholder="${t.tipo === 'Escaleras' ? 'Ej. 3 series de cada: skipping de 1 en 1…' : 'Qué tiene que hacer y cómo'}">${esc(t.obs || '')}</textarea></label></div>`; }).join('')}`;
+        <label class="f">Observaciones<textarea data-obs rows="2" placeholder="${t.tipo === 'Escaleras' ? 'Ej. 3 series de cada: skipping de 1 en 1…' : 'Qué tiene que hacer y cómo'}">${esc(t.obs || '')}</textarea></label></div>`; }).join('')}
+      <div class="stack" style="gap:6px"><span class="small muted">+ Añadir tramo</span><div class="chips">${TIPOS_TRAMO.map(t => `<button type="button" data-act="runAdd" data-f="${fi}" data-v="${t}">${t}</button>`).join('')}</div></div></div>`).join('')}`;
   };
-  $('#b-run').addEventListener('change', ev => {
-    if (ev.target.id === 'b-fase') { leerRun(); RUN.fase = ev.target.value; if (RUN.fase === 'principal') RUN.tramos = RUN.tramos.filter(t => t.tipo !== 'Continuo'); else RUN.tramos = RUN.tramos.length && RUN.tramos[0].tipo === 'Continuo' ? RUN.tramos.slice(0, 1) : []; pintarRun(); return; }
-    const k = ev.target.dataset.ic; if (k) { const tr = ev.target.closest('[data-tr]'); tr.querySelector(`[data-iw="${k}"]`).hidden = !ev.target.checked; }
+  $('#b-run').addEventListener('change', ev => { const k = ev.target.dataset.ic; if (k) { const tr = ev.target.closest('[data-tr]'); tr.querySelector(`[data-iw="${k}"]`).hidden = !ev.target.checked; } });
+  $('#b-run').addEventListener('click', ev => {
+    const x = ev.target.closest('[data-act="runAdd"],[data-act="runQuita"]'); if (!x) return; ev.preventDefault(); ev.stopPropagation(); leerRun(); const F = RUN.fases[+x.dataset.f];
+    if (x.dataset.act === 'runAdd') F.tramos.push({ tipo: x.dataset.v, ind: {}, obs: '' }); else F.tramos.splice(+x.dataset.i, 1);
+    pintarRun();
   });
-  $('#b-run').addEventListener('click', ev => { const x = ev.target.closest('[data-act="runTipo"]'); if (!x) return; ev.preventDefault(); ev.stopPropagation(); leerRun(); const v = x.dataset.v, i = RUN.tramos.findIndex(t => t.tipo === v); if (i >= 0) RUN.tramos.splice(i, 1); else { RUN.tramos.push({ tipo: v, ind: {}, obs: '' }); RUN.tramos.sort((a, b) => TIPOS_PRINCIPAL.indexOf(a.tipo) - TIPOS_PRINCIPAL.indexOf(b.tipo)); } pintarRun(); });
   const pintarCardio = () => {
     $('#b-cardio').hidden = $('#b-t').value !== 'cardio'; $('#b-movw').hidden = !($('#b-t').value === 'movilidad' && (S.c.movCat || []).length); $('#b-invw').hidden = $('#b-t').value !== 'invisible';
     $('#b-ma').hidden = $('#b-mq').value !== 'otra'; $('#b-fc').hidden = $('#b-fz').value !== 'otra'; $('#b-co').hidden = $('#b-mq').value !== 'Correr'; $('#b-pc').hidden = $('#b-fz').value !== 'pc'; if ($('#b-run').hidden === ($('#b-t').value === 'cardio' && $('#b-mq').value === 'Correr')) pintarRun();
@@ -5203,7 +5207,7 @@ ${editorEsFutbol() || b?.momento ? `    <label class="f">Momento (día de partid
     if (v('#b-va') || b?.variante) row.variante = v('#b-va');
     if (/^contrastes?\b.*(fr[ií]o|calor)/i.test(row.nombre)) row.tipo = 'invisible';   // siempre es entrenamiento invisible
     if (row.tipo === 'invisible') row.duracion = v('#b-idu');
-    if (row.tipo === 'cardio' && $('#b-mq').value === 'Correr') { leerRun(); RUN.tramos.forEach(t => { Object.keys(t.ind).forEach(k => { if (!t.ind[k]) delete t.ind[k]; }); }); if (RUN.fase || RUN.tramos.length) row.carrera = RUN; else if (b?.carrera) row.carrera = null; }
+    if (row.tipo === 'cardio' && $('#b-mq').value === 'Correr') { leerRun(); RUN.fases.forEach(F => F.tramos.forEach(t => { Object.keys(t.ind).forEach(k => { if (!t.ind[k]) delete t.ind[k]; }); })); const FF = RUN.fases.filter(F => F.tramos.length); if (FF.length) row.carrera = { fases: FF }; else if (b?.carrera) row.carrera = null; }
     else if (b?.carrera) row.carrera = null;
     if (row.tipo === 'cardio' && $('#b-mq').value === 'Correr' && !$('#b-img').files[0] && b?.imagen_url) row.imagen_url = null;   // correr: fotos de cada modalidad
     if ($('#b-mo')?.value || b?.momento) row.momento = $('#b-mo')?.value || null;
@@ -5511,15 +5515,15 @@ async function semanaCompleta() {
   if (error) return fallo(error);
   toast(`Añadidos: ${faltan.join(', ')}`); refrescarEditor();
 }
-/* Sesión de carrera: crea Calentamiento, Parte principal y Enfriamiento (cardio · correr) al final del día */
+/* Sesión de carrera: un solo bloque de cardio · correr con calentamiento, parte principal y enfriamiento */
 async function nuevaCarrera(diaId) {
   const dia = S.editor.prog.dias.find(d => d.id === diaId); if (!dia) return;
-  let n = new Set(dia.bloques_sesion.map(b => b.letra)).size;
-  const filas = FASES.map(([k, l]) => ({ dia_id: dia.id, letra: String.fromCharCode(65 + n++), nombre: l, tipo: 'cardio', maquina: 'Correr', carrera: { fase: k, tramos: k === 'principal' ? [] : [{ tipo: 'Continuo', ind: {}, obs: '' }] } }));
-  let { error } = await sb.from('bloques_sesion').insert(filas);
-  if (error && /carrera/.test(error.message || '')) { ({ error } = await sb.from('bloques_sesion').insert(filas.map(({ carrera, ...x }) => x))); if (!error) toast('Creada, pero para rellenar los indicadores falta ejecutar el Bloque 47'); }
+  const n = new Set(dia.bloques_sesion.map(b => b.letra)).size;
+  const fila = { dia_id: dia.id, letra: String.fromCharCode(65 + n), nombre: 'Sesión de carrera', tipo: 'cardio', maquina: 'Correr', carrera: { fases: [{ fase: 'calentamiento', tramos: [{ tipo: 'Continuo', ind: {}, obs: '' }] }, { fase: 'principal', tramos: [] }, { fase: 'enfriamiento', tramos: [{ tipo: 'Continuo', ind: {}, obs: '' }] }] } };
+  let { error } = await sb.from('bloques_sesion').insert(fila);
+  if (error && /carrera/.test(error.message || '')) { const { carrera, ...x } = fila; ({ error } = await sb.from('bloques_sesion').insert(x)); if (!error) toast('Creada, pero para rellenar los indicadores falta ejecutar el Bloque 47'); }
   if (error) return fallo(error);
-  if (!error) toast('Sesión de carrera creada: toca cada bloque para rellenarlo'); refrescarEditor();
+  toast('Sesión de carrera creada: tócala para montar calentamiento, parte principal y enfriamiento'); refrescarEditor();
 }
 async function reletrar(dia) {
   const l = dia.bloques_sesion; let n = -1; const fin = l.map((b, i) => { if (!(i && b.variante && l[i - 1].variante && l[i - 1].letra === b.letra)) n++; return String.fromCharCode(65 + n); }), cambian = l.filter((b, i) => b.letra !== fin[i]);
@@ -5744,7 +5748,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v210';
+const APP_VER = 'v211';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
