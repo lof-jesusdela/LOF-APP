@@ -689,7 +689,7 @@ const ZONAS_FC5 = [
 ];
 const zonasDe = fut => fut ? ZONAS_FC5 : ZONAS_FC;
 /* Modelo de zonas del alumno: el que elijas en su ficha (3 o 5); si no, 5 para futbolistas y 3 para el resto */
-const cincoZ = srv => srv?.fc_modelo ? +srv.fc_modelo === 5 : !!srv?.modulo_futbol;
+const cincoZ = srv => srv?.fc_modelo ? +srv.fc_modelo === 5 : !!(srv?.modulo_futbol || srv?.oposicion);
 /* Pulsaciones de una zona: las ajustadas a mano (p. ej. enfermedad coronaria) o las calculadas con su FC máxima */
 const rangoZona = (z, mx, srv, cinco) => { const m = srv?.fc_zonas?.[cinco ? 5 : 3]?.[z.n - 1]; if (m && m[0] && m[1]) return [+m[0], +m[1]]; return mx ? [Math.round(mx * z.desde), Math.round(mx * z.hasta)] : null; };
 /* FC máxima: la medida en su test o, si no hay, la estimada por edad (Tanaka) */
@@ -731,7 +731,15 @@ function fcTexto(t, o = {}) {
 /* ---------- Running: zonas por VAM (test de 5 minutos) y FC, y sesiones de carrera por fases ---------- */
 /* % de la VAM por zona (ajustable). Ritmo min/km = 60 / (VAM × %) */
 const ZONAS_VAM = [[1, .60, .70], [2, .70, .80], [3, .80, .90], [4, .90, 1.0], [5, 1.0, 1.10]];
-const vamDe = vals => { const pr = (vals || S.d?.valoraciones || []).flatMap(v => v.pruebas || []).filter(p => p.tipo === 'ritmos'); for (const p of pr) { const d = (p.datos || []).find(x => /vam|velocidad/i.test(x.nombre || '')); const n = numDe(d?.valor); if (n) return n; } return null; };
+const vamMedida = vals => { const pr = (vals || S.d?.valoraciones || []).flatMap(v => v.pruebas || []).filter(p => p.tipo === 'ritmos'); for (const p of pr) { const d = (p.datos || []).find(x => /vam|velocidad/i.test(x.nombre || '')); const n = numDe(d?.valor); if (n) return n; } return null; };
+/* Sin test de 5 minutos (p. ej. opositores): se estima con su mejor 1000 m de las pruebas de Policía (a ritmo de 1000 m ≈ 97 % de la VAM) */
+function vamEstimada(vals) {
+  const t = (vals || S.d?.valoraciones || []).flatMap(v => v.pruebas || []).filter(p => p.tipo === 'policia').flatMap(p => p.datos || []).find(d => /1000/.test(d.nombre || '') && /^\s*\d+:\d{2}/.test(String(d.valor || '')));
+  const m = t && String(t.valor).match(/(\d+):(\d{2})/); if (!m) return null;
+  const sg = +m[1] * 60 + +m[2]; return sg > 120 && sg < 900 ? Math.round(3600 / sg * 0.97 * 10) / 10 : null;
+}
+const vamDe = vals => vamMedida(vals) ?? vamEstimada(vals);
+const vamEsEstimada = vals => vamMedida(vals) == null && vamEstimada(vals) != null;
 const ritmoTxt = kmh => { const t = Math.round(3600 / kmh), m = Math.floor(t / 60); return `${m}:${String(t % 60).padStart(2, '0')}`; };
 /* «Zona 4 · 4:10–3:45 min/km · 160–178 ppm» con su VAM y su FC máxima (si las tiene) */
 function zonaCarrera(n, vam, mx) {
@@ -741,10 +749,11 @@ function zonaCarrera(n, vam, mx) {
   return out.join(' · ');
 }
 function vRitmosVAM(o = {}) {
-  const vam = 'vam' in o ? o.vam : vamDe(), mx = 'mx' in o ? o.mx : fcMaxDe(); if (!vam) return '';
-  return `<section class="section"><div class="card stack"><div class="row"><span class="eyebrow grow">${o.coach ? 'Sus' : 'Tus'} zonas de carrera</span><span class="pill num">VAM ${fmtNum(vam)} km/h</span></div>
+  const vam = 'vam' in o ? o.vam : vamDe(o.vals), mx = 'mx' in o ? o.mx : fcMaxDe(o.vals, o.perfil); if (!vam) return '';
+  const est = vamEsEstimada(o.vals);
+  return `<section class="section"><div class="card stack"><div class="row"><span class="eyebrow grow">${o.coach ? 'Sus' : 'Tus'} zonas de carrera</span><span class="pill num">${est ? 'VAM estimada' : 'VAM'} ${fmtNum(vam)} km/h</span></div>
     ${ZONAS_VAM.map(([n]) => `<div class="row small" style="gap:10px"><span class="pill" style="background:${ZONAS_FC5[n - 1].col};color:${ZONAS_FC5[n - 1].tx || '#111'};min-width:64px;justify-content:center">Zona ${n}</span><span class="grow">${esc(ZONAS_FC5[n - 1].corto)}</span><b class="num">${esc(zonaCarrera(n, vam, mx))}</b></div>`).join('')}
-    <p class="small muted" style="margin:0">Calculadas con tu test de carrera de 5 minutos${mx ? ' y tu frecuencia cardiaca máxima' : ''}.</p></div></section>`;
+    <p class="small muted" style="margin:0">${est ? `Ritmos estimados con ${o.coach ? 'su' : 'tu'} mejor 1000 m: con un test de carrera de 5 minutos serán más exactos.` : `Ritmos calculados con ${o.coach ? 'su' : 'tu'} test de carrera de 5 minutos.`}${mx ? ' Pulsaciones con la FC máxima.' : ''}</p></div></section>`;
 }
 const FASES = [['calentamiento', 'Calentamiento'], ['principal', 'Parte principal'], ['enfriamiento', 'Enfriamiento']];
 const TIPOS_PRINCIPAL = ['Zona 1', 'Zona 2', 'Zona 3', 'Zona 4', 'Zona 5', 'Escaleras', 'Cuestas'];
@@ -3341,7 +3350,7 @@ function vFichaSub(f, a) {
     const dpwB = f.prog?.dias_semana || 0, dpw = dpwEn(a.id, lunes, dpwB), dpw4 = [0, 1, 2, 3].reduce((t, k) => t + dpwEn(a.id, sumaDias(lunes, -7 * k), dpwB), 0), P = proceso(srv), linea = s2 => `<div class="line" data-act="verSesion" data-id="${s2.id}" style="cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(s2.fecha))}</span><div class="grow"><div class="small"><b>${esc(nomDia(s2.dias))}</b> · ${esc(s2.dias?.foco || '')} · ${nSeriesReg(s2.registros_series)} series${s2.duracion_min ? ` · ${s2.duracion_min} min` : ''}${s2.cansancio ? ` · cansancio ${s2.cansancio}/5` : ''}${(s2.omitidos || []).length ? ` · ${s2.omitidos.length} no realizado${s2.omitidos.length > 1 ? 's' : ''}` : ''}</div>${s2.nota ? `<div class="small muted">"${esc(s2.nota)}"</div>` : ''}</div><span class="small" style="color:var(--blue-text)">›</span></div>`;
     const semana = f.ses.filter(x => x.fecha >= lunes), bloque = P && !P.antes ? f.ses.filter(x => x.fecha >= P.cc.ini && x.fecha <= P.cc.fin && x.fecha < lunes) : [];
     const unicas = l => new Set(l.map(x => x.fecha + x.dia_id)).size, mes = unicas(f.todas.filter(x => x.fecha >= sumaDias(hoy, -27)));
-    return cab('Entrenamiento') + vZonasFC({ vals: f.val, perfil: a, srv, coach: true }) + (() => { const h = vSelectorProgs(a.id, null); return h ? `<section class="section"><div class="card">${h}</div></section>` : ''; })() + vContextos(f, a) + `
+    return cab('Entrenamiento') + vZonasFC({ vals: f.val, perfil: a, srv, coach: true }) + vRitmosVAM({ vals: f.val, perfil: a, coach: true }) + (() => { const h = vSelectorProgs(a.id, null); return h ? `<section class="section"><div class="card">${h}</div></section>` : ''; })() + vContextos(f, a) + `
     <section class="section"><div class="section-head"><h2>Programa</h2><button class="btn sm" data-act="editarPrograma" data-id="${a.id}">${f.prog ? '✎ Editar programa' : 'Crear programa'}</button></div><div class="card small">${f.prog ? `<b>${esc(f.prog.nombre)}</b> · ${dpw || '—'} días por semana` : 'Aún no tiene programa.'}</div></section>
     <section class="section"><h2>Esta semana</h2><div class="card">${dpw ? barra('Entrenos de la semana', unicas(semana), dpw, '') + barra('Últimas 4 semanas', mes, dpw4, '') : ''}${semana.map(linea).join('') || '<div class="empty">Aún no ha entrenado esta semana.</div>'}</div></section>
     ${P && !P.antes ? `<section class="section"><h2>Resto del bloque · ${esc(nomCiclo(P.cc))}</h2><div class="card">${bloque.map(linea).join('') || '<div class="empty">Sin entrenamientos anteriores en este bloque.</div>'}</div></section>` : ''}
@@ -5735,7 +5744,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v206';
+const APP_VER = 'v207';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
