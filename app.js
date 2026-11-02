@@ -1486,7 +1486,7 @@ const TEMAS = [
   ['sup_completo', 'Tren superior completo', 'hm'], ['pierna_completo', 'Tren inferior completo', 'hm'],
   ['sup_pecho', 'Cintura + tren superior · foco pecho', 'h'], ['sup_brazos', 'Cintura + tren superior · foco brazos', 'hm'], ['sup_hombros', 'Cintura + tren superior · foco hombros', 'hm'], ['sup_espalda', 'Cintura + tren superior · foco espalda', 'hm'], ['sup_espalda_alta', 'Cintura + tren superior · foco espalda alta', 'hm'],
   ['cardio_gym', 'Cardio en gym', 'hm'], ['cardio_parque', 'Cardio · correr en parque', 'hm'], ['movilidad', 'Movilidad articular', 'hm'],
-  ['futbol', 'Fútbol', 'hm'], ['recuperacion', 'Recuperación', 'hm']];
+  ['futbol', 'Fútbol', 'hm'], ['recuperacion', 'Recuperación', 'hm'], ['descanso', 'Descanso', 'hm'], ['actividad_alt', 'Actividad alternativa', 'hm']];
 const TEMA_ANT = { gluteo: 'pierna_gluteo', cardio: 'cardio_gym', inferior: 'pierna_cadera', superior: 'sup_espalda' };
 const sexoDe = id => { const p = id && (id === S.perfil?.id ? S.perfil : (S.c?.perfiles || []).find(x => x.id === id)); return p?.sexo === 'mujer' ? 'm' : p?.sexo === 'hombre' ? 'h' : ''; };
 /* Imagen de la temática según el sexo (si falta la suya, la del otro sexo o la común) */
@@ -1494,8 +1494,9 @@ const imgTema = (k, sx) => { const T = S.temas || {}; return T[`${k}_${sx}`] || 
 function temaDe(d, sx = '') {
   const man = TEMA_ANT[d?.tematica] || d?.tematica;
   if (man && TEMAS.some(t => t[0] === man)) return man;
+  if (d?.tipo_dia === 'descanso') return 'descanso';
   const tit = norm([d?.titulo, d?.foco, d?.nombre].filter(Boolean).join(' '));
-  const PAL = [['recuperacion', /recupera|descarga|regenera/], ['movilidad', /movilidad|articular|estiramiento/], ['futbol', /futbol|partido|campo/], ['cardio_parque', /parque|correr|carrera|rodaje/], ['cardio_gym', /cardio|cinta|eliptica|bici/],
+  const PAL = [['actividad_alt', /actividad alternativa|alternativ|senderismo|paseo|natacion|nadar|ciclismo|excursion/], ['descanso', /\bdescanso\b|dia libre/], ['recuperacion', /recupera|descarga|regenera/], ['movilidad', /movilidad|articular|estiramiento/], ['futbol', /futbol|partido|campo/], ['cardio_parque', /parque|correr|carrera|rodaje/], ['cardio_gym', /cardio|cinta|eliptica|bici/],
     ['completo', /cuerpo completo|full ?body|fullbody|total/], ['pierna_gluteo', /gluteo/], ['pierna_cadera', /cadera/], ['pierna_rodilla', /rodilla/], ['pierna_delante', /delante|anterior|cuadricep/], ['pierna_detras', /detras|posterior|isquio|femoral/],
     ['sup_espalda_alta', /espalda alta|escapul|trapecio/], ['sup_pecho', /pecho|pectoral/], ['sup_brazos', /brazo|bicep|tricep/], ['sup_hombros', /hombro|deltoid/], ['sup_espalda', /espalda|dorsal/], ['sup_completo', /tren superior|torso/], ['pierna_completo', /tren inferior|pierna/]];   // «core» en el título no decide: se trabaja en casi todos los entrenos
   for (const [k, re] of PAL) { if (!re.test(tit)) continue; if ((k === 'sup_pecho' && sx === 'm') || (k === 'pierna_gluteo' && sx === 'h')) continue; return k; }
@@ -5724,7 +5725,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v202';
+const APP_VER = 'v203';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
