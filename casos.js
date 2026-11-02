@@ -140,8 +140,10 @@ const Casos = (() => {
   }
   /* Tarjeta de Hoy: franja tranquila fuera de la ventana; destacada (sin presión) en la semana del control */
   /* Fotos y reflexión del mes: línea para «Pendiente» mientras la ventana del mes esté abierta y sin completar */
+  /* Futbolistas y opositores no reciben el recordatorio mensual: la sección sigue en su Progreso por si quieren hacerlo */
+  const sinRecordatorio = srv => !!(srv?.modulo_futbol || srv?.oposicion);
   function pendienteMes() {
-    const D = S.d; if (!D || D.casosErr || D.puntosErr || !D.servicio?.inicio || S.vista || S.prueba) return null;
+    const D = S.d; if (!D || sinRecordatorio(D.servicio) || D.casosErr || D.puntosErr || !D.servicio?.inicio || S.vista || S.prueba) return null;
     const act = saldo(D.servicio, D.fotosProg, D.testimonios, D.canjes).ms.find(m => m.abierto); if (!act || act.completo) return null;
     const falta = [!act.foto && `fotos ${act.vistas}/3`, !act.refl && 'reflexión del mes'].filter(Boolean).join(' y ');
     return ['📸', 'Fotos y reflexión del mes', `Falta: ${falta} · hasta el ${fLarga(act.fin)}`, 'data-act="fpSubir"', 'Hacerlo ahora'];
@@ -149,7 +151,7 @@ const Casos = (() => {
   function tarjetaHoy(arriba) {
     const D = S.d; if (!D || D.casosErr || D.puntosErr || !D.servicio?.inicio || S.vista || S.prueba) return '';
     const P = saldo(D.servicio, D.fotosProg, D.testimonios, D.canjes), act = P.ms.find(m => m.abierto), sig = PREMIOS.find(p => p[2] > P.saldo), puede = PREMIOS.filter(p => p[2] <= P.saldo).slice(-1)[0];
-    const enVentana = !!act && !act.completo;
+    const enVentana = !!act && !act.completo && !sinRecordatorio(D.servicio);
     if (arriba !== enVentana) return '';
     if (enVentana && arriba) return '';   // la ventana abierta sale en «Pendiente»
     if (enVentana) {
@@ -269,7 +271,7 @@ const Casos = (() => {
   }
   /* Alerta: pasó la semana del control mensual y no hay fotos de progreso cerca de esa fecha */
   function alertaFotos(aid, srv) {
-    if (S.c?.casosErr || !srv?.inicio) return null;
+    if (S.c?.casosErr || !srv?.inicio || srv.modulo_futbol || srv.oposicion) return null;
     const hoy = hoyISO(), c = controlesMensuales(srv, sumaDias(hoy, -4)).slice(-1)[0]; if (!c || c.fecha < sumaDias(hoy, -35)) return null;
     const hay = (S.c.fotosProg || []).some(x => x.alumno_id === aid && x.fecha >= sumaDias(c.fecha, -10));
     return hay ? null : `Fotos de progreso del control mensual ${c.n} (${fCorta(c.fecha)}) sin subir`;
