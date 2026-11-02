@@ -20,6 +20,8 @@ const Tandas = {
     'Unilateral contraste': { tipo: 'ucontraste', info: 'Contraste unilateral: con un lado, la 1ª parte y sin parar la 2ª; después, el otro lado (mismo peso salvo que se indique otro).' },
     'Forzadas': { tipo: 'simple', forz: true, info: 'Forzadas: llega a las repeticiones objetivo aunque no te salgan seguidas. Cuando no puedas más, para 5 segundos y sigue sumando hasta llegar.' },
     'Topset': { tipo: 'top', info: 'Top set: la 1ª serie es la más pesada. Las siguientes van con un 15 % menos de peso.' },
+    'Series parciales': { tipo: 'simple', parcial: true, info: 'Series parciales: la misma serie, con el mismo ejercicio, pero cambiando el rango de movimiento (o el ajuste de la máquina) en cada tramo o en cada serie. Fíjate en el rango indicado antes de empezar cada una.' },
+    'Mixto': { tipo: 'mixto', info: 'Mixto: dentro de la misma serie se encadenan tramos con métodos distintos. Cada tramo indica su método; haz uno detrás de otro, con la pausa que se indique.' },
     'Isométrico': { tipo: 'simple', iso: true, info: 'Isométrico: sostén la carga, sin moverte, en la posición indicada durante el tiempo marcado. Aquí no cuentas repeticiones, sino segundos.' }
   },
   /* Métodos que crea el coach desde la biblioteca: se comportan como uno de estos 4 modelos */
@@ -61,7 +63,7 @@ const Tandas = {
   estructura(e) {
     const M = this.met(e) || { tipo: 'pausa' }, G = gruposDe(e.pauta), kg0 = e.peso_ref;
     const exp = gs => gs.flatMap(g => [...Array(g.s || 1)].map(() => g.tramos));
-    const P = (t, x = {}) => ({ r: t.r, kg: t.kg, rir: t.rir, ...(t.op?.ritmo ? { ritmo: t.op.ritmo } : {}), ...x });
+    const P = (t, x = {}) => ({ r: t.r, kg: t.kg, rir: t.rir, ...(t.op?.ritmo ? { ritmo: t.op.ritmo } : {}), ...(t.op?.rg ? { rg: t.op.rg } : {}), ...x });
     const rirS = (tr, t) => t.rir ?? tr[0].rir ?? e.rir;
     let out;
     if (M.tipo === 'pausa' || M.tipo === 'drop') {
@@ -89,6 +91,14 @@ const Tandas = {
           ? { tandas: fases.map((p, k) => ({ partes: ['D', 'I'].map(l => ({ ...p, lado: l })), d: k < fases.length - 1 ? 0 : d, tipo: p.tipo })) }
           : { tandas: ['D', 'I'].map(l => ({ partes: fases.map(p => ({ ...p, lado: l })), d: l === 'D' ? 0 : d, lado: l })) };
       });
+    } else if (M.tipo === 'mixto') {
+      out = exp(G).map(tr => ({ tandas: tr.flatMap((t, k) => {
+        const mn = t.op?.mt || '', m = this.MET[mn] && this.MET[mn].tipo !== 'mixto' ? this.MET[mn] : { tipo: 'simple' }, fin = k === tr.length - 1;
+        const dF = t.d ?? (fin ? e.descanso_seg ?? 60 : m.tipo === 'pausa' ? m.pausa || 0 : 0), rir = rirS(tr, t), kg = t.kg ?? (m.tipo === 'drop' && k ? '' : tr[0].kg ?? kg0);
+        if (m.tipo === 'uni' || m.tipo === 'doble' || m.tipo === 'ucontraste') return ['D', 'I'].map(l => ({ partes: [P(t, { r: this.limpiaR(t.r), rir, kg, lado: l })], d: l === 'D' ? 0 : dF, lado: l, mt: mn }));
+        const X = m.iso || this.esIso(t) ? { tipo: 'iso', ...(t.op?.pos ? { pos: t.op.pos } : {}) } : {};
+        return [{ partes: [P(t, { rir, kg, ...X })], d: dF, mt: mn }];
+      }) }));
     } else if (M.tipo === 'top') {
       const viejo = G.length === 1 && G[0].tramos.length > 1 && G[0].s === G[0].tramos.length;
       const series = viejo ? G[0].tramos.map((t, i) => i === 0 ? [t] : trocear({ ...t, s: 1 }, /''|´´|seg/.test(t.r || '') ? 'Rest-pause' : /\+/.test(t.r || '') ? 'Dropset' : '', false)) : exp(gruposDe(pautaEfectiva(e)));
@@ -144,11 +154,12 @@ const Tandas = {
     const r = String(x?.r ?? '').trim(), ph = repsPh(r);
     return { txt: ph === 'Máx' ? 'al máximo' : ph ? `${ph} reps` : r || '—', num: /^\d+$/.test(ph) ? +ph : null, ph: /^\d/.test(ph) ? ph : '' };
   },
-  nomParte(x) { return [x.vuelta ? `${x.vuelta}ª vuelta` : '', x.lado ? this.LADO[x.lado] : '', x.tipo ? this.TIPO[x.tipo] : ''].filter(Boolean).join(' · '); },
+  nomParte(x) { return [x.rg || '', x.vuelta ? `${x.vuelta}ª vuelta` : '', x.lado ? this.LADO[x.lado] : '', x.tipo ? this.TIPO[x.tipo] : ''].filter(Boolean).join(' · '); },
   chipLado: l => `<span class="rp-lado ${l === 'D' ? 'd' : 'i'}">${l === 'D' ? 'Derecho' : 'Izquierdo'}</span>`,
   tituloTanda(t, k, nT) {
     if (t.doble) return 'Doble vuelta sin parar';
-    if (t.lado) return `Lado ${t.lado === 'D' ? 'derecho' : 'izquierdo'}`;
+    if (t.lado) return `${t.mt ? t.mt + ' · ' : ''}Lado ${t.lado === 'D' ? 'derecho' : 'izquierdo'}`;
+    if (t.mt) return `${k + 1} · ${t.mt}`;
     if (t.tipo) return `${k + 1} · ${this.TIPO[t.tipo]}`;
     return nT === 1 ? 'Tu serie' : `Tanda ${k + 1}`;
   },
@@ -213,7 +224,7 @@ const Tandas = {
   kgPlan(x, sp) { return sp ? '' : x.kg === '' ? '' : kgDe(x); },
   cabParte(x, rirUnico, sp, k) {
     const o = this.objetivo(x), kgP = this.kgPlan(x, sp);
-    return `<span class="muted"> · Objetivo: ${esc(o.txt)}${x.auto ? ' · baja un 20 %' : (!sp && x.kg === '' && k > 0) ? ' · baja el peso' : ''}</span>${rirUnico === undefined && x.rir != null && x.rir !== '' ? ` <span class="rp-rir-chip">RIR ${esc(String(x.rir))}</span>` : ''}`;
+    return `<span class="muted"> · Objetivo: ${esc(o.txt)}${x.auto ? ' · baja un 20 %' : (!sp && x.kg === '' && k > 0) ? ' · baja el peso' : ''}</span>${rirUnico === undefined && x.rir != null && x.rir !== '' ? ` <span class="rp-rir-chip">RIR ${esc(String(x.rir))}</span>` : ''}${x.rg ? ` <span class="rp-rg">📐 ${esc(x.rg)}</span>` : ''}`;
   },
   campos(e, fila, n, x, sp, una, rirUnico, t = {}) {
     const z = S.sesion, id = `${fila}-${x.p}`, u = z.ultimos[id], v = z.valores[id], bor = z.borr || {}, o = this.objetivo(x), kgP = this.kgPlan(x, sp), bajada = !sp && x.kg === '' && x.p > 0;
@@ -222,7 +233,7 @@ const Tandas = {
     const phKg = kgP ? fmtNum(numero(kgP), 2) : (u?.kg != null ? fmtNum(u.kg, 2) : '—'), phRp = o.iso ? (o.num ?? (u?.repeticiones ?? '—')) : (o.ph || (x.myo ? '—' : (u?.repeticiones ?? '—')));
     const nom = this.nomParte(x), lblR = o.iso ? 'Segundos' : 'Reps realizadas';
     return `<div class="rp-parte${una ? ' una' : ''}">
-      ${una ? '' : `<div class="rp-pt">${x.lado && !t.lado ? this.chipLado(x.lado) : ''}${x.vuelta ? `<b>${x.vuelta}ª vuelta</b>` : ''}${x.tipo ? `<b>${esc(this.TIPO[x.tipo])}</b>` : ''}<span class="muted">Objetivo: ${esc(o.txt)}</span>${rirUnico === undefined && x.rir != null && x.rir !== '' ? `<span class="rp-rir-chip">RIR ${esc(String(x.rir))}</span>` : ''}</div>`}
+      ${una ? '' : `<div class="rp-pt">${x.lado && !t.lado ? this.chipLado(x.lado) : ''}${x.vuelta ? `<b>${x.vuelta}ª vuelta</b>` : ''}${x.tipo ? `<b>${esc(this.TIPO[x.tipo])}</b>` : ''}<span class="muted">Objetivo: ${esc(o.txt)}</span>${rirUnico === undefined && x.rir != null && x.rir !== '' ? `<span class="rp-rir-chip">RIR ${esc(String(x.rir))}</span>` : ''}${x.rg ? `<span class="rp-rg">📐 ${esc(x.rg)}</span>` : ''}</div>`}
       <div class="rp-campos${sp ? ' uno' : ''}">
         ${sp ? '' : `<label>Peso (kg)<span class="kg-w"><input id="kg-${id}" data-tanda="1" data-row="${fila}" data-plan="${esc(kgP)}"${bajada ? ' data-bajada="1"' : ''} type="text" inputmode="decimal" placeholder="${esc(phKg)}" value="${esc(val('kg', 'kg'))}" aria-label="Peso en kilos, serie ${n}${nom ? ', ' + esc(nom) : ''}"></span></label>`}
         <label>${lblR}<input id="rp-${id}" data-tanda="1" data-row="${fila}" data-obj="${o.num ?? ''}"${o.iso ? ' data-iso="1"' : ''} type="text" inputmode="numeric" placeholder="${esc(String(phRp))}" value="${esc(val('rp', 'repeticiones'))}" aria-label="${lblR}, serie ${n}${nom ? ', ' + esc(nom) : ''}"></label>
@@ -408,6 +419,15 @@ Tandas.ed = {
       n: Math.max(g[0]?.tramos.length || 0, tipo === 'drop' ? 3 : 3), pausa: M.pausa ?? 20, reps: (g[0]?.tramos || []).map(t => repsPh(t.r) || t.r || ''), baja: 20 };
     if (tipo === 'pausa' && g[0]?.tramos.length > 1) v.pausa = g[0].tramos[0].d ?? v.pausa;
     if (M.iso) v.r = Tandas.segDe(t0) || 30;
+    if (M.parcial) {
+      const un = g.length > 1 && g.every(gr => gr.tramos.length === 1), it = un ? g.map(gr => gr.tramos[0]) : (g[0]?.tramos || []);
+      v.modo = un ? 'series' : 'misma'; v.items = it.map(t => ({ rg: t.op?.rg || '', r: Tandas.limpiaR(t.r || '') })); v.n = Math.max(2, it.length); v.s = un ? (g[0].s || 1) : (t0.s || 3);
+      v.pausa = !un && it.length > 1 ? (it[0].d ?? 0) : 0;
+    }
+    if (tipo === 'mixto') {
+      const it = g[0]?.tramos || [];
+      v.items = it.map(t => { const iso = Tandas.esIso(t); return { m: t.op?.mt || '', r: iso ? String(Tandas.segDe(t) || 30) : Tandas.limpiaR(t.r || ''), kg: numero(kgDe(t)) ?? '', rg: t.op?.rg || '' }; }); v.n = Math.max(2, it.length);
+    }
     if (tipo === 'doble') { v.rir2 = g[0]?.tramos[1]?.rir ?? 0; }
     if (tipo === 'contraste' || tipo === 'ucontraste') {
       const t1 = g[0]?.tramos[1] || {};
@@ -430,6 +450,12 @@ Tandas.ed = {
   txt: (id, lbl, val, ph = '') => `<label>${lbl}<input type="text" data-a="${id}" value="${esc(val ?? '')}" placeholder="${esc(ph)}"></label>`,
   sel: (id, lbl, val, ops) => `<label>${lbl}<select data-a="${id}">${ops.map(([k, l]) => `<option value="${k}" ${String(val) === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`,
   contador: (id, lbl, val, min, max) => `<div class="as-cont"><span class="small">${lbl}</span><div class="row" style="gap:6px;align-items:center"><button type="button" class="mini" data-menos="${id}" aria-label="Quitar">−</button><b data-a-v="${id}">${val}</b><button type="button" class="mini" data-mas="${id}" data-max="${max}" data-min="${min}" aria-label="Añadir">＋</button></div></div>`,
+  filaRango(k, o, o0) { return `<div class="as-grid" style="grid-template-columns:2fr 1fr">${this.txt('g' + k, `Rango o ajuste ${k + 1}`, o.rg, k ? 'Ej.: mitad superior' : 'Ej.: rango completo')}${this.txt('r' + k, 'Reps', o.r || o0.r || '10')}</div>`; },
+  METS_MIXTO: () => Object.keys(Tandas.MET).filter(n => !['Mixto', 'Series parciales', 'Topset'].includes(n)),
+  filaMixto(k, o) {
+    const ops = [['', 'Serie normal'], ...this.METS_MIXTO().map(n => [n, n])];
+    return `<div class="as-grid" style="padding:8px;border:1px solid var(--line);border-radius:10px">${this.sel('m' + k, `Método del tramo ${k + 1}`, o.m || '', ops)}${this.txt('r' + k, 'Reps (o segundos)', o.r || '8')}${this.num('k' + k, 'Peso (kg, opcional)', o.kg)}${this.txt('g' + k, 'Rango o ajuste', o.rg, 'Opcional')}</div>`;
+  },
   /* Panel del método */
   html(met, pauta, cambio) {
     const M = Tandas.MET[met]; if (!M) return '';
@@ -457,6 +483,15 @@ Tandas.ed = {
         M.tipo === 'ucontraste' ? this.sel('orden', 'Orden', v.orden, [['lado', 'Por lado: derecho (1ª y 2ª parte) y luego izquierdo'], ['fase', 'Por partes: 1ª parte con los dos lados y luego la 2ª']]) : ''].join('');
     } else if (M.tipo === 'doble') {
       campos = [this.num('s', 'Series', v.s), this.txt('r', 'Reps por lado', v.r), this.num('kg', 'Peso (kg)', v.kg), this.txt('rir', 'RIR 1ª vuelta', v.rir), this.txt('rir2', 'RIR 2ª vuelta', v.rir2), this.num('d', 'Descanso entre series (s)', v.d)].join('');
+    } else if (M.parcial) {
+      const N = Math.min(Math.max(v.n, 2), 5), it = v.items || [];
+      campos = [this.sel('modo', 'Cómo cambia el rango', v.modo || 'misma', [['misma', 'Dentro de la misma serie, sin parar'], ['series', 'En series distintas (un rango por serie)']]), this.num('s', (v.modo === 'series' ? 'Series por rango' : 'Series'), v.s), this.num('kg', 'Peso (kg)', v.kg), this.txt('rir', 'RIR', v.rir),
+        ...(v.modo === 'series' ? [] : [this.num('pausa', 'Pausa entre tramos (s)', v.pausa ?? 0)]), this.num('d', 'Descanso entre series (s)', v.d)].join('');
+      extra = this.contador('n', 'Rangos', N, 2, 5) + `<div class="stack" style="gap:6px" data-rangos>${[...Array(N)].map((_, k) => this.filaRango(k, it[k] || {}, it[0] || {})).join('')}</div><span class="small muted">Escribe el rango o el ajuste: «mitad inferior», «último tercio», «respaldo 3 → 6», «silla 2»… El alumno lo verá en cada tramo.</span>`;
+    } else if (M.tipo === 'mixto') {
+      const N = Math.min(Math.max(v.n, 2), 5), it = v.items || [];
+      campos = [this.num('s', 'Series', v.s), this.num('kg', 'Peso (kg) por defecto', v.kg), this.txt('rir', 'RIR', v.rir), this.num('d', 'Descanso entre series (s)', v.d)].join('');
+      extra = this.contador('n', 'Tramos de la serie', N, 2, 5) + `<div class="stack" style="gap:8px" data-rangos>${[...Array(N)].map((_, k) => this.filaMixto(k, it[k] || {})).join('')}</div><span class="small muted">Cada tramo usa su método y sigue al anterior sin parar (salvo la pausa propia del método). El rango o ajuste es opcional.</span>`;
     } else if (M.iso) {
       campos = [this.num('s', 'Series', v.s), this.num('r', 'Segundos que debe aguantar', v.r), this.num('kg', 'Peso (kg, si lleva carga)', v.kg), this.txt('pos', 'Posición a mantener', v.pos, 'Ej.: rodillas a 90º, codo flexionado a 90º, a mitad de recorrido'), this.num('d', 'Descanso entre series (s)', v.d)].join('');
     } else {
@@ -478,6 +513,12 @@ Tandas.ed = {
     const met = panel.dataset.met, M = Tandas.MET[met], a = k => panel.querySelector(`[data-a="${k}"]`)?.value.trim() ?? '', n = k => numero(a(k)), cnt = k => +(panel.querySelector(`[data-a-v="${k}"]`)?.textContent || 0);
     const s = Math.max(1, n('s') || 1), kg = n('kg'), rir = a('rir') === '' ? undefined : (/^\d+$/.test(a('rir')) ? +a('rir') : a('rir')), d = n('d') ?? 120;
     const R = v => v === '' ? undefined : (/^\d+$/.test(v) ? +v : v);
+    if (M.parcial) {
+      const N = cnt('n'), op = k => a('g' + k) ? { rg: a('g' + k) } : undefined, r = k => a('r' + k) || a('r0') || '10';
+      if (a('modo') === 'series') return [...Array(N)].map((_, k) => T({ s, r: r(k), rir, kg: this.kg(kg), d, op: op(k) }));
+      const p = n('pausa') ?? 0;
+      return [...Array(N)].map((_, k) => T({ s: k ? undefined : s, r: r(k), rir: k ? undefined : rir, kg: this.kg(kg), d: k < N - 1 ? p : d, op: op(k) }));
+    }
     if (M.iso) return [T({ s, r: `${n('r') || 30}´´ isométrico`, kg: this.kg(kg), d, tp: 'iso', op: a('pos') ? { pos: a('pos') } : undefined })];
     switch (M.tipo) {
       case 'pausa': { const N = cnt('n'), p = n('pausa') ?? M.pausa;
@@ -504,6 +545,12 @@ Tandas.ed = {
         const r1 = t1 === 'iso' ? `${a('r1') || 30}´´ isométrico` : (a('r1') || '7') + x + (eti[t1] || ''), r2 = t2 === 'iso' ? `${a('r2') || 30}´´ isométrico` : (a('r2') || '10') + x + (eti[t2] || '');
         const kg2 = n('kg2') ?? (t1 === 'pesado' && t2 === 'explosivo' && kg ? kg * 0.5 : kg);   // pesado→explosivo: 50 %; el resto (p. ej. superlento→explosivo) con el mismo peso
         return [T({ s, r: r1, rir, kg: this.kg(kg), d: 0, tp: t1, op: M.tipo === 'ucontraste' ? { orden: a('orden') || 'lado' } : undefined }), T({ r: r2, rir: R(a('rir2') || '0') ?? 0, kg: this.kg(kg2), d, tp: t2 })]; }
+      case 'mixto': { const N = cnt('n');
+        return [...Array(N)].map((_, k) => {
+          const mn = a('m' + k), m = Tandas.MET[mn] || {}, rv = a('r' + k) || '8', kk = n('k' + k) ?? kg, op = { ...(mn ? { mt: mn } : {}), ...(a('g' + k) ? { rg: a('g' + k) } : {}) };
+          const iso = m.iso, uni = m.tipo === 'uni' || m.tipo === 'doble' || m.tipo === 'ucontraste';
+          return T({ s: k ? undefined : s, r: iso ? `${rv}´´ isométrico` : uni ? `${rv} x lado` : rv, rir: k ? undefined : rir, kg: this.kg(kk), d: k < N - 1 ? (m.tipo === 'pausa' ? m.pausa : 0) : d, tp: iso ? 'iso' : undefined, op: Object.keys(op).length ? op : undefined });
+        }); }
       case 'doble': return [T({ s, r: (a('r') || '8') + ' x lado', rir: rir ?? 1, kg: this.kg(kg), d: 0 }), T({ r: (a('r') || '8') + ' x lado', rir: R(a('rir2')) ?? 0, kg: this.kg(kg), d })];
       case 'uni': return [T({ s, r: (a('r') || '10') + ' x lado', rir, kg: this.kg(kg), d })];
       default: return [T({ s, r: a('r') || '10', rir, kg: this.kg(kg), d })];
@@ -533,11 +580,16 @@ Tandas.ed = {
       if (ev.target.dataset.a === 'rm') { const k = panel.querySelector('[data-a="kg"]'); const rm = numero(ev.target.value); if (k && rm) k.value = fmtNum(this.red(rm * 0.9), 2); }
       volcar();
     });
-    cont.addEventListener('change', ev => { const da = ev.target.dataset.a || ''; if (da === 'ps' || (da === 's' && cont.querySelector('[data-a="ps"]'))) { volcar(); pintar(false); return; } if (/^t[12](\.\d+)?$/.test(da)) { const l = ev.target.closest('.as-grid').querySelector(`[data-a="r${da[1]}${da.slice(2)}"]`)?.closest('label'); if (l) l.firstChild.textContent = ev.target.value === 'iso' ? 'Segundos' : 'Reps'; volcar(); } if (ev.target.dataset.a === 'var') { const c = cont.querySelector('[data-a-v="bn"]'); if (c) c.textContent = ev.target.value === 'rp' ? 3 : 2; volcar(); } });
+    cont.addEventListener('change', ev => { const da = ev.target.dataset.a || ''; if (da === 'ps' || da === 'modo' || (da === 's' && cont.querySelector('[data-a="ps"]'))) { volcar(); pintar(false); return; } if (/^t[12](\.\d+)?$/.test(da)) { const l = ev.target.closest('.as-grid').querySelector(`[data-a="r${da[1]}${da.slice(2)}"]`)?.closest('label'); if (l) l.firstChild.textContent = ev.target.value === 'iso' ? 'Segundos' : 'Reps'; volcar(); } if (ev.target.dataset.a === 'var') { const c = cont.querySelector('[data-a-v="bn"]'); if (c) c.textContent = ev.target.value === 'rp' ? 3 : 2; volcar(); } });
     cont.addEventListener('click', ev => {
       const b = ev.target.closest('[data-mas],[data-menos]'); if (!b) return; ev.preventDefault();
       const id = b.dataset.mas || b.dataset.menos, el = cont.querySelector(`[data-a-v="${id}"]`), mx = cont.querySelector(`[data-mas="${id}"]`), v = +el.textContent + (b.dataset.mas ? 1 : -1);
       if (v < +mx.dataset.min || v > +mx.dataset.max) return; el.textContent = v;
+      const rg = cont.querySelector('[data-rangos]');
+      if (rg && id === 'n') {
+        const mix = cont.querySelector('.as-panel')?.dataset.tipo === 'mixto', gr = [...rg.children].map(c => ({ m: c.querySelector('[data-a^="m"]')?.value || '', r: c.querySelector('[data-a^="r"]')?.value || '', kg: c.querySelector('[data-a^="k"]')?.value || '', rg: c.querySelector('[data-a^="g"]')?.value || '' }));
+        rg.innerHTML = [...Array(v)].map((_, k) => { const o = gr[k] || {}, o0 = gr[gr.length - 1] || {}; return mix ? this.filaMixto(k, k < gr.length ? o : { r: o0.r }) : this.filaRango(k, k < gr.length ? { rg: o.rg, r: o.r } : {}, { r: o0.r }); }).join('');
+      }
       const reps = cont.querySelector('[data-reps]');
       if (reps && id === 'n') { const ls = [...reps.querySelectorAll('input')].map(i => i.value); reps.innerHTML = [...Array(v)].map((_, k) => this.txt('r' + k, `Reps tanda ${k + 1}`, ls[k] ?? ls[ls.length - 1] ?? '8')).join(''); }
       volcar();

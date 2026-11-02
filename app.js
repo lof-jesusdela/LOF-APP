@@ -5203,7 +5203,9 @@ function filaTramo(t, primero) {
     <label>Peso<input type="text" data-k="kg" value="${esc(t.kg || '')}" placeholder="20 kg"></label>
     <label>Desc. (s)<input type="number" data-k="d" min="0" step="5" value="${t.d ?? ''}" placeholder="60"></label>
     <button type="button" class="mini" data-quitar aria-label="Quitar">✕</button>
+    <label style="grid-column:1/3">Método del tramo<select data-k="mt"><option value="">— (el del ejercicio)</option>${Object.keys(Tandas.MET).filter(n => !['Mixto', 'Series parciales', 'Topset'].includes(n)).map(n => `<option ${t.op?.mt === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
     <label style="grid-column:3/5">RIR<input type="text" data-k="rir" value="${esc(t.rir ?? '')}" placeholder="1"></label>
+    <label style="grid-column:1/-1">Rango o ajuste de máquina (opcional)<input type="text" data-k="rg" value="${esc(t.op?.rg || '')}" placeholder="Ej.: mitad inferior · respaldo 3"></label>
     <input type="hidden" data-k="tp" value="${esc(t.tp || '')}"><input type="hidden" data-k="op" value="${esc(t.op ? JSON.stringify(t.op) : '')}">
   </div>`;
 }
@@ -5217,6 +5219,8 @@ function leerFilaTramo(f, i = 1) {
   t.d = numero(g('d')) ?? 0;
   if (g('tp')) t.tp = g('tp');
   if (g('op')) try { t.op = JSON.parse(g('op')); } catch (e) { }
+  const rg = g('rg'), mt = g('mt');
+  if (rg || mt || t.op) { t.op = { ...(t.op || {}) }; if (rg) t.op.rg = rg; else delete t.op.rg; if (mt) t.op.mt = mt; else delete t.op.mt; if (!Object.keys(t.op).length) delete t.op; }
   return t;
 }
 const MATERIALES = ['Barra recta', 'Barra Z', 'Barra olímpica', 'Cuerda', 'Agarre en V', 'Agarre neutro', 'Agarre prono', 'Agarre supino', 'Agarre amplio', 'Agarre cerrado', 'Barra de polea corta', 'Mancuernas', 'Kettlebell', 'Banda elástica', 'Mini banda', 'Tobillera', 'Landmine', 'Smith', 'Banco plano', 'Banco inclinado'];
@@ -5711,7 +5715,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v199';
+const APP_VER = 'v200';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
