@@ -112,8 +112,9 @@ const Nutricion = (() => {
     const docs = [...DOCS.map(([k, t, s, ic]) => ({ x: docDe(n, k), k, t, s, ic })).filter(o => tiene(o.x)),
       ...n.plan.filter(x => !DOCS.some(([k]) => k === x.clave) && !esInc(x) && tiene(x)).map(x => ({ x, k: x.clave, t: x.titulo, s: '', ic: '📌' }))];
     const cab = prev ? '' : `<section class="stack"><span class="eyebrow">Tu plan de alimentación</span><h1>Nutrición</h1><p class="small muted">Tu guía para comer bien sin pensarlo demasiado. Vuelve aquí siempre que tengas una duda.</p></section>`;
-    return cab + vFase(d) + vIncAlumno(n, d) + vHoyCtx(n, d) + vDocs(docs) + (prev ? '' : vDiario(n, d));
+    return cab + vFase(d) + vIncAlumno(n, d) + vHoyCtx(n, d) + (prev ? '' : vBtnSemana()) + vDocs(docs) + (prev ? '' : vDiario(n, d));
   }
+  const vBtnSemana = () => `<section class="section"><div class="card stack" style="gap:6px"><span class="eyebrow">Tu semana</span><p class="small muted" style="margin:0">Marca cuándo entrenas y trabajas, qué vas a comer cada día y cuándo te permites tu 15 %. Te calculo las cantidades y te preparo la lista de la compra.</p><button class="btn full" data-act="nuSemana">🗓 Planifica tu semana y la compra</button></div></section>`;
   function vFase(d) {
     const f = fase(d); if (!f) return '';
     const txt = {
@@ -328,6 +329,7 @@ const Nutricion = (() => {
       case 'nuCtx': S.nCtx = +b.dataset.i; try { localStorage.setItem('lof-nctx', hoyISO() + '|' + S.nCtx); } catch (err) { /* sin almacenamiento */ } render(); break;
       case 'nuDia': S.nDia = b.dataset.f; render(); break;
       case 'nuCalc': formPlato(); break;
+      case 'nuSemana': MenuSemana.abrir(); break;
       case 'nuInc': formInc(b.dataset.k); break;
       case 'nuIncIni': { const v = $('#inc-ini')?.value; if (!v) return toast('Elige la fecha'); try { await guardarResumen(S.ficha, d => { d.inicio = v; }); await cargarPlanificacion(S.ficha); render(); toast('Fecha guardada'); } catch (err) { fallo(err); } break; }
       case 'nuGuia': S.nGuia = +b.dataset.i; render(); break;
@@ -639,6 +641,17 @@ const Nutricion = (() => {
     if (!otros.length) return '';
     return `<small class="calc-desc">↳ Ya descuenta ${fmtNum(otros.reduce((t, x) => t + x[1], 0), 0)} g de ${NOM_M[m]} que ponen ${otros.map(x => x[0]).join(' y ')}</small>`;
   }
+  /* Recomendaciones para la última comida del día (la cena): qué alimentos conviene evitar y por cuáles cambiarlos */
+  function avisoCena(a) {
+    const n = a.n;
+    if (a.t === 'C' && /^(Arroz|Pasta|Pan |Copos|Tortitas|Maíz|Cuscús|Quinoa|Ñoquis)/i.test(n)) return { m: 'Los cereales (pan, pasta, arroz, avena, maíz…) no son lo más recomendable para cenar.', alt: ['Patata cocida', 'Boniato cocido', 'Calabaza o zanahoria cocida', 'Verdura variada'] };
+    if (a.t === 'L' || /^(Queso fresco|Yogur alto|Queso curado)/i.test(n)) return { m: 'Los lácteos no son lo más recomendable para cenar.', alt: ['Huevo entero', 'Claras de huevo', 'Tofu firme'] };
+    if (a.t === 'G' && !/^Aceite/i.test(n)) return { m: 'En la cena, la grasa mejor la del cocinado (aceite de oliva o mantequilla). Evita aguacate, frutos secos, bacon, chocolate…', alt: ['Aceite de oliva virgen extra'] };
+    if (/^(Salmón|Atún)/i.test(n)) return { m: 'Para cenar, mejor pescado blanco que pescado azul.', alt: ['Pescado blanco', 'Gambas o langostinos', 'Huevo entero'] };
+    if (/^(Ternera|Lomo de cerdo|Jamón)/i.test(n)) return { m: 'Para cenar, mejor carne blanca que carne roja.', alt: ['Pollo (pechuga) cocinado', 'Pavo (pechuga)', 'Pescado blanco'] };
+    return null;
+  }
+  const buscaAli = nom => ALI.find(x => norm(x.n) === norm(nom)) || ALI.find(x => norm(x.n).startsWith(norm(nom)));
   const st0 = () => ({ ctx: null, k: 0, sel: [] });
   function formPlato() {
     const d = S.modo === 'coach' && S.ficha ? datosPrevia(S.ficha) : S.d, n = d?.nutri || vacio(), l = ctxDe(n);
@@ -646,14 +659,14 @@ const Nutricion = (() => {
     const st = S.calc ||= st0(); if (st.ctx == null || st.ctx >= l.length) st.ctx = Math.min(selCtx(n), l.length - 1);
     const pinta = () => {
       const c = l[st.ctx], nI = Math.max(1, +c.ing || comidasDia(d?.servicio)), obj = objetivoComida(c, Math.min(st.k, nI - 1), nI);
-      const r = st.sel.length ? calcular(st.sel, obj) : null;
+      const r = st.sel.length ? calcular(st.sel, obj) : null, esCena = Math.min(st.k, nI - 1) === nI - 1 && nI > 1;
       $('#calc-cuerpo').innerHTML = `<div class="stack" style="gap:6px"><span class="small"><b>¿Qué tipo de día es?</b></span><div class="chips">${l.map((x, i) => `<button type="button" class="pill ${i === st.ctx ? 'blue' : ''}" data-cctx="${i}">${esc(x.n)}</button>`).join('')}</div></div>
         <div class="stack" style="gap:6px"><span class="small"><b>¿Qué comida?</b></span><div class="chips">${[...Array(nI)].map((_, i) => `<button type="button" class="pill ${i === Math.min(st.k, nI - 1) ? 'blue' : ''}" data-ck="${i}">Comida ${i + 1}</button>`).join('')}</div>
           <div class="calc-obj small">Objetivo de esta comida: <b>${fmtNum(obj.kcal, 0)} kcal</b> · P ${fmtNum(obj.p, 0)} g · C ${fmtNum(obj.c, 0)} g · G ${fmtNum(obj.g, 0)} g${obj.w < 1 && !c.rep ? ' <span class="muted">(reparto a partes iguales)</span>' : ''}</div></div>
         <div class="stack" style="gap:6px"><span class="small"><b>¿Qué quieres comer?</b> <span class="muted">Elige una proteína, un hidrato y una grasa (y verdura si quieres)</span></span>
           <input type="search" id="calc-q" list="calc-ali" placeholder="Escribe un alimento: pollo, arroz, aguacate…" autocomplete="off"><datalist id="calc-ali">${ALI.map(a => `<option value="${esc(a.n)}">`).join('')}</datalist>
           <div class="chips">${['Pollo (pechuga) cocinado', 'Arroz blanco cocido', 'Patata cocida', 'Huevo entero', 'Aceite de oliva virgen extra', 'Verdura variada (ensalada, brócoli, judías…)'].filter(x => !st.sel.some(s => s.a.n === x)).map(x => `<button type="button" class="pill" data-cadd="${esc(x)}">＋ ${esc(x.split(' (')[0])}</button>`).join('')}</div></div>
-        ${r ? `<div class="calc-res">${st.sel.map((s, i) => `<div class="calc-al"><div class="grow"><b>${esc(s.a.n)}</b><span>${r.gr[i] ? equivVisual(s.a, r.gr[i]) : 'No hace falta: ya lo cubren los demás alimentos'}</span>${r.gr[i] ? `<small class="calc-ap">Aporta P ${fmtNum(s.a.p * r.gr[i] / 100, 0)} · C ${fmtNum(s.a.c * r.gr[i] / 100, 0)} · G ${fmtNum(s.a.g * r.gr[i] / 100, 0)} g</small>` : ''}${descuento(st.sel, r.gr, i)}</div><div class="calc-g"><b class="num">${r.gr[i] ? fmtNum(r.gr[i], 0) + ' g' : '—'}</b>${s.fijo != null ? '<small>fijado</small>' : s.a.t === 'V' || s.a.t === 'L' ? '<small>1 ración</small>' : ''}</div><button type="button" class="btn sm ghost" data-cfix="${i}" aria-label="Fijar cantidad">✎</button><button type="button" class="btn sm ghost" data-cdel="${i}" aria-label="Quitar">✕</button></div>`).join('')}
+        ${r ? `<div class="calc-res">${st.sel.map((s, i) => `<div class="calc-al"><div class="grow"><b>${esc(s.a.n)}</b><span>${r.gr[i] ? equivVisual(s.a, r.gr[i]) : 'No hace falta: ya lo cubren los demás alimentos'}</span>${(() => { const av = esCena ? avisoCena(s.a) : null; return av ? `<small class="calc-cena">⚠ ${esc(av.m)}</small><span class="calc-alt">Mejor: ${av.alt.map(x => { const o = buscaAli(x); return o ? `<button type="button" class="pill" data-calt="${i}|${esc(o.n)}">${esc(o.n.split(' (')[0])}</button>` : ''; }).join('')}</span>` : ''; })()}${r.gr[i] ? `<small class="calc-ap">Aporta P ${fmtNum(s.a.p * r.gr[i] / 100, 0)} · C ${fmtNum(s.a.c * r.gr[i] / 100, 0)} · G ${fmtNum(s.a.g * r.gr[i] / 100, 0)} g</small>` : ''}${descuento(st.sel, r.gr, i)}</div><div class="calc-g"><b class="num">${r.gr[i] ? fmtNum(r.gr[i], 0) + ' g' : '—'}</b>${s.fijo != null ? '<small>fijado</small>' : s.a.t === 'V' || s.a.t === 'L' ? '<small>1 ración</small>' : ''}</div><button type="button" class="btn sm ghost" data-cfix="${i}" aria-label="Fijar cantidad">✎</button><button type="button" class="btn sm ghost" data-cdel="${i}" aria-label="Quitar">✕</button></div>`).join('')}
           <div class="calc-tot small">Total: <b>${fmtNum(r.tot.kcal, 0)} kcal</b> · P ${fmtNum(r.tot.p, 0)} g · C ${fmtNum(r.tot.c, 0)} g · G ${fmtNum(r.tot.g, 0)} g ${Math.abs(r.tot.kcal - obj.kcal) <= Math.max(40, obj.kcal * 0.08) && !r.avisos.length ? '<span class="pill ok">✓ encaja</span>' : `<span class="pill warn">${r.tot.kcal > obj.kcal ? '+' : ''}${fmtNum(r.tot.kcal - obj.kcal, 0)} kcal</span>`}</div>
           ${r.avisos.map(x => `<p class="small" style="color:var(--warn);margin:0">${esc(x)}</p>`).join('')}
           <button type="button" class="btn full" id="calc-diario">🍽 Apuntar este plato en mi diario</button></div>` : ''}
@@ -667,6 +680,7 @@ const Nutricion = (() => {
       const t = ev.target.closest('button'); if (!t) return;
       if (t.dataset.cctx != null) { st.ctx = +t.dataset.cctx; pinta(); }
       else if (t.dataset.ck != null) { st.k = +t.dataset.ck; pinta(); }
+      else if (t.dataset.calt) { const [i, nom] = t.dataset.calt.split('|'), a = buscaAli(nom); if (a && st.sel[+i]) { if (st.sel.some((x, j) => j !== +i && x.a.n === a.n)) st.sel.splice(+i, 1); else st.sel[+i] = { a }; pinta(); } }
       else if (t.dataset.cadd) add(t.dataset.cadd);
       else if (t.dataset.cdel != null) { st.sel.splice(+t.dataset.cdel, 1); pinta(); }
       else if (t.dataset.cfix != null) { const s = st.sel[+t.dataset.cfix], v = prompt(`¿Cuántos gramos de ${s.a.n}? (vacío = que lo calcule la app)`, s.fijo ?? ''); if (v === null) return; s.fijo = numero(v) ?? null; pinta(); }
@@ -890,5 +904,5 @@ Reglas: "macro" es "p", "c" o "g" (o "mixto" para legumbres, lácteos y huevos).
       '\nCONCLUSIONES DE JESÚS', ...CONC.filter(([k]) => c[k]).map(([k, tt]) => `${tt}: ${c[k]}`), (c.pasos || []).length ? 'Primeros pasos:\n' + c.pasos.map((p, i) => `${i + 1}. ${p}`).join('\n') : ''].filter(v => v !== '').join('\n');
     try { await navigator.clipboard.writeText(t); toast('Copiado: pégalo en ChatGPT junto al resto de su información'); } catch (e) { abrirSheet(`<div class="stack"><h2>Copia este texto</h2><textarea rows="16" style="font-size:12px">${esc(t)}</textarea></div>`); }
   }
-  return { fase, faseDe, faseCoach, mide, FASES, vSemana7: aislar(vSemana7), formImportar, formPlato, calcular, ALI, objetivoComida, equivVisual, vIncCoach: aislar(vIncCoach), formInc, esInc, guardarResumen, vista: aislar(vista), vCoach: aislar(vCoach), cargar, cargarFicha, cargarCoach, datosPrevia, nuevasDe, DOCS, esPdf, ctxDe };
+  return { fase, faseDe, faseCoach, mide, FASES, vSemana7: aislar(vSemana7), formImportar, formPlato, calcular, avisoCena, ALI, objetivoComida, equivVisual, vIncCoach: aislar(vIncCoach), formInc, esInc, guardarResumen, vista: aislar(vista), vCoach: aislar(vCoach), cargar, cargarFicha, cargarCoach, datosPrevia, nuevasDe, DOCS, esPdf, ctxDe };
 })();
