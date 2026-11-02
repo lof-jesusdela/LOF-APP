@@ -153,11 +153,12 @@ const MenuSemana = (() => {
     const { error } = await sb.from('plan_nutri_semana').upsert({ alumno_id: S.user.id, semana_inicio: st.lunes, datos }, { onConflict: 'alumno_id,semana_inicio' });
     if (error) { fallo(error, AVISO); return false; }
     if (typeof usaPlan === 'function' && usaPlan() && st.entreno.length) { try { await guardarPlanSemana(st.lunes, st.entreno); } catch (e) { /* el plan de entreno es opcional */ } }
+    S.d.pnSemanas = [...new Set([...(S.d.pnSemanas || []), st.lunes])];
     if (!silencio) toast('Semana guardada ✓'); return true;
   }
-  async function abrir() {
+  async function abrir(objetivo) {
     if (S.modo === 'coach') return toast('Esto lo usa el alumno desde su app');
-    const l = lunesDe(hoyISO()), prox = hoyIdx() >= 4 ? sumaDias(l, 7) : l;
+    const l = lunesDe(hoyISO()), prox = objetivo || (hoyIdx() >= 4 ? sumaDias(l, 7) : l);
     abrirSheet(`<div class="stack"><h2>🗓 Planifica tu semana</h2><div class="chips" id="ms-sem"></div><div id="ms-cuerpo" class="stack" style="gap:12px"><div class="empty">Cargando…</div></div><button type="button" class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
     const semanas = () => { $('#ms-sem').innerHTML = [l, sumaDias(l, 7)].map((x, i) => `<button type="button" class="pill ${st?.lunes === x ? 'blue' : ''}" data-ms="sem" data-l="${x}">${i ? 'La semana que viene' : 'Esta semana'}</button>`).join(''); };
     await cargar(prox); semanas(); pinta();
@@ -180,6 +181,21 @@ const MenuSemana = (() => {
       pinta(); if (a === 'compra' || a === 'volver') $('#sheet-in')?.scrollTo?.(0, 0);
     });
   }
-  return { abrir, reconoce, comida, ctxIdx, qty, buscaAli };
+  /* Segundo check-in: domingo y lunes, escribir el menú de la semana que empieza (el domingo la siguiente; el lunes, la de hoy) */
+  function tarjeta() {
+    const s = S.d?.servicio || {}, dow = new Date().getDay();
+    if (S.modo === 'coach' || S.vista || !s.modulo_nutricion || s.modulo_futbol || (dow !== 0 && dow !== 1) || Acomp.estado(s).k === 'pausado') return '';
+    const l = lunesDe(hoyISO()), obj = dow === 0 ? sumaDias(l, 7) : l;
+    if (!S.d.pnSemanas && !S._pnPedido) {
+      S._pnPedido = true;
+      Promise.resolve(sb.from('plan_nutri_semana').select('semana_inicio').eq('alumno_id', S.user.id).gte('semana_inicio', l)).then(r => { S.d.pnSemanas = (r.data || []).map(x => x.semana_inicio); render(); }, () => { S.d.pnSemanas = []; });
+    }
+    const hecho = (S.d.pnSemanas || []).includes(obj), cargando = !S.d.pnSemanas;
+    return `<section class="section"><div class="card row" style="gap:10px;align-items:center"><div class="ico ${hecho ? '' : 'gold'}">🗓</div><div class="grow stack" style="gap:4px"><b class="small">Check-in de planificación · semana del ${esc(fCorta(obj))}</b>
+      <div>${hecho ? '<span class="pill ok">✓ Menú escrito</span>' : '<span class="pill gold">Toca ahora</span>'}</div>
+      <div class="small muted">Apunta los días que trabajas y entrenas, tus comidas libres y lo que tienes pensado comer. Te calculo las cantidades y la compra.</div></div>
+      <button class="btn sm" data-act="nuSemana" data-l="${obj}" ${cargando ? 'disabled' : ''}>${hecho ? 'Ver o cambiar' : 'Escribir menú'}</button></div></section>`;
+  }
+  return { abrir, tarjeta, reconoce, comida, ctxIdx, qty, buscaAli };
 })();
 window.MenuSemana = MenuSemana;

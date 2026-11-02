@@ -829,21 +829,23 @@ const Bienvenida = {
 };
 /* ---------- Hoy: lo pendiente en un solo sitio (sin repetir lo que ya está en «Lo que toca hoy») ---------- */
 function vPendientesHoy(s) {
-  const hoy = hoyISO(), r = S.d.diario.find(x => x.fecha === hoy), lineas = [];
-  const fase = Nutricion.fase(S.d);
-  const regHoy = !!r && (r.pasos != null || r.ingestas != null || !!r.observacion);
-  const queReg = [conPasos(s) && 'tus pasos', s.modulo_nutricion && fase === 'activo' && 'las comidas del plan'].filter(Boolean);
-  if (!s.modulo_futbol && !regHoy && queReg.length && Acomp.estado(s).k !== 'pausado') lineas.push(['📝', `Registro de hoy: ${queReg.join(' y ')}`, 'Aún sin registrar · tarda 10 segundos', 'irRegistro', 'Registrar']);
+  /* Solo lo que se quedó sin hacer en días anteriores y conviene rellenar (lo de hoy ya está en el registro del día) */
+  const hoy = hoyISO(), lineas = [], fase = Nutricion.fase(S.d);
+  const exige = !s.modulo_futbol && (conPasos(s) || (s.modulo_nutricion && fase === 'activo')) && Acomp.estado(s).k !== 'pausado';
+  if (exige) {
+    const hecho = x => !!x && (x.pasos != null || x.ingestas != null || x.comidas_hechas != null || !!x.alimentacion || !!x.observacion);
+    const faltan = ventanaRegistro().filter(f => f < hoy && (!s.inicio || f >= s.inicio) && !hecho(S.d.diario.find(x => x.fecha === f)));
+    if (faltan.length) lineas.push(['📝', faltan.length === 1 ? 'Te falta registrar un día' : `Te faltan ${faltan.length} días por registrar`, faltan.map(f => fecha(f).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' })).join(' · ') + ' · rellénalos para que Jesús vea tu semana real', 'reg:' + faltan[0], 'Rellenar']);
+  }
   if (s.modulo_nutricion && fase === 'recogida') lineas.push(['🍽', 'Registro de 7 días de comidas', 'Jesús te lo ha pedido para preparar tu plan', 'tab:nutri', 'Apuntar']);
-  if (tocaCheckin()) lineas.push(['✅', 'Check-in semanal', 'Toca este fin de semana · hasta el domingo', 'abrirCheckin', 'Rellenar']);
   const tarjetas = [Acomp.tarjetaDevolucionHoy(), Casos.lineaHoy(), Casos.tarjetaHoy(true), Bienvenida.tarjeta()].join('');
   if (!lineas.length && !tarjetas.trim()) return '';
-  return `${lineas.length ? `<section class="section"><h2>Pendiente</h2><div class="card">${lineas.map(([ic, t, d, act, b]) => `<div class="line"><span style="font-size:20px;width:28px;text-align:center">${ic}</span><div class="grow"><b class="small">${t}</b><div class="small muted">${d}</div></div><button class="btn sm" ${act.startsWith('tab:') ? `data-act="tab" data-t="${act.slice(4)}"` : `data-act="${act}"`}>${b}</button></div>`).join('')}</div></section>` : ''}${tarjetas}`;
+  return `${lineas.length ? `<section class="section"><h2>Pendiente</h2><div class="card">${lineas.map(([ic, t, d, act, b]) => `<div class="line"><span style="font-size:20px;width:28px;text-align:center">${ic}</span><div class="grow"><b class="small">${t}</b><div class="small muted">${d}</div></div><button class="btn sm" ${act.startsWith('tab:') ? `data-act="tab" data-t="${act.slice(4)}"` : act.startsWith('reg:') ? `data-act="irRegistroDia" data-f="${act.slice(4)}"` : `data-act="${act}"`}>${b}</button></div>`).join('')}</div></section>` : ''}${tarjetas}`;
 }
 /* Próximamente: revisión mensual, entrenos con Jesús (saldo, próxima reserva y un solo botón) */
 function vProximamente(s) {
   const ev = vEventos(s, []).replace('<h2>Próximos eventos</h2>', '<h2>Próximamente</h2>');
-  return ev + vPresResumen(s, S.d.presenciales);
+  return ev;   // las sesiones con Jesús y su reserva viven en la pestaña de entrenamientos
 }
 function vPresResumen(srv, lista) {
   lista = lista || [];
@@ -949,6 +951,7 @@ function vHoy() {
   ${vProximamente(s)}
   ${s.modulo_futbol ? vFutbolHoy() + vSemanaFutbol(ini, w, p) + (s.modulo_habitos ? Habitos.tarjetaHoy(false) : '') : vRegistroDia(s)}
   ${vCheckinTarjeta()}
+  ${MenuSemana.tarjeta()}
   ${vProcesoGlobal(s)}
   ${Casos.tarjetaHoy(false)}
   ${Temperamento.tarjetaHoy()}
@@ -5725,7 +5728,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v203';
+const APP_VER = 'v204';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -6108,6 +6111,7 @@ document.addEventListener('click', async e => {
     case 'cerrarSheetPide': pedirCerrarSheet(); break;
     case 'abrirCheckin': S.chkAbierto = true; if (S.tab !== 'hoy') S.tab = 'hoy'; render(); setTimeout(() => document.getElementById('checkin')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); break;
     case 'cerrarCheckin': S.chkAbierto = false; render(); break;
+    case 'irRegistroDia': S.regDia = b.dataset.f; render(); setTimeout(() => document.getElementById('registro')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100); break;
     case 'irRegistro': document.getElementById('registro')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => $('#r-pasos')?.focus(), 400); break;
     case 'sheetSeguir': $('#sheet-aviso')?.remove(); break;
     case 'sheetDescartar': cerrarSheet(); break;

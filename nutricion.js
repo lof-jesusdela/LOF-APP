@@ -329,7 +329,7 @@ const Nutricion = (() => {
       case 'nuCtx': S.nCtx = +b.dataset.i; try { localStorage.setItem('lof-nctx', hoyISO() + '|' + S.nCtx); } catch (err) { /* sin almacenamiento */ } render(); break;
       case 'nuDia': S.nDia = b.dataset.f; render(); break;
       case 'nuCalc': formPlato(); break;
-      case 'nuSemana': MenuSemana.abrir(); break;
+      case 'nuSemana': MenuSemana.abrir(b.dataset.l); break;
       case 'nuInc': formInc(b.dataset.k); break;
       case 'nuIncIni': { const v = $('#inc-ini')?.value; if (!v) return toast('Elige la fecha'); try { await guardarResumen(S.ficha, d => { d.inicio = v; }); await cargarPlanificacion(S.ficha); render(); toast('Fecha guardada'); } catch (err) { fallo(err); } break; }
       case 'nuGuia': S.nGuia = +b.dataset.i; render(); break;
