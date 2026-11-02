@@ -135,8 +135,8 @@ const IA = (() => {
   /* ---------- Alumno ---------- */
   function vEntrada() {
     if (!activo()) return '';
-    return `<section class="section"><button class="card row" data-act="ia" data-op="abrir" style="gap:12px;align-items:center;width:100%;text-align:left;cursor:pointer;border:1px solid #a855f7">
-      <span class="ia-ico">${ICO}</span><div class="grow"><b>${NOMBRE}</b><div class="small muted">Dudas pequeñas del día a día, al momento. Es una IA con los conocimientos de Jesús.</div></div><span class="pill" style="background:#a855f7;color:#fff">Preguntar</span></button></section>`;
+    return `<section class="section"><button class="card row" data-act="ia" data-op="abrir" style="gap:12px;align-items:center;width:100%;text-align:left;cursor:pointer;border:1.5px solid #D4AF37">
+      <span class="ia-ico">${ICO}</span><div class="grow"><b>${NOMBRE}</b><div class="small muted">Dudas pequeñas del día a día, al momento. Es una IA con los conocimientos de Jesús.</div></div><span class="pill" style="background:#14B8C4;color:#fff">Preguntar</span></button></section>`;
   }
   async function cargar() {
     const { data, error } = await sb.from('ia_mensajes').select('id,rol,texto,derivar,valoracion,creado_at').eq('alumno_id', S.user.id).eq('canal', 'alumno').order('id', { ascending: false }).limit(60);
@@ -171,7 +171,14 @@ const IA = (() => {
   async function llamar(body) {
     const { data, error } = await sb.functions.invoke('asistente', { body });
     let msg = data?.error;
-    if (error) { try { msg = (await error.context?.json())?.error; } catch (_) {} msg = msg || (/fetch|network|Failed to send/i.test(error.message || '') ? 'No encuentro la función «asistente» en Supabase o no hay conexión.' : 'No he podido responder ahora. Inténtalo en un momento.'); }
+    if (error) {
+      let st = error.context?.status, j = null, t = '';
+      try { const c = error.context?.clone ? error.context.clone() : error.context; t = await c.text(); j = JSON.parse(t); } catch (_) { }
+      console.warn('[EntrenIAdor]', st, t || error.message);
+      msg = j?.error || j?.message || j?.msg;
+      if (!msg && st) msg = `El asistente no responde (error ${st}${t ? ': ' + t.slice(0, 120) : ''}). Avisa a Jesús.`;
+    }
+    if (error) { msg = msg || (/fetch|network|Failed to send/i.test(error.message || '') ? 'No encuentro la función «asistente» en Supabase o no hay conexión.' : 'No he podido responder ahora. Inténtalo en un momento.'); }
     return { data, msg };
   }
   async function enviar(texto) {
@@ -254,7 +261,7 @@ const IA = (() => {
     const r = st.resumen; if (!r) return '';
     const faltan = r.err ? 0 : r.hechas >= PREG.length ? 0 : Math.max(0, 3 - r.hoy);
     const txt = r.err ? 'Falta ejecutar el Bloque 72 en Supabase' : [faltan ? `${faltan} ${faltan === 1 ? 'pregunta' : 'preguntas'} de hoy para enseñarle` : 'Preguntas de hoy hechas ✓', r.pend ? `${r.pend} ${r.pend === 1 ? 'consulta' : 'consultas'} para ti` : ''].filter(Boolean).join(' · ');
-    return `<section class="section"><button class="card row" data-act="ia" data-op="abrirCoach" style="gap:12px;align-items:center;width:100%;text-align:left;cursor:pointer;border:1px solid #a855f7">
+    return `<section class="section"><button class="card row" data-act="ia" data-op="abrirCoach" style="gap:12px;align-items:center;width:100%;text-align:left;cursor:pointer;border:1.5px solid #D4AF37">
       <span class="ia-ico">${ICO}</span><div class="grow"><b>Entrena al ${NOMBRE}</b><div class="small muted">${txt}</div></div>${r.pend ? `<span class="pill" style="background:var(--bad,#e11d48);color:#fff">${r.pend}</span>` : ''}</button></section>`;
   }
   function verSaber() {
