@@ -490,12 +490,14 @@ function ingestasSemana(reg, ini, srv) {
   return { n, total, posibles, hechas, dias: l.length, cobertura: Math.round(l.length / 7 * 100), pct: l.length >= MIN_DIAS_NUTRI ? pctReg : null, pctReg, pocos: l.length > 0 && l.length < MIN_DIAS_NUTRI, porDia: Object.fromEntries(l.map(r => [r.fecha, r.ingestas])) };
 }
 /* Recordatorio del check-in: sábado por la tarde y domingo, si aún no se ha enviado */
-function tocaCheckin() {
-  const now = new Date(), dow = now.getDay();
-  if (!((dow === 6 && now.getHours() >= 15) || dow === 0)) return false;
-  if (Acomp.estado(S.d?.servicio).k === 'pausado' || S.d?.servicio?.modulo_futbol) return false;
-  return !(S.d?.checkins || []).some(c => c.semana_inicio === lunesDe(hoyISO()));
+/* Check-in pendiente: el domingo, el de esta semana; de lunes a sábado, el de la semana que acaba de terminar si no se envió */
+function checkinPend() {
+  const D = S.d, srv = D?.servicio; if (!D || !srv || S.vista || Acomp.estado(srv).k === 'pausado' || srv.modulo_futbol) return null;
+  const l = lunesDe(hoyISO()), obj = new Date().getDay() === 0 ? l : sumaDias(l, -7);
+  if (srv.inicio && srv.inicio > sumaDias(obj, 6)) return null;
+  return (D.checkins || []).some(c => c.semana_inicio === obj) ? null : obj;
 }
+const tocaCheckin = () => !!checkinPend();
 async function avisoCheckin() {
   if (!tocaCheckin() || !('Notification' in window) || Notification.permission !== 'granted') return;
   const k = 'lof-aviso-chk-' + hoyISO(); try { if (localStorage.getItem(k)) return; localStorage.setItem(k, '1'); } catch (e) { }
@@ -829,18 +831,21 @@ const Bienvenida = {
 };
 /* ---------- Hoy: lo pendiente en un solo sitio (sin repetir lo que ya está en «Lo que toca hoy») ---------- */
 function vPendientesHoy(s) {
-  /* Solo lo que se quedó sin hacer en días anteriores y conviene rellenar (lo de hoy ya está en el registro del día) */
-  const hoy = hoyISO(), lineas = [], fase = Nutricion.fase(S.d);
-  const exige = !s.modulo_futbol && (conPasos(s) || (s.modulo_nutricion && fase === 'activo')) && Acomp.estado(s).k !== 'pausado';
+  /* Todo lo que se quedó sin hacer y conviene rellenar: registros de días pasados, fotos y reflexión del mes, check-in semanal y menú de la semana */
+  const hoy = hoyISO(), lineas = [], fase = Nutricion.fase(S.d), activo = Acomp.estado(s).k !== 'pausado';
+  const exige = !s.modulo_futbol && (conPasos(s) || (s.modulo_nutricion && fase === 'activo')) && activo;
   if (exige) {
     const hecho = x => !!x && (x.pasos != null || x.ingestas != null || x.comidas_hechas != null || !!x.alimentacion || !!x.observacion);
     const faltan = ventanaRegistro().filter(f => f < hoy && (!s.inicio || f >= s.inicio) && !hecho(S.d.diario.find(x => x.fecha === f)));
-    if (faltan.length) lineas.push(['📝', faltan.length === 1 ? 'Te falta registrar un día' : `Te faltan ${faltan.length} días por registrar`, faltan.map(f => fecha(f).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' })).join(' · ') + ' · rellénalos para que Jesús vea tu semana real', 'reg:' + faltan[0], 'Rellenar']);
+    if (faltan.length) lineas.push(['📝', faltan.length === 1 ? 'Te falta registrar un día' : `Te faltan ${faltan.length} días por registrar`, faltan.map(f => fecha(f).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' })).join(' · ') + ' · rellénalos para que Jesús vea tu semana real', faltan[0] ? `data-act="irRegistroDia" data-f="${faltan[0]}"` : '', 'Rellenar']);
   }
-  if (s.modulo_nutricion && fase === 'recogida') lineas.push(['🍽', 'Registro de 7 días de comidas', 'Jesús te lo ha pedido para preparar tu plan', 'tab:nutri', 'Apuntar']);
+  const lc = checkinPend(); if (lc && new Date().getDay() !== 0) lineas.push(['✅', 'Check-in semanal sin enviar', `Semana del ${fCorta(lc)} al ${fCorta(sumaDias(lc, 6))} · cuéntale a Jesús cómo fue`, `data-act="abrirCheckin" data-l="${lc}"`, 'Rellenar']);
+  const mp = MenuSemana.pendiente(); if (mp) lineas.push(mp);
+  const fm = Casos.pendienteMes(); if (fm) lineas.push(fm);
+  if (s.modulo_nutricion && fase === 'recogida') lineas.push(['🍽', 'Registro de 7 días de comidas', 'Jesús te lo ha pedido para preparar tu plan', 'data-act="tab" data-t="nutri"', 'Apuntar']);
   const tarjetas = [Acomp.tarjetaDevolucionHoy(), Casos.lineaHoy(), Casos.tarjetaHoy(true), Bienvenida.tarjeta()].join('');
   if (!lineas.length && !tarjetas.trim()) return '';
-  return `${lineas.length ? `<section class="section"><h2>Pendiente</h2><div class="card">${lineas.map(([ic, t, d, act, b]) => `<div class="line"><span style="font-size:20px;width:28px;text-align:center">${ic}</span><div class="grow"><b class="small">${t}</b><div class="small muted">${d}</div></div><button class="btn sm" ${act.startsWith('tab:') ? `data-act="tab" data-t="${act.slice(4)}"` : act.startsWith('reg:') ? `data-act="irRegistroDia" data-f="${act.slice(4)}"` : `data-act="${act}"`}>${b}</button></div>`).join('')}</div></section>` : ''}${tarjetas}`;
+  return `${lineas.length ? `<section class="section"><div class="card pend" role="alert"><div class="pend-cab"><span class="pend-ic">⚠️</span><h2>Pendiente</h2><span class="pend-n">${lineas.length}</span></div><p class="small pend-sub">Esto es lo que te falta por hacer. Cuanto antes lo rellenes, mejor puede ayudarte Jesús.</p>${lineas.map(([ic, t, d, at, b]) => `<div class="pend-linea"><span class="pend-i">${ic}</span><div class="grow"><b>${t}</b><div class="small">${d}</div></div><button class="btn sm pend-btn" ${at}>${b}</button></div>`).join('')}</div></section>` : ''}${tarjetas}`;
 }
 /* Próximamente: revisión mensual, entrenos con Jesús (saldo, próxima reserva y un solo botón) */
 function vProximamente(s) {
@@ -861,10 +866,12 @@ function vPresResumen(srv, lista) {
 /* Check-in semanal como tarjeta con estado y fecha; el formulario se despliega al ir a completarlo */
 function vCheckinTarjeta() {
   if (S.d.servicio?.modulo_futbol) return '';   // los futbolistas ya rellenan su check diario, el del lunes y el del partido
-  const lunes = lunesDe(hoyISO()), c = S.d.checkins.find(x => x.semana_inicio === lunes), sab = sumaDias(lunes, 5), dom = sumaDias(lunes, 6), toca = tocaCheckin();
   if (S.chkAbierto) return `<section class="section chk-hoy" id="checkin">${vCheckin(true)}<button class="btn ghost full" data-act="cerrarCheckin" style="margin-top:8px">Cerrar sin enviar</button></section>`;
-  const est = c ? `<span class="pill ok">✓ Enviado el ${esc(fCorta((c.created_at || c.actualizado_at || lunes).slice(0, 10)))}</span>` : toca ? '<span class="pill gold">Toca ahora</span>' : `<span class="pill">Se abre el sábado ${esc(fCorta(sab))}</span>`;
-  return `<section class="section" id="checkin"><div class="card row" style="gap:10px;align-items:center"><div class="ico ${toca && !c ? 'gold' : ''}">${svg('checkin')}</div><div class="grow stack" style="gap:4px"><b class="small">Check-in semanal · semana del ${esc(fCorta(lunes))}</b><div>${est}</div><div class="small muted">${c ? 'Puedes modificarlo hasta el domingo.' : `Hasta el domingo ${esc(fCorta(dom))}. Lo que registras cada día se rellena solo.`}</div></div><button class="btn sm ${c ? 'ghost' : ''}" data-act="abrirCheckin">${c ? 'Modificar' : toca ? 'Rellenar' : 'Rellenar ya'}</button></div></section>`;
+  /* Solo el domingo: desde el lunes, si no se envió, pasa a «Pendiente» */
+  if (new Date().getDay() !== 0 || S.vista || Acomp.estado(S.d.servicio).k === 'pausado') return '';
+  const lunes = lunesDe(hoyISO()), c = S.d.checkins.find(x => x.semana_inicio === lunes), dom = sumaDias(lunes, 6);
+  const est = c ? `<span class="pill ok">✓ Enviado el ${esc(fCorta((c.created_at || c.actualizado_at || lunes).slice(0, 10)))}</span>` : '<span class="pill gold">Toca ahora</span>';
+  return `<section class="section" id="checkin"><div class="card row" style="gap:10px;align-items:center"><div class="ico ${c ? '' : 'gold'}">${svg('checkin')}</div><div class="grow stack" style="gap:4px"><b class="small">Check-in semanal · semana del ${esc(fCorta(lunes))}</b><div>${est}</div><div class="small muted">${c ? 'Puedes modificarlo hasta esta noche.' : `Se abre hoy, domingo ${esc(fCorta(dom))}. Si no lo envías, mañana pasará a Pendiente. Lo que registras cada día se rellena solo.`}</div></div><button class="btn sm ${c ? 'ghost' : ''}" data-act="abrirCheckin">${c ? 'Modificar' : 'Rellenar'}</button></div></section>`;
 }
 /* ---------- Avisos al móvil (push) y «Tu semana está lista» ---------- */
 const b64u = t => { const p = '='.repeat((4 - t.length % 4) % 4), r = atob((t + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from([...r].map(c => c.charCodeAt(0))); };
@@ -944,8 +951,8 @@ function vHoy() {
   ${vAvisoContexto()}
   ${vAvisosHoy()}
   ${esWeekCard()}
-  <section class="section"><h2>Lo que toca hoy</h2><div class="card">${toca}</div></section>
   ${vPendientesHoy(s)}
+  <section class="section"><h2>Lo que toca hoy</h2><div class="card">${toca}</div></section>
   ${s.oposicion ? Oposicion.tarjeta(false) : ''}
   ${Acomp.ultimaIndicacion()}
   ${vProximamente(s)}
@@ -1974,7 +1981,7 @@ function vProgreso() {
 
 /* ---------- Check-in ---------- */
 function vCheckin(enHoy) {
-  const lunes = lunesDe(hoyISO()), w = semana(lunes), c = S.d.checkins.find(x => x.semana_inicio === lunes);
+  const lunes = S.chkSemana || lunesDe(hoyISO()), w = semana(lunes), c = S.d.checkins.find(x => x.semana_inicio === lunes);
   if (!S.chipsCargados && c) { S.chips = new Set(c.proxima_semana_etiquetas || []); S.chipsCargados = true; }
   const s = S.d.servicio || {}, p = S.d.programa;
   const mot = c?.motivacion ?? 7, imp = c?.implicacion ?? 7;
@@ -1998,7 +2005,7 @@ function vCheckin(enHoy) {
   <button class="btn full" data-act="enviarCheckin">${c ? 'Actualizar check-in' : 'Enviar check-in'}</button></section>`;
 }
 async function enviarCheckin() {
-  const row = { alumno_id: S.user.id, semana_inicio: lunesDe(hoyISO()), dificultades: $('#k-dif').value.trim() || null,
+  const row = { alumno_id: S.user.id, semana_inicio: S.chkSemana || lunesDe(hoyISO()), dificultades: $('#k-dif').value.trim() || null,
     proxima_semana_etiquetas: [...S.chips], proxima_semana: $('#k-prox').value.trim() || null,
     motivacion: +$('#k-mot').value, implicacion: +$('#k-imp').value, enviado_at: new Date().toISOString() };
   if ($('#k-nali')) { row.nota_alimentacion = $('#k-nali').value.trim() || null; const I = ingestasSemana(S.d.diario, row.semana_inicio, S.d.servicio); if (I.pct != null) row.nutricion_pct = I.pct; }
@@ -2007,7 +2014,7 @@ async function enviarCheckin() {
   if (error) return fallo(error);
   S.d.checkins = [data, ...S.d.checkins.filter(x => x.semana_inicio !== row.semana_inicio)];
   { const ln = sumaDias(row.semana_inicio, 7); if (usaPlan() && S.planSel?.[ln]?.size) await guardarPlanSemana(ln, [...S.planSel[ln]]); }
-  S.chkAbierto = false; toast('Check-in enviado a Jesús'); S.tab = 'hoy'; render(); window.scrollTo(0, 0);
+  S.chkAbierto = false; S.chkSemana = null; S.chipsCargados = false; toast('Check-in enviado a Jesús'); S.tab = 'hoy'; render(); window.scrollTo(0, 0);
 }
 
 /* =====================================================================
@@ -5728,7 +5735,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v204';
+const APP_VER = 'v205';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -6109,8 +6116,8 @@ document.addEventListener('click', async e => {
     case 'clipPegar': Clip.formPegar(); break;
     case 'clipQuitar': Clip.quitar(); break;
     case 'cerrarSheetPide': pedirCerrarSheet(); break;
-    case 'abrirCheckin': S.chkAbierto = true; if (S.tab !== 'hoy') S.tab = 'hoy'; render(); setTimeout(() => document.getElementById('checkin')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); break;
-    case 'cerrarCheckin': S.chkAbierto = false; render(); break;
+    case 'abrirCheckin': S.chkAbierto = true; S.chkSemana = b.dataset.l || null; S.chipsCargados = false; if (S.tab !== 'hoy') S.tab = 'hoy'; render(); setTimeout(() => document.getElementById('checkin')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); break;
+    case 'cerrarCheckin': S.chkAbierto = false; S.chkSemana = null; render(); break;
     case 'irRegistroDia': S.regDia = b.dataset.f; render(); setTimeout(() => document.getElementById('registro')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100); break;
     case 'irRegistro': document.getElementById('registro')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => $('#r-pasos')?.focus(), 400); break;
     case 'sheetSeguir': $('#sheet-aviso')?.remove(); break;

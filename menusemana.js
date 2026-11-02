@@ -181,21 +181,32 @@ const MenuSemana = (() => {
       pinta(); if (a === 'compra' || a === 'volver') $('#sheet-in')?.scrollTo?.(0, 0);
     });
   }
-  /* Segundo check-in: domingo y lunes, escribir el menú de la semana que empieza (el domingo la siguiente; el lunes, la de hoy) */
-  function tarjeta() {
-    const s = S.d?.servicio || {}, dow = new Date().getDay();
-    if (S.modo === 'coach' || S.vista || !s.modulo_nutricion || s.modulo_futbol || (dow !== 0 && dow !== 1) || Acomp.estado(s).k === 'pausado') return '';
-    const l = lunesDe(hoyISO()), obj = dow === 0 ? sumaDias(l, 7) : l;
+  /* Qué semanas tienen ya el menú escrito (se pide una vez) */
+  function cargarHechos() {
     if (!S.d.pnSemanas && !S._pnPedido) {
       S._pnPedido = true;
-      Promise.resolve(sb.from('plan_nutri_semana').select('semana_inicio').eq('alumno_id', S.user.id).gte('semana_inicio', l)).then(r => { S.d.pnSemanas = (r.data || []).map(x => x.semana_inicio); render(); }, () => { S.d.pnSemanas = []; });
+      Promise.resolve(sb.from('plan_nutri_semana').select('semana_inicio').eq('alumno_id', S.user.id).gte('semana_inicio', lunesDe(hoyISO()))).then(r => { S.d.pnSemanas = (r.data || []).map(x => x.semana_inicio); render(); }, () => { S.d.pnSemanas = []; });
     }
-    const hecho = (S.d.pnSemanas || []).includes(obj), cargando = !S.d.pnSemanas;
+  }
+  const aplica = () => { const s = S.d?.servicio || {}; return !(S.modo === 'coach' || S.vista || !s.modulo_nutricion || s.modulo_futbol || Acomp.estado(s).k === 'pausado'); };
+  /* Segundo check-in: solo el domingo, para escribir el menú de la semana que empieza */
+  function tarjeta() {
+    if (!aplica() || new Date().getDay() !== 0) return '';
+    cargarHechos();
+    const obj = sumaDias(lunesDe(hoyISO()), 7), hecho = (S.d.pnSemanas || []).includes(obj), cargando = !S.d.pnSemanas;
     return `<section class="section"><div class="card row" style="gap:10px;align-items:center"><div class="ico ${hecho ? '' : 'gold'}">🗓</div><div class="grow stack" style="gap:4px"><b class="small">Check-in de planificación · semana del ${esc(fCorta(obj))}</b>
       <div>${hecho ? '<span class="pill ok">✓ Menú escrito</span>' : '<span class="pill gold">Toca ahora</span>'}</div>
-      <div class="small muted">Apunta los días que trabajas y entrenas, tus comidas libres y lo que tienes pensado comer. Te calculo las cantidades y la compra.</div></div>
-      <button class="btn sm" data-act="nuSemana" data-l="${obj}" ${cargando ? 'disabled' : ''}>${hecho ? 'Ver o cambiar' : 'Escribir menú'}</button></div></section>`;
+      <div class="small muted">Apunta los días que trabajas y entrenas, tus comidas libres y lo que tienes pensado comer. Si no lo haces hoy, mañana pasará a Pendiente.</div></div>
+      <button class="btn sm ${hecho ? 'ghost' : ''}" data-act="nuSemana" data-l="${obj}" ${cargando ? 'disabled' : ''}>${hecho ? 'Ver o cambiar' : 'Escribir menú'}</button></div></section>`;
   }
-  return { abrir, tarjeta, reconoce, comida, ctxIdx, qty, buscaAli };
+  /* De lunes a sábado, si el menú de esta semana sigue sin escribir, sale en «Pendiente» */
+  function pendiente() {
+    if (!aplica() || new Date().getDay() === 0) return null;
+    cargarHechos(); if (!S.d.pnSemanas) return null;
+    const l = lunesDe(hoyISO()); if (S.d.servicio.inicio && S.d.servicio.inicio > sumaDias(l, 6)) return null;
+    if (S.d.pnSemanas.includes(l)) return null;
+    return ['🗓', 'Menú de esta semana sin escribir', `Semana del ${fCorta(l)} · días de trabajo y entreno, comidas libres y lo que vas a comer`, `data-act="nuSemana" data-l="${l}"`, 'Escribir menú'];
+  }
+  return { abrir, tarjeta, pendiente, reconoce, comida, ctxIdx, qty, buscaAli };
 })();
 window.MenuSemana = MenuSemana;

@@ -139,11 +139,19 @@ const Casos = (() => {
     if (error) return fallo(error); S.ficha.fotosProg = null; await cargarCoach(); toast(ok ? 'Canje aplicado' : 'Canje rechazado: se le devuelven los puntos'); render();
   }
   /* Tarjeta de Hoy: franja tranquila fuera de la ventana; destacada (sin presión) en la semana del control */
+  /* Fotos y reflexión del mes: línea para «Pendiente» mientras la ventana del mes esté abierta y sin completar */
+  function pendienteMes() {
+    const D = S.d; if (!D || D.casosErr || D.puntosErr || !D.servicio?.inicio || S.vista || S.prueba) return null;
+    const act = saldo(D.servicio, D.fotosProg, D.testimonios, D.canjes).ms.find(m => m.abierto); if (!act || act.completo) return null;
+    const falta = [!act.foto && `fotos ${act.vistas}/3`, !act.refl && 'reflexión del mes'].filter(Boolean).join(' y ');
+    return ['📸', 'Fotos y reflexión del mes', `Falta: ${falta} · hasta el ${fLarga(act.fin)}`, 'data-act="fpSubir"', 'Hacerlo ahora'];
+  }
   function tarjetaHoy(arriba) {
     const D = S.d; if (!D || D.casosErr || D.puntosErr || !D.servicio?.inicio || S.vista || S.prueba) return '';
     const P = saldo(D.servicio, D.fotosProg, D.testimonios, D.canjes), act = P.ms.find(m => m.abierto), sig = PREMIOS.find(p => p[2] > P.saldo), puede = PREMIOS.filter(p => p[2] <= P.saldo).slice(-1)[0];
     const enVentana = !!act && !act.completo;
     if (arriba !== enVentana) return '';
+    if (enVentana && arriba) return '';   // la ventana abierta sale en «Pendiente»
     if (enVentana) {
       const max = PTS.foto + PTS.reflexion + PTS.ambos + (act.racha ? PTS.racha : 0), chk = (ok, t) => `<span class="small" style="${ok ? 'color:var(--ok);font-weight:700' : ''}">${ok ? '✓' : '○'} ${t}</span>`;
       return `<section class="section"><div class="card stack" style="border:2px solid var(--gold)"><div class="row"><div class="grow"><span class="eyebrow">Esta semana · tu mes en fotos</span><h3 style="margin:0">Tus fotos y tu reflexión del mes</h3></div><b class="num" style="font-family:var(--display);font-size:22px;color:var(--gold-ink,#8a6d1f)">+${max}</b></div>
@@ -340,5 +348,5 @@ const Casos = (() => {
     return perm.concat((S.c?.casos || []).filter(x => x.alumno_id === aid && x.estado !== 'pendiente' && x.respondido_at && x.respondido_at.slice(0, 10) >= sumaDias(hoyISO(), -7)).map(x => x.estado === 'aprobado' ? 'Ha aprobado que compartas su caso de éxito' : 'No quiere que se publique la propuesta de caso de éxito'));
   }
 
-  return { tarjetaHoy, canjear, resolverCanje, saldo, campoTestimonio, guardarTestimonio, VERSION, vistaInicial, cargar, cargarCoach, vSeccionAlumno, camposFotos, subirDesde, formSubir, borrarFecha, formPermisos, avisoNovedad, lineaHoy, responder, alertaFotos, vFicha, formNuevo, borrarCaso, resumenCoach, avisosCoach, cargarFicha };
+  return { pendienteMes, tarjetaHoy, canjear, resolverCanje, saldo, campoTestimonio, guardarTestimonio, VERSION, vistaInicial, cargar, cargarCoach, vSeccionAlumno, camposFotos, subirDesde, formSubir, borrarFecha, formPermisos, avisoNovedad, lineaHoy, responder, alertaFotos, vFicha, formNuevo, borrarCaso, resumenCoach, avisosCoach, cargarFicha };
 })();
