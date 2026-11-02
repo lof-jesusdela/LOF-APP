@@ -5079,7 +5079,7 @@ function editorSemana() {
   if (editorEsFutbol()) return true;
   if (e.alumnoId) return semanaFija((S.c?.servicios || []).find(x => x.alumno_id === e.alumnoId));
   const cat = p.categoria || (S.c?.plantillas || []).find(x => x.id === p.id)?.categoria || '';
-  return /oposici/i.test(cat.normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+  return /opositor|oposici/i.test(cat.normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
 }
 function editorEsFutbol() {
   const e = S.editor || {}, p = e.prog || {};
