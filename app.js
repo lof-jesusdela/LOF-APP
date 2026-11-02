@@ -389,12 +389,24 @@ function tabsAlumno() {
 
 /* Escritorio (iPad / Mac): barra lateral con la lista de alumnos y fichas a dos columnas */
 const ANCHO = matchMedia('(min-width: 900px)');
-ANCHO.addEventListener?.('change', () => { if (S.modo === 'coach' && S.perfil) render(); });
+ANCHO.addEventListener?.('change', () => { if (S.perfil && S.user && S.d !== undefined) { try { render(); } catch (e) { /* aún sin datos */ } } });
+/* Escritorio del alumno: Hoy, Progreso y Nutrición a dos columnas; el entreno y el chat, a una columna cómoda */
+function claseMainAlumno(actual) {
+  if (S.ia || Temperamento.activo?.()) return 'una';
+  return ['hoy', 'progreso', 'nutri', 'habitos', 'coach'].includes(actual) && !S.dia ? 'dos' : 'una';
+}
 function claseMain() {
   if (S.iaCoach || S.factura || S.obj || S.editor || S.verPlan || S.verSes || S.valEd) return '';
   if (S.reporte) return S.reporte.alumno ? '' : 'rejilla';
   if (S.ficha) return !S.fichaSub || S.fichaSub === 'plan' ? 'dos' : '';
   return '';
+}
+/* Escritorio del alumno: sus mismas pestañas en una barra lateral */
+function vLateralAlumno(tabs, actual) {
+  return `<aside class="lateral" aria-label="Navegación">
+    <nav class="lat-nav">${tabs.map(([k, l]) => `<button data-act="tab" data-t="${k}" ${actual === k ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${k === 'hoy' && (pendientesFutbol().length || tocaCheckin()) ? '<i class="badge-dot" style="position:static;margin-left:auto"></i>' : ''}</button>`).join('')}</nav>
+    ${S.perfil?.nombre ? `<div class="lat-yo small muted">${esc(S.perfil.nombre)}</div>` : ''}
+  </aside>`;
 }
 function vLateral(actual) {
   if (!S.c?.perfiles) return '';
@@ -425,8 +437,9 @@ function render() {
       <button type="button" class="badge" data-act="inicio" aria-label="Ir al inicio" style="background:none;border:0;padding:0;cursor:pointer;text-align:left;color:inherit;font:inherit"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : esc(S.perfil.metodologia || 'Tu proceso')}</strong></div></button>
       <div class="row" style="gap:8px">${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
       <button class="avatar" data-act="cuenta" aria-label="Mi cuenta">${esCoach ? '<img src="icons/coach.jpg" alt="">' : S.perfil.foto_url ? `<img src="${esc(S.perfil.foto_url)}" alt="">` : esc((S.perfil.nombre || '?').slice(0, 2).toUpperCase())}</button></div>
-    </header>${S.prueba ? vBannerPrueba() : S.vista ? vBannerVista() : vBarraYo()}${coach && ANCHO.matches ? vLateral(actual) : ''}<main id="main" class="${coach ? claseMain() : ''}">${(S.iaCoach && coach) ? seguro(IA.vCoach) : (S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vDuo() + vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? seguro(vFicha) : (!coach && S.ia) ? seguro(IA.vChat) : (!coach && Temperamento.activo()) ? seguro(Temperamento.vista) : seguro(vistas[actual])}</main>${coach ? Clip.barra() : ''}${vBarraEntreno()}${IA.vFab(coach)}`;
+    </header>${S.prueba ? vBannerPrueba() : S.vista ? vBannerVista() : vBarraYo()}${coach && ANCHO.matches ? vLateral(actual) : !coach && ANCHO.matches ? vLateralAlumno(tabs, actual) : ''}<main id="main" class="${coach ? claseMain() : claseMainAlumno(actual)}">${(S.iaCoach && coach) ? seguro(IA.vCoach) : (S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vDuo() + vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? seguro(vFicha) : (!coach && S.ia) ? seguro(IA.vChat) : (!coach && Temperamento.activo()) ? seguro(Temperamento.vista) : seguro(vistas[actual])}</main>${coach ? Clip.barra() : ''}${vBarraEntreno()}${IA.vFab(coach)}`;
   document.body.classList.toggle('modo-coach', coach);
+  document.body.classList.toggle('modo-alumno', !coach && ANCHO.matches);
   if (coach) aplicarFiltroAl();
   $('#tabs').hidden = false;
   $('#tabs-in').innerHTML = tabs.map(([k, l]) => `<button data-act="${coach ? 'ctab' : 'tab'}" data-t="${k}" ${actual === k && !((S.ficha || S.editor || S.obj) && coach) ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${!coach && k === 'hoy' && (pendientesFutbol().length || tocaCheckin()) ? '<i class="badge-dot"></i>' : ''}</button>`).join('');
@@ -5698,7 +5711,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v198';
+const APP_VER = 'v199';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
