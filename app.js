@@ -3144,7 +3144,7 @@ function formApartado(sec, clave) {
   const vCtx = ali ? (f.plan || []).find(z => z.clave === 'contextos')?.datos?.version : null, dep = ali && ['contexto', 'equivalencias', 'menus', 'platos'].includes(x.clave);
   const coh = ali && !nuevo ? Nutricion.coherencia(f.plan || [], f.srv).filter(o => o.k === x.clave && o.niv !== 'info') : [], pideConf = dep && coh.some(o => o.niv === 'error');
   const filaCtx = (c = {}) => `<div class="ctx-fila"><input type="text" data-c="n" value="${esc(c.n || '')}" placeholder="Tipo de día (ej. Entrenas y trabajas)"><input type="text" data-c="d" value="${esc(c.d || '')}" placeholder="Cuándo (ej. Lunes, miércoles y viernes)"><div class="ctx-num"><label>kcal<input type="number" inputmode="numeric" data-c="kcal" value="${esc(c.kcal ?? '')}"></label><label>Prot. g<input type="number" inputmode="numeric" data-c="p" value="${esc(c.p ?? '')}"></label><label>Hidr. g<input type="number" inputmode="numeric" data-c="c" value="${esc(c.c ?? '')}"></label><label>Grasa g<input type="number" inputmode="numeric" data-c="g" value="${esc(c.g ?? '')}"></label><label>Ingestas<input type="number" inputmode="numeric" min="1" max="8" data-c="ing" value="${esc(c.ing ?? '')}" placeholder="${comidasDia(f.srv)}"></label></div><details class="ctx-rep" ${(c.r || []).length ? 'open' : ''}><summary class="small"><b>Reparto por comida</b> · kcal, proteína, hidratos y grasa de cada comida${(c.r || []).length ? '' : ' <span class="muted">(sin definir)</span>'}</summary>
-    <div class="ctx-rfila small muted" style="margin-top:6px" aria-hidden="true"><span>Comida</span><span>kcal</span><span>Prot. g</span><span>Hidr. g</span><span>Grasa g</span><span></span></div><div class="ctx-rf stack" style="gap:6px">${((c.r || []).length ? c.r : []).map(filaRep).join('')}</div>
+    <div class="ctx-rcab small muted" style="margin-top:6px" aria-hidden="true"><span>Comida</span><span>kcal</span><span>Prot. g</span><span>Hidr. g</span><span>Grasa g</span><span></span></div><div class="ctx-rf stack" style="gap:6px">${((c.r || []).length ? c.r : []).map(filaRep).join('')}</div>
     <button class="linkbtn small" type="button" data-act2="ctxRepMas">＋ Comida</button>${(c.r || []).length ? '' : ' <button class="linkbtn small" type="button" data-act2="ctxRepAuto">Rellenar con las comidas del contexto</button>'}
     <input type="text" data-c="rep" value="${esc(c.rep || '')}" placeholder="Solo si no rellenas lo de arriba: % de calorías por comida (ej. 70,30)" style="margin-top:6px">
     <p class="small muted" style="margin:4px 0 0">Cada macro puede repartirse distinto: lo que escribas aquí es lo que usan la calculadora, las equivalencias y el menú semanal del alumno.</p></details><div class="ctx-chk small"></div></div>`;
@@ -5815,7 +5815,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v218';
+const APP_VER = 'v219';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
