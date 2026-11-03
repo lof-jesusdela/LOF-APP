@@ -22,7 +22,7 @@ const Nutricion = (() => {
   const ENCAJA = [[2, 'Sí, de mi plan', 'ok'], [1, 'Más o menos', 'warn'], [0, 'No', 'bad']];
   const GRUPOS = [
     ['Proteínas', [['Pechuga de pollo o pavo', '1 palma'], ['Ternera magra', '1 palma'], ['Cerdo magro / lomo', '1 palma'], ['Salmón', '1 palma'], ['Merluza / pescado blanco', '1–2 palmas'], ['Atún al natural', '1 lata'], ['Gambas / marisco', '1 plato pequeño'], ['Huevos', '2 unidades'], ['Claras de huevo', '4 claras'], ['Yogur griego natural', '1 envase'], ['Queso fresco batido', '1 envase'], ['Queso fresco', '1 tarrina'], ['Jamón serrano o cocido', '4 lonchas'], ['Tofu', '1 palma'], ['Proteína en polvo', '1 cacito']]],
-    ['Hidratos', [['Arroz cocido', '½ taza'], ['Pasta cocida', '1 taza'], ['Patata o boniato', '1 mediana'], ['Pan integral', '2 rebanadas'], ['Copos de avena', '½ taza'], ['Quinoa o cuscús cocido', '½ taza'], ['Lentejas cocidas', '½ taza'], ['Garbanzos cocidos', '½ taza'], ['Alubias cocidas', '½ taza'], ['Tortitas de arroz o maíz', '3 unidades'], ['Fruta', '1 pieza'], ['Plátano', '1 unidad'], ['Frutos rojos', '1 taza']]],
+    ['Hidratos', [['Arroz cocido', '½ taza'], ['Pasta cocida', '1 taza'], ['Patata o boniato', '1 mediana'], ['Pan integral', '2 rebanadas'], ['Copos de avena', '½ taza'], ['Quinoa o cuscús cocido', '½ taza'], ['Arroz o cuscús crudos', '¼ de taza (≈ 45 g)'], ['Pasta corta cruda (macarrones…)', '½ taza (≈ 50 g)'], ['Espaguetis crudos', '1 manojo del grosor de una moneda de 2 € (≈ 60 g)'], ['Lentejas cocidas', '½ taza'], ['Garbanzos cocidos', '½ taza'], ['Alubias cocidas', '½ taza'], ['Tortitas de arroz o maíz', '3 unidades'], ['Fruta', '1 pieza'], ['Plátano', '1 unidad'], ['Frutos rojos', '1 taza']]],
     ['Grasas', [['Aceite de oliva virgen extra', '1 cucharada'], ['Aguacate', '½ unidad'], ['Frutos secos', '1 puñado'], ['Crema de cacahuete', '1 cucharada'], ['Aceitunas', '10 unidades'], ['Queso curado', '2 lonchas'], ['Chocolate negro 85 %', '2 onzas'], ['Semillas', '1 cucharada']]],
     ['Verduras y lácteos', [['Ensalada', '1 plato'], ['Verdura cocinada', '1 plato'], ['Gazpacho o crema de verduras', '1 vaso'], ['Leche', '1 vaso'], ['Kéfir', '1 vaso'], ['Bebida vegetal', '1 vaso'], ['Café o infusión', '1 taza']]],
     ['Fuera de casa y caprichos', [['Bollería', ''], ['Pizza', ''], ['Hamburguesa', ''], ['Fritos o rebozados', ''], ['Dulces o postre', ''], ['Refresco', ''], ['Cerveza', ''], ['Vino', ''], ['Copa', '']]]
@@ -499,6 +499,13 @@ const Nutricion = (() => {
     ['Quinoa cocida', 120, 4.4, 21, 1.9, 'C', ['taza', 'tazas', 185]],
     ['Cuscús cocido', 112, 3.8, 23, 0.2, 'C', ['taza', 'tazas', 160]],
     ['Ñoquis', 133, 3, 28, 0.5, 'C', ['taza', 'tazas', 180]],
+    // hidratos en seco (sin cocer): cada formato se mide con su medida casera
+    ['Arroz blanco crudo (sin cocer)', 360, 6.7, 79, 0.6, 'C', ['taza', 'tazas', 185]],
+    ['Arroz integral crudo (sin cocer)', 355, 7.5, 76, 2.7, 'C', ['taza', 'tazas', 185]],
+    ['Pasta corta cruda (macarrones, penne, fusilli…)', 355, 12.5, 72, 1.5, 'C', ['taza', 'tazas', 100]],
+    ['Pasta larga cruda (espaguetis, tallarines…)', 355, 12.5, 72, 1.5, 'C', ['manojo (grosor de una moneda de 2 €)', 'manojos (grosor de una moneda de 2 €)', 60]],
+    ['Cuscús crudo (sin cocer)', 360, 12.5, 73, 1.5, 'C', ['taza', 'tazas', 175]],
+    ['Quinoa cruda (sin cocer)', 368, 14, 64, 6, 'C', ['taza', 'tazas', 170]],
     ['Pan integral', 240, 10, 41, 3.5, 'C', ['rebanada', 'rebanadas', 30]],
     ['Pan blanco', 265, 9, 49, 3.2, 'C', ['rebanada', 'rebanadas', 30]],
     ['Copos de avena', 370, 13, 60, 7, 'C', ['taza', 'tazas', 80]],
@@ -556,7 +563,7 @@ const Nutricion = (() => {
     'Jamón serrano': [20, 80, 10], 'Queso fresco batido 0 %': [100, 350, 25], 'Yogur alto en proteína': [1, 2, 1, 'ud'],
     'Tofu firme': [80, 250], 'Proteína en polvo (whey)': [15, 45, 5],
     'Patata cocida': [80, 500], 'Boniato cocido': [80, 450], 'Yuca cocida': [80, 350], 'Quinoa cocida': [60, 300], 'Cuscús cocido': [60, 300],
-    'Ñoquis': [80, 300], 'Pan integral': [1, 4, 1, 'ud'], 'Pan blanco': [1, 4, 1, 'ud'], 'Copos de avena': [20, 120, 5], 'Tortitas de arroz': [1, 6, 1, 'ud'],
+    'Ñoquis': [80, 300], 'Pan integral': [1, 4, 1, 'ud'], 'Pan blanco': [1, 4, 1, 'ud'], 'Copos de avena': [20, 120, 5], 'Arroz blanco crudo (sin cocer)': [20, 130, 5], 'Arroz integral crudo (sin cocer)': [20, 130, 5], 'Pasta corta cruda (macarrones, penne, fusilli…)': [20, 130, 5], 'Pasta larga cruda (espaguetis, tallarines…)': [20, 130, 5], 'Cuscús crudo (sin cocer)': [20, 130, 5], 'Quinoa cruda (sin cocer)': [20, 110, 5], 'Tortitas de arroz': [1, 6, 1, 'ud'],
     'Maíz cocido': [50, 250], 'Lentejas cocidas': [80, 300], 'Garbanzos cocidos': [80, 300], 'Alubias cocidas': [80, 300],
     'Plátano': [0.5, 2, 0.5, 'ud'], 'Manzana': [0.5, 2, 0.5, 'ud'], 'Naranja': [1, 2, 1, 'ud'], 'Fresas': [50, 300], 'Arándanos': [50, 200],
     'Dátiles': [1, 6, 1, 'ud'], 'Miel': [5, 30, 5],
