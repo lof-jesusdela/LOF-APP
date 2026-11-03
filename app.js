@@ -4151,13 +4151,19 @@ async function abrirReporte(alumno = null, lunes = null) {
   S.reporte = { alumno, lunes, cargando: true }; render(); window.scrollTo(0, 0);
   const fin = sumaDias(lunes, 6);
   const filtro = q => alumno ? q.eq('alumno_id', alumno) : q;
-  const [ses, reg, chk, pres] = await Promise.all([
-    filtro(sb.from('sesiones_hechas').select('*,dias(*)').gte('fecha', lunes).lte('fecha', fin)),
-    filtro(sb.from('registro_diario').select('*').gte('fecha', lunes).lte('fecha', fin)),
-    filtro(sb.from('checkins').select('*').eq('semana_inicio', lunes)),
-    filtro(sb.from('presenciales').select('*').gte('fecha', lunes).lte('fecha', fin))
-  ]);
-  S.reporte = { alumno, lunes, src: { sesiones: ses.data || [], diario: reg.data || [], checkins: chk.data || [] }, pres: pres.data || [] };
+  let ses, reg, chk, pres;
+  try {
+    [ses, reg, chk, pres] = await Promise.all([
+      filtro(sb.from('sesiones_hechas').select('*,dias(*)').gte('fecha', lunes).lte('fecha', fin)),
+      filtro(sb.from('registro_diario').select('*').gte('fecha', lunes).lte('fecha', fin)),
+      filtro(sb.from('checkins').select('*').eq('semana_inicio', lunes)),
+      filtro(sb.from('presenciales').select('*').gte('fecha', lunes).lte('fecha', fin))
+    ]);
+  } catch (err) { console.error(err); S.reporte = { alumno, lunes, errorCarga: err?.message || 'sin conexión' }; return render(); }
+  if (S.reporte?.lunes !== lunes || S.reporte?.alumno !== alumno) return;   // el coach ya cambió de semana
+  // una tabla que falla no tumba el resto: se avisa de qué falta
+  const faltan = [['sesiones', ses], ['registros diarios', reg], ['check-ins', chk], ['presenciales', pres]].filter(([, r]) => r?.error).map(([t]) => t);
+  S.reporte = { alumno, lunes, src: { sesiones: ses.data || [], diario: reg.data || [], checkins: chk.data || [] }, pres: pres.data || [], faltan };
   render();
 }
 function datosReporte(a, R) {
@@ -4170,8 +4176,8 @@ function datosReporte(a, R) {
     const dia = x.dias ? `${x.dias.nombre}${x.dias.foco ? ' · ' + x.dias.foco : ''}` : 'Entreno';
     if (x.nota) coment.push(['Entreno', x.fecha, `${dia}: "${x.nota}"`]);
     if (x.nota_revision) coment.push(['Para la revisión', x.fecha, x.nota_revision]);
-    (x.omitidos || []).forEach(o => coment.push(['No realizado', x.fecha, `${o.nombre}: ${o.motivo}`]));
-    (x.comentarios || []).forEach(o => coment.push(['Ejercicio', x.fecha, `${o.nombre}: "${o.texto}"`]));
+    (x.omitidos || []).filter(Boolean).forEach(o => coment.push(['No realizado', x.fecha, `${o.nombre || 'Ejercicio'}: ${o.motivo || 'sin motivo'}`]));
+    (x.comentarios || []).filter(Boolean).forEach(o => coment.push(['Ejercicio', x.fecha, `${o.nombre || 'Ejercicio'}: "${o.texto || ''}"`]));
     if (x.cansancio >= 4) coment.push(['Cansancio', x.fecha, `${dia}: cansancio ${x.cansancio}/5`]);
   });
   w.reg.filter(r => r.observacion).forEach(r => coment.push(['Día', r.fecha, `${r.pasos != null ? fmtNum(r.pasos, 0) + ' pasos · ' : ''}"${r.observacion}"`]));
@@ -4189,7 +4195,7 @@ function vReporteAlumno(a, R, detalle) {
   const com = detalle ? d.coment : d.coment.slice(0, 4);
   return `<div class="card stack"><div class="row"><div class="grow"><h3>${esc(a.nombre)}</h3><div class="small muted">${semTxt}</div></div>${detalle ? '' : `<button class="btn sm ghost" data-act="abrirReporte" data-id="${a.id}">Ver</button>`}</div>
     <div class="kpis">${caja('Entrenos', d.dpw ? `${w.entrenos}/${d.dpw}` : w.entrenos, d.pctE != null ? d.pctE + ' %' : 'sin plan', d.nivel(d.pctE))}
-      ${d.srv?.modulo_nutricion && !midoCoach(a.id) ? caja('Alimentación', '—', esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || '') + ' · no se mide', '') : d.srv?.modulo_nutricion ? caja('Alimentación', w.nutri != null ? w.nutri + ' %' : '—', w.ing.dias ? `${w.ing.hechas}/${w.ing.total} ingestas · ${evalNutri(w.nutri)[1]}` : w.chk?.nutricion_pct != null ? 'según su check-in' : 'sin registros', evalNutri(w.nutri)?.[0] || '') : ''}
+      ${d.srv?.modulo_nutricion && !midoCoach(a.id) ? caja('Alimentación', '—', esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || '') + ' · no se mide', '') : d.srv?.modulo_nutricion ? caja('Alimentación', w.nutri != null ? w.nutri + ' %' : '—', w.ing.dias ? `${w.ing.hechas}/${w.ing.posibles} ingestas de ${w.ing.dias} día${w.ing.dias > 1 ? 's' : ''} registrado${w.ing.dias > 1 ? 's' : ''} · ${w.nutri != null ? evalNutri(w.nutri)[1] : `pocos datos para valorar (mín. ${MIN_DIAS_NUTRI} días)`}` : w.chk?.nutricion_pct != null ? 'según su check-in' : 'sin días registrados', evalNutri(w.nutri)?.[0] || '') : ''}
       ${!conPasos(d.srv) ? '' : caja('Pasos', w.pasosMedia != null ? fmtNum(w.pasosMedia, 0) : '—', `obj. ${fmtNum(d.obj, 0)} · ${w.diasPasos}/7 días`, d.nivel(d.pctP))}</div>
     ${w.cansancio || w.poderio || w.chk ? `<div class="row small muted" style="flex-wrap:wrap;gap:8px">${w.cansancio ? `<span class="pill">Cansancio medio ${fmtNum(w.cansancio)}/5</span>` : ''}${w.poderio ? `<span class="pill">Poderío medio ${fmtNum(w.poderio)}/5</span>` : ''}${w.chk ? `<span class="pill">Motivación ${w.chk.motivacion}/10 · implicación ${w.chk.implicacion}/10</span>` : '<span class="pill warn">Sin check-in</span>'}</div>` : ''}
     ${d.control ? `<div class="aprox small"><b>Esa semana tocaba el control mensual ${d.control.n}</b> (composición corporal, ajustes y reunión de seguimiento).</div>` : ''}
@@ -4204,11 +4210,15 @@ function vReporte() {
   const cab = `<section class="stack"><button class="btn sm ghost" data-act="cerrarReporte" style="align-self:flex-start">← Volver</button><span class="eyebrow">Reporting semanal · semana ${esc(String(numSemanaISO(R.lunes)))} del año</span><h1>Semana del ${esc(fCorta(R.lunes))} al ${esc(fCorta(fin))}</h1>
     <div class="row" style="gap:8px"><button class="btn sm ghost" data-act="reporteSemana" data-d="-7">‹ Anterior</button>${R.lunes < sumaDias(lunesDe(hoyISO()), -7) ? '<button class="btn sm ghost" data-act="reporteSemana" data-d="7">Siguiente ›</button>' : R.lunes < lunesDe(hoyISO()) ? '<button class="btn sm ghost" data-act="reporteSemana" data-d="7">Semana en curso ›</button>' : ''}</div></section>`;
   if (R.cargando) return cab + '<div class="empty">Preparando el reporting…</div>';
+  if (R.errorCarga) return cab + `<div class="card stack"><b>No se ha podido cargar el reporting</b><p class="small muted" style="margin:0">Parece un problema de conexión (${esc(R.errorCarga.slice(0, 120))}). Tus datos no se han tocado.</p><button class="btn sm" data-act="reporteSemana" data-d="0" style="align-self:flex-start">Reintentar</button></div>`;
   R.fin = fin;
-  if (R.alumno) { const a = S.c.perfiles.find(p => p.id === R.alumno) || { id: R.alumno, nombre: 'Alumno' }; return cab + `<section class="section">${vReporteAlumno(a, R, true)}</section>`; }
-  const als = S.c.perfiles.filter(p => p.activo !== false && (S.c.servicios.some(x => x.alumno_id === p.id) || S.c.programas.some(x => x.alumno_id === p.id)));
-  const lista = als.map(a => ({ a, d: datosReporte(a, R) })).sort((x, y) => x.d.score - y.d.score);
-  return cab + `<section class="section rep-lista"><p class="small muted">Ordenados de menor a mayor cumplimiento. Toca "Ver" para el detalle de cada alumno.</p>${lista.map(({ a }) => vReporteAlumno(a, R, false)).join('') || '<div class="empty">Sin alumnos activos.</div>'}</section>`;
+  const aviso = (R.faltan || []).length ? `<div class="aprox small">No se han podido leer: ${esc(R.faltan.join(', '))}. El resto del informe sí está al día; vuelve a abrirlo en un rato para completarlo.</div>` : '';
+  /* Cada alumno se pinta aislado: si su ficha tiene un dato incompleto, sale un aviso en su tarjeta y el resto sigue */
+  const tarjeta = (a, det) => { try { return vReporteAlumno(a, R, det); } catch (err) { console.error('Reporting de', a?.nombre, err); return `<div class="card stack"><div class="row"><b class="grow">${esc(a?.nombre || 'Alumno')}</b><span class="pill warn">Revisar ficha</span></div><p class="small muted" style="margin:0">Su informe de esta semana no se ha podido montar porque falta o está incompleto algún dato de su ficha. El resto del reporting no se ve afectado.</p><button class="btn sm ghost" data-act="reporteFicha" data-id="${a?.id}" style="align-self:flex-start">Abrir su ficha</button></div>`; } };
+  if (R.alumno) { const a = S.c.perfiles.find(p => p.id === R.alumno) || { id: R.alumno, nombre: 'Alumno' }; return cab + aviso + `<section class="section">${tarjeta(a, true)}</section>`; }
+  const als = S.c.perfiles.filter(p => p && p.activo !== false && (S.c.servicios.some(x => x.alumno_id === p.id) || S.c.programas.some(x => x.alumno_id === p.id)));
+  const lista = als.map(a => { try { return { a, d: datosReporte(a, R) }; } catch (err) { console.error('Reporting de', a?.nombre, err); return { a, d: { score: -1 } }; } }).sort((x, y) => x.d.score - y.d.score);
+  return cab + aviso + `<section class="section rep-lista"><p class="small muted">Ordenados de menor a mayor cumplimiento. Toca "Ver" para el detalle de cada alumno.</p>${lista.map(({ a }) => tarjeta(a, false)).join('') || '<div class="empty">Sin alumnos activos.</div>'}</section>`;
 }
 const numSemanaISO = iso => { const d = fecha(iso); d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7); const y = new Date(d.getFullYear(), 0, 4); return 1 + Math.round(((d - y) / 864e5 - 3 + (y.getDay() + 6) % 7) / 7); };
 
@@ -5748,7 +5758,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v213';
+const APP_VER = 'v214';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
