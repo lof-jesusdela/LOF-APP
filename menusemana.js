@@ -109,7 +109,7 @@ const MenuSemana = (() => {
     return l.join('\n');
   }
   function vPlan() {
-    const total = st.menu.reduce((t, d) => t + d.length, 0), max = Math.round(total * 0.15), usadas = st.menu.reduce((t, d) => t + d.filter(m => m.perm).length, 0), l = ctxs();
+    const total = st.menu.reduce((t, d) => t + d.length, 0), A = Nutricion.acuerdo(S.d), max = A.flexN != null ? A.flexN : Math.round(total * A.flexPct / 100), usadas = st.menu.reduce((t, d) => t + d.filter(m => m.perm).length, 0), l = ctxs();
     const dias = st.menu.map((dia, i) => {
       const ent = st.entreno.includes(i), trab = st.trabaja.includes(i), ci = ctxIdx(l, ent, trab), f = sumaDias(st.lunes, i);
       const filas = dia.map((m, k) => {
@@ -117,7 +117,7 @@ const MenuSemana = (() => {
         const pregunta = hay(m) && !r.conocido && !m.perm, abre = m.abre || pregunta || (m.ing || '').trim();
         return `<div class="ms-com${m.perm ? ' libre' : ''}"><div class="row" style="gap:6px"><span class="small muted ms-k">${ultima ? 'Última' : 'Comida ' + (k + 1)}</span>
           <input type="text" data-ms-t data-d="${i}" data-k="${k}" value="${esc(m.t)}" placeholder="Ej.: pollo con arroz y brócoli" aria-label="${DL[i]}, comida ${k + 1}">
-          <button type="button" class="pill ${m.perm ? 'gold' : ''}" data-ms="perm" data-d="${i}" data-k="${k}" aria-pressed="${!!m.perm}" title="Comida libre (de tu 15 %)">✨</button>
+          <button type="button" class="pill ${m.perm ? 'gold' : ''}" data-ms="perm" data-d="${i}" data-k="${k}" aria-pressed="${!!m.perm}" title="Comida flexible (de las acordadas)">✨</button>
           <button type="button" class="pill ${abre ? 'blue' : ''}" data-ms="ing" data-d="${i}" data-k="${k}" title="Desglosar ingredientes">🧾</button></div>
           ${abre ? `<input type="text" data-ms-i data-d="${i}" data-k="${k}" value="${esc(m.ing)}" placeholder="Ingredientes: pollo, arroz, brócoli, aceite…" aria-label="Ingredientes">` : ''}
           ${pregunta ? `<p class="ms-rojo">No sé qué lleva «${esc(m.t || m.ing)}». ¿Qué ingredientes tiene? Escríbelos separados por comas para calcular cantidades y la compra.</p>` : ''}
@@ -133,7 +133,8 @@ const MenuSemana = (() => {
       ${st.copiado ? '<p class="small" style="margin:0;color:var(--blue,#2563eb)">He copiado tu semana anterior como punto de partida: cámbiala como quieras.</p>' : ''}
       ${st.sinTabla ? `<p class="ms-rojo">${AVISO} Puedes usarlo, pero no se guardará.</p>` : ''}
       ${!l.length ? '<p class="ms-rojo">Aún no tienes contextos con macros en tu plan: la lista saldrá con cantidades orientativas.</p>' : ''}
-      <div class="card ms-res ${usadas > max ? 'mal' : ''}"><b>✨ Comidas libres: ${usadas} de ${max}</b><span class="small muted"> · el 15 % de tus ${total} comidas de la semana</span>${usadas > max ? '<div class="ms-rojo" style="margin-top:4px">Te pasas de tu 15 %. Quita alguna comida libre o vuelve a tu plan.</div>' : ''}</div>
+      <p class="small muted" style="margin:0">Esto es lo <b>planificado</b>. Lo que comes de verdad se apunta en Hoy (comidas del plan) o, si quieres, en tu diario.</p>
+      <div class="card ms-res"><b>✨ Comidas flexibles planificadas: ${usadas} de ${max}</b><span class="small muted"> · ${A.flexN != null ? 'las acordadas con Jesús' : `el ${A.flexPct} % acordado de tus ${total} comidas`}</span>${usadas > max ? '<div class="small" style="margin-top:4px">Has planificado más de las acordadas. Si esta semana lo necesitas, coméntalo en el check-in y lo vemos.</div>' : ''}</div>
       ${dias}
       <div class="row" style="gap:8px"><button type="button" class="btn grow" data-ms="guardar">💾 Guardar mi semana</button><button type="button" class="btn grow gold" data-ms="compra">🛒 Lista de la compra</button></div>`;
   }
@@ -190,22 +191,24 @@ const MenuSemana = (() => {
   }
   const aplica = () => { const s = S.d?.servicio || {}; return !(S.modo === 'coach' || !s.modulo_nutricion || s.modulo_futbol || Acomp.estado(s).k === 'pausado'); };
   /* Segundo check-in: solo el domingo, para escribir el menú de la semana que empieza */
+  /* Solo sale en Hoy y en Pendiente si Jesús lo ha acordado con el alumno; si no, es una herramienta opcional en Nutrición */
+  const acordado = () => !!Nutricion.acuerdo(S.d).menu && Nutricion.mide(Nutricion.fase(S.d));
   function tarjeta() {
-    if (!aplica() || new Date().getDay() !== 0) return '';
+    if (!aplica() || !acordado() || new Date().getDay() !== 0) return '';
     cargarHechos();
     const obj = sumaDias(lunesDe(hoyISO()), 7), hecho = (S.d.pnSemanas || []).includes(obj), cargando = !S.d.pnSemanas;
     return `<section class="section"><div class="card row" style="gap:10px;align-items:center"><div class="ico ${hecho ? '' : 'gold'}">🗓</div><div class="grow stack" style="gap:4px"><b class="small">Check-in de planificación · semana del ${esc(fCorta(obj))}</b>
       <div>${hecho ? '<span class="pill ok">✓ Menú escrito</span>' : '<span class="pill gold">Toca ahora</span>'}</div>
-      <div class="small muted">Apunta los días que trabajas y entrenas, tus comidas libres y lo que tienes pensado comer. Si no lo haces hoy, mañana pasará a Pendiente.</div></div>
+      <div class="small muted">Apunta los días que trabajas y entrenas, tus comidas libres y lo que tienes pensado comer. Lo acordaste con Jesús para organizar tu semana; puedes partir de la semana anterior.</div></div>
       <button class="btn sm ${hecho ? 'ghost' : ''}" data-act="nuSemana" data-l="${obj}" ${cargando ? 'disabled' : ''}>${hecho ? 'Ver o cambiar' : 'Escribir menú'}</button></div></section>`;
   }
   /* De lunes a sábado, si el menú de esta semana sigue sin escribir, sale en «Pendiente» */
   function pendiente() {
-    if (!aplica() || new Date().getDay() === 0) return null;
+    if (!aplica() || !acordado() || new Date().getDay() === 0) return null;
     cargarHechos(); if (!S.d.pnSemanas) return null;
     const l = lunesDe(hoyISO()); if (S.d.servicio.inicio && S.d.servicio.inicio > sumaDias(l, 6)) return null;
     if (S.d.pnSemanas.includes(l)) return null;
-    return ['🗓', 'Menú de esta semana sin escribir', `Semana del ${fCorta(l)} · días de trabajo y entreno, comidas libres y lo que vas a comer`, `data-act="nuSemana" data-l="${l}"`, 'Escribir menú'];
+    return ['🗓', 'Menú de esta semana sin planificar', `Semana del ${fCorta(l)} · lo acordasteis para organizarte; puedes repetir la semana anterior y cambiar solo lo necesario`, `data-act="nuSemana" data-l="${l}"`, 'Planificar'];
   }
   return { abrir, tarjeta, pendiente, reconoce, comida, ctxIdx, qty, buscaAli };
 })();

@@ -58,9 +58,11 @@ const Nutricion = (() => {
     const fotos = f.comidas.flatMap(fotosDe); if (fotos.length) pedirFotos(fotos);
   }
   async function cargarCoach(c) {
-    const [r, pl] = await Promise.all([sb.from('comidas_registro').select('id,alumno_id').eq('compartido', true).is('coach_estado', null), sb.from('planificacion').select('alumno_id,visible,contenido,imagenes').eq('seccion', 'alimentacion')]);
+    const [r, pl] = await Promise.all([sb.from('comidas_registro').select('id,alumno_id').eq('compartido', true).is('coach_estado', null), sb.from('planificacion').select('alumno_id,clave,visible,contenido,imagenes,datos').eq('seccion', 'alimentacion')]);
     c.creacionesNuevas = r.error ? [] : (r.data || []);
-    c.conPlanNutri = new Set((pl.data || []).filter(x => x.visible !== false && (x.contenido || (x.imagenes || []).length)).map(x => x.alumno_id));
+    // mismo criterio que ve el alumno: un apartado publicado con contenido (texto, archivos o datos del plan)
+    c.conPlanNutri = new Set((pl.data || []).filter(x => x.visible !== false && !esInc(x) && tiene(x)).map(x => x.alumno_id));
+    c.seguimientos = Object.fromEntries((pl.data || []).filter(x => x.clave === 'seguimiento').map(x => [x.alumno_id, x]));
   }
   const nuevasDe = aid => (S.c?.creacionesNuevas || []).filter(x => x.alumno_id === aid).length;
   /* Fase de la alimentación: la que fije Jesús en el servicio o, si no, «activo» cuando hay plan visible y «preparación» si no */
@@ -208,9 +210,9 @@ const Nutricion = (() => {
     const docs = [...DOCS.map(([k, t, s, ic]) => ({ x: docDe(n, k), k, t, s, ic })).filter(o => tiene(o.x)),
       ...n.plan.filter(x => !DOCS.some(([k]) => k === x.clave) && !esInc(x) && tiene(x)).map(x => ({ x, k: x.clave, t: x.titulo, s: '', ic: '📌' }))];
     const cab = prev ? '' : `<section class="stack"><span class="eyebrow">Tu plan de alimentación</span><h1>Nutrición</h1><p class="small muted">Tu guía para comer bien sin pensarlo demasiado. Vuelve aquí siempre que tengas una duda.</p></section>`;
-    return cab + vFase(d) + vIncAlumno(n, d) + vHoyCtx(n, d) + (prev ? '' : vBtnSemana()) + vDocs(docs) + (prev ? '' : vDiario(n, d));
+    return cab + vFase(d) + vIncAlumno(n, d) + (prev ? '' : tarjetaTemporal(d)) + vHoyCtx(n, d) + vAcuerdoAlumno(n, d) + (prev || !mide(fase(d)) ? '' : vBtnSemana()) + vDocs(docs) + (prev ? '' : vDiario(n, d));
   }
-  const vBtnSemana = () => `<section class="section"><div class="card stack" style="gap:6px"><span class="eyebrow">Tu semana</span><p class="small muted" style="margin:0">Marca cuándo entrenas y trabajas, qué vas a comer cada día y cuándo te permites tu 15 %. Te calculo las cantidades y te preparo la lista de la compra.</p><button class="btn full" data-act="nuSemana">🗓 Planifica tu semana y la compra</button></div></section>`;
+  const vBtnSemana = () => `<section class="section"><div class="card stack" style="gap:6px"><span class="eyebrow">Tu semana</span><p class="small muted" style="margin:0">Opcional: si te ayuda organizarte, marca cuándo entrenas y trabajas y qué vas a comer. Parte de tus menús o de tu semana anterior y cambia solo los días que haga falta; te calculo las cantidades y la lista de la compra. Comidas flexibles: ${esc(flexTxt(acuerdo(S.d)))}.</p><button class="btn full" data-act="nuSemana">🗓 Planifica tu semana y la compra</button></div></section>`;
   function vFase(d) {
     const f = fase(d); if (!f) return '';
     const txt = {
@@ -427,6 +429,7 @@ const Nutricion = (() => {
       case 'nuCalc': formPlato(); break;
       case 'nuSemana': MenuSemana.abrir(b.dataset.l); break;
       case 'nuInc': formInc(b.dataset.k); break;
+      case 'nuSeg': formSeguimiento(); break;
       case 'nuIncIni': { const v = $('#inc-ini')?.value; if (!v) return toast('Elige la fecha'); try { await guardarResumen(S.ficha, d => { d.inicio = v; }); await cargarPlanificacion(S.ficha); render(); toast('Fecha guardada'); } catch (err) { fallo(err); } break; }
       case 'nuGuia': S.nGuia = +b.dataset.i; render(); break;
       case 'nuIngG': S.nIngG = +b.dataset.i; render(); break;
@@ -448,6 +451,85 @@ const Nutricion = (() => {
   });
 
   const aislar = fn => (...args) => { try { return fn(...args); } catch (err) { console.error(err); return `<section class="section"><div class="card small muted">No se ha podido mostrar esta parte de Nutrición. Cierra y vuelve a abrir la app.</div></section>`; } };
+  /* ---------- Seguimiento acordado: cuánto registra cada alumno (lo decide Jesús) ----------
+     Se guarda como fila de planificación «seguimiento» (visible para el alumno, no es un apartado del plan).
+     - ligero: solo la comprobación breve del check-in semanal (sin registro diario de comidas)
+     - habitual: marcar cada día cuántas comidas del plan ha hecho + la comprobación semanal (lo que había hasta ahora)
+     - temporal: un registro concreto pedido por Jesús, con qué, por qué, hasta cuándo y cuándo se revisa; al terminar se vuelve al habitual
+     - menú semanal: herramienta opcional salvo que se acuerde; comidas flexibles: las que acuerde cada alumno */
+  const NIVELES = { ligero: ['Ligero', 'Una comprobación breve en el check-in semanal'], habitual: ['Habitual', 'Marcar cada día cuántas comidas del plan has hecho, más la comprobación semanal'] };
+  const QUE_TEMP = { fotos: 'Foto de cada comida', diario: 'Diario de comidas (qué y cuánto)', hambre: 'Hambre y saciedad en cada comida', otro: 'Otro registro' };
+  function acuerdoDe(plan) {
+    const x = (plan || []).find(z => z.clave === 'seguimiento'), d = x?.datos || {}, hoy = hoyISO();
+    const t = d.temporal?.que && d.temporal.hasta && d.temporal.hasta >= hoy ? d.temporal : null;
+    return { x, definido: !!x, nivel: NIVELES[d.nivel] ? d.nivel : 'habitual', menu: !!d.menu, flexPct: d.flexN != null ? null : (d.flexPct ?? 15), flexN: d.flexN ?? null, temporal: t, temporalAcabado: d.temporal?.hasta && d.temporal.hasta < hoy ? d.temporal : null, minimo: d.minimo || '' };
+  }
+  const acuerdo = d => acuerdoDe(d?.nutri?.plan);
+  const flexTxt = A => A.flexN != null ? `${A.flexN} comida${A.flexN === 1 ? '' : 's'} flexible${A.flexN === 1 ? '' : 's'} a la semana` : `un ${A.flexPct} % de tus comidas de la semana como comidas flexibles`;
+  const queTemp = t => t.que === 'otro' ? (t.otro || 'Registro acordado') : QUE_TEMP[t.que] || t.que;
+  /* Lo que el alumno ve: qué es necesario ahora, qué es opcional y qué está pendiente de revisar por Jesús */
+  function vAcuerdoAlumno(n, d) {
+    if (!mide(fase(d))) return '';
+    const A = acuerdoDe(n.plan), pend = (n.comidas || []).filter(x => x.compartido && !x.coach_estado).length;
+    const nec = [A.nivel === 'habitual' ? 'En «Hoy», marca cada día cuántas comidas de tu plan has hecho (un toque).' : null, 'En el check-in semanal, cuéntanos cómo has podido aplicar lo acordado.', A.menu ? 'El domingo, planifica tu menú de la semana (puedes repetir el de la semana anterior).' : null, A.temporal ? `${queTemp(A.temporal)} hasta el ${fLarga(A.temporal.hasta)}.` : null, A.minimo || null].filter(Boolean);
+    const opc = ['Diario de comidas con foto o texto, si te ayuda.', A.menu ? null : 'Planificar el menú de la semana y sacar la lista de la compra.', 'Compartir platos tuyos para que Jesús los revise.'].filter(Boolean);
+    return `<section class="section"><details class="card stack nu-acuerdo"><summary><span class="eyebrow">Lo que hemos acordado</span> <span class="small muted">· toca para verlo</span></summary>
+      <p class="small" style="margin:8px 0 4px">Tu parte: aplicar las prioridades acordadas, participar en las revisiones, avisar de dificultades o cambios y completar el registro mínimo.</p>
+      <b class="small">Necesario ahora</b><ul class="small" style="margin:2px 0 6px">${nec.map(t => `<li>${esc(t)}</li>`).join('')}</ul>
+      <b class="small">Opcional</b><ul class="small" style="margin:2px 0 6px">${opc.map(t => `<li>${esc(t)}</li>`).join('')}</ul>
+      ${pend ? `<b class="small">Pendiente de revisión de Jesús</b><p class="small" style="margin:2px 0">${pend} plato${pend > 1 ? 's' : ''} que has compartido. Los revisa en su próxima revisión; no hay respuesta inmediata.</p>` : ''}
+      <p class="small muted" style="margin:6px 0 0">Comidas flexibles: ${esc(flexTxt(A))}. Si una semana necesitas más, coméntalo en el check-in.</p></details></section>`;
+  }
+  /* Registro temporal pedido por Jesús: tarjeta en Hoy y en Nutrición mientras dura */
+  function tarjetaTemporal(d) {
+    d = d || S.d; if (!d?.servicio?.modulo_nutricion) return '';
+    const A = acuerdo(d), t = A.temporal; if (!t) return '';
+    return `<section class="section"><div class="card stack" style="gap:6px;border-color:var(--blue)"><div class="row"><span class="eyebrow grow">Registro acordado con Jesús</span><span class="pill blue">Hasta el ${esc(fCorta(t.hasta))}</span></div>
+      <b>${esc(queTemp(t))}</b>${t.porque ? `<p class="small" style="margin:0"><b>Para qué:</b> ${esc(t.porque)}</p>` : ''}
+      <p class="small muted" style="margin:0">${t.revision ? `Lo revisamos el ${esc(fLarga(t.revision))}. ` : ''}Al terminar vuelves a tu seguimiento habitual.</p>
+      <button class="btn sm" data-act="nuIrDiario" style="align-self:flex-start">Apuntar</button></div></section>`;
+  }
+  /* Coach: tarjeta y formulario del seguimiento acordado */
+  function vSeguimientoCoach(f, a) {
+    if (!f?.plan) return '';
+    const A = acuerdoDe(f.plan), nom = (a?.nombre || '').split(' ')[0], L = lunesDe(hoyISO());
+    let aviso = '';
+    if (A.nivel === 'habitual' && mide(faseCoach(f.id)) && typeof ingestasSemana === 'function') {
+      const sem = [sumaDias(L, -7), sumaDias(L, -14)].map(l => ingestasSemana(f.diarioLargo || [], l, f.srv));
+      if (sem.every(x => x.dias < MIN_DIAS_NUTRI)) aviso = `<div class="aprox small">Las dos últimas semanas faltan registros acordados (${sem.map(x => x.dias).join(' y ')} días). Antes de insistir, revisa con ${esc(nom)} si hay dificultades de aplicación, de comprensión o demasiada carga; quizá le encaje mejor el seguimiento ligero.</div>`;
+    }
+    return `<section class="section"><div class="section-head"><h2>Seguimiento acordado</h2><button class="btn sm ghost" data-act="nuSeg">✎ Cambiar</button></div><div class="card stack" style="gap:6px">
+      <div class="row small"><span class="grow">Nivel</span><b>${NIVELES[A.nivel][0]}${A.definido ? '' : ' (por defecto)'}</b></div><div class="small muted">${NIVELES[A.nivel][1]}.</div>
+      <div class="row small"><span class="grow">Menú semanal</span><b>${A.menu ? 'Acordado' : 'Opcional'}</b></div>
+      <div class="row small"><span class="grow">Comidas flexibles</span><b>${A.flexN != null ? A.flexN + ' a la semana' : A.flexPct + ' %'}</b></div>
+      ${A.minimo ? `<div class="small">Mínimo acordado: ${esc(A.minimo)}</div>` : ''}
+      ${A.temporal ? `<div class="small"><b>Registro temporal:</b> ${esc(queTemp(A.temporal))} hasta el ${esc(fCorta(A.temporal.hasta))}${A.temporal.revision ? ` · revisión el ${esc(fCorta(A.temporal.revision))}` : ''}${A.temporal.porque ? ` · ${esc(A.temporal.porque)}` : ''}</div>` : A.temporalAcabado ? `<div class="small muted">El registro temporal (${esc(queTemp(A.temporalAcabado))}) terminó el ${esc(fCorta(A.temporalAcabado.hasta))}.</div>` : ''}
+      ${aviso}</div></section>`;
+  }
+  function formSeguimiento() {
+    const f = S.ficha; if (!f) return; const A = acuerdoDe(f.plan || []), d0 = A.x?.datos || {}, t = d0.temporal || {};
+    abrirSheet(`<form class="stack" id="f-seg"><h2>Seguimiento acordado</h2><p class="small muted" style="margin-top:-8px">Cuánto tiene que registrar. Empieza por lo mínimo útil: puedes pedir más durante un tiempo concreto.</p>
+      <div class="stack" style="gap:6px">${Object.entries(NIVELES).map(([k, [t1, t2]]) => `<label class="row small" style="gap:8px;align-items:flex-start"><input type="radio" name="seg-n" value="${k}" ${A.nivel === k ? 'checked' : ''} style="width:20px;height:20px"><span><b>${t1}</b><br><span class="muted">${t2}</span></span></label>`).join('')}</div>
+      <label class="row small" style="gap:8px"><input type="checkbox" id="seg-menu" ${A.menu ? 'checked' : ''} style="width:20px;height:20px"> <span>Menú semanal acordado <span class="muted">(si no, es una herramienta opcional y no sale como pendiente)</span></span></label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="f">Comidas flexibles<select id="seg-ft"><option value="pct" ${A.flexN == null ? 'selected' : ''}>% de sus comidas</option><option value="n" ${A.flexN != null ? 'selected' : ''}>Nº a la semana</option></select></label><label class="f">Cantidad<input type="number" id="seg-fv" min="0" max="50" value="${A.flexN ?? A.flexPct}"></label></div>
+      <label class="f">Mínimo acordado (opcional, lo ve tal cual)<input type="text" id="seg-min" value="${esc(A.minimo)}" placeholder="Ej. Foto de la cena los días de partido"></label>
+      <details class="card" ${t.que ? 'open' : ''}><summary class="small"><b>Registro temporal</b> · pedir algo concreto durante unos días</summary><div class="stack" style="gap:8px;margin-top:8px">
+        <label class="f">Qué le pides<select id="seg-tq"><option value="">— Nada —</option>${Object.entries(QUE_TEMP).map(([k, l]) => `<option value="${k}" ${t.que === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <input type="text" id="seg-to" value="${esc(t.otro || '')}" placeholder="Si es «Otro», qué registro">
+        <label class="f">Para qué (lo verá)<input type="text" id="seg-tp" value="${esc(t.porque || '')}" placeholder="Ej. ver por qué tienes hambre por la tarde"></label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="f">Hasta<input type="date" id="seg-th" value="${esc(t.hasta || sumaDias(hoyISO(), 6))}"></label><label class="f">Lo revisamos el<input type="date" id="seg-tr" value="${esc(t.revision || '')}"></label></div></div></details>
+      <p class="err" id="seg-err"></p><button class="btn full">Guardar</button></form>`);
+    $('#f-seg').addEventListener('submit', async e => {
+      e.preventDefault(); const tq = $('#seg-tq').value, fv = numero($('#seg-fv').value);
+      const datos = { nivel: document.querySelector('[name="seg-n"]:checked')?.value || 'habitual', menu: $('#seg-menu').checked, minimo: $('#seg-min').value.trim() || '', flexPct: $('#seg-ft').value === 'pct' ? (fv ?? 15) : null, flexN: $('#seg-ft').value === 'n' ? (fv ?? 0) : null,
+        temporal: tq ? { que: tq, otro: $('#seg-to').value.trim() || '', porque: $('#seg-tp').value.trim() || '', desde: t.que === tq && t.desde ? t.desde : hoyISO(), hasta: $('#seg-th').value || sumaDias(hoyISO(), 6), revision: $('#seg-tr').value || null } : (d0.temporal?.hasta < hoyISO() ? d0.temporal : null) };
+      if (datos.temporal && tq && datos.temporal.hasta < hoyISO()) { $('#seg-err').textContent = 'La fecha «hasta» ya ha pasado.'; return; }
+      const fila = { alumno_id: f.id, seccion: 'alimentacion', clave: 'seguimiento', titulo: 'Seguimiento acordado', datos, imagenes: [], orden: 92, visible: true, actualizado_at: new Date().toISOString() };
+      const q = A.x?.id ? await sb.from('planificacion').update({ datos, visible: true, actualizado_at: fila.actualizado_at }).eq('id', A.x.id) : await sb.from('planificacion').insert(fila);
+      if (q.error) { $('#seg-err').textContent = 'No se ha podido guardar (' + (q.error.message || '').slice(0, 100) + ')'; return; }
+      cerrarSheet(); toast('Seguimiento guardado: lo verá en su pestaña Nutrición'); await cargarPlanificacion(f); render();
+    });
+  }
   /* ---------- Incorporación · primeros 14 días ----------
      Semana 1: 5 entradas (composición, estilo de vida, registro de 7 días, analítica, preferencias).
      Semana 2: reunión, entrega del plan (apartados publicados) y suplementación.
@@ -456,7 +538,7 @@ const Nutricion = (() => {
   const INC = [['composicion', 'Composición corporal', '📏', 'Peso, % de grasa, percentil y objetivos realistas'], ['estilo', 'Cuestionario de estilo de vida', '📝', 'Trabajo, descanso, entrenamiento, estrés, hábitos, digestión'], ['registro7', 'Registro de alimentación · 7 días', '📷', 'Todo lo que come y bebe, mejor con fotos'], ['analitica', 'Analítica de sangre y orina', '🩸', 'Y de heces si hiciera falta'], ['preferencias', 'Preferencias alimentarias', '🥦', 'Qué alimentos le gustan y cuáles no; alergias e intolerancias']];
   const INC_EST = { pendiente: ['Pendiente', ''], recibido: ['Recibido', 'blue'], revision: ['Revisar', 'warn'], validado: ['Validado', 'ok'], no_disponible: ['No disponible', ''], no_aplica: ['No aplica', ''] };
   const ENTREGAS = [['contexto', 'Informe de contexto y plan de acción'], ['contextos', 'Contextos y macros'], ['equivalencias', 'Guía visual de equivalencias'], ['menus', 'Menús por contexto'], ['platos', 'Cómo construir tus platos'], ['suplementacion', 'Plan de suplementación']];
-  const esInc = x => /^inc-|^incorporacion$/.test(x?.clave || '');
+  const esInc = x => /^inc-|^incorporacion$|^seguimiento$/.test(x?.clave || '');
   const incHecho = e => ['recibido', 'revision', 'validado', 'no_aplica', 'no_disponible'].includes(e);
   const resumenInc = plan => plan.find(x => x.clave === 'incorporacion')?.datos || {};
   const diaInc = r => r.inicio ? Math.max(1, Math.floor((fecha(hoyISO()) - fecha(r.inicio)) / 864e5) + 1) : null;
@@ -553,15 +635,17 @@ const Nutricion = (() => {
     const pub = k => { const x = docDe(n, k); return !!x && tiene(x); };
     const planListo = ['contextos', 'equivalencias', 'menus', 'contexto'].some(pub);
     if (f === 'activo' && planListo && INC.every(([k]) => incHecho(it[k]?.estado))) return '';
-    const dia = diaInc(r), TXT = { composicion: 'Mediremos tu porcentaje de grasa y fijaremos objetivos realistas.', estilo: 'Rellena el cuestionario: trabajo, descanso, estrés, digestión…', registro7: 'Apunta todo lo que comes y bebes, mejor con foto, sin cambiar nada.', analitica: 'Te indicaremos qué parámetros necesitamos analizar.', preferencias: 'Dinos qué alimentos te gustan y cuáles no.' };
+    const dia = diaInc(r), TXT = { composicion: 'Mediremos tu porcentaje de grasa y fijaremos objetivos realistas.', estilo: 'Rellena el cuestionario: trabajo, descanso, estrés, digestión…', registro7: `Durante 7 días apunta lo que comes y bebes como te sea más fácil: una foto o una frase. Sin cambiar nada: sirve para conocer tu punto de partida.${r.inicio ? ` Termina el ${fLarga(sumaDias(r.inicio, 6))}.` : ''}`, analitica: 'Te indicaremos qué parámetros necesitamos analizar.', preferencias: 'Dinos qué alimentos te gustan y cuáles no.' };
     const fila = ([k, t, ic]) => { const e = it[k]?.estado || 'pendiente', ok = incHecho(e); return `<div class="inc-a ${ok ? 'ok' : ''}"><span class="inc-ic">${ok ? '✓' : ic}</span><div class="grow"><b>${esc(t)}</b><small>${ok ? (e === 'no_aplica' ? 'No hace falta en tu caso' : e === 'no_disponible' ? 'Seguimos sin este dato, no pasa nada' : 'Recibido') : esc(TXT[k])}</small></div>${!ok && k === 'registro7' ? '<button class="btn sm" data-act="nuIrDiario">Apuntar</button>' : ''}</div>`; };
+    const sig = INC.find(([k]) => !incHecho(it[k]?.estado)), paso = sig ? `${sig[1]}: ${TXT[sig[0]]}` : it.reunion?.estado !== 'validado' ? 'La reunión con Jesús: revisaremos juntos lo que haces bien, lo que te limita y tus prioridades.' : !planListo ? 'Jesús está preparando tu plan: no tienes que hacer nada más por ahora.' : '';
     return `<section class="section"><div class="card inc-alu stack"><div class="row"><div class="grow"><span class="eyebrow">Tus primeros 14 días</span><h3 style="margin:2px 0 0">Primero te conocemos. Después construimos tu estrategia.</h3></div>${dia && dia <= 14 ? `<span class="pill gold">Día ${dia}/14</span>` : ''}</div>
+      ${paso ? `<div class="aprox small"><b>Tu siguiente paso</b> · ${esc(paso)}</div>` : ''}
       <div class="inc-sem"><b>Semana 1 · Toma de datos</b>${INC.map(fila).join('')}</div>
       <div class="inc-sem"><b>Semana 2 · Análisis y estrategia</b>
         <div class="inc-a ${it.reunion?.estado === 'validado' ? 'ok' : ''}"><span class="inc-ic">${it.reunion?.estado === 'validado' ? '✓' : '🤝'}</span><div class="grow"><b>Reunión personalizada</b><small>${it.reunion?.estado === 'validado' ? 'Hecha' : it.reunion?.estado === 'recibido' ? 'Programada' + (it.reunion?.fecha ? ' · ' + esc(fCorta(it.reunion.fecha)) : '') : 'Revisaremos juntos lo que haces bien, lo que te limita y tus 3–4 prioridades.'}</small></div></div>
         <div class="inc-a ${planListo ? 'ok' : ''}"><span class="inc-ic">${planListo ? '✓' : '🍽️'}</span><div class="grow"><b>Entrega de tu plan personalizado</b><small>${planListo ? 'Ya lo tienes aquí abajo, en «Tu plan»' : 'Menú adaptado a tu contexto, guía visual de cantidades y estructura de platos.'}</small></div></div>
         <div class="inc-a ${pub('suplementacion') ? 'ok' : ''}"><span class="inc-ic">${pub('suplementacion') ? '✓' : '💊'}</span><div class="grow"><b>Plan de suplementación</b><small>${pub('suplementacion') ? 'Ya lo tienes en «Tu plan»' : 'Si ya tenemos tu analítica, te lo entregamos individualizado.'}</small></div></div></div>
-      <p class="small muted" style="margin:0">No es una dieta estricta: es una estrategia personalizada, comiendo lo que te gusta y sin efecto rebote.</p></div></section>`;
+      <p class="small muted" style="margin:0">No es una dieta estricta: es una estrategia personalizada, comiendo lo que te gusta y pensada para que puedas mantenerla.</p></div></section>`;
   }
   /* ---------- Calcula tu plato ----------
      El alumno elige contexto, comida y alimentos; se calculan los gramos para acercarse a los macros de esa comida
@@ -1071,5 +1155,5 @@ Reglas: "reparto" lleva una fila por ingesta con sus propias kcal, p, c y g (cad
       '\nCONCLUSIONES DE JESÚS', ...CONC.filter(([k]) => c[k]).map(([k, tt]) => `${tt}: ${c[k]}`), (c.pasos || []).length ? 'Primeros pasos:\n' + c.pasos.map((p, i) => `${i + 1}. ${p}`).join('\n') : ''].filter(v => v !== '').join('\n');
     try { await navigator.clipboard.writeText(t); toast('Copiado: pégalo en ChatGPT junto al resto de su información'); } catch (e) { abrirSheet(`<div class="stack"><h2>Copia este texto</h2><textarea rows="16" style="font-size:12px">${esc(t)}</textarea></div>`); }
   }
-  return { comidasPlan, txtReparto, nombresIng, coherencia, versionCtx, vCoherencia: aislar(vCoherencia), lineaCoh, fase, faseDe, faseCoach, mide, FASES, vSemana7: aislar(vSemana7), formImportar, formPlato, calcular, avisoCena, ALI, objetivoComida, equivVisual, vIncCoach: aislar(vIncCoach), formInc, esInc, guardarResumen, vista: aislar(vista), vCoach: aislar(vCoach), cargar, cargarFicha, cargarCoach, datosPrevia, nuevasDe, DOCS, esPdf, ctxDe };
+  return { acuerdo, acuerdoDe, flexTxt, tarjetaTemporal, vSeguimientoCoach: aislar(vSeguimientoCoach), comidasPlan, txtReparto, nombresIng, coherencia, versionCtx, vCoherencia: aislar(vCoherencia), lineaCoh, fase, faseDe, faseCoach, mide, FASES, vSemana7: aislar(vSemana7), formImportar, formPlato, calcular, avisoCena, ALI, objetivoComida, equivVisual, vIncCoach: aislar(vIncCoach), formInc, esInc, guardarResumen, vista: aislar(vista), vCoach: aislar(vCoach), cargar, cargarFicha, cargarCoach, datosPrevia, nuevasDe, DOCS, esPdf, ctxDe };
 })();

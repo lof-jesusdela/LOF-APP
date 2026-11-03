@@ -638,6 +638,19 @@ nav.tabs a.tab-wa{flex:1;padding:10px 2px 12px;display:flex;flex-direction:colum
 @media (prefers-reduced-motion:reduce){.card.pend{animation:none}}
 .pend-cab{display:flex;align-items:center;gap:10px;background:var(--bad);color:#fff;padding:12px 14px}.pend-cab h2{margin:0;color:#fff;flex:1;letter-spacing:.04em}.pend-ic{font-size:24px}.pend-n{background:#fff;color:var(--bad);border-radius:999px;min-width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;padding:0 9px}
 .pend-sub{margin:0 14px;color:var(--bad);font-weight:700}.pend-linea{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid rgba(210,59,50,.45);border-left:6px solid var(--bad);border-radius:12px;padding:10px 12px;margin:0 12px}.pend-linea b{font-size:15px;color:#8f1d16}.pend-linea .small{color:var(--muted)}.pend-i{font-size:22px;width:28px;text-align:center}.pend-btn{background:var(--bad);color:#fff;border-color:var(--bad);flex:none;font-weight:800}
+/* Pendiente sin retraso: visible pero sin alarma (la roja se reserva para lo que va tarde) */
+.card.pend-suave{border:2px solid var(--gold);background:var(--gold-soft);padding:0 0 12px;display:flex;flex-direction:column;gap:10px;overflow:hidden}
+.pend-suave .pend-cab{background:var(--gold)}
+.pend-suave .pend-n{color:var(--gold-text,#7a5a00)}
+.pend-suave .pend-sub{color:var(--ink,inherit);font-weight:600}
+.pend-suave .pend-linea{border-color:rgba(176,137,46,.45);border-left-color:var(--gold)}
+.pend-suave .pend-linea b{color:inherit}
+.pend-suave .pend-btn{background:var(--ink,#111);border-color:var(--ink,#111)}
+.card.pend .pend-linea:not(.urge){border-left-color:var(--gold);border-color:rgba(176,137,46,.45)}
+.card.pend .pend-linea:not(.urge) b{color:inherit}
+.card.pend .pend-linea:not(.urge) .pend-btn{background:var(--ink,#111);border-color:var(--ink,#111)}
+.nu-acuerdo summary{cursor:pointer;list-style:none}
+.nu-acuerdo ul{padding-left:18px}
 .ms-rojo{color:#C62828;font-size:12.5px;font-weight:600;margin:4px 0 0}.ms-com{display:flex;flex-direction:column;gap:4px;padding:6px 0;border-top:1px solid var(--line)}.ms-com input[type=text]{flex:1;min-width:0}.ms-k{min-width:62px}.ms-com.libre{background:var(--gold-soft);border-radius:10px;padding:6px}.ms-res{padding:10px 12px}.ms-res.mal{border-color:#C62828}
 .calc-al small.calc-cena{display:block;font-size:12.5px;font-weight:700;color:#C62828;margin-top:3px}.calc-al .calc-alt{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:12px;color:#C62828;margin:3px 0}.calc-al .calc-alt .pill{cursor:pointer;border-color:#C62828;color:#C62828;background:#FDECEA}
 .calc-al small.calc-ap,.calc-al small.calc-desc{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}.calc-al small.calc-desc{color:var(--blue,#3b82f6)}

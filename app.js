@@ -467,6 +467,8 @@ const comidasDia = srv => srv?.comidas_dia || 3;
 /* ¿Se mide ya la aplicación del plan de alimentación? Solo con plan activo o en revisión (no en recogida ni en preparación) */
 const midoAlumno = () => !!S.d?.servicio?.modulo_nutricion && Nutricion.mide(Nutricion.fase(S.d));
 const midoCoach = aid => Nutricion.mide(Nutricion.faseCoach(aid));
+/* Registro diario de comidas del plan: solo con seguimiento «habitual» (con «ligero» basta la comprobación del check-in) */
+const midoDiario = () => midoAlumno() && Nutricion.acuerdo(S.d).nivel === 'habitual';
 /* Color de los entrenos de una semana solo cuando ya se puede juzgar: verde si cumple, neutro si aún hay
    días para llegar o el proceso empezó esa semana, naranja si ya no da tiempo */
 function juzgaEntrenos(hechos, dpw, lunes, srv) {
@@ -643,7 +645,7 @@ function vRegistroDia(s) {
     ${conPasos(s) ? '' : '<!--'}<div class="row"><div class="ico">${svg('pasos')}</div><label class="f grow">Pasos${objPasos(s) ? ` <span class="muted">(objetivo ${fmtNum(objPasos(s), 0)})</span>` : ''}<input id="r-pasos" type="number" inputmode="numeric" min="0" value="${r.pasos ?? ''}" placeholder="Ej. 8500"></label></div>${conPasos(s) ? '' : '-->'}
     ${s.modulo_nutricion && !midoAlumno() ? `<div class="small muted">🍽 ${Nutricion.fase(S.d) === 'recogida' ? 'Estos días solo apunta lo que comes en tu diario: aún no hay plan que cumplir.' : 'Tu plan de alimentación está en preparación: todavía no se mide nada.'}</div>` : ''}
     ${s.modulo_nutricion ? (() => { const l = Nutricion.ctxDe(S.d.nutri || { plan: [] }); return l.length ? `<div class="stack" style="gap:6px"><span class="small">¿Qué tipo de día ${esHoy ? 'has tenido hoy' : 'tuviste'}?</span><div class="chips">${l.map(c => `<button class="pill ${r.contexto === c.n ? 'blue' : ''}" data-act="ctxDia" data-v="${esc(c.n)}" aria-pressed="${r.contexto === c.n}">${esc(c.n)}</button>`).join('')}</div></div>` : ''; })() : ''}
-    ${midoAlumno() ? (() => { const n = comidasDia(s), tot = r.comidas_hechas ?? (r.ingestas != null ? n : null), mx = Math.max(n + 3, tot ?? 0, 6);
+    ${midoDiario() ? (() => { const n = comidasDia(s), tot = r.comidas_hechas ?? (r.ingestas != null ? n : null), mx = Math.max(n + 3, tot ?? 0, 6);
       return `<div class="stack" style="gap:6px"><span class="small">¿Cuántas comidas has hecho ${esHoy ? 'hoy' : 'ese día'}? <span class="muted">(tu plan tiene ${n})</span></span><div class="choice ing" role="group" style="flex-wrap:wrap">${[...Array(mx + 1)].map((_, k) => `<button data-act="comidasHechas" data-v="${k}" aria-pressed="${tot === k}">${k}</button>`).join('')}</div></div>
       ${tot ? `<div class="stack" style="gap:6px"><span class="small">De esas ${tot}, ¿cuántas han sido buenas, de tu plan? <span class="muted">(el resto, las que se salieron del plan)</span></span><div class="choice ing" role="group" style="flex-wrap:wrap">${[...Array(tot + 1)].map((_, k) => `<button data-act="ingestas" data-v="${k}" aria-pressed="${r.ingestas === k}">${k}</button>`).join('')}</div>${r.ingestas != null ? `<span class="small muted">${r.ingestas} buena${r.ingestas === 1 ? '' : 's'} y ${tot - r.ingestas} ${tot - r.ingestas === 1 ? 'que se salió' : 'que se salieron'} del plan.</span>` : ''}</div>` : ''}`; })() + `
     <div class="stack" style="gap:8px">${!s.modulo_nutricion ? '' : (() => { const nc = (S.d.nutri?.comidas || []).filter(x => x.fecha === sel).length; return `<button class="btn ghost full" data-act="nuIrDiario" data-f="${sel}">🍽 ${nc ? `${nc} ${nc === 1 ? 'comida apuntada' : 'comidas apuntadas'} · ver tu diario` : 'Apuntar lo que has comido (opcional)'}</button>`; })()}${rutas.length ? `<div class="plan-imgs">${miniFotos(rutas)}</div>` : ''}</div>` : ''}
@@ -847,19 +849,22 @@ const Bienvenida = {
 function vPendientesHoy(s) {
   /* Todo lo que se quedó sin hacer y conviene rellenar: registros de días pasados, fotos y reflexión del mes, check-in semanal y menú de la semana */
   const hoy = hoyISO(), lineas = [], fase = Nutricion.fase(S.d), activo = Acomp.estado(s).k !== 'pausado';
-  const exige = !s.modulo_futbol && (conPasos(s) || (s.modulo_nutricion && fase === 'activo')) && activo;
+  const exige = !s.modulo_futbol && (conPasos(s) || (s.modulo_nutricion && fase === 'activo' && Nutricion.acuerdo(S.d).nivel === 'habitual')) && activo;
   if (exige) {
     const hecho = x => !!x && (x.pasos != null || x.ingestas != null || x.comidas_hechas != null || !!x.alimentacion || !!x.observacion);
     const faltan = ventanaRegistro().filter(f => f < hoy && (!s.inicio || f >= s.inicio) && !hecho(S.d.diario.find(x => x.fecha === f)));
-    if (faltan.length) lineas.push(['📝', faltan.length === 1 ? 'Te falta registrar un día' : `Te faltan ${faltan.length} días por registrar`, faltan.map(f => fecha(f).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' })).join(' · ') + ' · rellénalos para que Jesús vea tu semana real', faltan[0] ? `data-act="irRegistroDia" data-f="${faltan[0]}"` : '', 'Rellenar']);
+    const lunesHoy = hoy === lunesDe(hoy), plazo = lunesHoy ? 'Hoy es el último día para completar la semana pasada' : 'Puedes completarlos hasta el domingo';
+    if (faltan.length) lineas.push(['📝', faltan.length === 1 ? 'Te falta registrar un día' : `Te faltan ${faltan.length} días por registrar`, faltan.map(f => fecha(f).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' })).join(' · ') + ` · ${conPasos(s) ? 'tus pasos' : ''}${conPasos(s) && exige && s.modulo_nutricion && fase === 'activo' ? ' y ' : ''}${s.modulo_nutricion && fase === 'activo' && Nutricion.acuerdo(S.d).nivel === 'habitual' ? 'las comidas de tu plan' : ''}, para que Jesús vea tu semana real. ${plazo}.`, faltan[0] ? `data-act="irRegistroDia" data-f="${faltan[0]}"` : '', 'Rellenar', faltan.length >= 4 || lunesHoy]);
   }
-  const lc = checkinPend(); if (lc && new Date().getDay() !== 0) lineas.push(['✅', 'Check-in semanal sin enviar', `Semana del ${fCorta(lc)} al ${fCorta(sumaDias(lc, 6))} · cuéntale a Jesús cómo fue`, `data-act="abrirCheckin" data-l="${lc}"`, 'Rellenar']);
+  const lc = checkinPend(); if (lc && new Date().getDay() !== 0) lineas.push(['✅', 'Check-in semanal sin enviar', `Semana del ${fCorta(lc)} al ${fCorta(sumaDias(lc, 6))} · es lo que Jesús usa para preparar tu revisión y ajustar tu plan. Son 2 minutos`, `data-act="abrirCheckin" data-l="${lc}"`, 'Rellenar', [3, 4, 5, 6].includes(new Date().getDay())]);
   const mp = MenuSemana.pendiente(); if (mp) lineas.push(mp);
   const fm = Casos.pendienteMes(); if (fm) lineas.push(fm);
-  if (s.modulo_nutricion && fase === 'recogida') lineas.push(['🍽', 'Registro de 7 días de comidas', 'Jesús te lo ha pedido para preparar tu plan', 'data-act="tab" data-t="nutri"', 'Apuntar']);
-  const tarjetas = [Acomp.tarjetaDevolucionHoy(), Casos.lineaHoy(), Casos.tarjetaHoy(true), Bienvenida.tarjeta()].join('');
+  if (s.modulo_nutricion && fase === 'recogida') lineas.push(['🍽', 'Registro de 7 días de comidas', 'Con una foto o una frase de lo que comes, sin cambiar nada: sirve para preparar tu plan a tu medida', 'data-act="tab" data-t="nutri"', 'Apuntar']);
+  const tarjetas = [Acomp.tarjetaDevolucionHoy(), Nutricion.tarjetaTemporal(), Casos.lineaHoy(), Casos.tarjetaHoy(true), Bienvenida.tarjeta()].join('');
   if (!lineas.length && !tarjetas.trim()) return '';
-  return `${lineas.length ? `<section class="section"><div class="card pend" role="alert"><div class="pend-cab"><span class="pend-ic">⚠️</span><h2>Pendiente</h2><span class="pend-n">${lineas.length}</span></div><p class="small pend-sub">Es prioritario: hazlo hoy. Sin esto, Jesús no puede ver tu semana real ni ajustar tu plan.</p>${lineas.map(([ic, t, d, at, b]) => `<div class="pend-linea"><span class="pend-i">${ic}</span><div class="grow"><b>${t}</b><div class="small">${d}</div></div><button class="btn sm pend-btn" ${at}>${b}</button></div>`).join('')}</div></section>` : ''}${tarjetas}`;
+  /* La alerta roja solo cuando algo va de verdad tarde (check-in de la semana pasada a partir del miércoles, 4+ días sin registrar o último día para completar la semana) */
+  const urge = lineas.some(l => l[5]);
+  return `${lineas.length ? `<section class="section"><div class="card ${urge ? 'pend' : 'pend-suave'}" ${urge ? 'role="alert"' : ''}><div class="pend-cab"><span class="pend-ic">${urge ? '⚠️' : '📌'}</span><h2>Pendiente</h2><span class="pend-n">${lineas.length}</span></div><p class="small pend-sub">${urge ? 'Hay algo que ya va con retraso: cada punto te dice para qué sirve y hasta cuándo.' : 'Lo que acordamos y aún falta. Cada punto te dice para qué sirve y hasta cuándo.'}</p>${lineas.map(([ic, t, d, at, b, u]) => `<div class="pend-linea ${u ? 'urge' : ''}"><span class="pend-i">${ic}</span><div class="grow"><b>${t}</b><div class="small">${d}</div></div><button class="btn sm pend-btn" ${at}>${b}</button></div>`).join('')}</div></section>` : ''}${tarjetas}`;
 }
 /* Próximamente: revisión mensual, entrenos con Jesús (saldo, próxima reserva y un solo botón) */
 function vProximamente(s) {
@@ -1974,7 +1979,7 @@ function vUltimos7() {
   const s = S.d.servicio || {}, p = S.d.programa, hoy = hoyISO(), ini = sumaDias(hoy, -6), w = semana(ini);
   return `  <section class="section"><div class="section-head"><h2>Últimos 7 días</h2><span class="small muted">${esc(fCorta(ini))} – ${esc(fCorta(hoy))}</span></div><div class="card stack" style="gap:18px">
     ${(s.modulo_entreno ?? true) ? `<div class="stack" style="gap:8px"><div class="row"><span class="grow small">Entrenamientos</span><b class="num" style="font-family:var(--display);font-size:20px">${p?.dias_semana && w.entrenos > p.dias_semana ? `${p.dias_semana} / ${p.dias_semana}</b><span class="pill gold">+${w.entrenos - p.dias_semana} extra</span>` : `${w.entrenos}${p?.dias_semana ? ' / ' + p.dias_semana : ''}</b>`}</div>${tira(ini, x => w.diasEntreno.has(x) ? 'ok' : '')}</div>` : ''}
-    ${midoAlumno() ? vBarraIngestas(S.d.diario, s) : ''}
+    ${midoDiario() ? vBarraIngestas(S.d.diario, s) : ''}
     ${conPasos(s) ? '' : '<!--'}<div class="stack" style="gap:8px"><div class="row"><span class="grow small">Pasos (media · objetivo ${fmtNum(objPasos(s), 0)})</span><b class="num" style="font-family:var(--display);font-size:20px;color:${w.pasosMedia == null || w.diasPasos.size < 3 ? 'inherit' : w.pasosMedia >= objPasos(s) ? 'var(--ok)' : 'var(--warn)'}">${w.pasosMedia == null ? '—' : fmtNum(w.pasosMedia, 0)}</b></div>${tira(ini, x => w.diasPasos.has(x) ? 'ok' : '')}</div>${conPasos(s) ? '' : '-->'}
   </div></section>`;
 }
@@ -2006,7 +2011,8 @@ function vCheckin(enHoy) {
 
     ${conPasos(s) ? `<div class="row small"><span class="grow">Pasos (media)</span><span class="pill num">${w.pasosMedia == null ? 'Sin registros' : fmtNum(w.pasosMedia, 0)}</span></div>` : ''}
   </div>
-  ${s.modulo_nutricion ? `<div class="card stack">${!midoAlumno() ? `<div class="row small"><span class="grow">Alimentación</span><span class="pill">${esc(Nutricion.FASES[Nutricion.fase(S.d)]?.[0] || '')} · no se mide</span></div>` : ''}${!midoAlumno() ? '' : (() => { const I = ingestasSemana(S.d.diario, lunes, s), ev = evalNutri(I.pct); return `<div class="row small"><span class="grow">Alimentación: ${I.hechas} de ${I.total} ingestas</span>${(() => { const e2 = I.dias >= 2 ? evalNutri(I.pctReg) : null; return `<span class="pill ${e2 ? e2[0] : ''} num">${I.pctReg == null ? 'Sin registrar' : I.pctReg + ' %' + (e2 ? ' · ' + e2[1] : '') + (I.dias < 7 ? ` · ${I.dias} ${I.dias === 1 ? 'día registrado' : 'días registrados'}` : '')}</span>`; })()}</div>`; })()}
+  ${s.modulo_nutricion ? `<div class="card stack">${!midoAlumno() ? `<div class="row small"><span class="grow">Alimentación</span><span class="pill">${esc(Nutricion.FASES[Nutricion.fase(S.d)]?.[0] || '')} · no se mide</span></div>` : ''}${!midoDiario() ? '' : (() => { const I = ingestasSemana(S.d.diario, lunes, s), ev = evalNutri(I.pct); return `<div class="row small"><span class="grow">Alimentación: ${I.hechas} de ${I.total} ingestas</span>${(() => { const e2 = I.dias >= 2 ? evalNutri(I.pctReg) : null; return `<span class="pill ${e2 ? e2[0] : ''} num">${I.pctReg == null ? 'Sin registrar' : I.pctReg + ' %' + (e2 ? ' · ' + e2[1] : '') + (I.dias < 7 ? ` · ${I.dias} ${I.dias === 1 ? 'día registrado' : 'días registrados'}` : '')}</span>`; })()}</div>`; })()}
+    ${midoAlumno() ? `<div class="stack" style="gap:6px"><span class="small"><b>¿Has podido aplicar lo acordado?</b></span><div class="choice" role="group" id="k-apl">${APLICACION.map(([v, t]) => `<button type="button" data-apl="${v}" aria-pressed="${c?.aplicacion_plan === v}">${t}</button>`).join('')}</div><span class="small muted">Si es «en parte» o «necesito ayuda», cuéntanos el motivo abajo, en dificultades.</span></div>` : ''}
     <label class="f">Comidas o situaciones a destacar (opcional)<textarea id="k-nali" placeholder="Ej. cena fuera el sábado, semana de vacaciones con la familia…">${esc(c?.nota_alimentacion || '')}</textarea></label></div>` : ''}
   <div class="card stack"><label class="f">¿Qué te ha dificultado aplicar el plan esta semana?<textarea id="k-dif" placeholder="Cambios de horario, comidas fuera, cansancio…">${esc(c?.dificultades || '')}</textarea></label></div>
   ${usaPlan() ? `<div class="card stack"><span class="small"><b>¿Qué días vas a entrenar la semana que viene?</b> <span class="muted">(${(S.d.programaBase || S.d.programa).dias_semana || (S.d.programaBase || S.d.programa).dias.length} entrenos)</span></span>${chipsPlan(sumaDias(lunes, 7), 0, false)}<span class="small muted">Te los recordaremos en Hoy. Si algo cambia, los puedes mover.</span></div>` : ''}
@@ -2018,12 +2024,18 @@ function vCheckin(enHoy) {
     <label class="f"><span class="row"><span class="grow">Implicación con el plan que has aplicado esta semana <span class="small muted" style="font-weight:400">(del ${esc(fCorta(lunes))} al ${esc(fCorta(sumaDias(lunes, 6)))})</span></span><b class="num" id="k-imp-v" style="color:var(--blue-text)">${imp}/10</b></span><input id="k-imp" type="range" min="1" max="10" value="${imp}"></label></div>
   <button class="btn full" data-act="enviarCheckin">${c ? 'Actualizar check-in' : 'Enviar check-in'}</button></section>`;
 }
+/* Acuerdo de seguimiento de un alumno visto desde el coach (ficha abierta o listado general) */
+const planNutriDe = aid => S.ficha?.id === aid && S.ficha.plan ? S.ficha.plan : (S.c?.seguimientos?.[aid] ? [S.c.seguimientos[aid]] : []);
+const APLICACION = [['aplicado', 'He podido aplicar lo acordado'], ['parte', 'Lo he aplicado en parte'], ['ayuda', 'Necesito ayuda para adaptarlo']];
+const aplTxt = v => (APLICACION.find(x => x[0] === v) || [])[1] || '';
 async function enviarCheckin() {
   const row = { alumno_id: S.user.id, semana_inicio: S.chkSemana || lunesDe(hoyISO()), dificultades: $('#k-dif').value.trim() || null,
     proxima_semana_etiquetas: [...S.chips], proxima_semana: $('#k-prox').value.trim() || null,
     motivacion: +$('#k-mot').value, implicacion: +$('#k-imp').value, enviado_at: new Date().toISOString() };
   if ($('#k-nali')) { row.nota_alimentacion = $('#k-nali').value.trim() || null; const I = ingestasSemana(S.d.diario, row.semana_inicio, S.d.servicio); if (I.pct != null) row.nutricion_pct = I.pct; }
+  const apl = document.querySelector('#k-apl [aria-pressed="true"]')?.dataset.apl; if (apl) row.aplicacion_plan = apl;
   let { data, error } = await sb.from('checkins').upsert(row, { onConflict: 'alumno_id,semana_inicio' }).select().single();
+  if (error && /aplicacion_plan/.test(error.message || '')) { delete row.aplicacion_plan; ({ data, error } = await sb.from('checkins').upsert(row, { onConflict: 'alumno_id,semana_inicio' }).select().single()); if (!error) toast('Enviado. (Para guardar «¿has podido aplicarlo?» falta el Bloque 81 en Supabase)'); }
   if (error && /nutricion_pct|nota_alimentacion/.test(error.message || '')) { delete row.nutricion_pct; delete row.nota_alimentacion; ({ data, error } = await sb.from('checkins').upsert(row, { onConflict: 'alumno_id,semana_inicio' }).select().single()); }
   if (error) return fallo(error);
   S.d.checkins = [data, ...S.d.checkins.filter(x => x.semana_inicio !== row.semana_inicio)];
@@ -3403,6 +3415,7 @@ function vFichaSub(f, a) {
     return cab('Alimentación') + `
     <section class="section"><button class="card reporte-b" data-act="fichaSub" data-s="plan"><div class="ico gold">${svg('checkin')}</div><div class="grow" style="text-align:left"><b>Su plan de alimentación</b><div class="small muted">Contexto y feedback, registro de 7 días, analítica, contextos, equivalencias, menús, platos y suplementación</div></div><span class="small" style="color:var(--blue-text)">Editar ›</span></button>
       <button class="linkbtn small" data-act="nuPrev" style="margin-top:8px">👁 Ver su pestaña Nutrición tal como la ve ${esc(nom)}</button></section>
+    ${Nutricion.vSeguimientoCoach(f, a)}
     ${Nutricion.vCoherencia(f)}
     ${Nutricion.vIncCoach(f, a)}
     ${Nutricion.vSemana7(f, a)}
@@ -4216,7 +4229,7 @@ function datosReporte(a, R) {
   if (w.chk?.dificultades) coment.push(['Dificultades de la semana', R.lunes, w.chk.dificultades]);
   if (w.chk && ((w.chk.proxima_semana_etiquetas || []).length || w.chk.proxima_semana)) coment.push(['Semana siguiente', R.lunes, [...(w.chk.proxima_semana_etiquetas || []), w.chk.proxima_semana].filter(Boolean).join(' · ')]);
   const pres = (R.pres || []).filter(p => p.alumno_id === a.id);
-  const score = [pctE, srv?.modulo_nutricion && midoCoach(a.id) ? w.nutri : null, pctP].filter(v => v != null);
+  const score = [pctE, srv?.modulo_nutricion && midoCoach(a.id) && Nutricion.acuerdoDe(planNutriDe(a.id)).nivel === 'habitual' ? w.nutri : null, pctP].filter(v => v != null);
   return { srv, dpw, obj, w, P, pctE, pctP, nivel, coment, pres, control: controlEnSemana(srv, R.lunes), score: score.length ? Math.min(...score) : 100 };
 }
 function vReporteAlumno(a, R, detalle) {
@@ -4226,8 +4239,9 @@ function vReporteAlumno(a, R, detalle) {
   const com = detalle ? d.coment : d.coment.slice(0, 4);
   return `<div class="card stack"><div class="row"><div class="grow"><h3>${esc(a.nombre)}</h3><div class="small muted">${semTxt}</div></div>${detalle ? '' : `<button class="btn sm ghost" data-act="abrirReporte" data-id="${a.id}">Ver</button>`}</div>
     <div class="kpis">${caja('Entrenos', d.dpw ? `${w.entrenos}/${d.dpw}` : w.entrenos, d.pctE != null ? d.pctE + ' %' : 'sin plan', d.nivel(d.pctE))}
-      ${d.srv?.modulo_nutricion && !midoCoach(a.id) ? caja('Alimentación', '—', esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || '') + ' · no se mide', '') : d.srv?.modulo_nutricion ? caja('Alimentación', w.nutri != null ? w.nutri + ' %' : '—', w.ing.dias ? `${w.ing.hechas}/${w.ing.posibles} ingestas de ${w.ing.dias} día${w.ing.dias > 1 ? 's' : ''} registrado${w.ing.dias > 1 ? 's' : ''} · ${w.nutri != null ? evalNutri(w.nutri)[1] : `pocos datos para valorar (mín. ${MIN_DIAS_NUTRI} días)`}` : w.chk?.nutricion_pct != null ? 'según su check-in' : 'sin días registrados', evalNutri(w.nutri)?.[0] || '') : ''}
+      ${d.srv?.modulo_nutricion && midoCoach(a.id) && Nutricion.acuerdoDe(planNutriDe(a.id)).nivel === 'ligero' ? caja('Alimentación', w.chk?.aplicacion_plan ? { aplicado: '✓', parte: '½', ayuda: '?' }[w.chk.aplicacion_plan] : '—', w.chk?.aplicacion_plan ? esc(aplTxt(w.chk.aplicacion_plan)) + ' · seguimiento ligero' : 'seguimiento ligero · sin check-in', w.chk?.aplicacion_plan === 'aplicado' ? 'ok' : w.chk?.aplicacion_plan ? 'warn' : '') : d.srv?.modulo_nutricion && !midoCoach(a.id) ? caja('Alimentación', '—', esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || '') + ' · no se mide', '') : d.srv?.modulo_nutricion ? caja('Alimentación', w.nutri != null ? w.nutri + ' %' : '—', w.ing.dias ? `${w.ing.hechas}/${w.ing.posibles} ingestas de ${w.ing.dias} día${w.ing.dias > 1 ? 's' : ''} registrado${w.ing.dias > 1 ? 's' : ''} · ${w.nutri != null ? evalNutri(w.nutri)[1] : `pocos datos para valorar (mín. ${MIN_DIAS_NUTRI} días)`}` : w.chk?.nutricion_pct != null ? 'según su check-in' : 'sin días registrados', evalNutri(w.nutri)?.[0] || '') : ''}
       ${!conPasos(d.srv) ? '' : caja('Pasos', w.pasosMedia != null ? fmtNum(w.pasosMedia, 0) : '—', `obj. ${fmtNum(d.obj, 0)} · ${w.diasPasos}/7 días`, d.nivel(d.pctP))}</div>
+    ${d.srv?.modulo_nutricion && midoCoach(a.id) && (w.chk?.aplicacion_plan || w.ing.dias < 7) ? `<div class="small muted">${w.chk?.aplicacion_plan ? `Aplicación declarada: <b>${esc(aplTxt(w.chk.aplicacion_plan))}</b>` : 'Aplicación declarada: sin respuesta'}${Nutricion.acuerdoDe(planNutriDe(a.id)).nivel === 'habitual' ? ` · comidas marcadas en ${w.ing.dias} de 7 días · ${7 - w.ing.dias} sin información` : ''}</div>` : ''}
     ${w.cansancio || w.poderio || w.chk ? `<div class="row small muted" style="flex-wrap:wrap;gap:8px">${w.cansancio ? `<span class="pill">Cansancio medio ${fmtNum(w.cansancio)}/5</span>` : ''}${w.poderio ? `<span class="pill">Poderío medio ${fmtNum(w.poderio)}/5</span>` : ''}${w.chk ? `<span class="pill">Motivación ${w.chk.motivacion}/10 · implicación ${w.chk.implicacion}/10</span>` : '<span class="pill warn">Sin check-in</span>'}</div>` : ''}
     ${d.control ? `<div class="aprox small"><b>Esa semana tocaba el control mensual ${d.control.n}</b> (composición corporal, ajustes y reunión de seguimiento).</div>` : ''}
     ${d.pres.length ? `<div class="small">Presenciales: ${d.pres.map(p => `${fCorta(p.fecha)} (${({ dada: 'hecha', tarde: 'aviso < 24 h', programada: 'reservada', cancelada: 'cancelada' })[p.estado] || p.estado})`).join(' · ')}</div>` : ''}
@@ -4249,7 +4263,7 @@ function vReporte() {
   if (R.alumno) { const a = S.c.perfiles.find(p => p.id === R.alumno) || { id: R.alumno, nombre: 'Alumno' }; return cab + aviso + `<section class="section">${tarjeta(a, true)}</section>`; }
   const als = S.c.perfiles.filter(p => p && p.activo !== false && (S.c.servicios.some(x => x.alumno_id === p.id) || S.c.programas.some(x => x.alumno_id === p.id)));
   const lista = als.map(a => { try { return { a, d: datosReporte(a, R) }; } catch (err) { console.error('Reporting de', a?.nombre, err); return { a, d: { score: -1 } }; } }).sort((x, y) => x.d.score - y.d.score);
-  return cab + aviso + `<section class="section rep-lista"><p class="small muted">Ordenados de menor a mayor cumplimiento. Toca "Ver" para el detalle de cada alumno.</p>${lista.map(({ a }) => tarjeta(a, false)).join('') || '<div class="empty">Sin alumnos activos.</div>'}</section>`;
+  return cab + aviso + `<section class="section rep-lista"><p class="small muted">Ordenados de menor a mayor cumplimiento. Toca "Ver" para el detalle de cada alumno.</p><details class="small muted"><summary>Cómo se calcula la alimentación</summary><p style="margin:6px 0 0">Comidas del plan = comidas que el alumno marca como hechas ÷ comidas previstas de los días que registró. Solo se valora con ${MIN_DIAS_NUTRI} días o más; los días sin información no cuentan como fallo y se muestran aparte. Bien ≥ 85 %, regular 60–84 %, mal &lt; 60 %. La aplicación declarada en el check-in («aplicado», «en parte», «necesito ayuda») se muestra tal cual, sin convertirla en porcentaje. Con seguimiento ligero solo cuenta esa respuesta.</p></details>${lista.map(({ a }) => tarjeta(a, false)).join('') || '<div class="empty">Sin alumnos activos.</div>'}</section>`;
 }
 const numSemanaISO = iso => { const d = fecha(iso); d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7); const y = new Date(d.getFullYear(), 0, 4); return 1 + Math.round(((d - y) / 864e5 - 3 + (y.getDay() + 6) % 7) / 7); };
 
@@ -5789,7 +5803,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v215';
+const APP_VER = 'v216';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
