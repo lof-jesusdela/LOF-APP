@@ -67,6 +67,7 @@ const Acomp = (() => {
     if (dpw) { av.push(`${w.entrenos} de ${dpw} entrenos${w.entrenos >= dpw ? ' ✅' : ''}`); if (w.entrenos < dpw) prio.push(`llegar a los ${dpw} entrenos de la semana`); }
     if (conPasos(srv) && w.pasosMedia != null) { av.push(`${fmtNum(w.pasosMedia, 0)} pasos de media${w.pasosMedia >= obj ? ' ✅' : ` (objetivo ${fmtNum(obj, 0)})`}`); if (w.pasosMedia < obj) prio.push(`subir los pasos hacia ${fmtNum(obj, 0)} al día`); }
     if (srv?.modulo_nutricion && midoCoach(a.id) && w.ing?.dias) { av.push(`alimentación al ${w.ing.pctReg ?? w.nutri} % en los días registrados`); if ((w.ing.pctReg ?? 100) < 85) prio.push('cumplir las comidas del plan, sobre todo entre semana'); }
+    if (chk.aplicacion_plan) av.push({ aplicado: 'dice que ha podido aplicar lo acordado', parte: 'dice que lo ha aplicado en parte', ayuda: 'pide ayuda para adaptar el plan' }[chk.aplicacion_plan]);
     if (chk.motivacion != null) av.push(`motivación ${chk.motivacion}/10`);
     const med = (f.med || []).slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), dl = med.length > 1 ? med[med.length - 1].peso - med[med.length - 2].peso : null;
     if (dl != null && !isNaN(dl)) av.push(`peso ${dl > 0 ? '+' : ''}${fmtNum(dl)} kg desde la medición anterior`);
@@ -74,6 +75,7 @@ const Acomp = (() => {
     return {
       avance: av.length ? `${nom}, esta semana: ${av.join(' · ')}.` : '',
       dificultad: chk.dificultades || '',
+      mantener: av.filter(x => / ✅$/.test(x)).length ? `Seguimos con lo que funciona: ${av.filter(x => / ✅$/.test(x)).map(x => x.replace(/ ✅$/, '')).join(' y ')}.` : '',
       ajuste: prox ? `Para la semana que viene (${prox}): ` : '',
       prioridad: prio.length ? `Esta semana, una sola cosa: ${prio[0]}.` : 'Mantener lo que está funcionando: misma rutina y mismos horarios.'
     };
@@ -84,12 +86,14 @@ const Acomp = (() => {
     abrirSheet(`<form class="stack" id="f-dev"><h2>Devolución · semana del ${esc(fCorta(semana))}</h2>
       ${ya ? `<p class="small muted">${ya.leida_at ? '✓ Leída el ' + esc(fLarga(ya.leida_at.slice(0, 10))) : 'Enviada, aún sin leer'}.</p>` : '<p class="small muted">Borrador preparado con sus datos y su check-in. Edítalo y envíalo: lo leerá en su Hoy.</p>'}
       ${chk.dificultades || chk.motivacion != null ? `<div class="aprox small">Su check-in: motivación ${chk.motivacion ?? '—'}/10 · implicación ${chk.implicacion ?? '—'}/10${chk.dificultades ? `<br>«${esc(chk.dificultades)}»` : ''}</div>` : ''}
-      ${[['avance', 'Avance observado'], ['dificultad', 'Dificultad'], ['ajuste', 'Ajuste acordado'], ['prioridad', 'Prioridad para la semana que viene']].map(([k, l]) => `<label class="f">${l}<textarea data-dv="${k}" rows="${k === 'avance' ? 3 : 2}">${esc(v[k] || '')}</textarea></label>`).join('')}
+      ${[['avance', 'Qué hemos observado'], ['mantener', 'Qué mantenemos'], ['ajuste', 'Qué ajustamos'], ['prioridad', 'Prioridad hasta la próxima revisión'], ['dificultad', 'Dificultad que nos ha contado (opcional)']].map(([k, l]) => `<label class="f">${l}<textarea data-dv="${k}" rows="${k === 'avance' ? 3 : 2}">${esc(v[k] || '')}</textarea></label>`).join('')}
       <button class="btn full" type="submit">${ya ? 'Guardar cambios' : 'Enviar devolución'}</button></form>`);
     $('#f-dev').addEventListener('submit', async e => {
       e.preventDefault(); const bt = e.target.querySelector('[type=submit]'); if (bt.disabled) return; bt.disabled = true;
       const row = { alumno_id: f.id, semana_inicio: semana }; document.querySelectorAll('#f-dev [data-dv]').forEach(t => { row[t.dataset.dv] = t.value.trim() || null; });
-      const q = ya ? await sb.from('devoluciones').update(row).eq('id', ya.id) : await sb.from('devoluciones').upsert(row, { onConflict: 'alumno_id,semana_inicio' });
+      const guarda = r => ya ? sb.from('devoluciones').update(r).eq('id', ya.id) : sb.from('devoluciones').upsert(r, { onConflict: 'alumno_id,semana_inicio' });
+      let q = await guarda(row);
+      if (q.error && /mantener/.test(q.error.message || '')) { const m = row.mantener; delete row.mantener; if (m) row.avance = [row.avance, 'Mantenemos: ' + m].filter(Boolean).join('\n'); q = await guarda(row); if (!q.error) toast('Guardada. Para el campo «Qué mantenemos» falta ejecutar el Bloque 82'); }
       if (q.error) { bt.disabled = false; return fallo(q.error, AVISO); }
       cerrarSheet(); toast(ya ? 'Devolución actualizada' : 'Devolución enviada'); await window.cargarCoach(); await abrirFicha(f.id);
     });
@@ -104,10 +108,10 @@ const Acomp = (() => {
     const dev = s => (f.devoluciones || []).find(d => d.semana_inicio === s);
     return `<section class="section"><h2>Check-ins y devoluciones</h2><div class="card">${chks.map(k => { const d = dev(k.semana_inicio); return `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(k.semana_inicio))}</span><div class="grow stack" style="gap:4px"><div class="small">Motivación <b>${k.motivacion}/10</b> · implicación <b>${k.implicacion}/10</b></div>${k.dificultades ? `<div class="small"><span class="muted">Dificultades:</span> ${esc(k.dificultades)}</div>` : ''}${(k.proxima_semana_etiquetas || []).length || k.proxima_semana ? `<div class="small"><span class="muted">Semana que viene:</span> ${esc([...(k.proxima_semana_etiquetas || []), k.proxima_semana].filter(Boolean).join(' · '))}</div>` : ''}${d ? `<div class="small"><span class="pill ${d.leida_at ? 'ok' : 'blue'}">${d.leida_at ? '✓ Devolución leída' : 'Devolución enviada'}</span> ${esc((d.prioridad || '').slice(0, 80))}</div>` : ''}</div>${f.devErr ? '' : `<button class="btn sm ${d ? 'ghost' : 'gold'}" data-act="devolucion" data-s="${k.semana_inicio}">${d ? 'Ver' : '✍️ Devolución'}</button>`}</div>`; }).join('') || '<div class="empty">Sin check-ins todavía.</div>'}</div></section>`;
   }
-  const bloqueDev = d => `<div class="stack" style="gap:8px">${[['📈', 'Lo que he visto', d.avance], ['🧗', 'La dificultad', d.dificultad], ['🔧', 'Lo que ajustamos', d.ajuste], ['🎯', 'Tu prioridad', d.prioridad]].filter(x => x[2]).map(([i, t, v]) => `<div><div class="small muted">${i} ${t}</div><div class="small pre">${esc(v)}</div></div>`).join('')}</div>`;
+  const bloqueDev = d => `<div class="stack" style="gap:8px">${[['👀', 'Lo que hemos observado', d.avance], ['✅', 'Lo que mantenemos', d.mantener], ['🔧', 'Lo que ajustamos', d.ajuste], ['🎯', 'Tu prioridad hasta la próxima revisión', d.prioridad], ['🧗', 'Lo que nos contaste', d.dificultad]].filter(x => x[2]).map(([i, t, v]) => `<div><div class="small muted">${i} ${t}</div><div class="small pre">${esc(v)}</div></div>`).join('')}</div>`;
   function tarjetaDevolucionHoy() {
     const d = (S.d?.devoluciones || []).find(x => !x.leida_at); if (!d || S.vista || S.prueba) return '';
-    return `<section class="section"><div class="card stack" style="border:2px solid var(--blue)"><span class="eyebrow">Jesús sobre tu semana · ${esc(fCorta(d.semana_inicio))}</span>${bloqueDev(d)}<button class="btn" data-act="devLeida" data-id="${d.id}" style="align-self:flex-start">Entendido ✓</button></div></section>`;
+    return `<section class="section"><div class="card stack" style="border:2px solid var(--blue)"><span class="eyebrow">Jesús sobre tu semana · ${esc(fCorta(d.semana_inicio))} · revisado por Jesús</span>${bloqueDev(d)}<button class="btn" data-act="devLeida" data-id="${d.id}" style="align-self:flex-start">Entendido ✓</button></div></section>`;
   }
   async function marcarLeida(id) {
     const d = (S.d.devoluciones || []).find(x => x.id === id); if (d) d.leida_at = new Date().toISOString(); render();

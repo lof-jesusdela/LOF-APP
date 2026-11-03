@@ -2218,6 +2218,7 @@ function vAlumnos() {
   return `<section class="stack"><span class="eyebrow">Panel del coach · ${esc(fLarga(hoyISO()))}</span><h1>Tus alumnos</h1><button class="btn sm ghost" data-act="miFicha" style="align-self:flex-start">✎ Mi ficha (mi perfil beta)</button></section>
   <section class="section"><div class="kpis"><button class="kpi kpi-b" data-act="alFiltro" data-k="todos" aria-pressed="${S.alF.k === 'todos'}"><div class="v num">${als.length}</div><div class="l">perfiles activos ›</div></button><button class="kpi kpi-b" data-act="alFiltro" data-k="alerta" aria-pressed="${S.alF.k === 'alerta'}"><div class="v num" style="color:var(--bad)">${est.filter(x => x.e.nivel !== 'ok').length}</div><div class="l">necesitan atención ›</div></button><button class="kpi kpi-b" data-act="alFiltro" data-k="vencidos" aria-pressed="${S.alF.k === 'vencidos'}"><div class="v num" style="color:${venc.length ? 'var(--bad)' : 'var(--ok)'}">${venc.length}</div><div class="l">pagos vencidos ›</div></button></div></section>
   <section class="section"><button class="card reporte-b" data-act="abrirReporte"><div class="ico gold">${svg('checkin')}</div><div class="grow" style="text-align:left"><b>Reporting semanal</b><div class="small muted">Semana del ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -7)))} al ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -1)))} · todos tus alumnos de un vistazo</div></div><span class="small" style="color:var(--blue-text)">Abrir ›</span></button></section>
+  ${(() => { const n = Nutricion.colaRevisiones().length; return S.c.servicios.some(x => x.modulo_nutricion) ? `<section class="section"><button class="card reporte-b" data-act="nuCola"><div class="ico ${n ? 'gold' : ''}">🍽</div><div class="grow" style="text-align:left"><b>Revisiones de nutrición</b><div class="small muted">${n ? `${n} alumno${n > 1 ? 's' : ''} con algo que decidir` : 'Nada pendiente'}</div></div><span class="small muted">›</span></button></section>` : ''; })()}
   ${vFutbolCoach()}
   ${''/* Hábitos, casos de éxito y gráficas de resumen ocultos del panel a petición de Jesús (demasiada información) */}
   ${vAntiguos()}
@@ -3175,10 +3176,20 @@ function formApartado(sec, clave) {
     ${(x.imagenes || []).length ? `<div class="stack" style="gap:6px"><span class="small"><b>Archivos</b> · marca los que quieras quitar</span><div class="plan-imgs">${x.imagenes.map((r, i) => `<label class="plan-q">${Nutricion.esPdf(r) ? '<span class="plan-pdf">📄 PDF</span>' : `<img src="${esc(f.planImg?.[r] || '')}" alt="">`}<span><input type="checkbox" data-quitar="${i}"> Quitar</span></label>`).join('')}</div></div>` : ''}
     <label class="f">Añadir imágenes o PDF (menús, equivalencias, tablas, informes…)<input type="file" id="ap-f" accept="image/*,application/pdf" multiple></label>
     ${ali ? `<div class="aprox small" style="display:block">Estado: <b>${nuevo ? 'nuevo' : x.visible === false ? '📝 Borrador (solo lo ves tú)' : '✅ Publicado (lo ve en su pestaña Nutrición)'}</b>. Guardar como borrador no se lo enseña; solo «Publicar» lo hace visible.</div>` : '<p class="small muted">Se guarda en un espacio privado: solo tú puedes verlo.</p>'}
+    ${ali && !esCtx && !nuevo ? (() => { const otros = Object.entries(S.c.planNutri || {}).filter(([aid]) => aid !== f.id).map(([aid, l]) => [aid, l.find(z => z.clave === x.clave)]).filter(([, z]) => z && (z.contenido || ['guias', 'menus', 'sup'].some(k => (z.datos?.[k] || []).length))); return otros.length ? `<details class="card"><summary class="small"><b>Reutilizar de otro alumno</b> · copiar su «${esc(x.titulo)}» como punto de partida</summary><div class="stack" style="gap:8px;margin-top:8px"><select id="ap-reu">${otros.map(([aid]) => `<option value="${aid}">${esc(S.c.perfiles.find(p => p.id === aid)?.nombre || 'Alumno')}</option>`).join('')}</select><button class="btn sm ghost" type="button" id="ap-reu-b" style="align-self:flex-start">Copiar como borrador</button><p class="small muted" style="margin:0">Se copia el texto y los datos (no las imágenes). Es una copia: lo que cambies aquí no toca al otro alumno y si el original cambia, esta no se actualiza sola.</p></div></details>` : ''; })() : ''}
     ${coh.length ? `<div class="card" style="border-color:var(--warn)"><b class="small">Revisión de coherencia</b>${coh.map(Nutricion.lineaCoh).join('')}${pideConf ? `<label class="row small" style="gap:8px;margin-top:6px"><input type="checkbox" id="ap-conf" style="width:20px;height:20px"> <span>Confirmo que las imágenes y PDF de este apartado corresponden a la versión ${vCtx?.n || ''} del plan</span></label>` : ''}</div>` : ''}
     <p class="err" id="ap-err"></p>${ali ? `<button class="btn full" type="submit" value="publicar" id="ap-b">✅ ${!nuevo && x.visible !== false ? 'Guardar y mantener publicado' : 'Publicar para el alumno'}</button><button class="btn ghost full" type="submit" value="borrador">📝 ${!nuevo && x.visible !== false ? 'Retirar y dejar como borrador' : 'Guardar como borrador'}</button>` : '<button class="btn full" type="submit" id="ap-b">Guardar</button>'}
     ${!nuevo && !fijo ? '<button class="btn ghost full" type="button" id="ap-del" style="color:var(--bad)">Eliminar apartado</button>' : ''}</form>`);
   $('#ctx-mas')?.addEventListener('click', () => $('#ctx-filas').insertAdjacentHTML('beforeend', filaCtx()));
+  $('#ap-reu-b')?.addEventListener('click', async () => {
+    const aid = $('#ap-reu').value, src = (S.c.planNutri?.[aid] || []).find(z => z.clave === x.clave), nomO = S.c.perfiles.find(p => p.id === aid)?.nombre || 'otro alumno'; if (!src) return;
+    if ((x.contenido || ['guias', 'menus', 'sup'].some(k => (x.datos?.[k] || []).length)) && !confirm(`Esto sustituye el contenido actual de «${x.titulo}» por la copia de ${nomO}. ¿Seguir?`)) return;
+    const { meta, version, ver_ok, pub_at, ...resto } = src.datos || {};
+    const fila = { contenido: src.contenido || null, datos: { ...resto, origen: { alumno_id: aid, nombre: nomO, fecha: hoyISO() } }, visible: false, actualizado_at: new Date().toISOString() };
+    const q = x.id ? await sb.from('planificacion').update(fila).eq('id', x.id) : await sb.from('planificacion').insert({ ...fila, alumno_id: f.id, seccion: sec, clave: x.clave, titulo: x.titulo, imagenes: [], orden: x.orden ?? 50 });
+    if (q.error) return fallo(q.error);
+    cerrarSheet(); toast(`Copiado de ${nomO} como borrador: adáptalo y publícalo`); await cargarPlanificacion(f); render();
+  });
   $('#ctx-filas')?.addEventListener('click', ev => { const b = ev.target.closest('[data-act2]'); if (!b) return; ev.preventDefault(); const el = b.closest('.ctx-fila'), box = el.querySelector('.ctx-rf');
     if (b.dataset.act2 === 'ctxRepMas') box.insertAdjacentHTML('beforeend', filaRep());
     else if (b.dataset.act2 === 'ctxRepQuita') b.closest('.ctx-rfila').remove();
@@ -3210,12 +3221,13 @@ function formApartado(sec, clave) {
       const fila = { alumno_id: f.id, seccion: sec, clave: x.clave, titulo: fijo ? x.titulo : ($('#ap-t').value.trim() || 'Apartado'), contenido: $('#ap-c').value.trim() || null, imagenes, orden: fijo ? APARTADOS[sec].findIndex(([k]) => k === x.clave) : (x.orden ?? 50), actualizado_at: new Date().toISOString() };
       const nuevas = {};
       if (ali) nuevas.visible = publicar;
-      if (esCtx) nuevas.datos = { ...(x.datos || {}), ctx: [...document.querySelectorAll('#ctx-filas .ctx-fila')].map(el => { const o = {}; el.querySelectorAll('[data-c]').forEach(i => { const v = i.value.trim(); if (v !== '') o[i.dataset.c] = i.type === 'number' ? numero(v) : v; });
+      if (ali && publicar && x.visible === false || ali && publicar && nuevo) nuevas.datos = { ...(x.datos || {}), pub_at: x.datos?.pub_at || new Date().toISOString() };   // primera publicación (métricas de elaboración)
+      if (esCtx) nuevas.datos = { ...(x.datos || {}), ...(nuevas.datos || {}), ctx: [...document.querySelectorAll('#ctx-filas .ctx-fila')].map(el => { const o = {}; el.querySelectorAll('[data-c]').forEach(i => { const v = i.value.trim(); if (v !== '') o[i.dataset.c] = i.type === 'number' ? numero(v) : v; });
           const r = [...el.querySelectorAll('.ctx-rfila')].map(fl => { const x = {}; fl.querySelectorAll('[data-r]').forEach(i => { const v = i.value.trim(); if (v !== '') x[i.dataset.r] = i.type === 'number' ? numero(v) : v; }); return x; }).filter(x => Object.keys(x).length);
           if (r.length) o.r = r; return o; }).filter(o => o.n),
         semana: [...document.querySelectorAll('#sem-filas .sem-fila')].map(el => ({ nombre: el.querySelector('[data-s="nombre"]').value.trim(), dias: DSEM.map((_, i) => el.querySelector(`[data-s="d${i}"]`).value.trim()) })).filter(p => p.dias.some(Boolean)) };
       if (esCtx) nuevas.datos.version = Nutricion.versionCtx(x.id ? x : null, nuevas.datos);
-      if (dep && vCtx?.n && (!pideConf || $('#ap-conf')?.checked)) nuevas.datos = { ...(x.datos || {}), ver_ok: vCtx.n };
+      if (dep && vCtx?.n && (!pideConf || $('#ap-conf')?.checked)) nuevas.datos = { ...(x.datos || {}), ...(nuevas.datos || {}), ver_ok: vCtx.n };
       const guarda = fl => x.id ? sb.from('planificacion').update(fl).eq('id', x.id) : sb.from('planificacion').insert(fl);
       let r = await guarda({ ...fila, ...nuevas }), sinBloque = false;
       if (r.error && Object.keys(nuevas).length && /visible|datos|column/i.test(r.error.message || '')) { sinBloque = true; r = await guarda(fila); }
@@ -5803,7 +5815,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v217';
+const APP_VER = 'v218';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}

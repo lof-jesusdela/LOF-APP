@@ -63,6 +63,7 @@ const Nutricion = (() => {
     // mismo criterio que ve el alumno: un apartado publicado con contenido (texto, archivos o datos del plan)
     c.conPlanNutri = new Set((pl.data || []).filter(x => x.visible !== false && !esInc(x) && tiene(x)).map(x => x.alumno_id));
     c.seguimientos = Object.fromEntries((pl.data || []).filter(x => x.clave === 'seguimiento').map(x => [x.alumno_id, x]));
+    c.planNutri = {}; (pl.data || []).forEach(x => { (c.planNutri[x.alumno_id] ||= []).push(x); });
   }
   const nuevasDe = aid => (S.c?.creacionesNuevas || []).filter(x => x.alumno_id === aid).length;
   /* Fase de la alimentación: la que fije Jesús en el servicio o, si no, «activo» cuando hay plan visible y «preparación» si no */
@@ -459,6 +460,8 @@ const Nutricion = (() => {
       case 'nuSemana': MenuSemana.abrir(b.dataset.l); break;
       case 'nuInc': formInc(b.dataset.k); break;
       case 'nuSeg': formSeguimiento(); break;
+      case 'nuCola': abrirCola(); break;
+      case 'colaFicha': cerrarSheet(); S.fichaSub = 'alimentacion'; await abrirFicha(b.dataset.id); S.fichaSub = 'alimentacion'; render(); break;
       case 'nuIncIni': { const v = $('#inc-ini')?.value; if (!v) return toast('Elige la fecha'); try { await guardarResumen(S.ficha, d => { d.inicio = v; }); await cargarPlanificacion(S.ficha); render(); toast('Fecha guardada'); } catch (err) { fallo(err); } break; }
       case 'nuGuia': S.nGuia = +b.dataset.i; render(); break;
       case 'nuIngG': S.nIngG = +b.dataset.i; render(); break;
@@ -562,6 +565,55 @@ const Nutricion = (() => {
       if (q.error) { $('#seg-err').textContent = 'No se ha podido guardar (' + (q.error.message || '').slice(0, 100) + ')'; return; }
       cerrarSheet(); toast('Seguimiento guardado: lo verá en su pestaña Nutrición'); await cargarPlanificacion(f); render();
     });
+  }
+  /* ---------- Cola de revisiones de nutrición (coach) ----------
+     Una tarjeta por alumno con motivo, responsable, fecha y siguiente acción. Solo entra lo que pide una decisión:
+     revisiones programadas (registro temporal, reunión y entrega de la incorporación, materiales de una versión anterior)
+     y dudas relevantes (pide ayuda en el check-in, platos compartidos sin revisar). Las fotos, variaciones o un día sin
+     registro no son incidencias. Las métricas salen de fechas que la app ya guarda: no se estima ningún ahorro. */
+  function colaRevisiones() {
+    const c = S.c || {}, hoy = hoyISO(), L = lunesDe(hoy), lAnt = sumaDias(L, -7), out = [];
+    (c.perfiles || []).filter(p => p.activo !== false).forEach(a => {
+      const srv = (c.servicios || []).find(x => x.alumno_id === a.id); if (!srv?.modulo_nutricion || srv.modulo_futbol && !srv.modulo_nutricion) return;
+      const plan = c.planNutri?.[a.id] || [], items = [], add = (tipo, motivo, fecha, accion) => items.push({ tipo, motivo, fecha, accion, resp: 'Jesús' });
+      const A = acuerdoDe(plan), inc = plan.find(x => x.clave === 'incorporacion')?.datos || {}, it = inc.items || {}, publicado = plan.some(x => ENTREGAS.some(([k]) => k === x.clave) && x.visible !== false && tiene(x));
+      if (A.temporal?.revision && A.temporal.revision <= sumaDias(hoy, 2)) add('programada', `Revisar el registro temporal: ${queTemp(A.temporal)}`, A.temporal.revision, 'Ver su diario y decidir si termina o se alarga');
+      if (inc.inicio && !publicado) {
+        const dia = diaInc(inc);
+        if (dia >= 8 && it.reunion?.estado !== 'validado') add('programada', `Reunión de la semana 2 (día ${dia} de 14)`, sumaDias(inc.inicio, 7), 'Programarla o marcarla como hecha');
+        if (dia >= 11) add('programada', `Entregar el plan (día ${dia} de 14)`, sumaDias(inc.inicio, 13), 'Importar o revisar y publicar los apartados');
+      }
+      if (publicado) { const e = coherencia(plan, srv).filter(o => o.niv === 'error'); if (e.length) add('programada', `${e.length} punto${e.length > 1 ? 's' : ''} de coherencia por corregir`, hoy, 'Abrir «Coherencia del plan»'); }
+      const chk = (c.checkins || []).find(k => k.alumno_id === a.id && k.semana_inicio === lAnt);
+      if (chk?.aplicacion_plan === 'ayuda') add('duda', 'Pide ayuda para adaptar el plan' + (chk.dificultades ? `: «${chk.dificultades.slice(0, 90)}»` : ''), sumaDias(lAnt, 7), 'Responder en su devolución');
+      const nc = (c.creacionesNuevas || []).filter(x => x.alumno_id === a.id).length;
+      if (nc) add('duda', `${nc} plato${nc > 1 ? 's' : ''} compartido${nc > 1 ? 's' : ''} sin revisar`, hoy, 'Revisarlos en la próxima revisión');
+      if (items.length) out.push({ a, items: items.sort((x, y) => String(x.fecha).localeCompare(String(y.fecha))) });
+    });
+    return out.sort((x, y) => String(x.items[0].fecha).localeCompare(String(y.items[0].fecha)));
+  }
+  function metricasNutri() {
+    const c = S.c || {}, dias = [], vers = [];
+    Object.values(c.planNutri || {}).forEach(plan => {
+      const ini = plan.find(x => x.clave === 'incorporacion')?.datos?.inicio, pubs = plan.filter(x => ENTREGAS.some(([k]) => k === x.clave) && x.datos?.pub_at).map(x => x.datos.pub_at.slice(0, 10)).sort();
+      if (ini && pubs[0]) dias.push(Math.max(0, Math.round((fecha(pubs[0]) - fecha(ini)) / 864e5)));
+      const v = plan.find(x => x.clave === 'contextos')?.datos?.version?.n; if (v) vers.push(v);
+    });
+    const med = l => { if (!l.length) return null; const o = l.slice().sort((p, q) => p - q), m = Math.floor(o.length / 2); return o.length % 2 ? o[m] : (o[m - 1] + o[m]) / 2; };
+    return { n: dias.length, dias: med(dias), ajustes: vers.length ? vers.reduce((p, q) => p + q, 0) - vers.length : null, conVersion: vers.length, devoluciones: (c.devoluciones || []).length };
+  }
+  function abrirCola() {
+    const l = colaRevisiones(), M = metricasNutri(), TIPO = { programada: ['Programada', 'blue'], duda: ['Duda relevante', 'warn'] };
+    abrirSheet(`<div class="stack"><span class="eyebrow">Nutrición</span><h2>Revisiones pendientes</h2>
+      <p class="small muted" style="margin-top:-6px">Solo lo que pide una decisión tuya. Las fotos, las variaciones y los días sin registro no aparecen como incidencias.</p>
+      ${l.length ? l.map(({ a, items }) => `<div class="card stack" style="gap:6px"><div class="row"><b class="grow">${esc(a.nombre)}</b><button class="btn sm ghost" data-act="colaFicha" data-id="${a.id}">Abrir ›</button></div>
+        ${items.map(x => `<div class="coh-l"><span class="pill ${TIPO[x.tipo][1]}" style="flex:none">${TIPO[x.tipo][0]}</span><span class="grow"><b>${esc(x.motivo)}</b><br><span class="muted">${esc(fCorta(x.fecha))} · ${esc(x.resp)} · ${esc(x.accion)}</span></span></div>`).join('')}</div>`).join('') : '<div class="card small muted">No hay revisiones pendientes de nutrición.</div>'}
+      <details class="card small"><summary><b>Métricas (automáticas)</b></summary><div class="stack" style="gap:4px;margin-top:6px">
+        <div>Días desde el inicio de la incorporación hasta publicar el plan: <b>${M.dias != null ? fmtNum(M.dias, 0) + ' (mediana de ' + M.n + ')' : 'sin datos aún'}</b></div>
+        <div>Ajustes de contextos (versiones después de la primera): <b>${M.ajustes != null ? M.ajustes + ' en ' + M.conVersion + ' alumno' + (M.conVersion > 1 ? 's' : '') : 'sin datos aún'}</b></div>
+        <div>Devoluciones enviadas en las últimas 5 semanas: <b>${M.devoluciones}</b></div>
+        <p class="muted" style="margin:4px 0 0">Salen de fechas que la app guarda sola desde esta versión (publicación, versiones, devoluciones). No mide minutos de trabajo ni estima ahorros.</p></div></details>
+      <button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
   }
   /* ---------- Incorporación · primeros 14 días ----------
      Semana 1: 5 entradas (composición, estilo de vida, registro de 7 días, analítica, preferencias).
@@ -1036,25 +1088,40 @@ Reglas: "reparto" lleva una fila por ingesta con sus propias kcal, p, c y g (cad
     if (ctx.length) ok.push(`${ctx.length} contexto${ctx.length > 1 ? 's' : ''}`); if (semana.length) ok.push(`${semana.length} semana${semana.length > 1 ? 's' : ''} tipo`); if (guias.length) ok.push(`${guias.length} guía${guias.length > 1 ? 's' : ''} con ${guias.reduce((t, gu) => t + gu.alimentos.length, 0)} alimentos`); if (menus.length) ok.push(`${menus.length} bloque${menus.length > 1 ? 's' : ''} de menús`); if (sup.length) ok.push(`${sup.length} suplemento${sup.length > 1 ? 's' : ''}`);
     return { ctx, semana, guias, menus, sup, medidas: o.medidas || null, resumen: o.resumen || '', hidratacion: o.hidratacion || '', fecha: o.fecha || hoyISO(), ingestas: num(o.ingestas), av, ok };
   }
+  /* Identificación inequívoca: cada alumno tiene su código en la instrucción, y cada bloque su huella para no importarlo dos veces */
+  const refDe = id => 'LOF-' + String(id || '').replace(/-/g, '').slice(0, 8).toUpperCase();
+  const huella = t => { let h = 5381; const x = String(t).replace(/\s+/g, ''); for (let i = 0; i < x.length; i++) h = (h * 33 + x.charCodeAt(i)) >>> 0; return h.toString(36); };
+  const promptPara = (a, id) => PROMPT_GPT.replace('"alumno": "Nombre del alumno",', `"alumno": "${(a.nombre || 'Nombre del alumno').replace(/"/g, "'")}",\n  "ref": "${refDe(id)}",`).replace('Reglas: ', `Reglas: "ref" es el código del alumno: cópialo exactamente (${refDe(id)}). `);
   function formImportar() {
     const f = S.ficha, a = (S.c?.perfiles || []).find(p => p.id === f?.id) || {}; if (!f) return;
+    const PROMPT = promptPara(a, f.id), metas = (f.plan || []).map(x => x.datos?.meta).filter(Boolean), cx = (f.plan || []).find(x => x.clave === 'contextos');
     abrirSheet(`<div class="stack"><h2>📥 Importar su plan desde ChatGPT</h2>
       <p class="small muted" style="margin-top:-8px">Pega el bloque de datos que te da ChatGPT junto al PDF. Se guarda como <b>borrador</b>: ${esc((a.nombre || '').split(' ')[0])} no ve nada hasta que publiques cada apartado.</p>
-      <details class="card"><summary class="small"><b>¿Qué le pido a ChatGPT?</b> · copia esta instrucción una vez en tu conversación</summary><textarea id="imp-p" rows="8" readonly style="font-size:12px;margin-top:8px">${esc(PROMPT_GPT)}</textarea><button class="btn sm ghost" type="button" id="imp-cp" style="margin-top:6px">📋 Copiar instrucción</button></details>
+      <details class="card"><summary class="small"><b>¿Qué le pido a ChatGPT?</b> · copia esta instrucción una vez en tu conversación</summary><textarea id="imp-p" rows="8" readonly style="font-size:12px;margin-top:8px">${esc(PROMPT)}</textarea><p class="small muted" style="margin:4px 0 0">Lleva su código <b>${refDe(f.id)}</b>: si pegas un bloque de otro alumno, no se guarda.</p><button class="btn sm ghost" type="button" id="imp-cp" style="margin-top:6px">📋 Copiar instrucción</button></details>
       <textarea id="imp-t" rows="10" placeholder="Pega aquí el bloque { … } de ChatGPT" style="font-size:12px"></textarea>
       <div id="imp-r"></div><button class="btn full" id="imp-a">Revisar antes de guardar</button></div>`);
-    $('#imp-cp').addEventListener('click', async () => { try { await navigator.clipboard.writeText(PROMPT_GPT); toast('Copiado'); } catch (e) { $('#imp-p').select(); toast('Selecciona y copia'); } });
+    $('#imp-cp').addEventListener('click', async () => { try { await navigator.clipboard.writeText(PROMPT); toast('Copiado'); } catch (e) { $('#imp-p').select(); toast('Selecciona y copia'); } });
     let res = null;
+    $('#imp-t').addEventListener('input', () => { const btn = $('#imp-a'); res = null; btn.dataset.paso = ''; btn.disabled = false; btn.textContent = 'Revisar antes de guardar'; $('#imp-r').innerHTML = ''; });
     $('#imp-a').addEventListener('click', async () => {
       const box = $('#imp-r'), btn = $('#imp-a');
-      if (res && btn.dataset.paso === 'guardar') { btn.disabled = true; btn.textContent = 'Guardando…'; try { await guardarImport(f, res); cerrarSheet(); toast('Guardado como borrador: revisa y publica cada apartado'); await cargarPlanificacion(f); render(); } catch (err) { btn.disabled = false; btn.textContent = 'Guardar como borrador'; box.insertAdjacentHTML('beforeend', `<p class="err">No se ha podido guardar (${esc(err.message || '')})</p>`); } return; }
-      try { res = normalizar(leerJSON($('#imp-t').value), a.nombre); } catch (err) { box.innerHTML = `<p class="err">${esc(err.message)}</p>`; return; }
+      if (res && btn.dataset.paso === 'guardar') { const sinMarcar = [...box.querySelectorAll('[data-conf]')].filter(x => !x.checked); if (res.bloquea) return; if (sinMarcar.length) { box.querySelector('.imp-conf-err').textContent = 'Marca las confirmaciones de arriba para guardarlo.'; return; } btn.disabled = true; btn.textContent = 'Guardando…'; try { await guardarImport(f, res); cerrarSheet(); toast('Guardado como borrador: revisa y publica cada apartado'); await cargarPlanificacion(f); render(); } catch (err) { btn.disabled = false; btn.textContent = 'Guardar como borrador'; box.insertAdjacentHTML('beforeend', `<p class="err">No se ha podido guardar (${esc(err.message || '')})</p>`); } return; }
+      let crudo; try { crudo = leerJSON($('#imp-t').value); res = normalizar(crudo, a.nombre); } catch (err) { box.innerHTML = `<p class="err">${esc(err.message)}</p>`; return; }
+      res.ref = crudo.ref ? String(crudo.ref).trim().toUpperCase() : ''; res.hash = huella(JSON.stringify(crudo));
+      const conf = [], previo = metas.find(m => m.hash === res.hash), ultFecha = metas.map(m => m.fecha_doc).filter(Boolean).sort().pop();
+      res.bloquea = res.ref && res.ref !== refDe(f.id) ? `Este bloque lleva el código ${res.ref} y ${(a.nombre || '').split(' ')[0]} tiene ${refDe(f.id)}: es de otro alumno. No se guarda.` : '';
+      if (!res.ref && res.av.some(x => /Revisa que sea el alumno correcto/.test(x))) conf.push(`Confirmo que este plan es para ${esc(a.nombre || 'este alumno')}`);
+      if (previo) conf.push(`Este mismo bloque ya se importó el ${esc(fCorta(previo.importado || hoyISO()))}: importarlo otra vez`);
+      if (ultFecha && res.fecha && res.fecha < ultFecha) conf.push(`El documento es del ${esc(fCorta(res.fecha))} y su plan actual es del ${esc(fCorta(ultFecha))}: sustituirlo por el más antiguo`);
+      res.conf = conf;
+      if (res.ctx.length) res.ok.push(`se guardará como versión ${versionCtx(cx || null, { ctx: res.ctx, ingestas: res.ingestas }).n} de sus contextos`);
       { const sim = (f.plan || []).map(x => ({ ...x, datos: { ...(x.datos || {}) } })), pon = (k, d) => { const x = sim.find(z => z.clave === k); if (x) Object.assign(x.datos, d, { ver_ok: 1e9 }); else sim.push({ clave: k, datos: { ...d, ver_ok: 1e9 } }); };
         if (res.ctx.length) pon('contextos', { ctx: res.ctx, ingestas: res.ingestas, version: null }); if (res.guias.length) pon('equivalencias', { guias: res.guias }); if (res.menus.length) pon('menus', { menus: res.menus });
         coherencia(sim, f.srv).filter(o => o.niv !== 'info').forEach(o => res.av.push(`${ICO_COH[o.niv]} ${o.txt.replace(/<[^>]+>/g, '')}`)); }
       box.innerHTML = `<div class="card stack small"><b>Encontrado:</b> ${res.ok.join(' · ') || 'nada útil'}${res.av.length ? `<div class="stack" style="gap:4px;margin-top:6px">${res.av.map(x => `<div style="color:var(--warn)">${esc(x)}</div>`).join('')}</div>` : '<div style="color:var(--ok)">✓ Sin incoherencias detectadas</div>'}
+        ${res.bloquea ? `<p class="err" style="margin:6px 0 0">⛔ ${esc(res.bloquea)}</p>` : ''}${(res.conf || []).map(t => `<label class="row" style="gap:8px;margin-top:6px"><input type="checkbox" data-conf style="width:20px;height:20px"> <span>${t}</span></label>`).join('')}<p class="err imp-conf-err" style="margin:0"></p>
         <div class="muted">Se guardará en: ${[res.resumen && 'Informe de contexto', (res.ctx.length || res.semana.length) && 'Contextos', res.guias.length && 'Equivalencias visuales', res.menus.length && 'Menús', (res.sup.length || res.hidratacion) && 'Suplementación'].filter(Boolean).join(', ')}. Los textos y PDF que ya tengas en esos apartados se conservan.</div></div>`;
-      btn.dataset.paso = 'guardar'; btn.textContent = 'Guardar como borrador';
+      btn.dataset.paso = 'guardar'; btn.textContent = res.bloquea ? 'No se puede guardar' : 'Guardar como borrador'; btn.disabled = !!res.bloquea;
     });
   }
   async function guardarImport(f, r) {
@@ -1065,7 +1132,7 @@ Reglas: "reparto" lleva una fila por ingesta con sus propias kcal, p, c y g (cad
       const q = x?.id ? await sb.from('planificacion').update(fila).eq('id', x.id) : await sb.from('planificacion').insert(fila); if (q.error) throw q.error;
     };
     const ord = k => DOCS.findIndex(d => d[0] === k), tit = k => (DOCS.find(d => d[0] === k) || [])[1];
-    const meta = { origen: 'chatgpt', importado: hoyISO(), fecha_doc: r.fecha };
+    const meta = { origen: 'chatgpt', importado: hoyISO(), fecha_doc: r.fecha, hash: r.hash || null, ref: r.ref || null };
     let ver = base('contextos')?.datos?.version || null;
     if (r.ctx.length || r.semana.length) { const d = { ctx: r.ctx, semana: r.semana, ingestas: r.ingestas || null, meta }; ver = versionCtx(base('contextos'), d); await up('contextos', tit('contextos'), ord('contextos'), { datos: { ...d, version: ver } }); }
     const vo = ver?.n ? { ver_ok: ver.n } : {};
@@ -1203,5 +1270,5 @@ Reglas: "reparto" lleva una fila por ingesta con sus propias kcal, p, c y g (cad
       '\nCONCLUSIONES DE JESÚS', ...CONC.filter(([k]) => c[k]).map(([k, tt]) => `${tt}: ${c[k]}`), (c.pasos || []).length ? 'Primeros pasos:\n' + c.pasos.map((p, i) => `${i + 1}. ${p}`).join('\n') : ''].filter(v => v !== '').join('\n');
     try { await navigator.clipboard.writeText(t); toast('Copiado: pégalo en ChatGPT junto al resto de su información'); } catch (e) { abrirSheet(`<div class="stack"><h2>Copia este texto</h2><textarea rows="16" style="font-size:12px">${esc(t)}</textarea></div>`); }
   }
-  return { acuerdo, acuerdoDe, flexTxt, tarjetaTemporal, vSeguimientoCoach: aislar(vSeguimientoCoach), comidasPlan, txtReparto, nombresIng, coherencia, versionCtx, vCoherencia: aislar(vCoherencia), lineaCoh, fase, faseDe, faseCoach, mide, FASES, vSemana7: aislar(vSemana7), formImportar, formPlato, calcular, avisoCena, ALI, objetivoComida, equivVisual, vIncCoach: aislar(vIncCoach), formInc, esInc, guardarResumen, vista: aislar(vista), vCoach: aislar(vCoach), cargar, cargarFicha, cargarCoach, datosPrevia, nuevasDe, DOCS, esPdf, ctxDe };
+  return { colaRevisiones, metricasNutri, acuerdo, acuerdoDe, flexTxt, tarjetaTemporal, vSeguimientoCoach: aislar(vSeguimientoCoach), comidasPlan, txtReparto, nombresIng, coherencia, versionCtx, vCoherencia: aislar(vCoherencia), lineaCoh, fase, faseDe, faseCoach, mide, FASES, vSemana7: aislar(vSemana7), formImportar, formPlato, calcular, avisoCena, ALI, objetivoComida, equivVisual, vIncCoach: aislar(vIncCoach), formInc, esInc, guardarResumen, vista: aislar(vista), vCoach: aislar(vCoach), cargar, cargarFicha, cargarCoach, datosPrevia, nuevasDe, DOCS, esPdf, ctxDe };
 })();
