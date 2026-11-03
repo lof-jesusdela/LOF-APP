@@ -210,7 +210,8 @@ const Nutricion = (() => {
     const docs = [...DOCS.map(([k, t, s, ic]) => ({ x: docDe(n, k), k, t, s, ic })).filter(o => tiene(o.x)),
       ...n.plan.filter(x => !DOCS.some(([k]) => k === x.clave) && !esInc(x) && tiene(x)).map(x => ({ x, k: x.clave, t: x.titulo, s: '', ic: '📌' }))];
     const cab = prev ? '' : `<section class="stack"><span class="eyebrow">Tu plan de alimentación</span><h1>Nutrición</h1><p class="small muted">Tu guía para comer bien sin pensarlo demasiado. Vuelve aquí siempre que tengas una duda.</p></section>`;
-    return cab + vFase(d) + vIncAlumno(n, d) + (prev ? '' : tarjetaTemporal(d)) + vHoyCtx(n, d) + vAcuerdoAlumno(n, d) + (prev || !mide(fase(d)) ? '' : vBtnSemana()) + vDocs(docs) + (prev ? '' : vDiario(n, d));
+    const act = mide(fase(d));
+    return cab + (act ? '' : vFase(d)) + vIncAlumno(n, d) + (prev ? '' : tarjetaTemporal(d)) + vHoyCtx(n, d) + vAcuerdoAlumno(n, d) + (prev || !act ? '' : vBtnSemana()) + vDocs(docs) + (act ? vFase(d) : '') + (prev ? '' : vDiario(n, d));
   }
   const vBtnSemana = () => `<section class="section"><div class="card stack" style="gap:6px"><span class="eyebrow">Tu semana</span><p class="small muted" style="margin:0">Opcional: si te ayuda organizarte, marca cuándo entrenas y trabajas y qué vas a comer. Parte de tus menús o de tu semana anterior y cambia solo los días que haga falta; te calculo las cantidades y la lista de la compra. Comidas flexibles: ${esc(flexTxt(acuerdo(S.d)))}.</p><button class="btn full" data-act="nuSemana">🗓 Planifica tu semana y la compra</button></div></section>`;
   function vFase(d) {
@@ -228,17 +229,45 @@ const Nutricion = (() => {
     const rep = P.n < 2 ? '' : `<div class="nu-rep">${P.items.map(x => `<div><b>${esc(x.n)}</b><span class="num">${esc(fmtObj(x))}</span></div>`).join('')}${P.origen === 'iguales' ? '<small class="muted">Reparto orientativo (el día entre tus comidas): Jesús aún no lo ha fijado por comida.</small>' : ''}</div>`;
     return `<div class="nu-macros"><div class="k"><b class="num">${c.kcal ? fmtNum(+c.kcal, 0) : '—'}</b><small>kcal al día</small></div><div><b class="num">${g(c.p)}</b><small>Proteína</small></div><div><b class="num">${g(c.c)}</b><small>Hidratos</small></div><div><b class="num">${g(c.g)}</b><small>Grasas</small></div></div>${rep}`;
   }
+  /* Comida que toca ahora según la hora (el alumno puede cambiarla) */
+  const VENT = [[/^desayuno/i, 0, 11], [/media ma/i, 11, 13], [/^(comida|almuerzo)/i, 13, 16.5], [/merienda/i, 16.5, 19.5], [/^cena/i, 19.5, 24], [/recena/i, 22.5, 24]];
+  function comidaAhora(P) {
+    const d = new Date(), h = d.getHours() + d.getMinutes() / 60, w = P.items.map(x => VENT.find(v => v[0].test(x.n)));
+    if (!w.some(Boolean)) return Math.min(P.n - 1, Math.max(0, Math.floor((h - 7) / (15 / P.n))));
+    const ya = w.findIndex(v => v && h >= v[1] && h < v[2]); if (ya >= 0) return ya;
+    const sig = w.findIndex(v => v && v[1] > h); return sig >= 0 ? sig : P.n - 1;
+  }
+  /* «Arroz blanco cocido 145 g (≈ ¾ taza)»: cantidad legible con su medida casera si el alimento está en la base */
+  function cantTxt(nombre, q) {
+    const m = /(\d+(?:[.,]\d+)?)\s*(g|gr|gramos)\b/i.exec(q || ''), a = m && buscaAli(nombre);
+    return `${esc(q || '')}${a ? ` <span class="muted">(${esc(equivVisual(a, numero(m[1])))})</span>` : ''}`;
+  }
+  /* Opciones del plan (menús estructurados) para un contexto y una comida */
+  function opcionesPlan(n, c, nomIng) {
+    const M = docDe(n, 'menus')?.datos?.menus || [], k = norm(nomIng);
+    return (M.find(m => norm(m.ctx) === norm(c.n) && norm(m.ing) === k) || M.find(m => !m.ctx && norm(m.ing) === k) || { ops: [] }).ops;
+  }
   function vHoyCtx(n, d) {
     const l = ctxDe(n); if (!l.length) return '';
     const i = Math.min(selCtx(n), l.length - 1), c = l[i], ing = +c.ing || comidasDia(d?.servicio), sems = semanasDe(n), auto = ctxPorSemana(n);
-    const ir = (k, t) => tiene(docDe(n, k)) ? `<button class="btn sm ghost" data-act="nuDoc" data-k="${k}">${t}</button>` : '';
-    return `<section class="section"><div class="card stack nu-hoy"><span class="eyebrow">¿Qué tipo de día tienes hoy?</span>
-      <div class="chips" role="group" aria-label="Contexto de hoy">${l.map((x, k) => `<button class="pill ${k === i ? 'blue' : ''}" data-act="nuCtx" data-i="${k}" aria-pressed="${k === i}">${esc(x.n)}</button>`).join('')}</div>
-      ${sems.length > 1 ? `<div class="row small" style="gap:6px;flex-wrap:wrap;align-items:center"><span class="muted">Esta semana:</span>${sems.map((p, k) => `<button class="pill ${k === semSel(n) ? 'gold' : ''}" data-act="nuSem" data-i="${k}">${esc(p.nombre || 'Semana ' + (k + 1))}</button>`).join('')}</div>` : ''}
+    const P = comidasPlan(c, ing), k = S.nIng != null && S.nIng < P.n ? S.nIng : comidaAhora(P), it = P.items[k], ops = opcionesPlan(n, c, it.n), mImg = (docDe(n, 'menus')?.imagenes || []).length;
+    const ir = (kk, t) => tiene(docDe(n, kk)) ? `<button class="btn sm ghost" data-act="nuDoc" data-k="${kk}">${t}</button>` : '';
+    const dev = (d?.devoluciones || []).find(x => x.prioridad || x.ajuste);
+    return `<section class="section"><div class="card stack nu-hoy"><span class="eyebrow">1 · ¿Qué tipo de día tienes hoy?</span>
+      <div class="chips" role="group" aria-label="Contexto de hoy">${l.map((x, kk) => `<button class="pill ${kk === i ? 'blue' : ''}" data-act="nuCtx" data-i="${kk}" aria-pressed="${kk === i}">${esc(x.n)}</button>`).join('')}</div>
+      ${sems.length > 1 ? `<div class="row small" style="gap:6px;flex-wrap:wrap;align-items:center"><span class="muted">Esta semana:</span>${sems.map((p, kk) => `<button class="pill ${kk === semSel(n) ? 'gold' : ''}" data-act="nuSem" data-i="${kk}">${esc(p.nombre || 'Semana ' + (kk + 1))}</button>`).join('')}</div>` : ''}
       ${auto === i ? '<p class="small muted" style="margin:0">📅 Es el que te toca hoy según tu semana tipo. Si tu día ha cambiado, toca otro.</p>' : ''}
-      ${c.d ? `<p class="small muted" style="margin:0">${esc(c.d)}</p>` : ''}${vMacros(c, ing)}
-      <button class="btn full" data-act="nuCalc">🧮 Calcula tu plato con lo que quieres comer</button>
-      <div class="row" style="gap:8px;flex-wrap:wrap">${ir('menus', '🍽️ Ver mis menús')}${ir('equivalencias', '✋ Equivalencias')}${ir('platos', '🥗 Montar un plato')}</div></div></section>`;
+      ${c.d ? `<p class="small muted" style="margin:0">${esc(c.d)}</p>` : ''}
+      <details class="small"><summary>Tu día completo: ${c.kcal ? fmtNum(+c.kcal, 0) + ' kcal' : ''} · P ${g(c.p)} · C ${g(c.c)} · G ${g(c.g)}</summary>${vMacros(c, ing)}</details>
+      ${P.n > 1 ? `<span class="eyebrow" style="margin-top:4px">2 · ¿Qué comida quieres resolver?</span><div class="chips" role="group" aria-label="Comida">${P.items.map((x, kk) => `<button class="pill ${kk === k ? 'blue' : ''}" data-act="nuIng" data-i="${kk}" aria-pressed="${kk === k}">${esc(x.n)}</button>`).join('')}</div>` : ''}
+      <div class="nu-comida stack" style="gap:8px"><div class="row" style="gap:8px;align-items:baseline"><b class="grow">${esc(it.n)}</b><span class="small num">${esc(fmtObj(it))}</span></div>
+        ${P.origen === 'iguales' && P.n > 1 ? '<span class="small muted">Orientativo: tu día dividido entre tus comidas.</span>' : ''}
+        ${ops.length ? `<span class="eyebrow">3 · Opciones de tu plan</span>${ops.slice(0, S.nOpsTodas ? 99 : 3).map(o => `<div class="nu-op"><b class="small">${esc(o.n || 'Opción')}</b>${(o.ingr || []).length ? `<ul class="small">${o.ingr.map(x => `<li>${esc(x.n)}${x.q ? ' · ' + cantTxt(x.n, x.q) : ''}</li>`).join('')}</ul>` : ''}${o.prep ? `<div class="small muted">${esc(o.prep)}</div>` : ''}</div>`).join('')}${ops.length > 3 && !S.nOpsTodas ? `<button class="linkbtn small" data-act="nuOpsTodas" style="align-self:flex-start">Ver las ${ops.length} opciones</button>` : ''}`
+          : mImg ? `<p class="small" style="margin:0">Tus opciones para esta comida están en las láminas de tus menús.</p><button class="btn sm ghost" data-act="nuDoc" data-k="menus" style="align-self:flex-start">🍽️ Ver mis menús</button>` : '<p class="small muted" style="margin:0">Aún no tienes menús escritos para esta comida: monta tu plato con la calculadora o con tus equivalencias.</p>'}
+        <span class="eyebrow">4 · ¿Quieres cambiar algo?</span>
+        <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="nuCalc" data-ctx="${i}" data-k="${k}">🧮 Monta otra comida con estas cantidades</button>${tiene(docDe(n, 'equivalencias')) ? `<button class="btn sm ghost" data-act="nuEqIng" data-k="${k}">✋ Equivalencias de ${esc(it.n.toLowerCase())}</button>` : ''}</div></div>
+      ${dev ? `<div class="nu-dev small"><span class="eyebrow">5 · Tu prioridad ahora</span><div>${esc(dev.prioridad || dev.ajuste)}</div><span class="muted">Jesús · revisión de la semana del ${esc(fCorta(dev.semana_inicio))}</span></div>` : ''}
+      <div class="row" style="gap:8px;flex-wrap:wrap">${ir('menus', '🍽️ Todos mis menús')}${ir('platos', '🥗 Montar un plato')}</div></div></section>`;
   }
   function vDocs(docs) {
     if (!docs.length) return S.d && fase(S.d) ? '' : `<section class="section"><div class="card stack"><b>Tu plan está en camino</b><p class="small muted" style="margin:0">Jesús está preparando tu plan. Aquí tendrás tu contexto, tus menús, las equivalencias visuales, cómo construir tus platos y tu suplementación.</p></div></section>`;
@@ -426,13 +455,16 @@ const Nutricion = (() => {
       case 'nuCerrar': S.nDoc = null; render(); window.scrollTo(0, 0); break;
       case 'nuCtx': S.nCtx = +b.dataset.i; try { localStorage.setItem('lof-nctx', hoyISO() + '|' + S.nCtx); } catch (err) { /* sin almacenamiento */ } render(); break;
       case 'nuDia': S.nDia = b.dataset.f; render(); break;
-      case 'nuCalc': formPlato(); break;
+      case 'nuCalc': if (b.dataset.ctx != null) S.calc = { ...(S.calc || st0()), ctx: +b.dataset.ctx, k: +b.dataset.k }; formPlato(); break;
       case 'nuSemana': MenuSemana.abrir(b.dataset.l); break;
       case 'nuInc': formInc(b.dataset.k); break;
       case 'nuSeg': formSeguimiento(); break;
       case 'nuIncIni': { const v = $('#inc-ini')?.value; if (!v) return toast('Elige la fecha'); try { await guardarResumen(S.ficha, d => { d.inicio = v; }); await cargarPlanificacion(S.ficha); render(); toast('Fecha guardada'); } catch (err) { fallo(err); } break; }
       case 'nuGuia': S.nGuia = +b.dataset.i; render(); break;
       case 'nuIngG': S.nIngG = +b.dataset.i; render(); break;
+      case 'nuIng': S.nIng = +b.dataset.i; S.nOpsTodas = false; render(); break;
+      case 'nuOpsTodas': S.nOpsTodas = true; render(); break;
+      case 'nuEqIng': S.nIngG = +b.dataset.k; S.nDoc = 'equivalencias'; render(); window.scrollTo(0, 0); break;
       case 'nuImportar': formImportar(); break;
       case 'nuFoto7': formFoto7(); break;
       case 'nuR7Obs': formR7Obs(+b.dataset.id); break;
@@ -462,7 +494,7 @@ const Nutricion = (() => {
   function acuerdoDe(plan) {
     const x = (plan || []).find(z => z.clave === 'seguimiento'), d = x?.datos || {}, hoy = hoyISO();
     const t = d.temporal?.que && d.temporal.hasta && d.temporal.hasta >= hoy ? d.temporal : null;
-    return { x, definido: !!x, nivel: NIVELES[d.nivel] ? d.nivel : 'habitual', menu: !!d.menu, flexPct: d.flexN != null ? null : (d.flexPct ?? 15), flexN: d.flexN ?? null, temporal: t, temporalAcabado: d.temporal?.hasta && d.temporal.hasta < hoy ? d.temporal : null, minimo: d.minimo || '' };
+    return { x, definido: !!x, reglasCena: d.reglasCena !== false, nivel: NIVELES[d.nivel] ? d.nivel : 'habitual', menu: !!d.menu, flexPct: d.flexN != null ? null : (d.flexPct ?? 15), flexN: d.flexN ?? null, temporal: t, temporalAcabado: d.temporal?.hasta && d.temporal.hasta < hoy ? d.temporal : null, minimo: d.minimo || '' };
   }
   const acuerdo = d => acuerdoDe(d?.nutri?.plan);
   const flexTxt = A => A.flexN != null ? `${A.flexN} comida${A.flexN === 1 ? '' : 's'} flexible${A.flexN === 1 ? '' : 's'} a la semana` : `un ${A.flexPct} % de tus comidas de la semana como comidas flexibles`;
@@ -512,6 +544,7 @@ const Nutricion = (() => {
       <div class="stack" style="gap:6px">${Object.entries(NIVELES).map(([k, [t1, t2]]) => `<label class="row small" style="gap:8px;align-items:flex-start"><input type="radio" name="seg-n" value="${k}" ${A.nivel === k ? 'checked' : ''} style="width:20px;height:20px"><span><b>${t1}</b><br><span class="muted">${t2}</span></span></label>`).join('')}</div>
       <label class="row small" style="gap:8px"><input type="checkbox" id="seg-menu" ${A.menu ? 'checked' : ''} style="width:20px;height:20px"> <span>Menú semanal acordado <span class="muted">(si no, es una herramienta opcional y no sale como pendiente)</span></span></label>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="f">Comidas flexibles<select id="seg-ft"><option value="pct" ${A.flexN == null ? 'selected' : ''}>% de sus comidas</option><option value="n" ${A.flexN != null ? 'selected' : ''}>Nº a la semana</option></select></label><label class="f">Cantidad<input type="number" id="seg-fv" min="0" max="50" value="${A.flexN ?? A.flexPct}"></label></div>
+      <label class="row small" style="gap:8px"><input type="checkbox" id="seg-cena" ${A.reglasCena ? 'checked' : ''} style="width:20px;height:20px"> <span>Aplicar la pauta de cena LOF en sus avisos <span class="muted">(sin cereales, lácteos ni grasas que no sean de cocinado; pescado blanco y carne blanca)</span></span></label>
       <label class="f">Mínimo acordado (opcional, lo ve tal cual)<input type="text" id="seg-min" value="${esc(A.minimo)}" placeholder="Ej. Foto de la cena los días de partido"></label>
       <details class="card" ${t.que ? 'open' : ''}><summary class="small"><b>Registro temporal</b> · pedir algo concreto durante unos días</summary><div class="stack" style="gap:8px;margin-top:8px">
         <label class="f">Qué le pides<select id="seg-tq"><option value="">— Nada —</option>${Object.entries(QUE_TEMP).map(([k, l]) => `<option value="${k}" ${t.que === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
@@ -521,7 +554,7 @@ const Nutricion = (() => {
       <p class="err" id="seg-err"></p><button class="btn full">Guardar</button></form>`);
     $('#f-seg').addEventListener('submit', async e => {
       e.preventDefault(); const tq = $('#seg-tq').value, fv = numero($('#seg-fv').value);
-      const datos = { nivel: document.querySelector('[name="seg-n"]:checked')?.value || 'habitual', menu: $('#seg-menu').checked, minimo: $('#seg-min').value.trim() || '', flexPct: $('#seg-ft').value === 'pct' ? (fv ?? 15) : null, flexN: $('#seg-ft').value === 'n' ? (fv ?? 0) : null,
+      const datos = { nivel: document.querySelector('[name="seg-n"]:checked')?.value || 'habitual', menu: $('#seg-menu').checked, reglasCena: $('#seg-cena').checked, minimo: $('#seg-min').value.trim() || '', flexPct: $('#seg-ft').value === 'pct' ? (fv ?? 15) : null, flexN: $('#seg-ft').value === 'n' ? (fv ?? 0) : null,
         temporal: tq ? { que: tq, otro: $('#seg-to').value.trim() || '', porque: $('#seg-tp').value.trim() || '', desde: t.que === tq && t.desde ? t.desde : hoyISO(), hasta: $('#seg-th').value || sumaDias(hoyISO(), 6), revision: $('#seg-tr').value || null } : (d0.temporal?.hasta < hoyISO() ? d0.temporal : null) };
       if (datos.temporal && tq && datos.temporal.hasta < hoyISO()) { $('#seg-err').textContent = 'La fecha «hasta» ya ha pasado.'; return; }
       const fila = { alumno_id: f.id, seccion: 'alimentacion', clave: 'seguimiento', titulo: 'Seguimiento acordado', datos, imagenes: [], orden: 92, visible: true, actualizado_at: new Date().toISOString() };
@@ -635,6 +668,7 @@ const Nutricion = (() => {
     const pub = k => { const x = docDe(n, k); return !!x && tiene(x); };
     const planListo = ['contextos', 'equivalencias', 'menus', 'contexto'].some(pub);
     if (f === 'activo' && planListo && INC.every(([k]) => incHecho(it[k]?.estado))) return '';
+    if (planListo && mide(f)) { const faltan = INC.filter(([k]) => !incHecho(it[k]?.estado)); return `<section class="section"><details class="card inc-alu"><summary class="small"><b>Tu incorporación</b> · plan entregado${faltan.length ? ` · queda: ${esc(faltan.map(x => x[1].toLowerCase()).join(', '))}` : ''}</summary><p class="small muted" style="margin:8px 0 0">Tus informes y materiales completos siguen en «Tu plan».${faltan.length ? ' Lo que queda no te impide empezar: Jesús te dirá si hace falta.' : ''}</p></details></section>`; }
     const dia = diaInc(r), TXT = { composicion: 'Mediremos tu porcentaje de grasa y fijaremos objetivos realistas.', estilo: 'Rellena el cuestionario: trabajo, descanso, estrés, digestión…', registro7: `Durante 7 días apunta lo que comes y bebes como te sea más fácil: una foto o una frase. Sin cambiar nada: sirve para conocer tu punto de partida.${r.inicio ? ` Termina el ${fLarga(sumaDias(r.inicio, 6))}.` : ''}`, analitica: 'Te indicaremos qué parámetros necesitamos analizar.', preferencias: 'Dinos qué alimentos te gustan y cuáles no.' };
     const fila = ([k, t, ic]) => { const e = it[k]?.estado || 'pendiente', ok = incHecho(e); return `<div class="inc-a ${ok ? 'ok' : ''}"><span class="inc-ic">${ok ? '✓' : ic}</span><div class="grow"><b>${esc(t)}</b><small>${ok ? (e === 'no_aplica' ? 'No hace falta en tu caso' : e === 'no_disponible' ? 'Seguimos sin este dato, no pasa nada' : 'Recibido') : esc(TXT[k])}</small></div>${!ok && k === 'registro7' ? '<button class="btn sm" data-act="nuIrDiario">Apuntar</button>' : ''}</div>`; };
     const sig = INC.find(([k]) => !incHecho(it[k]?.estado)), paso = sig ? `${sig[1]}: ${TXT[sig[0]]}` : it.reunion?.estado !== 'validado' ? 'La reunión con Jesús: revisaremos juntos lo que haces bien, lo que te limita y tus prioridades.' : !planListo ? 'Jesús está preparando tu plan: no tienes que hacer nada más por ahora.' : '';
@@ -874,7 +908,8 @@ const Nutricion = (() => {
         avisos.push(`Te pasas ~${fmtNum(dif, 0)} g de ${NOM_M[m]}${top && top[1] > 2 ? ` por ${sel[top[0]].a.n.split(' (')[0].toLowerCase()}` : ''}${m === 'g' ? '. Cocina sin aceite o elige una opción más magra.' : m === 'p' ? '. No pasa nada: la proteína de más no es un problema.' : '.'}`);
       }
     });
-    return { gr, tot, avisos };
+    const faltan = ['p', 'c', 'g'].filter(m => obj[m] >= 5 && obj[m] - tot[m] > (m === 'g' ? Math.max(6, obj[m] * 0.25) : Math.max(8, obj[m] * 0.15)));
+    return { gr, tot, avisos, faltan };
   }
   /* Explica que la cantidad de una fuente ya descuenta lo que ponen los alimentos mixtos (la grasa de la yema, la proteína del queso…) */
   function descuento(sel, gr, i) {
@@ -885,13 +920,24 @@ const Nutricion = (() => {
   }
   /* Recomendaciones para la última comida del día (la cena): qué alimentos conviene evitar y por cuáles cambiarlos */
   function avisoCena(a) {
-    const n = a.n;
-    if (a.t === 'C' && /^(Arroz|Pasta|Pan |Copos|Tortitas|Maíz|Cuscús|Quinoa|Ñoquis)/i.test(n)) return { m: 'Los cereales (pan, pasta, arroz, avena, maíz…) no son lo más recomendable para cenar.', alt: ['Patata cocida', 'Boniato cocido', 'Calabaza o zanahoria cocida', 'Verdura variada'] };
-    if (a.t === 'L' || /^(Queso|Yogur|Mozzarella|Gouda)/i.test(n)) return { m: 'Los lácteos no son lo más recomendable para cenar.', alt: ['Huevo entero', 'Claras de huevo', 'Tofu firme'] };
-    if (a.t === 'G' && !/^(Aceite|Mantequilla)/i.test(n)) return { m: 'En la cena, la grasa mejor la del cocinado (aceite de oliva o mantequilla). Evita aguacate, frutos secos, bacon, chocolate…', alt: ['Aceite de oliva virgen extra'] };
-    if (/^(Salmón|Atún|Caballa|Otros pescados azules)/i.test(n)) return { m: 'Para cenar, mejor pescado blanco que pescado azul.', alt: ['Pescado blanco', 'Gambas o langostinos', 'Huevo entero'] };
-    if (/^(Ternera|Lomo de cerdo|Jamón serrano|Cordero|Cecina|Hígado de ternera)/i.test(n)) return { m: 'Para cenar, mejor carne blanca que carne roja.', alt: ['Pollo (pechuga) cocinado', 'Pavo (pechuga)', 'Pescado blanco'] };
+    const n = a.n, plan = S.modo === 'coach' ? S.ficha?.plan : S.d?.nutri?.plan; if (acuerdoDe(plan).reglasCena === false) return null;
+    if (a.t === 'C' && /^(Arroz|Pasta|Pan |Copos|Tortitas|Maíz|Cuscús|Quinoa|Ñoquis)/i.test(n)) return { m: 'Tu pauta de cena va sin cereales (pan, pasta, arroz, avena, maíz…).', alt: ['Patata cocida', 'Boniato cocido', 'Calabaza o zanahoria cocida', 'Verdura variada'] };
+    if (a.t === 'L' || /^(Queso|Yogur|Mozzarella|Gouda)/i.test(n)) return { m: 'Tu pauta de cena va sin lácteos.', alt: ['Huevo entero', 'Claras de huevo', 'Tofu firme'] };
+    if (a.t === 'G' && !/^(Aceite|Mantequilla)/i.test(n)) return { m: 'En tu pauta de cena, la grasa es la del cocinado (aceite de oliva o mantequilla): sin aguacate, frutos secos, bacon, chocolate…', alt: ['Aceite de oliva virgen extra'] };
+    if (/^(Salmón|Atún|Caballa|Otros pescados azules)/i.test(n)) return { m: 'Tu pauta de cena prefiere pescado blanco al azul.', alt: ['Pescado blanco', 'Gambas o langostinos', 'Huevo entero'] };
+    if (/^(Ternera|Lomo de cerdo|Jamón serrano|Cordero|Cecina|Hígado de ternera)/i.test(n)) return { m: 'Tu pauta de cena prefiere carne blanca a la roja.', alt: ['Pollo (pechuga) cocinado', 'Pavo (pechuga)', 'Pescado blanco'] };
     return null;
+  }
+  /* Cuando la combinación no encaja: sustituciones compatibles, opciones del plan o una explicación (nunca una cadena de «falta…») */
+  const SUG = { p: ['Pollo (pechuga) cocinado', 'Pavo en lonchas (listo para comer)', 'Claras de huevo', 'Atún al natural (escurrido)', 'Pescado blanco en crudo (merluza, bacalao…)', 'Queso fresco batido 0 %'], c: ['Patata cocida', 'Arroz blanco cocido', 'Pan integral', 'Boniato cocido', 'Plátano', 'Garbanzos cocidos'], g: ['Aceite de oliva virgen extra', 'Aguacate (pulpa)', 'Almendras', 'Mantequilla 100 %'] };
+  function salidas(r, st, c, P, kk, esCena, n) {
+    const ya = new Set(st.sel.map(s => s.a.n)), guia = (docDe(n, 'equivalencias')?.datos?.guias || []).flatMap(gu => gu.alimentos.map(x => buscaAli(x.n.split(/[ (]/)[0])?.n)).filter(Boolean);
+    const sug = m => [...new Set([...guia.filter(x => rolDe(buscaAli(x) || {}) === m), ...SUG[m]])].map(buscaAli).filter(a => a && !ya.has(a.n) && !(esCena && avisoCena(a))).slice(0, 3);
+    const ops = opcionesPlan(n, c, P.items[kk].n), fil = r.faltan.map(m => [m, sug(m)]).filter(x => x[1].length);
+    if (!fil.length && !ops.length) return `<div class="aprox small">Con estos alimentos no se puede cuadrar bien sin cantidades exageradas. Quédate con estas cantidades orientativas o pregúntale a Jesús en tu check-in.</div>`;
+    return `<div class="aprox small stack" style="gap:6px"><b>Para que encaje</b>${fil.map(([m, l]) => `<div>Añade algo de ${NOM_M[m]}: ${l.map(a => `<button type="button" class="pill" data-cadd="${esc(a.n)}">＋ ${esc(a.n.split(' (')[0])}</button>`).join(' ')}</div>`).join('')}
+      ${ops.length ? `<div>O usa una opción de tu plan para ${esc(P.items[kk].n.toLowerCase())}: <b>${ops.slice(0, 3).map(o => esc(o.n)).join(' · ')}</b> <button type="button" class="linkbtn" data-cver="${kk}">Ver</button></div>` : ''}
+      ${!fil.length ? '<div>Con estos alimentos no se puede cuadrar del todo sin exagerar cantidades.</div>' : ''}</div>`;
   }
   const buscaAli = nom => ALI.find(x => norm(x.n) === norm(nom)) || ALI.find(x => norm(x.n).startsWith(norm(nom)));
   const st0 = () => ({ ctx: null, k: 0, sel: [] });
@@ -909,8 +955,9 @@ const Nutricion = (() => {
           <input type="search" id="calc-q" list="calc-ali" placeholder="Escribe un alimento: pollo, arroz, aguacate…" autocomplete="off"><datalist id="calc-ali">${ALI.map(a => `<option value="${esc(a.n)}">`).join('')}</datalist>
           <div class="chips">${['Pollo (pechuga) cocinado', 'Arroz blanco cocido', 'Patata cocida', 'Huevo entero', 'Aceite de oliva virgen extra', 'Verdura variada (ensalada, brócoli, judías…)'].filter(x => !st.sel.some(s => s.a.n === x)).map(x => `<button type="button" class="pill" data-cadd="${esc(x)}">＋ ${esc(x.split(' (')[0])}</button>`).join('')}</div></div>
         ${r ? `<div class="calc-res">${st.sel.map((s, i) => `<div class="calc-al"><div class="grow"><b>${esc(s.a.n)}</b><span>${r.gr[i] ? equivVisual(s.a, r.gr[i]) : 'No hace falta: ya lo cubren los demás alimentos'}</span>${(() => { const av = esCena ? avisoCena(s.a) : null; return av ? `<small class="calc-cena">⚠ ${esc(av.m)}</small><span class="calc-alt">Mejor: ${av.alt.map(x => { const o = buscaAli(x); return o ? `<button type="button" class="pill" data-calt="${i}|${esc(o.n)}">${esc(o.n.split(' (')[0])}</button>` : ''; }).join('')}</span>` : ''; })()}${r.gr[i] ? `<small class="calc-ap">Aporta P ${fmtNum(s.a.p * r.gr[i] / 100, 0)} · C ${fmtNum(s.a.c * r.gr[i] / 100, 0)} · G ${fmtNum(s.a.g * r.gr[i] / 100, 0)} g</small>` : ''}${descuento(st.sel, r.gr, i)}</div><div class="calc-g"><b class="num">${r.gr[i] ? fmtNum(r.gr[i], 0) + ' g' : '—'}</b>${s.fijo != null ? '<small>fijado</small>' : s.a.t === 'V' || s.a.t === 'L' ? '<small>1 ración</small>' : ''}</div><button type="button" class="btn sm ghost" data-cfix="${i}" aria-label="Fijar cantidad">✎</button><button type="button" class="btn sm ghost" data-cdel="${i}" aria-label="Quitar">✕</button></div>`).join('')}
-          <div class="calc-tot small">Total: <b>${fmtNum(r.tot.kcal, 0)} kcal</b> · P ${fmtNum(r.tot.p, 0)} g · C ${fmtNum(r.tot.c, 0)} g · G ${fmtNum(r.tot.g, 0)} g ${Math.abs(r.tot.kcal - obj.kcal) <= Math.max(40, obj.kcal * 0.08) && !r.avisos.length ? '<span class="pill ok">✓ encaja</span>' : `<span class="pill warn">${r.tot.kcal > obj.kcal ? '+' : ''}${fmtNum(r.tot.kcal - obj.kcal, 0)} kcal</span>`}</div>
-          ${r.avisos.map(x => `<p class="small" style="color:var(--warn);margin:0">${esc(x)}</p>`).join('')}
+          <div class="calc-tot small">Total: <b>${fmtNum(r.tot.kcal, 0)} kcal</b> · P ${fmtNum(r.tot.p, 0)} g · C ${fmtNum(r.tot.c, 0)} g · G ${fmtNum(r.tot.g, 0)} g ${Math.abs(r.tot.kcal - obj.kcal) <= Math.max(40, obj.kcal * 0.08) && !r.avisos.length ? '<span class="pill ok">✓ cantidades encajan (aprox.)</span>' : `<span class="pill warn">${r.tot.kcal > obj.kcal ? '+' : ''}${fmtNum(r.tot.kcal - obj.kcal, 0)} kcal</span>`}</div>
+          ${r.avisos.filter(x => !(r.faltan.length && /^Faltan/.test(x))).map(x => `<p class="small" style="color:var(--warn);margin:0">${esc(x)}</p>`).join('')}
+          ${r.avisos.length ? salidas(r, st, c, P, kk, esCena, n) : '<p class="small muted" style="margin:0">Esto solo comprueba cantidades. Sigue también las demás indicaciones de tu plan.</p>'}
           <button type="button" class="btn full" id="calc-diario">🍽 Apuntar este plato en mi diario</button></div>` : ''}
         <p class="note">Cantidades orientativas con valores medios de tablas de composición: la marca, la receta y la cocción los cambian. Si tu plan de Jesús dice otra cantidad, manda la de tu plan.</p>`;
     };
@@ -924,6 +971,7 @@ const Nutricion = (() => {
       else if (t.dataset.ck != null) { st.k = +t.dataset.ck; pinta(); }
       else if (t.dataset.calt) { const [i, nom] = t.dataset.calt.split('|'), a = buscaAli(nom); if (a && st.sel[+i]) { if (st.sel.some((x, j) => j !== +i && x.a.n === a.n)) st.sel.splice(+i, 1); else st.sel[+i] = { a }; pinta(); } }
       else if (t.dataset.cadd) add(t.dataset.cadd);
+      else if (t.dataset.cver != null) { S.nCtx = st.ctx; S.nIng = +t.dataset.cver; S.nDoc = null; cerrarSheet(); S.tab = 'nutri'; render(); }
       else if (t.dataset.cdel != null) { st.sel.splice(+t.dataset.cdel, 1); pinta(); }
       else if (t.dataset.cfix != null) { const s = st.sel[+t.dataset.cfix], v = prompt(`¿Cuántos gramos de ${s.a.n}? (vacío = que lo calcule la app)`, s.fijo ?? ''); if (v === null) return; s.fijo = numero(v) ?? null; pinta(); }
       else if (t.id === 'calc-diario') {

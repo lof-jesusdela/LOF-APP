@@ -55,7 +55,7 @@ const MenuSemana = (() => {
   const vacia = n => ({ t: '', ing: '', perm: false });
   function nuevo(n) { return [...Array(7)].map(() => [...Array(n)].map(vacia)); }
   async function cargar(lunes) {
-    const uid = S.user.id, base = { lunes, entreno: [...(planDe(lunes)?.dias || [])], trabaja: [], menu: nuevo(comidasDia(S.d?.servicio)) };
+    const c0 = ctxs()[0], uid = S.user.id, base = { lunes, entreno: [...(planDe(lunes)?.dias || [])], trabaja: [], menu: nuevo(c0 ? Nutricion.comidasPlan(c0, comidasDia(S.d?.servicio)).n : comidasDia(S.d?.servicio)) };
     const a = await sb.from('plan_nutri_semana').select('*').eq('alumno_id', uid).eq('semana_inicio', lunes).maybeSingle();
     if (a.error) { st = { ...base, sinTabla: true }; return; }
     let d = a.data?.datos, copiado = false;
@@ -115,7 +115,8 @@ const MenuSemana = (() => {
       const filas = dia.map((m, k) => {
         const r = comida(m), ultima = k === dia.length - 1 && dia.length > 1, cena = ultima && !m.perm && hay(m) ? r.items.map(a => [a, Nutricion.avisoCena(a)]).filter(x => x[1]) : [];
         const pregunta = hay(m) && !r.conocido && !m.perm, abre = m.abre || pregunta || (m.ing || '').trim();
-        return `<div class="ms-com${m.perm ? ' libre' : ''}"><div class="row" style="gap:6px"><span class="small muted ms-k">${ultima ? 'Última' : 'Comida ' + (k + 1)}</span>
+        const Pn = l[ci] ? Nutricion.comidasPlan(l[ci], comidasDia(S.d?.servicio)) : null, nomK = Pn && Pn.n === dia.length ? Pn.items[k].n : (ultima ? 'Última' : 'Comida ' + (k + 1));
+        return `<div class="ms-com${m.perm ? ' libre' : ''}"><div class="row" style="gap:6px"><span class="small muted ms-k">${esc(nomK)}${m.dePlan ? ' · de tu plan' : ''}</span>
           <input type="text" data-ms-t data-d="${i}" data-k="${k}" value="${esc(m.t)}" placeholder="Ej.: pollo con arroz y brócoli" aria-label="${DL[i]}, comida ${k + 1}">
           <button type="button" class="pill ${m.perm ? 'gold' : ''}" data-ms="perm" data-d="${i}" data-k="${k}" aria-pressed="${!!m.perm}" title="Comida flexible (de las acordadas)">✨</button>
           <button type="button" class="pill ${abre ? 'blue' : ''}" data-ms="ing" data-d="${i}" data-k="${k}" title="Desglosar ingredientes">🧾</button></div>
@@ -130,6 +131,7 @@ const MenuSemana = (() => {
         <div class="row small" style="gap:8px"><button type="button" class="btn sm ghost" data-ms="menos" data-d="${i}">− comida</button><span class="muted">${dia.length} ${dia.length === 1 ? 'comida' : 'comidas'}</span><button type="button" class="btn sm ghost" data-ms="mas" data-d="${i}">＋ comida</button></div></div>`;
     }).join('');
     return `<p class="small muted" style="margin:0">Marca los días que <b>entrenas</b> y los que <b>trabajas</b>: según eso se ajustan tus macros. Escribe qué vas a comer; con ✨ marcas tus comidas libres y con 🧾 desglosas los ingredientes.</p>
+      <div class="row" style="gap:8px;flex-wrap:wrap">${menusPlan().length ? '<button type="button" class="btn sm" data-ms="base">📋 Rellenar con mis menús</button>' : ''}<button type="button" class="btn sm ghost" data-ms="repetir">↺ Repetir mi semana anterior</button></div>
       ${st.copiado ? '<p class="small" style="margin:0;color:var(--blue,#2563eb)">He copiado tu semana anterior como punto de partida: cámbiala como quieras.</p>' : ''}
       ${st.sinTabla ? `<p class="ms-rojo">${AVISO} Puedes usarlo, pero no se guardará.</p>` : ''}
       ${!l.length ? '<p class="ms-rojo">Aún no tienes contextos con macros en tu plan: la lista saldrá con cantidades orientativas.</p>' : ''}
@@ -175,12 +177,33 @@ const MenuSemana = (() => {
       else if (a === 'mas') { if (st.menu[i].length < 7) st.menu[i].push(vacia()); }
       else if (a === 'menos') { if (st.menu[i].length > 1) st.menu[i].pop(); }
       else if (a === 'sem') { await cargar(b.dataset.l); semanas(); }
+      else if (a === 'base') { const n = usarMenusPlan(); toast(n ? `${n} comida${n > 1 ? 's' : ''} rellenada${n > 1 ? 's' : ''} con tus menús: cambia solo lo que quieras` : 'No hay huecos vacíos que rellenar o tus menús no son de estas comidas'); }
+      else if (a === 'repetir') { const ok = await repetirAnterior(); toast(ok ? 'He puesto tu semana anterior: cambia solo los días que haga falta' : 'No encuentro una semana anterior guardada'); }
       else if (a === 'guardar') { await guardar(); return; }
       else if (a === 'compra') { st.vista = 'compra'; await guardar(true); }
       else if (a === 'volver') st.vista = 'plan';
       else if (a === 'copiar') { try { await navigator.clipboard.writeText(textoCompra(calculo())); toast('Lista copiada ✓'); } catch (e) { toast('No se ha podido copiar'); } return; }
       pinta(); if (a === 'compra' || a === 'volver') $('#sheet-in')?.scrollTo?.(0, 0);
     });
+  }
+  /* Menús que entregó Jesús, por contexto y comida (sin transcribirlos: se copian al planificador) */
+  const menusPlan = () => (Nutricion.docDe ? Nutricion.docDe(S.d?.nutri || { plan: [] }, 'menus') : (S.d?.nutri?.plan || []).find(x => x.clave === 'menus'))?.datos?.menus || [];
+  function usarMenusPlan() {
+    const l = ctxs(), M = menusPlan(); if (!M.length || !l.length) return 0; let n = 0;
+    st.menu.forEach((dia, i) => {
+      const c = l[ctxIdx(l, st.entreno.includes(i), st.trabaja.includes(i))]; if (!c) return; const P = Nutricion.comidasPlan(c, comidasDia(S.d?.servicio));
+      dia.forEach((m, k) => {
+        if (hay(m) || m.perm) return; const nom = P.n === dia.length ? P.items[k]?.n : null;
+        const bloque = M.find(x => norm(x.ctx) === norm(c.n) && nom && norm(x.ing) === norm(nom)) || (nom ? M.find(x => !x.ctx && norm(x.ing) === norm(nom)) : null); if (!bloque?.ops?.length) return;
+        const op = bloque.ops[i % bloque.ops.length]; m.t = op.n || ''; m.ing = (op.ingr || []).map(x => x.n).filter(Boolean).join(', '); m.dePlan = true; n++;
+      });
+    });
+    return n;
+  }
+  async function repetirAnterior() {
+    const p = await sb.from('plan_nutri_semana').select('datos,semana_inicio').eq('alumno_id', S.user.id).lt('semana_inicio', st.lunes).order('semana_inicio', { ascending: false }).limit(1);
+    const d = p.data?.[0]?.datos; if (!d?.menu) return false;
+    st.menu = JSON.parse(JSON.stringify(d.menu)); st.trabaja = [...(d.trabaja || [])]; st.copiado = true; return true;
   }
   /* Qué semanas tienen ya el menú escrito (se pide una vez) */
   function cargarHechos() {
