@@ -299,6 +299,7 @@ function formContexto(id, op = {}) {
     if (!r || !nombre) return;
     const cruce = !sinFechas && (f.contextos || []).find(x => x.id !== c?.id && x.contexto_desde <= r.fin && x.contexto_hasta >= r.ini);
     if (cruce) return $('#cx-err').textContent = `Se cruza con "${cruce.contexto_nombre}" (${fCtx(cruce)}). Cambia las fechas.`;
+    if (!sinFechas) { const cb = await cruceEnBase(f.id, r.ini, r.fin, c?.id); if (cb) return $('#cx-err').textContent = `Ya existe "${cb.contexto_nombre}" (${fCtx(cb)}) para esas fechas (quizá creada desde otro dispositivo). Ábrela en vez de crear otra.`; }
     bt.disabled = true; bt.textContent = 'Guardando…';
     const row = { nombre: `Contexto · ${nombre}`, dias_semana: n, contexto_desde: r.ini, contexto_hasta: r.fin, contexto_nombre: nombre };
     try {
@@ -2674,16 +2675,25 @@ async function copiarDiasPrograma(baseId, npId) {
     }
   }
 }
+/* ¿Ya hay en la base una semana ajustada que se cruce con estas fechas? (evita duplicados por doble toque o por otro dispositivo) */
+async function cruceEnBase(aid, ini, fin, excepto) {
+  const { data, error } = await sb.from('programas').select('id,contexto_nombre,contexto_desde,contexto_hasta').eq('alumno_id', aid).lte('contexto_desde', fin).gte('contexto_hasta', ini);
+  if (error) return null;
+  return (data || []).find(x => x.id !== excepto) || null;
+}
 async function ajustarSemana(lunes, anterior) {
   const f = S.ficha, base = anterior ? ctxEnSemana(f.contextos, sumaDias(lunes, -7)) : f.progFull;
   if (!base) return toast('Este jugador no tiene programa base todavía');
   if (ctxEnSemana(f.contextos, lunes)) return toast('Esa semana ya está ajustada');
+  if (S._creandoSemana) return; S._creandoSemana = true;
   try {
+    const ya = await cruceEnBase(f.id, lunes, sumaDias(lunes, 6)); if (ya) { await recargarContextosCoach(); await cargarProgramasFicha(f); render(); return toast(`Esa semana ya está ajustada («${ya.contexto_nombre}»): ábrela desde su ficha`); }
     const row = { nombre: `Semana del ${fCorta(lunes)}`, dias_semana: base.dias_semana || (base.dias || []).length || null, contexto_desde: lunes, contexto_hasta: sumaDias(lunes, 6), contexto_nombre: `Semana del ${fCorta(lunes)}` };
     const { data: np, error } = await sb.from('programas').insert({ ...row, alumno_id: f.id, activo: false }).select().single(); if (error) throw error;
     await copiarDiasPrograma(base.id, np.id);
     toast('Semana preparada: ajusta lo que cambie'); await recargarContextosCoach(); await cargarProgramasFicha(f); await abrirEditor(f.id, np.id);
   } catch (err) { fallo(err, /contexto/.test(err.message || '') ? 'Falta ejecutar el Bloque 34 en Supabase.' : 'No se ha podido preparar la semana.'); }
+  finally { S._creandoSemana = false; }
 }
 async function avisarSemana(alumnoId, lunes) {
   try {
@@ -2702,6 +2712,7 @@ function vSemanasFutbol(a) {
   const hechas = (f.contextos || []).filter(c => /^Semana del /.test(c.contexto_nombre || '')).sort((x, y) => y.contexto_desde.localeCompare(x.contexto_desde)).slice(0, 6);
   return `<section class="section"><h2>Semana de entreno</h2><div class="card stack" style="gap:10px">
     <p class="small muted" style="margin:0">Cada semana usa el programa base (la semana patrón). Para adaptarla a la carga de ese momento, crea una copia solo de esa semana: queda guardada tal como la dejes y no toca las demás.</p>
+    ${(() => { const dup = []; (f.contextos || []).forEach((x, i, l) => l.slice(i + 1).forEach(y => { if (x.contexto_desde <= y.contexto_hasta && y.contexto_desde <= x.contexto_hasta) dup.push([x, y]); })); return dup.map(([x, y]) => `<div class="aprox small" style="border-color:var(--bad)">⚠️ Hay <b>dos semanas ajustadas</b> que se cruzan: «${esc(x.contexto_nombre)}» (nº ${x.id}) y «${esc(y.contexto_nombre)}» (nº ${y.id}). El jugador solo ve una. Abre la que no quieras y elimínala. <span class="row" style="gap:6px;margin-top:6px"><button class="btn sm ghost" data-act="sesionesContexto" data-id="${x.id}">✎ Nº ${x.id}</button><button class="btn sm ghost" data-act="sesionesContexto" data-id="${y.id}">✎ Nº ${y.id}</button><button class="btn sm ghost" data-act="editarContexto" data-id="${x.id}">Eliminar nº ${x.id}…</button><button class="btn sm ghost" data-act="editarContexto" data-id="${y.id}">Eliminar nº ${y.id}…</button></span></div>`).join(''); })()}
     ${semanas.map(([l, et]) => { const c = ctxEnSemana(f.contextos, l), ant = ctxEnSemana(f.contextos, sumaDias(l, -7));
       return `<div class="line" style="flex-wrap:wrap;gap:6px"><div class="grow" style="min-width:170px"><b>${et}</b> <span class="small muted">· del ${esc(fCorta(l))} al ${esc(fCorta(sumaDias(l, 6)))}</span><div class="small ${c ? '' : 'muted'}">${c ? '✓ Ajustada: ' + esc(c.contexto_nombre || '') : 'Con el programa base'}</div></div>
       <button class="btn sm gold" data-act="avisarSemana" data-al="${a.id}" data-l="${l}">🔔 Avisar: semana lista</button>${c ? `<button class="btn sm ghost" data-act="sesionesContexto" data-id="${c.id}">✎ Editar sus sesiones</button>` : `<button class="btn sm" data-act="semAjustar" data-l="${l}">Ajustar esta semana</button>${ant ? `<button class="btn sm ghost" data-act="semAjustar" data-l="${l}" data-ant="1">Duplicar la anterior</button>` : ''}`}</div>`; }).join('')}
@@ -5815,7 +5826,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v220';
+const APP_VER = 'v221';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
