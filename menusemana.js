@@ -16,7 +16,7 @@ const MenuSemana = (() => {
     [/kefir/, 'Kéfir natural'], [/leche/, 'Leche semidesnatada'], [/queso(?! fresco)/, 'Queso curado'],
     [/arroz integral/, 'Arroz integral cocido'], [/arroz|paella|risotto|sushi/, 'Arroz blanco cocido'],
     [/pasta|macarron|espagueti|fideo|tallarin|lasana|penne|raviol|canelon/, 'Pasta cocida'], [/patata|papas/, 'Patata cocida'], [/boniato|batata/, 'Boniato cocido'],
-    [/yuca/, 'Yuca cocida'], [/quinoa/, 'Quinoa cocida'], [/cuscus/, 'Cuscús cocido'], [/noqui/, 'Ñoquis'],
+    [/yuca/, 'Yuca cocida'], [/quinoa/, 'Quinoa cocida'], [/cuscus/, 'Cuscús cocido'], [/noqui/, 'Ñoquis cocidos'],
     [/pan integral/, 'Pan integral'], [/\bpan\b|bocadillo|tostada|sandwich|bocata|wrap|tosta/, 'Pan blanco'],
     [/avena|porridge|copos/, 'Copos de avena'], [/tortita/, 'Tortitas de arroz'], [/maiz/, 'Maíz cocido'],
     [/lenteja/, 'Lentejas cocidas'], [/garbanzo|hummus|cocido/, 'Garbanzos cocidos'], [/alubia|judias blancas|fabada/, 'Alubias cocidas'],

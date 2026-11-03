@@ -489,6 +489,21 @@ const Nutricion = (() => {
     ['Yogur alto en proteína', 60, 10, 4, 0.2, 'P', ['envase', 'envases', 200]],
     ['Tofu firme', 120, 13, 2, 7, 'P', ['taza en dados', 'tazas en dados', 150]],
     ['Proteína en polvo (whey)', 380, 78, 6, 6, 'P', ['cacito', 'cacitos', 30]],
+    ['Cordero en crudo', 200, 17, 0, 15, 'P', ['filete grande', 'filetes grandes', 180]],
+    ['Cecina (lista para comer)', 200, 38, 0, 6, 'P', ['loncha fina', 'lonchas finas', 10]],
+    ['Atún fresco en crudo', 120, 24, 0, 2, 'P', ['filete grande', 'filetes grandes', 200]],
+    ['Caballa en crudo', 205, 19, 0, 14, 'P', ['filete mediano', 'filetes medianos', 90]],
+    ['Otros pescados azules en crudo (sardina, boquerón…)', 170, 20, 0, 10, 'P', ['filete pequeño', 'filetes pequeños', 90]],
+    ['Marisco pelado en crudo', 75, 13, 3, 1.5, 'P', ['taza', 'tazas', 150]],
+    ['Calamar o sepia en crudo', 90, 16, 2, 1.2, 'P', ['taza en trozos', 'tazas en trozos', 165]],
+    ['Otros moluscos en crudo (almejas, mejillones…, sin concha)', 85, 12, 3.5, 2, 'P', ['taza', 'tazas', 180]],
+    ['Hígado de ternera en crudo', 135, 20, 4, 3.6, 'P', ['filete pequeño', 'filetes pequeños', 100]],
+    ['Caballa en lata (escurrida)', 190, 22, 0, 11, 'P', ['lata', 'latas', 90]],
+    ['Salmón en lata (escurrido)', 160, 22, 0, 8, 'P', ['lata', 'latas', 120]],
+    ['Pavo en lonchas (listo para comer)', 105, 17, 2, 2.5, 'P', ['loncha', 'lonchas', 20]],
+    ['Jamón york en lonchas (listo para comer)', 100, 18, 1.5, 2.5, 'P', ['loncha', 'lonchas', 20]],
+    ['Soja en grano cocida', 170, 17, 10, 9, 'P', ['taza', 'tazas', 190]],
+    ['Edamame cocido y desgranado', 121, 12, 9, 5, 'P', ['taza', 'tazas', 155]],
     // hidratos
     ['Arroz blanco cocido', 130, 2.7, 28, 0.3, 'C', ['taza', 'tazas', 190]],
     ['Arroz integral cocido', 112, 2.6, 23, 0.9, 'C', ['taza', 'tazas', 190]],
@@ -498,7 +513,7 @@ const Nutricion = (() => {
     ['Yuca cocida', 125, 1, 30, 0.3, 'C', ['taza en trozos', 'tazas en trozos', 185]],
     ['Quinoa cocida', 120, 4.4, 21, 1.9, 'C', ['taza', 'tazas', 185]],
     ['Cuscús cocido', 112, 3.8, 23, 0.2, 'C', ['taza', 'tazas', 160]],
-    ['Ñoquis', 133, 3, 28, 0.5, 'C', ['taza', 'tazas', 180]],
+    ['Ñoquis cocidos', 133, 3, 28, 0.5, 'C', ['taza', 'tazas', 180]],
     // hidratos en seco (sin cocer): cada formato se mide con su medida casera
     ['Arroz blanco crudo (sin cocer)', 360, 6.7, 79, 0.6, 'C', ['taza', 'tazas', 185]],
     ['Arroz integral crudo (sin cocer)', 355, 7.5, 76, 2.7, 'C', ['taza', 'tazas', 185]],
@@ -514,11 +529,28 @@ const Nutricion = (() => {
     ['Lentejas cocidas', 116, 9, 17, 0.4, 'C', ['taza', 'tazas', 200]],
     ['Garbanzos cocidos', 140, 8, 19, 2.6, 'C', ['taza', 'tazas', 200]],
     ['Alubias cocidas', 110, 7.5, 16, 0.5, 'C', ['taza', 'tazas', 200]],
+    ['Lentejas secas (sin cocer)', 350, 25, 60, 1.5, 'C', ['taza', 'tazas', 190]],
+    ['Garbanzos secos (sin cocer)', 360, 20, 61, 6, 'C', ['taza', 'tazas', 200]],
+    ['Alubias secas (sin cocer)', 340, 22, 60, 1.5, 'C', ['taza', 'tazas', 200]],
+    ['Guisantes cocidos', 80, 5.4, 14, 0.4, 'C', ['taza', 'tazas', 150]],
+    ['Pasta integral cocida', 124, 5.3, 25, 1.1, 'C', ['taza', 'tazas', 140]],
+    ['Tortilla de trigo (wrap)', 300, 8, 50, 7, 'C', ['wrap', 'wraps', 60]],
     ['Plátano', 89, 1.1, 21, 0.3, 'C', ['plátano mediano', 'plátanos medianos', 110]],
     ['Manzana', 52, 0.3, 12, 0.2, 'C', ['manzana mediana', 'manzanas medianas', 150]],
     ['Naranja', 47, 0.9, 10, 0.1, 'C', ['naranja mediana', 'naranjas medianas', 160]],
     ['Fresas', 32, 0.7, 6, 0.3, 'C', ['taza', 'tazas', 150]],
     ['Arándanos', 57, 0.7, 12, 0.3, 'C', ['taza', 'tazas', 145]],
+    ['Uvas (sin tallo)', 69, 0.7, 18, 0.2, 'C', ['uva', 'uvas', 5.5]],
+    ['Pera', 57, 0.4, 15, 0.1, 'C', ['pera mediana', 'peras medianas', 170]],
+    ['Kiwi', 61, 1.1, 15, 0.5, 'C', ['kiwi', 'kiwis', 75]],
+    ['Mandarina', 53, 0.8, 13, 0.3, 'C', ['mandarina', 'mandarinas', 80]],
+    ['Melocotón', 39, 0.9, 10, 0.3, 'C', ['melocotón mediano', 'melocotones medianos', 150]],
+    ['Piña', 50, 0.5, 13, 0.1, 'C', ['taza en trozos', 'tazas en trozos', 165]],
+    ['Mango', 60, 0.8, 15, 0.4, 'C', ['taza en trozos', 'tazas en trozos', 165]],
+    ['Sandía', 30, 0.6, 8, 0.2, 'C', ['taza en dados', 'tazas en dados', 150]],
+    ['Melón', 34, 0.8, 8, 0.2, 'C', ['taza en dados', 'tazas en dados', 160]],
+    ['Cerezas', 63, 1.1, 16, 0.2, 'C', ['taza', 'tazas', 140]],
+    ['Frambuesas', 52, 1.2, 12, 0.7, 'C', ['taza', 'tazas', 125]],
     ['Dátiles', 280, 2.5, 66, 0.4, 'C', ['dátil', 'dátiles', 8]],
     ['Miel', 304, 0.3, 82, 0, 'C', ['cucharada', 'cucharadas', 20]],
     // grasas
@@ -530,11 +562,31 @@ const Nutricion = (() => {
     ['Aceitunas', 145, 1, 0.5, 15, 'G', ['aceituna', 'aceitunas', 4]],
     ['Queso curado', 400, 26, 0.5, 33, 'G', ['loncha fina', 'lonchas finas', 15]],
     ['Chocolate negro 85 %', 600, 10, 20, 50, 'G', ['onza', 'onzas', 10]],
+    ['Aceite de coco', 884, 0, 0, 100, 'G', ['cucharadita', 'cucharaditas', 5]],
+    ['Coco fresco (pulpa)', 354, 3.3, 15, 33, 'G', ['lámina pequeña', 'láminas pequeñas', 10]],
+    ['Leche de coco (de lata)', 230, 2.3, 5.5, 24, 'G', ['cucharada', 'cucharadas', 15]],
+    ['Guacamole preparado', 150, 1.5, 8, 13, 'G', ['cucharada rasa', 'cucharadas rasas', 17]],
+    ['Bacon', 417, 12, 1, 40, 'G', ['loncha fina', 'lonchas finas', 10]],
+    ['Mantequilla 100 %', 740, 0.7, 0.1, 82, 'G', ['porción individual', 'porciones individuales', 5]],
+    ['Frutos secos variados (sin cáscara)', 600, 18, 15, 53, 'G', ['puñado pequeño', 'puñados pequeños', 20]],
+    ['Cacahuetes (sin cáscara)', 590, 26, 16, 50, 'G', ['puñado pequeño', 'puñados pequeños', 20]],
+    ['Pistachos (sin cáscara)', 560, 20, 28, 45, 'G', ['puñado pequeño', 'puñados pequeños', 20]],
+    ['Anacardos', 553, 18, 30, 44, 'G', ['puñado pequeño', 'puñados pequeños', 20]],
+    ['Avellanas', 630, 15, 17, 61, 'G', ['puñado pequeño', 'puñados pequeños', 20]],
+    ['Semillas variadas (chía, lino, calabaza…)', 540, 22, 20, 45, 'G', ['cucharada rasa', 'cucharadas rasas', 10]],
+    ['Crema de pistacho o almendra 100 %', 600, 22, 20, 50, 'G', ['cucharada rasa', 'cucharadas rasas', 15]],
+    ['Cacao puro 100 % (polvo)', 228, 20, 58, 14, 'G', ['cucharada rasa', 'cucharadas rasas', 5]],
+    ['Hígado de bacalao en conserva (escurrido)', 613, 4, 0, 67, 'G', ['cucharada en trozos', 'cucharadas en trozos', 15]],
     // lácteos y verdura
     ['Leche semidesnatada', 46, 3.3, 4.8, 1.6, 'L', ['vaso', 'vasos', 250]],
     ['Leche entera', 64, 3.2, 4.7, 3.6, 'L', ['vaso', 'vasos', 250]],
     ['Kéfir natural', 60, 3.3, 4, 3.5, 'L', ['vaso pequeño', 'vasos pequeños', 200]],
     ['Yogur griego natural', 120, 4, 4, 10, 'L', ['envase', 'envases', 125]],
+    ['Queso semicurado', 380, 25, 0.5, 31, 'L', ['cuña pequeña', 'cuñas pequeñas', 30]],
+    ['Gouda en lonchas', 355, 25, 2, 28, 'L', ['ración (2 lonchas)', 'raciones (2 lonchas)', 40]],
+    ['Mozzarella fresca', 245, 18, 1, 19, 'L', ['ración (media bola)', 'raciones (media bola)', 60]],
+    ['Mozzarella en lonchas', 280, 20, 1, 21, 'L', ['ración (2 lonchas)', 'raciones (2 lonchas)', 40]],
+    ['Mozzarella rallada', 300, 22, 2, 22, 'L', ['ración (2-3 cucharadas rasas)', 'raciones (2-3 cucharadas rasas)', 20]],
     ['Verdura variada (ensalada, brócoli, judías…)', 30, 2, 4, 0.3, 'V', ['plato', 'platos', 250]],
     ['Calabaza o zanahoria cocida', 25, 0.8, 5, 0.1, 'V', ['taza', 'tazas', 150]]
   ].map(([n, kcal, p, c, gr, t, u]) => ({ n, kcal, p, c, g: gr, t, u }));
@@ -563,7 +615,10 @@ const Nutricion = (() => {
     'Jamón serrano': [20, 80, 10], 'Queso fresco batido 0 %': [100, 350, 25], 'Yogur alto en proteína': [1, 2, 1, 'ud'],
     'Tofu firme': [80, 250], 'Proteína en polvo (whey)': [15, 45, 5],
     'Patata cocida': [80, 500], 'Boniato cocido': [80, 450], 'Yuca cocida': [80, 350], 'Quinoa cocida': [60, 300], 'Cuscús cocido': [60, 300],
-    'Ñoquis': [80, 300], 'Pan integral': [1, 4, 1, 'ud'], 'Pan blanco': [1, 4, 1, 'ud'], 'Copos de avena': [20, 120, 5], 'Arroz blanco crudo (sin cocer)': [20, 130, 5], 'Arroz integral crudo (sin cocer)': [20, 130, 5], 'Pasta corta cruda (macarrones, penne, fusilli…)': [20, 130, 5], 'Pasta larga cruda (espaguetis, tallarines…)': [20, 130, 5], 'Cuscús crudo (sin cocer)': [20, 130, 5], 'Quinoa cruda (sin cocer)': [20, 110, 5], 'Tortitas de arroz': [1, 6, 1, 'ud'],
+    'Ñoquis cocidos': [80, 300], 'Pan integral': [1, 4, 1, 'ud'], 'Pan blanco': [1, 4, 1, 'ud'], 'Copos de avena': [20, 120, 5], 'Lentejas secas (sin cocer)': [20, 130, 5], 'Garbanzos secos (sin cocer)': [20, 130, 5], 'Alubias secas (sin cocer)': [20, 130, 5], 'Guisantes cocidos': [40, 250], 'Pasta integral cocida': [60, 350], 'Tortilla de trigo (wrap)': [1, 3, 1, 'ud'],
+    'Cordero en crudo': [90, 250], 'Cecina (lista para comer)': [20, 80, 10], 'Atún fresco en crudo': [90, 260], 'Caballa en crudo': [100, 250], 'Otros pescados azules en crudo (sardina, boquerón…)': [100, 250], 'Marisco pelado en crudo': [100, 300], 'Calamar o sepia en crudo': [100, 350], 'Otros moluscos en crudo (almejas, mejillones…, sin concha)': [100, 300], 'Hígado de ternera en crudo': [50, 150, 10], 'Caballa en lata (escurrida)': [1, 3, 1, 'ud'], 'Salmón en lata (escurrido)': [1, 2, 1, 'ud'], 'Pavo en lonchas (listo para comer)': [1, 8, 1, 'ud'], 'Jamón york en lonchas (listo para comer)': [1, 8, 1, 'ud'], 'Soja en grano cocida': [60, 250], 'Edamame cocido y desgranado': [60, 250],
+    'Uvas (sin tallo)': [10, 45, 5, 'ud'], 'Pera': [0.5, 2, 0.5, 'ud'], 'Kiwi': [1, 3, 1, 'ud'], 'Mandarina': [1, 4, 1, 'ud'], 'Melocotón': [0.5, 2, 0.5, 'ud'], 'Piña': [50, 300], 'Mango': [50, 300], 'Sandía': [50, 400], 'Melón': [50, 400], 'Cerezas': [50, 250], 'Frambuesas': [50, 250],
+    'Aceite de coco': [0, 20, 5], 'Coco fresco (pulpa)': [0, 40, 10], 'Leche de coco (de lata)': [0, 45, 15], 'Guacamole preparado': [0, 100, 10], 'Bacon': [0, 2, 1, 'ud'], 'Mantequilla 100 %': [0, 20, 5], 'Frutos secos variados (sin cáscara)': [0, 30, 5], 'Cacahuetes (sin cáscara)': [0, 30, 5], 'Pistachos (sin cáscara)': [0, 30, 5], 'Anacardos': [0, 30, 5], 'Avellanas': [0, 30, 5], 'Semillas variadas (chía, lino, calabaza…)': [0, 30, 5], 'Crema de pistacho o almendra 100 %': [0, 30, 5], 'Cacao puro 100 % (polvo)': [0, 15, 5], 'Hígado de bacalao en conserva (escurrido)': [0, 30, 15], 'Arroz blanco crudo (sin cocer)': [20, 130, 5], 'Arroz integral crudo (sin cocer)': [20, 130, 5], 'Pasta corta cruda (macarrones, penne, fusilli…)': [20, 130, 5], 'Pasta larga cruda (espaguetis, tallarines…)': [20, 130, 5], 'Cuscús crudo (sin cocer)': [20, 130, 5], 'Quinoa cruda (sin cocer)': [20, 110, 5], 'Tortitas de arroz': [1, 6, 1, 'ud'],
     'Maíz cocido': [50, 250], 'Lentejas cocidas': [80, 300], 'Garbanzos cocidos': [80, 300], 'Alubias cocidas': [80, 300],
     'Plátano': [0.5, 2, 0.5, 'ud'], 'Manzana': [0.5, 2, 0.5, 'ud'], 'Naranja': [1, 2, 1, 'ud'], 'Fresas': [50, 300], 'Arándanos': [50, 200],
     'Dátiles': [1, 6, 1, 'ud'], 'Miel': [5, 30, 5],
@@ -652,10 +707,10 @@ const Nutricion = (() => {
   function avisoCena(a) {
     const n = a.n;
     if (a.t === 'C' && /^(Arroz|Pasta|Pan |Copos|Tortitas|Maíz|Cuscús|Quinoa|Ñoquis)/i.test(n)) return { m: 'Los cereales (pan, pasta, arroz, avena, maíz…) no son lo más recomendable para cenar.', alt: ['Patata cocida', 'Boniato cocido', 'Calabaza o zanahoria cocida', 'Verdura variada'] };
-    if (a.t === 'L' || /^(Queso fresco|Yogur alto|Queso curado)/i.test(n)) return { m: 'Los lácteos no son lo más recomendable para cenar.', alt: ['Huevo entero', 'Claras de huevo', 'Tofu firme'] };
-    if (a.t === 'G' && !/^Aceite/i.test(n)) return { m: 'En la cena, la grasa mejor la del cocinado (aceite de oliva o mantequilla). Evita aguacate, frutos secos, bacon, chocolate…', alt: ['Aceite de oliva virgen extra'] };
-    if (/^(Salmón|Atún)/i.test(n)) return { m: 'Para cenar, mejor pescado blanco que pescado azul.', alt: ['Pescado blanco', 'Gambas o langostinos', 'Huevo entero'] };
-    if (/^(Ternera|Lomo de cerdo|Jamón)/i.test(n)) return { m: 'Para cenar, mejor carne blanca que carne roja.', alt: ['Pollo (pechuga) cocinado', 'Pavo (pechuga)', 'Pescado blanco'] };
+    if (a.t === 'L' || /^(Queso|Yogur|Mozzarella|Gouda)/i.test(n)) return { m: 'Los lácteos no son lo más recomendable para cenar.', alt: ['Huevo entero', 'Claras de huevo', 'Tofu firme'] };
+    if (a.t === 'G' && !/^(Aceite|Mantequilla)/i.test(n)) return { m: 'En la cena, la grasa mejor la del cocinado (aceite de oliva o mantequilla). Evita aguacate, frutos secos, bacon, chocolate…', alt: ['Aceite de oliva virgen extra'] };
+    if (/^(Salmón|Atún|Caballa|Otros pescados azules)/i.test(n)) return { m: 'Para cenar, mejor pescado blanco que pescado azul.', alt: ['Pescado blanco', 'Gambas o langostinos', 'Huevo entero'] };
+    if (/^(Ternera|Lomo de cerdo|Jamón serrano|Cordero|Cecina|Hígado de ternera)/i.test(n)) return { m: 'Para cenar, mejor carne blanca que carne roja.', alt: ['Pollo (pechuga) cocinado', 'Pavo (pechuga)', 'Pescado blanco'] };
     return null;
   }
   const buscaAli = nom => ALI.find(x => norm(x.n) === norm(nom)) || ALI.find(x => norm(x.n).startsWith(norm(nom)));
