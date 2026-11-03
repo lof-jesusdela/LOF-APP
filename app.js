@@ -274,7 +274,7 @@ function vContextos(f, a) {
   const l = (f.contextos || contextosDe(a.id)).slice().sort((x, y) => y.contexto_desde.localeCompare(x.contexto_desde)), hoy = hoyISO(), lunes = lunesDe(hoy);
   const est = c => c.contexto_hasta < hoy ? ['', 'Terminado'] : c.contexto_desde <= lunes ? ['gold', 'Activo esta semana'] : ['blue', 'Programado'];
   return `<section class="section"><div class="section-head"><h2>Contextos temporales</h2><button class="btn sm" data-act="nuevoContexto">＋ Nuevo contexto</button></div>
-    <div class="card">${l.map(c => `<div class="line" style="flex-wrap:wrap"><div class="grow" style="min-width:180px"><b>${esc(c.contexto_nombre || 'Contexto')}</b><div class="small muted">${esc(fCtx(c))} · ${semanasCtx(c)} ${semanasCtx(c) === 1 ? 'semana' : 'semanas'} · ${c.dias_semana} ${c.dias_semana === 1 ? 'entreno' : 'entrenos'}/semana${c.dias ? ` · ${c.dias.length} ${c.dias.length === 1 ? 'sesión' : 'sesiones'}` : ''}</div></div><span class="pill ${est(c)[0]}">${est(c)[1]}</span><div class="row" style="gap:6px"><button class="btn sm ghost" data-act="sesionesContexto" data-id="${c.id}">✎ Sesiones</button><button class="btn sm ghost" data-act="editarContexto" data-id="${c.id}">Datos</button></div></div>`).join('') || '<div class="empty small">Sin contextos. Úsalos cuando sepas que unas semanas no podrá seguir su plan (vacaciones, viaje, lesión…): le preparas un plan para esas semanas y se mide contra él.</div>'}</div>
+    <div class="card">${l.map(c => `<div class="line" style="flex-wrap:wrap"><div class="grow" style="min-width:180px"><b>${esc(c.contexto_nombre || 'Contexto')}</b><div class="small muted">${esc(fCtx(c))} · ${semanasCtx(c)} ${semanasCtx(c) === 1 ? 'semana' : 'semanas'} · ${c.dias_semana} ${c.dias_semana === 1 ? 'entreno' : 'entrenos'}/semana${c.dias ? ` · ${c.dias.length} ${c.dias.length === 1 ? 'sesión' : 'sesiones'}` : ''}</div></div><span class="pill ${est(c)[0]}">${est(c)[1]}</span><div class="row" style="gap:6px"><button class="btn sm ghost" data-act="sesionesContexto" data-id="${c.id}">✎ Sesiones</button><button class="btn sm ghost" data-act="editarContexto" data-id="${c.id}">Datos</button>${c.contexto_hasta >= hoy ? `<button class="btn sm ghost" data-act="hacerPatron" data-id="${c.id}">⭐ Hacerla semana patrón</button>` : ''}</div></div>`).join('') || '<div class="empty small">Sin contextos. Úsalos cuando sepas que unas semanas no podrá seguir su plan (vacaciones, viaje, lesión…): le preparas un plan para esas semanas y se mide contra él.</div>'}</div>
     ${(f.guardados || []).length ? `<div class="section-head" style="margin-top:14px"><h3>Guardados para aplicar cuando quieras</h3></div><div class="card">${f.guardados.map(c => `<div class="line" style="flex-wrap:wrap"><div class="grow" style="min-width:180px"><b>${esc(c.contexto_nombre)}</b><div class="small muted">Sin fechas · ${c.dias_semana} ${c.dias_semana === 1 ? 'entreno' : 'entrenos'}/semana${c.dias ? ` · ${c.dias.length} ${c.dias.length === 1 ? 'sesión' : 'sesiones'}` : ''}</div></div>${c.alternativo ? '<span class="pill gold">Alternativo · siempre visible</span>' : '<span class="pill">Sin aplicar</span>'}<button class="btn sm ${c.alternativo ? 'ghost' : ''}" data-act="altToggle" data-id="${c.id}" data-v="${c.alternativo ? 0 : 1}">${c.alternativo ? 'Quitar como alternativo' : 'Usar como alternativo'}</button><div class="row" style="gap:6px"><button class="btn sm" data-act="editarContexto" data-id="${c.id}">Aplicar</button><button class="btn sm ghost" data-act="sesionesContexto" data-id="${c.id}">✎ Sesiones</button><button class="btn sm ghost" data-act="guardarPlantilla" data-id="${c.id}">Guardar como plantilla</button></div></div>`).join('')}</div>` : ''}
     <p class="note">Durante esas semanas entrena las sesiones del contexto y su cumplimiento se calcula con ellas (por ejemplo, 2 de 2 = 100 %). El ciclo se adapta y al terminar vuelve solo a su programa.</p></section>`;
 }
@@ -2695,6 +2695,17 @@ async function ajustarSemana(lunes, anterior) {
   } catch (err) { fallo(err, /contexto/.test(err.message || '') ? 'Falta ejecutar el Bloque 34 en Supabase.' : 'No se ha podido preparar la semana.'); }
   finally { S._creandoSemana = false; }
 }
+/* Una semana preparada (contexto) pasa a ser la semana patrón: deja de tener fechas y se activa; la patrón anterior queda guardada (inactiva) */
+async function hacerPatron(id) {
+  const f = S.ficha, c = (f?.contextos || []).find(x => x.id === id); if (!c) return;
+  const P = proceso(f.srv), bl = P && !P.antes && !P.fuera ? P.cc : null, sug = `${bl ? nomCiclo(bl) : 'Programa'} · semana patrón`;
+  const nombre = prompt(`«${c.contexto_nombre}» pasará a ser su semana patrón: se repetirá cada semana hasta que la cambies.${f.progFull ? ` La actual («${f.progFull.nombre}») queda guardada y deja de usarse.` : ''}\n\nNombre:`, sug); if (nombre === null) return;
+  try {
+    const { error: e1 } = await sb.from('programas').update({ activo: false }).eq('alumno_id', f.id).is('contexto_desde', null).neq('id', id); if (e1) throw e1;
+    const { error: e2 } = await sb.from('programas').update({ contexto_desde: null, contexto_hasta: null, contexto_nombre: null, activo: true, nombre: nombre.trim() || sug, ...(bl ? { ciclo: bl.n } : {}) }).eq('id', id); if (e2) throw e2;
+    toast('Hecho: es su semana patrón'); await recargarContextosCoach(); await cargarProgramasFicha(f); render();
+  } catch (err) { fallo(err, 'No se ha podido cambiar la semana patrón.'); }
+}
 async function avisarSemana(alumnoId, lunes) {
   try {
     const nom = (S.c.perfiles.find(p => p.id === alumnoId)?.nombre || 'el jugador').split(' ')[0];
@@ -3421,7 +3432,7 @@ function vFichaSub(f, a) {
     const semana = f.ses.filter(x => x.fecha >= lunes), bloque = P && !P.antes ? f.ses.filter(x => x.fecha >= P.cc.ini && x.fecha <= P.cc.fin && x.fecha < lunes) : [];
     const unicas = l => new Set(l.map(x => x.fecha + x.dia_id)).size, mes = unicas(f.todas.filter(x => x.fecha >= sumaDias(hoy, -27)));
     return cab('Entrenamiento') + vZonasFC({ vals: f.val, perfil: a, srv, coach: true }) + vRitmosVAM({ vals: f.val, perfil: a, coach: true }) + (() => { const h = vSelectorProgs(a.id, null); return h ? `<section class="section"><div class="card">${h}</div></section>` : ''; })() + vContextos(f, a) + `
-    <section class="section"><div class="section-head"><h2>Programa</h2><button class="btn sm" data-act="editarPrograma" data-id="${a.id}">${f.prog ? '✎ Editar programa' : 'Crear programa'}</button></div><div class="card small">${f.prog ? `<b>${esc(f.prog.nombre)}</b> · ${dpw || '—'} días por semana` : 'Aún no tiene programa.'}</div></section>
+    <section class="section"><div class="section-head"><h2>Semana patrón</h2><button class="btn sm" data-act="editarPrograma" data-id="${a.id}">${f.prog ? '✎ Editar' : 'Crear programa'}</button></div><div class="card small">${f.prog ? `<b>${esc(f.prog.nombre)}</b> · ${dpw || '—'} días por semana<div class="muted" style="margin-top:4px">Se repite cada semana que no tenga un contexto temporal. Para que una semana que has preparado pase a ser la patrón, pulsa «⭐ Hacerla semana patrón» en su contexto.</div>` : 'Aún no tiene programa.'}</div></section>
     <section class="section"><h2>Esta semana</h2><div class="card">${dpw ? barra('Entrenos de la semana', unicas(semana), dpw, '') + barra('Últimas 4 semanas', mes, dpw4, '') : ''}${semana.map(linea).join('') || '<div class="empty">Aún no ha entrenado esta semana.</div>'}</div></section>
     ${P && !P.antes ? `<section class="section"><h2>Resto del bloque · ${esc(nomCiclo(P.cc))}</h2><div class="card">${bloque.map(linea).join('') || '<div class="empty">Sin entrenamientos anteriores en este bloque.</div>'}</div></section>` : ''}
     ${vLineaTiempo(srv, 'Ciclos de entrenamiento', true, progDeCiclo(f, P))}
@@ -5826,7 +5837,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v221';
+const APP_VER = 'v222';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -6151,6 +6162,7 @@ document.addEventListener('click', async e => {
     case 'editarContexto': formContexto(+b.dataset.id); break;
     case 'activarPush': await activarPush(); await refrescarPush(); render(); break;
     case 'avisoVisto': { const id = +b.dataset.id; await sb.from('avisos').update({ visto_at: new Date().toISOString() }).eq('id', id); S.d.avisos = (S.d.avisos || []).filter(x => x.id !== id); S.tab = b.dataset.t || 'hoy'; S.dia = null; render(); window.scrollTo(0, 0); break; }
+    case 'hacerPatron': await hacerPatron(+b.dataset.id); break;
     case 'avisarSemana': b.disabled = true; await avisarSemana(b.dataset.al, b.dataset.l); b.disabled = false; break;
     case 'semAjustar': b.disabled = true; await ajustarSemana(b.dataset.l, !!b.dataset.ant); b.disabled = false; break;
     case 'abrirProg': await abrirEditor(S.ficha?.id || S.editor?.alumnoId, +b.dataset.id); break;
