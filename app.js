@@ -3127,11 +3127,29 @@ function formApartado(sec, clave) {
   const f = S.ficha, nuevo = !clave, x = nuevo ? { seccion: sec, clave: 'extra-' + Date.now(), titulo: '', imagenes: [], orden: 50 } : apartadosDe(f, sec).find(z => z.clave === clave);
   if (!x) return;
   const fijo = APARTADOS[sec].some(([k]) => k === x.clave), ali = sec === 'alimentacion', esCtx = x.clave === 'contextos';
-  const filaCtx = (c = {}) => `<div class="ctx-fila"><input type="text" data-c="n" value="${esc(c.n || '')}" placeholder="Tipo de día (ej. Entrenas y trabajas)"><input type="text" data-c="d" value="${esc(c.d || '')}" placeholder="Cuándo (ej. Lunes, miércoles y viernes)"><div class="ctx-num"><label>kcal<input type="number" inputmode="numeric" data-c="kcal" value="${esc(c.kcal ?? '')}"></label><label>Prot. g<input type="number" inputmode="numeric" data-c="p" value="${esc(c.p ?? '')}"></label><label>Hidr. g<input type="number" inputmode="numeric" data-c="c" value="${esc(c.c ?? '')}"></label><label>Grasa g<input type="number" inputmode="numeric" data-c="g" value="${esc(c.g ?? '')}"></label><label>Ingestas<input type="number" inputmode="numeric" min="1" max="8" data-c="ing" value="${esc(c.ing ?? '')}" placeholder="${comidasDia(f.srv)}"></label></div><input type="text" data-c="rep" value="${esc(c.rep || '')}" placeholder="Reparto entre comidas en % (opcional, ej. 70,30). Vacío = a partes iguales"><div class="ctx-chk small"></div></div>`;
+  /* Coherencia: lo que la revisión del plan señala de este apartado; si sus imágenes son de una versión anterior, hay que confirmarlas */
+  const vCtx = ali ? (f.plan || []).find(z => z.clave === 'contextos')?.datos?.version : null, dep = ali && ['contexto', 'equivalencias', 'menus', 'platos'].includes(x.clave);
+  const coh = ali && !nuevo ? Nutricion.coherencia(f.plan || [], f.srv).filter(o => o.k === x.clave && o.niv !== 'info') : [], pideConf = dep && coh.some(o => o.niv === 'error');
+  const filaCtx = (c = {}) => `<div class="ctx-fila"><input type="text" data-c="n" value="${esc(c.n || '')}" placeholder="Tipo de día (ej. Entrenas y trabajas)"><input type="text" data-c="d" value="${esc(c.d || '')}" placeholder="Cuándo (ej. Lunes, miércoles y viernes)"><div class="ctx-num"><label>kcal<input type="number" inputmode="numeric" data-c="kcal" value="${esc(c.kcal ?? '')}"></label><label>Prot. g<input type="number" inputmode="numeric" data-c="p" value="${esc(c.p ?? '')}"></label><label>Hidr. g<input type="number" inputmode="numeric" data-c="c" value="${esc(c.c ?? '')}"></label><label>Grasa g<input type="number" inputmode="numeric" data-c="g" value="${esc(c.g ?? '')}"></label><label>Ingestas<input type="number" inputmode="numeric" min="1" max="8" data-c="ing" value="${esc(c.ing ?? '')}" placeholder="${comidasDia(f.srv)}"></label></div><details class="ctx-rep" ${(c.r || []).length ? 'open' : ''}><summary class="small"><b>Reparto por comida</b> · kcal, proteína, hidratos y grasa de cada comida${(c.r || []).length ? '' : ' <span class="muted">(sin definir)</span>'}</summary>
+    <div class="ctx-rfila small muted" style="margin-top:6px" aria-hidden="true"><span>Comida</span><span>kcal</span><span>Prot. g</span><span>Hidr. g</span><span>Grasa g</span><span></span></div><div class="ctx-rf stack" style="gap:6px">${((c.r || []).length ? c.r : []).map(filaRep).join('')}</div>
+    <button class="linkbtn small" type="button" data-act2="ctxRepMas">＋ Comida</button>${(c.r || []).length ? '' : ' <button class="linkbtn small" type="button" data-act2="ctxRepAuto">Rellenar con las comidas del contexto</button>'}
+    <input type="text" data-c="rep" value="${esc(c.rep || '')}" placeholder="Solo si no rellenas lo de arriba: % de calorías por comida (ej. 70,30)" style="margin-top:6px">
+    <p class="small muted" style="margin:4px 0 0">Cada macro puede repartirse distinto: lo que escribas aquí es lo que usan la calculadora, las equivalencias y el menú semanal del alumno.</p></details><div class="ctx-chk small"></div></div>`;
+  function filaRep(r = {}) { return `<div class="ctx-rfila"><input type="text" data-r="n" value="${esc(r.n || '')}" placeholder="Comida"><input type="number" inputmode="numeric" data-r="kcal" value="${esc(r.kcal ?? '')}" placeholder="kcal"><input type="number" inputmode="numeric" data-r="p" value="${esc(r.p ?? '')}" placeholder="P g"><input type="number" inputmode="numeric" data-r="c" value="${esc(r.c ?? '')}" placeholder="C g"><input type="number" inputmode="numeric" data-r="g" value="${esc(r.g ?? '')}" placeholder="G g"><button type="button" class="linkbtn" data-act2="ctxRepQuita" aria-label="Quitar comida">✕</button></div>`; }
   /* Comprobación: kcal = 4·P + 4·C + 9·G (solo avisa; no cambia lo que escribes) */
   const chkCtx = el => { const v = k => numero(el.querySelector(`[data-c="${k}"]`)?.value), p = v('p'), c = v('c'), gr = v('g'), k = v('kcal'), o = el.querySelector('.ctx-chk'); if (!o) return;
-    if (p == null || c == null || gr == null) { o.textContent = ''; return; } const calc = Math.round(4 * p + 4 * c + 9 * gr), dif = k == null ? null : k - calc, tol = Math.max(20, calc * 0.02);
-    o.innerHTML = `Calculado con los macros: <b>${fmtNum(calc, 0)} kcal</b>${dif == null ? '' : dif === 0 ? ' · ✓ cuadra' : Math.abs(dif) <= tol ? ` · diferencia de ${dif > 0 ? '+' : ''}${fmtNum(dif, 0)} kcal con lo escrito (pequeña, se guarda tal cual)` : ` · <span style="color:var(--warn);font-weight:700">diferencia de ${dif > 0 ? '+' : ''}${fmtNum(dif, 0)} kcal con lo escrito: revisa</span>`} <span class="muted">· ${fmtNum(Math.round(4 * p / calc * 100), 0)} % P · ${fmtNum(Math.round(4 * c / calc * 100), 0)} % C · ${fmtNum(Math.round(9 * gr / calc * 100), 0)} % G</span>`; };
+    if (p == null || c == null || gr == null) { o.innerHTML = chkRep(el, { p, c, g: gr, kcal: k }); return; } const calc = Math.round(4 * p + 4 * c + 9 * gr), dif = k == null ? null : k - calc, tol = Math.max(20, calc * 0.02);
+    const sumas = chkRep(el, { p, c, g: gr, kcal: k }); o.innerHTML = sumas + `Calculado con los macros: <b>${fmtNum(calc, 0)} kcal</b>${dif == null ? '' : dif === 0 ? ' · ✓ cuadra' : Math.abs(dif) <= tol ? ` · diferencia de ${dif > 0 ? '+' : ''}${fmtNum(dif, 0)} kcal con lo escrito (pequeña, se guarda tal cual)` : ` · <span style="color:var(--warn);font-weight:700">diferencia de ${dif > 0 ? '+' : ''}${fmtNum(dif, 0)} kcal con lo escrito: revisa</span>`} <span class="muted">· ${fmtNum(Math.round(4 * p / calc * 100), 0)} % P · ${fmtNum(Math.round(4 * c / calc * 100), 0)} % C · ${fmtNum(Math.round(9 * gr / calc * 100), 0)} % G</span>`; };
+  /* Sumas del reparto por comida frente al total del día, con tolerancia explícita (±3 g o 3 % por macro; ±30 kcal o 3 %) */
+  function chkRep(el, dia) {
+    const fl = [...el.querySelectorAll('.ctx-rfila')].map(r => Object.fromEntries(['kcal', 'p', 'c', 'g'].map(k => [k, numero(r.querySelector(`[data-r="${k}"]`).value)])));
+    if (!fl.length) return '';
+    const L = { kcal: 'kcal', p: 'P', c: 'C', g: 'G' }, out = [];
+    ['kcal', 'p', 'c', 'g'].forEach(k => { const v = fl.map(x => x[k]); if (v.every(x => x == null)) return; if (v.some(x => x == null)) { out.push(`<span style="color:var(--warn)">${L[k]}: falta en ${v.filter(x => x == null).length} comida(s)</span>`); return; }
+      const sum = v.reduce((a, b) => a + b, 0); if (dia[k] == null) { out.push(`${L[k]} suma ${fmtNum(sum, 0)}`); return; } const tol = k === 'kcal' ? Math.max(30, dia[k] * 0.03) : Math.max(3, dia[k] * 0.03), dif = sum - dia[k];
+      out.push(Math.abs(dif) <= tol ? `${L[k]} ✓` : `<span style="color:var(--warn);font-weight:700">${L[k]}: las comidas suman ${fmtNum(sum, 0)} y el día ${fmtNum(dia[k], 0)}</span>`); });
+    return out.length ? `<div>Reparto: ${out.join(' · ')}</div>` : '';
+  }
   const DSEM = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'], semana = x.datos?.semana?.length ? x.datos.semana : [];
   const filaSem = (p = {}) => `<div class="sem-fila stack" style="gap:6px"><input type="text" data-s="nombre" value="${esc(p.nombre || '')}" placeholder="Nombre de la semana (ej. Partido el sábado)"><div class="sem-dias">${DSEM.map((d, i) => `<label><span>${d}</span><select data-s="d${i}" data-v="${esc(p.dias?.[i] || '')}">${opcSem(p.dias?.[i] || '')}</select></label>`).join('')}</div></div>`;
   const nombresCtx = () => { const l = [...document.querySelectorAll('#ctx-filas [data-c="n"]')].map(i => i.value.trim()).filter(Boolean); return l.length ? l : (x.datos?.ctx || []).map(c => c.n).filter(Boolean); };
@@ -3145,9 +3163,15 @@ function formApartado(sec, clave) {
     ${(x.imagenes || []).length ? `<div class="stack" style="gap:6px"><span class="small"><b>Archivos</b> · marca los que quieras quitar</span><div class="plan-imgs">${x.imagenes.map((r, i) => `<label class="plan-q">${Nutricion.esPdf(r) ? '<span class="plan-pdf">📄 PDF</span>' : `<img src="${esc(f.planImg?.[r] || '')}" alt="">`}<span><input type="checkbox" data-quitar="${i}"> Quitar</span></label>`).join('')}</div></div>` : ''}
     <label class="f">Añadir imágenes o PDF (menús, equivalencias, tablas, informes…)<input type="file" id="ap-f" accept="image/*,application/pdf" multiple></label>
     ${ali ? `<div class="aprox small" style="display:block">Estado: <b>${nuevo ? 'nuevo' : x.visible === false ? '📝 Borrador (solo lo ves tú)' : '✅ Publicado (lo ve en su pestaña Nutrición)'}</b>. Guardar como borrador no se lo enseña; solo «Publicar» lo hace visible.</div>` : '<p class="small muted">Se guarda en un espacio privado: solo tú puedes verlo.</p>'}
+    ${coh.length ? `<div class="card" style="border-color:var(--warn)"><b class="small">Revisión de coherencia</b>${coh.map(Nutricion.lineaCoh).join('')}${pideConf ? `<label class="row small" style="gap:8px;margin-top:6px"><input type="checkbox" id="ap-conf" style="width:20px;height:20px"> <span>Confirmo que las imágenes y PDF de este apartado corresponden a la versión ${vCtx?.n || ''} del plan</span></label>` : ''}</div>` : ''}
     <p class="err" id="ap-err"></p>${ali ? `<button class="btn full" type="submit" value="publicar" id="ap-b">✅ ${!nuevo && x.visible !== false ? 'Guardar y mantener publicado' : 'Publicar para el alumno'}</button><button class="btn ghost full" type="submit" value="borrador">📝 ${!nuevo && x.visible !== false ? 'Retirar y dejar como borrador' : 'Guardar como borrador'}</button>` : '<button class="btn full" type="submit" id="ap-b">Guardar</button>'}
     ${!nuevo && !fijo ? '<button class="btn ghost full" type="button" id="ap-del" style="color:var(--bad)">Eliminar apartado</button>' : ''}</form>`);
   $('#ctx-mas')?.addEventListener('click', () => $('#ctx-filas').insertAdjacentHTML('beforeend', filaCtx()));
+  $('#ctx-filas')?.addEventListener('click', ev => { const b = ev.target.closest('[data-act2]'); if (!b) return; ev.preventDefault(); const el = b.closest('.ctx-fila'), box = el.querySelector('.ctx-rf');
+    if (b.dataset.act2 === 'ctxRepMas') box.insertAdjacentHTML('beforeend', filaRep());
+    else if (b.dataset.act2 === 'ctxRepQuita') b.closest('.ctx-rfila').remove();
+    else if (b.dataset.act2 === 'ctxRepAuto') { const n = numero(el.querySelector('[data-c="ing"]').value) || comidasDia(f.srv); box.innerHTML = Nutricion.nombresIng(Math.max(1, Math.min(8, n))).map(nm => filaRep({ n: nm })).join(''); b.remove(); }
+    chkCtx(el); });
   $('#sem-mas')?.addEventListener('click', () => $('#sem-filas').insertAdjacentHTML('beforeend', filaSem()));
   document.querySelectorAll('#ctx-filas .ctx-fila').forEach(chkCtx);
   $('#ctx-filas')?.addEventListener('input', ev => { const el = ev.target.closest('.ctx-fila'); if (el) chkCtx(el); if (ev.target.dataset.c === 'n') document.querySelectorAll('#sem-filas select').forEach(sl => { const v = sl.value; sl.innerHTML = opcSem(v); }); });
@@ -3158,7 +3182,9 @@ function formApartado(sec, clave) {
     cerrarSheet(); toast('Apartado eliminado'); await cargarPlanificacion(f); render();
   });
   $('#f-ap').addEventListener('submit', async e => {
-    e.preventDefault(); const publicar = e.submitter?.value !== 'borrador', btn = $('#ap-b'), txtB = btn.textContent; btn.disabled = true; btn.textContent = 'Guardando…';
+    e.preventDefault(); const publicar = e.submitter?.value !== 'borrador', btn = $('#ap-b'), txtB = btn.textContent;
+    if (publicar && pideConf && !$('#ap-conf')?.checked) { $('#ap-err').textContent = 'Antes de publicarlo, confirma que sus imágenes y PDF corresponden a la versión actual del plan (o cámbialos).'; return; }
+    btn.disabled = true; btn.textContent = 'Guardando…';
     try {
       const quitar = [...document.querySelectorAll('#f-ap [data-quitar]:checked')].map(c => x.imagenes[+c.dataset.quitar]);
       let imagenes = (x.imagenes || []).filter(r => !quitar.includes(r));
@@ -3172,8 +3198,12 @@ function formApartado(sec, clave) {
       const fila = { alumno_id: f.id, seccion: sec, clave: x.clave, titulo: fijo ? x.titulo : ($('#ap-t').value.trim() || 'Apartado'), contenido: $('#ap-c').value.trim() || null, imagenes, orden: fijo ? APARTADOS[sec].findIndex(([k]) => k === x.clave) : (x.orden ?? 50), actualizado_at: new Date().toISOString() };
       const nuevas = {};
       if (ali) nuevas.visible = publicar;
-      if (esCtx) nuevas.datos = { ...(x.datos || {}), ctx: [...document.querySelectorAll('#ctx-filas .ctx-fila')].map(el => { const o = {}; el.querySelectorAll('[data-c]').forEach(i => { const v = i.value.trim(); if (v !== '') o[i.dataset.c] = i.type === 'number' ? numero(v) : v; }); return o; }).filter(o => o.n),
+      if (esCtx) nuevas.datos = { ...(x.datos || {}), ctx: [...document.querySelectorAll('#ctx-filas .ctx-fila')].map(el => { const o = {}; el.querySelectorAll('[data-c]').forEach(i => { const v = i.value.trim(); if (v !== '') o[i.dataset.c] = i.type === 'number' ? numero(v) : v; });
+          const r = [...el.querySelectorAll('.ctx-rfila')].map(fl => { const x = {}; fl.querySelectorAll('[data-r]').forEach(i => { const v = i.value.trim(); if (v !== '') x[i.dataset.r] = i.type === 'number' ? numero(v) : v; }); return x; }).filter(x => Object.keys(x).length);
+          if (r.length) o.r = r; return o; }).filter(o => o.n),
         semana: [...document.querySelectorAll('#sem-filas .sem-fila')].map(el => ({ nombre: el.querySelector('[data-s="nombre"]').value.trim(), dias: DSEM.map((_, i) => el.querySelector(`[data-s="d${i}"]`).value.trim()) })).filter(p => p.dias.some(Boolean)) };
+      if (esCtx) nuevas.datos.version = Nutricion.versionCtx(x.id ? x : null, nuevas.datos);
+      if (dep && vCtx?.n && (!pideConf || $('#ap-conf')?.checked)) nuevas.datos = { ...(x.datos || {}), ver_ok: vCtx.n };
       const guarda = fl => x.id ? sb.from('planificacion').update(fl).eq('id', x.id) : sb.from('planificacion').insert(fl);
       let r = await guarda({ ...fila, ...nuevas }), sinBloque = false;
       if (r.error && Object.keys(nuevas).length && /visible|datos|column/i.test(r.error.message || '')) { sinBloque = true; r = await guarda(fila); }
@@ -3373,6 +3403,7 @@ function vFichaSub(f, a) {
     return cab('Alimentación') + `
     <section class="section"><button class="card reporte-b" data-act="fichaSub" data-s="plan"><div class="ico gold">${svg('checkin')}</div><div class="grow" style="text-align:left"><b>Su plan de alimentación</b><div class="small muted">Contexto y feedback, registro de 7 días, analítica, contextos, equivalencias, menús, platos y suplementación</div></div><span class="small" style="color:var(--blue-text)">Editar ›</span></button>
       <button class="linkbtn small" data-act="nuPrev" style="margin-top:8px">👁 Ver su pestaña Nutrición tal como la ve ${esc(nom)}</button></section>
+    ${Nutricion.vCoherencia(f)}
     ${Nutricion.vIncCoach(f, a)}
     ${Nutricion.vSemana7(f, a)}
     ${Nutricion.vCoach(f, a)}
@@ -5758,7 +5789,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v214';
+const APP_VER = 'v215';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}

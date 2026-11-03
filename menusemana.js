@@ -84,7 +84,7 @@ const MenuSemana = (() => {
         if (!r.conocido) { otros.push(m.t || m.ing); return; }
         const sel = r.items.map(a => ({ a }));
         let gr;
-        if (c) gr = Nutricion.calcular(sel, Nutricion.objetivoComida({ ...c, ing: nd, rep: '' }, k, nd)).gr;
+        if (c) gr = Nutricion.calcular(sel, Nutricion.objetivoComida(Nutricion.comidasPlan(c).n === nd ? c : { ...c, ing: nd, rep: '', r: null }, k, nd)).gr;   // con el reparto de su plan si coincide el nº de comidas
         else gr = sel.map(s => s.a.t === 'P' ? 150 : s.a.t === 'C' ? 150 : s.a.t === 'G' ? 10 : s.a.u[2]);
         r.items.forEach((a, j) => { if (gr[j] > 0) { const x = tot.get(a.n) || { a, g: 0 }; x.g += gr[j]; tot.set(a.n, x); } });
         filas.push({ i, k, m, r, gr, ctx: c?.n });
