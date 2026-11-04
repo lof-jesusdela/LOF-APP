@@ -1,4 +1,4 @@
-// Edge Function: sincroniza las reservas de Calendly del alumno que llama con su bono de la app.
+// Edge Function: sincroniza las reservas de Calendly con los bonos de la app (el alumno, las suyas; el coach, las de todos).
 // Secretos necesarios: CALENDLY_TOKEN (token personal de Calendly).
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -47,8 +47,8 @@ Deno.serve(async (req) => {
     const userUri = me.resource?.uri;
     if (!userUri) return json({ error: "Calendly no devuelve tu cuenta. Revisa el token." }, 500);
 
-    // Eventos desde ayer (con cancelados, para poder marcarlos)
-    const minStart = new Date(Date.now() - 36 * 3600e3).toISOString();
+    // Eventos de los últimos 30 días y futuros (con cancelados, para poder marcarlos)
+    const minStart = new Date(Date.now() - 30 * 864e5).toISOString();
     let url: string | null = `${CAL}/scheduled_events?user=${encodeURIComponent(userUri)}&min_start_time=${encodeURIComponent(minStart)}&count=100&sort=start_time:asc`;
     const eventos: any[] = [];
     while (url && eventos.length < 300) {
@@ -57,17 +57,28 @@ Deno.serve(async (req) => {
       url = r.pagination?.next_page || null;
     }
 
-    const email = user.email.toLowerCase();
-    let nuevas = 0, canceladas = 0;
+    // ¿Quién llama? El alumno sincroniza sus reservas; el coach, las de todos sus alumnos (por email y, si no, por nombre)
+    const { data: yo } = await admin.from("perfiles").select("id,rol").eq("id", user.id).maybeSingle();
+    const esCoach = yo?.rol === "coach";
+    const norm = (t: string) => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+    let alumnos: { id: string; email: string; nombre: string }[] = [{ id: user.id, email: user.email.toLowerCase(), nombre: "" }];
+    if (esCoach) {
+      const { data } = await admin.from("perfiles").select("id,email,nombre,rol,activo");
+      alumnos = (data || []).filter((p: any) => p.rol !== "coach" && p.activo !== false).map((p: any) => ({ id: p.id, email: String(p.email || "").toLowerCase(), nombre: norm(p.nombre) }));
+    }
+    const hoy = madrid(new Date().toISOString()).fecha;
+    let nuevas = 0, canceladas = 0, vinculadas = 0;
+    const sinAlumno: any[] = [];
     for (const ev of eventos) {
-      // ¿Es este alumno el invitado?
       const uuid = String(ev.uri).split("/").pop();
       const inv: any = await leer(`${CAL}/scheduled_events/${uuid}/invitees?count=20`, h);
-      const es = (inv.collection || []).some((i: any) => String(i.email || "").toLowerCase() === email);
-      if (!es) continue;
+      const invitados = inv.collection || [];
+      const al = alumnos.find((a) => invitados.some((i: any) => a.email && String(i.email || "").toLowerCase() === a.email))
+        || (esCoach ? alumnos.find((a) => a.nombre && invitados.some((i: any) => norm(i.name) === a.nombre)) : undefined);
+      if (!al) { if (esCoach && ev.status !== "canceled" && invitados[0]) sinAlumno.push({ nombre: invitados[0].name, email: invitados[0].email, inicio: ev.start_time }); continue; }
 
       if (ev.status === "canceled") {
-        const { data } = await admin.from("presenciales").update({ estado: "cancelada" }).eq("calendly_uri", ev.uri).select("id");
+        const { data } = await admin.from("presenciales").update({ estado: "cancelada" }).eq("calendly_uri", ev.uri).neq("estado", "cancelada").select("id");
         canceladas += data?.length || 0;
         continue;
       }
@@ -75,13 +86,18 @@ Deno.serve(async (req) => {
       if (existe) continue;
 
       const { fecha, hora } = madrid(ev.start_time);
+      const tipo = /valoraci/i.test(ev.name || "") ? (/final/i.test(ev.name) ? "Valoración final" : "Valoración inicial") : null;
+      // Si ya está apuntada ese día (p. ej. la entrenaste con «Entrenar con…» antes de sincronizar), se vincula en vez de duplicarla
+      const { data: mismoDia } = await admin.from("presenciales").select("id").eq("alumno_id", al.id).eq("fecha", fecha).is("calendly_uri", null).neq("estado", "cancelada").limit(1);
+      if (mismoDia?.length) { await admin.from("presenciales").update({ calendly_uri: ev.uri, hora, origen: "calendly" }).eq("id", mismoDia[0].id); vinculadas++; continue; }
+      const pasada = fecha < hoy;
       const { error } = await admin.from("presenciales").insert({
-        alumno_id: user.id, fecha, hora, estado: "programada", origen: "calendly",
-        nota: "Reservada en Calendly", calendly_uri: ev.uri,
+        alumno_id: al.id, fecha, hora, estado: pasada ? "dada" : "programada", origen: "calendly", tipo,
+        nota: pasada ? "Reservada en Calendly · marcada como hecha al sincronizar" : "Reservada en Calendly", calendly_uri: ev.uri,
       });
       if (!error) nuevas++;
     }
-    return json({ nuevas, canceladas });
+    return json({ nuevas, canceladas, vinculadas, sinAlumno });
   } catch (e) {
     return json({ error: String((e as any)?.message || e) }, 200);
   }

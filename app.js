@@ -381,6 +381,7 @@ async function cargarAlumno(uid) {
   { const r = await sb.from('programas').select('contexto_nombre,alternativo,' + SEL_PROGRAMA).eq('alumno_id', uid).eq('alternativo', true).order('id');
     S.d.alternativos = r.error ? [] : (r.data || []).map(x => { ordSemana(x.dias ||= []); x.dias.forEach(ordenarDia); return x; }); }
   { const r = await sb.from('plan_semana').select('*').eq('alumno_id', uid).gte('semana_inicio', sumaDias(lunesDe(hoyISO()), -56)); S.d.planes = r.data || []; }  { const r = await sb.from('avisos').select('*').eq('alumno_id', uid).is('visto_at', null).order('creado_at', { ascending: false }).limit(5); S.d.avisos = r.error ? [] : (r.data || []); }
+  if (uid === S.user?.id && S.d.servicio && (S.d.servicio.modulo_presencial || S.d.servicio.sesiones_incluidas)) calAuto(30);
 }
 
 /* ---------- Render principal ---------- */
@@ -815,7 +816,7 @@ const Bienvenida = {
   reciente() { const c = S.perfil?.consentimiento_at; return !!c && c.slice(0, 10) >= sumaDias(hoyISO(), -28); },
   pantallas() {
     const s = S.d?.servicio || {}, P = proceso(s), p = S.d?.programaBase || S.d?.programa, dpw = p?.dias_semana || p?.dias?.length || 0, fF = iso => fecha(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' });
-    const mods = [(s.modulo_entreno ?? true) && 'entrenamiento personalizado', s.modulo_nutricion && 'plan de alimentación', (s.modulo_presencial || s.sesiones_incluidas) && `${s.sesiones_incluidas ? s.sesiones_incluidas + ' ' : ''}sesiones presenciales con Jesús`, s.modulo_futbol && 'seguimiento de futbolista (Élite Player)', 'hábitos'].filter(Boolean);
+    const mods = [(s.modulo_entreno ?? true) && 'entrenamiento personalizado', s.modulo_nutricion && 'plan de alimentación', (s.modulo_presencial || s.sesiones_incluidas) && `${s.sesiones_incluidas ? s.sesiones_incluidas + ' ' : ''}sesiones presenciales con Jesús`, s.valoracion_inicial && 'valoración inicial presencial', s.valoracion_final && 'valoración final comparativa', s.modulo_futbol && 'seguimiento de futbolista (Élite Player)', 'hábitos'].filter(Boolean);
     const fin = finProceso(P);
     return [
       ['🎯', 'Lo que has contratado', `<p><b>${esc(s.producto || 'Tu proceso de acompañamiento')}</b>${s.duracion_semanas ? ` · ${s.duracion_semanas} semanas` : ''}.</p>${s.inicio ? `<p class="small">Empieza el ${esc(fF(s.inicio))}${fin ? ` y termina el ${esc(fF(fin))}` : ''}${P && !P.antes && !P.fuera && !P.sinFin ? `. Ahora estás en la semana ${P.semana} de ${P.total}` : ''}.</p>` : ''}<p class="small">Incluye: ${esc(mods.join(', '))}.</p>${objetivoDe(S.d?.ruta) ? `<div class="aprox small"><b>Tu objetivo:</b> ${esc(objetivoDe(S.d.ruta))}</div>` : ''}`],
@@ -1348,7 +1349,7 @@ async function reanudarEntreno() {
   if (!propio) await entrarComo(x.alumnoId); else if (S.perfil.rol === 'coach' && S.modo === 'coach') { S.modo = 'alumno'; await cargarAlumno(S.user.id); }
   const p = S.d?.programa, todos = [...(p?.dias || []), ...(S.d?.contextos || []).flatMap(c => c.dias || []), ...(S.d?.alternativos || []).flatMap(c => c.dias || [])], dia = todos.find(d => d.id === x.diaId);
   if (!dia) { try { localStorage.removeItem(`lof-ini-${x.alumnoId}-${x.diaId}-${x.fecha}`); } catch (e) { } S.reanudar = null; if (!propio) await salirComo(); return toast('No encuentro ese entreno: ya no está en el programa'); }
-  if (!propio) Object.assign(S.obj, { fecha: x.fecha, presencial: false, presProg: null });
+  if (!propio) { let g = {}; try { g = JSON.parse(localStorage.getItem(`lof-pres-${x.alumnoId}-${x.fecha}`) || '{}'); } catch (e) { } Object.assign(S.obj, { fecha: x.fecha, presencial: !!g.presencial, presProg: g.presProg || null }); }
   S.reanudar = null; await abrirDia(dia.id, { dia, fecha: x.fecha });
 }
 async function volverEntreno() {
@@ -1375,6 +1376,7 @@ async function editarSesionCerrada() {
 async function entrenarAhora(alumnoId, op = {}) {
   await entrarComo(alumnoId);
   Object.assign(S.obj, { fecha: op.fecha || hoyISO(), presencial: !!op.presencial, presProg: op.presProg || null });
+  try { localStorage.setItem(`lof-pres-${alumnoId}-${S.obj.fecha}`, JSON.stringify({ presencial: S.obj.presencial, presProg: S.obj.presProg })); } catch (e) { }
   if (!S.d.programa) { toast('Este alumno aún no tiene programa'); return salirComo(); }
   render(); window.scrollTo(0, 0);
 }
@@ -2080,7 +2082,7 @@ async function cargarCoach() {
   S.c = { perfiles: per.data || [], servicios: srv.data || [], sesiones: ses.data || [], checkins: chk.data || [], diario: reg.data || [], pagos: pag.data || [], programas: prg.data || [], ejercicios: ejs.data || [] };
   await Casos.cargarCoach();
   { const r = await sb.from('cambios_peso').select('*').is('visto_at', null).order('created_at', { ascending: false }); S.c.cambiosPeso = r.data || []; }
-  { const r = await sb.from('presenciales').select('alumno_id,estado,fecha,hora'); S.c.presenciales = r.error ? null : r.data || []; }
+  { const r = await conRespaldo(() => sb.from('presenciales').select('alumno_id,estado,fecha,hora,tipo'), () => sb.from('presenciales').select('alumno_id,estado,fecha,hora')); S.c.presenciales = r.error ? null : r.data || []; }
   await Acomp.cargarCoach();
   await Negocio.cargar();
   S.c.servicios.forEach(x => x._bloques = bloquesDe((rut.data || []).filter(r => r.alumno_id === x.alumno_id)));
@@ -2097,6 +2099,15 @@ async function cargarCoach() {
   { const mc = await sb.from('movilidad_catalogo').select('*').order('titulo'); S.c.movCat = mc.error ? null : (mc.data || []); }
   { const t = await sb.from('tareas_coach').select('*').is('hecha_at', null); S.c.tareas = t.error ? null : (t.data || []); }
   S.c.facturas = fa.data || []; S.c.facturasError = !!fa.error; S.c.fiscal = Object.fromEntries((ap.data || []).map(x => [x.clave, x.valor]));
+  calAuto(20);
+}
+/* Reservas de Calendly sin tener que pulsar nada: como mucho cada N minutos, en segundo plano */
+function calAuto(min) {
+  if (S.vista || S.prueba || S.obj) return;
+  let ult = 0; try { ult = +localStorage.getItem('lof-cal-sync') || 0; } catch (e) { }
+  if (Date.now() - ult < min * 60000) return;
+  try { localStorage.setItem('lof-cal-sync', String(Date.now())); } catch (e) { }
+  setTimeout(() => sincronizarCalendly(false), 1500);
 }
 /* Datos de una semana (lunes a domingo) de un alumno */
 function semanaDatos(aid, lunes, src) {
@@ -4055,6 +4066,9 @@ function formServicio() {
       <div class="stack" id="sv-modulos-w" style="gap:4px" hidden><span class="small muted">Lleva</span><div class="chips" id="sv-lleva"><button type="button" class="pill" data-v="ent">Entrenamiento</button><button type="button" class="pill" data-v="ali">Alimentación</button><button type="button" class="pill" data-v="ambas">Ambas</button></div></div>
       <div class="stack" id="sv-meses-w" style="gap:4px" hidden><span class="small muted">Meses contratados</span><div class="chips" id="sv-meses"></div></div>
       <div class="stack" id="sv-frec-w" style="gap:4px" hidden><span class="small muted">Entrenamientos personales</span><div class="chips" id="sv-frec"></div></div>
+      <div class="stack" id="sv-val-w" style="gap:6px" hidden><span class="small muted">Valoraciones incluidas <span class="muted">(no cuentan como entrenamiento)</span></span>
+        <label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="sv-vi" ${s.valoracion_inicial ? 'checked' : ''} style="width:20px;height:20px;flex:none;margin-top:1px"> <span><b>Valoración inicial</b> presencial: lanzamiento y entrega del servicio</span></label>
+        <label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="sv-vf" ${s.valoracion_final ? 'checked' : ''} style="width:20px;height:20px;flex:none;margin-top:1px"> <span><b>Valoración final</b>: comparativa con la inicial</span></label></div>
       <label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="sv-seg" style="width:20px;height:20px;flex:none;margin-top:1px"> <span><b>Seguimiento</b>: revisión mensual, check-in semanal con devolución y avisos (a ti y en su app)</span></label>
       <p class="small muted" id="sv-mod-txt" style="margin:0"></p></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Inicio<input type="date" id="sv-ini" value="${s.inicio || hoyISO()}"></label><label class="f">Duración (semanas)<input type="number" id="sv-dur" min="1" max="104" value="${s.duracion_semanas || ''}" placeholder="Ej. 26"></label></div>
@@ -4071,7 +4085,7 @@ function formServicio() {
       <p class="small muted" style="margin:0">Quedan marcados como hechos en las semanas desde el inicio (sin series registradas), para que su cumplimiento y su número de entreno cuadren. Puedes cambiar el número cuando quieras.</p></div>
     <button class="btn full" type="submit">Guardar</button></form>`);
   /* Tipo de programa: lo que eliges rellena duración, sesiones, módulos y seguimiento (todo sigue editable debajo) */
-  const st = { mod: s.id ? modalidadSrv(s) : null, ptipo: esBono(s) ? 'bono' : s.meses || !s.id ? 'plan' : modalidadSrv(s) === 'presencial' ? 'bono' : 'plan', meses: s.meses || null, frec: s.pt_frecuencia || null, segToc: s.seguimiento != null };
+  const st = { valToc: s.valoracion_inicial != null || s.valoracion_final != null, mod: s.id ? modalidadSrv(s) : null, ptipo: esBono(s) ? 'bono' : s.meses || !s.id ? 'plan' : modalidadSrv(s) === 'presencial' ? 'bono' : 'plan', meses: s.meses || null, frec: s.pt_frecuencia || null, segToc: s.seguimiento != null };
   const MESES = { plan: [3, 6, 10], online: [3, 6, 9, 10, 12], hibrido: [3, 6, 10, 12] }, FREC_PLAN = { 3: ['1s'], 6: ['1s', '2m'], 10: ['1m', '2m', '1s'] };
   const lleva = () => $('#sv-entreno').checked && $('#sv-nutricion').checked ? 'ambas' : $('#sv-nutricion').checked ? 'ali' : 'ent';
   const marca = (sel, v) => document.querySelectorAll(sel + ' .pill').forEach(b => b.classList.toggle('blue', b.dataset.v === String(v)));
@@ -4081,19 +4095,25 @@ function formServicio() {
     $('#sv-ptipo').hidden = m !== 'presencial'; $('#sv-modulos-w').hidden = !m || m === 'presencial';
     const lm = !m || bono ? [] : MESES[plan ? 'plan' : m]; $('#sv-meses-w').hidden = !lm.length;
     $('#sv-meses').innerHTML = lm.map(x => `<button type="button" class="pill ${st.meses === x ? 'blue' : ''}" data-v="${x}">${x} meses</button>`).join('');
-    const lf = plan ? (FREC_PLAN[st.meses] || []) : m === 'hibrido' && $('#sv-entreno').checked ? ['1s', '2s', '2m', '1m'] : [];
+    const lf = plan ? (FREC_PLAN[st.meses] || []) : [];
     $('#sv-frec-w').hidden = !lf.length; $('#sv-frec').innerHTML = lf.map(x => `<button type="button" class="pill ${st.frec === x ? 'blue' : ''}" data-v="${x}">${FRECUENCIAS[x]}</button>`).join('');
     $('#sv-pres-w').hidden = m === 'online'; $('#sv-pres-l').textContent = bono ? 'Sesiones del bono' : m ? 'Entrenamientos personales incluidos' : 'Sesiones presenciales incluidas (bono)';
     if (!st.segToc && m) $('#sv-seg').checked = !bono;
+    /* Valoraciones: las presenciales e híbridas llevan la inicial; la final, en los de 6 meses o más. El online se la hace él mismo */
+    $('#sv-val-w').hidden = !m || m === 'online';
+    if (!st.valToc && m) { $('#sv-vi').checked = plan || m === 'hibrido'; $('#sv-vf').checked = (plan || m === 'hibrido') && (st.meses || 0) >= 6; }
     $('#sv-mod-txt').textContent = !m ? 'Elige el tipo para que la app sepa si lleva revisiones y avisos.' : bono ? (($('#sv-seg').checked) ? 'Bono con seguimiento activado a mano.' : 'Sin revisiones ni avisos: solo te avisará de pagos vencidos y de cuando le queden pocas sesiones. Puede subir sus fotos y medidas si quiere.') : 'Con revisión mensual, check-in semanal y avisos.';
   };
   $('#sv-seg').checked = conSeguimiento(s) || !s.id;
   $('#sv-mod').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; st.mod = b.dataset.v; st.meses = null; st.frec = null; if (st.mod !== 'online') $('#sv-presencial').checked = true; if (st.mod === 'presencial') $('#sv-entreno').checked = true; pintaMod(); });
   $('#sv-ptipo').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; st.ptipo = b.dataset.v; st.meses = null; st.frec = null; pintaMod(); });
   $('#sv-lleva').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; const v = b.dataset.v; $('#sv-entreno').checked = v !== 'ali'; $('#sv-nutricion').checked = v !== 'ent'; $('#sv-nutricion').dispatchEvent(new Event('change')); pintaMod(); });
-  $('#sv-meses').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; st.meses = +b.dataset.v; $('#sv-dur').value = semanasDeMeses(st.meses); if (st.frec) $('#sv-pres').value = sesionesDe(st.frec, st.meses); if (st.mod === 'presencial' && !(FREC_PLAN[st.meses] || []).includes(st.frec)) st.frec = (FREC_PLAN[st.meses] || [])[0] || null, st.frec && ($('#sv-pres').value = sesionesDe(st.frec, st.meses)); $('#sv-dur').dispatchEvent(new Event('input')); pintaMod(); });
+  $('#sv-meses').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; st.meses = +b.dataset.v; $('#sv-dur').value = semanasDeMeses(st.meses);
+    /* Ruta integral (híbrido con entreno y alimentación): 3 meses = 10 personales, 6 = 15, 10 = 20 */
+    if (st.mod === 'hibrido' && lleva() === 'ambas' && { 3: 10, 6: 15, 10: 20 }[st.meses]) $('#sv-pres').value = { 3: 10, 6: 15, 10: 20 }[st.meses]; if (st.frec) $('#sv-pres').value = sesionesDe(st.frec, st.meses); if (st.mod === 'presencial' && !(FREC_PLAN[st.meses] || []).includes(st.frec)) st.frec = (FREC_PLAN[st.meses] || [])[0] || null, st.frec && ($('#sv-pres').value = sesionesDe(st.frec, st.meses)); $('#sv-dur').dispatchEvent(new Event('input')); pintaMod(); });
   $('#sv-frec').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; st.frec = b.dataset.v; if (st.meses) $('#sv-pres').value = sesionesDe(st.frec, st.meses); pintaMod(); });
   $('#sv-seg').addEventListener('change', () => { st.segToc = true; pintaMod(); });
+  ['#sv-vi', '#sv-vf'].forEach(q => $(q).addEventListener('change', () => { st.valToc = true; }));
   $('#sv-entreno').addEventListener('change', pintaMod);
   pintaMod();
   const dpwS = S.ficha.prog?.dias_semana || 0;
@@ -4109,6 +4129,7 @@ function formServicio() {
     const row = { alumno_id: S.ficha.id, producto: $('#sv-prod').value.trim() || 'Servicio', inicio: $('#sv-ini').value, duracion_semanas: numero($('#sv-dur').value), sesiones_incluidas: numero($('#sv-pres').value),
       modulo_entreno: $('#sv-entreno').checked, modulo_nutricion: $('#sv-nutricion').checked, modulo_presencial: $('#sv-presencial').checked, activo: true };
     const tipo = st.mod ? { modalidad: st.mod, meses: st.mod === 'presencial' && st.ptipo === 'bono' ? null : st.meses, pt_frecuencia: st.frec, seguimiento: $('#sv-seg').checked } : null;
+    const vals = st.mod && st.mod !== 'online' ? { valoracion_inicial: $('#sv-vi').checked, valoracion_final: $('#sv-vf').checked } : st.mod === 'online' ? { valoracion_inicial: false, valoracion_final: false } : null;
     if (tipo) Object.assign(row, tipo);
     if ($('#sv-habitos').checked || s.modulo_habitos) row.modulo_habitos = $('#sv-habitos').checked;
     if ($('#sv-futbol').checked || s.modulo_futbol) row.modulo_futbol = $('#sv-futbol').checked;
@@ -4120,7 +4141,9 @@ function formServicio() {
     if ($('#sv-fase').value || s.nutri_fase) row.nutri_fase = $('#sv-fase').value || null;
     if (row.modulo_nutricion) { const nc = numero($('#sv-com').value); if (nc && (nc !== comidasDia(s) || s.comidas_dia)) row.comidas_dia = Math.max(1, Math.min(8, nc)); }
     const guardar = r => s.id ? sb.from('servicios').update(r).eq('id', s.id) : sb.from('servicios').insert(r);
+    if (vals) Object.assign(row, vals);
     let { error } = await guardar(row);
+    if (error && vals && /valoracion_/.test(error.message || '')) { Object.keys(vals).forEach(k => delete row[k]); ({ error } = await guardar(row)); if (!error) toast('Guardado sin las valoraciones: falta ejecutar el Bloque 87 en Supabase'); }
     if (error && tipo && /modalidad|meses|pt_frecuencia|seguimiento/.test(error.message || '')) { Object.keys(tipo).forEach(k => delete row[k]); ({ error } = await guardar(row)); if (!error) toast('Guardado sin el tipo de programa: falta ejecutar el Bloque 86 en Supabase'); }
     if (!error && !s.id) await sb.from('perfiles').update({ activo: true }).eq('id', S.ficha.id);
     if (error && /modulo_habitos/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 66 en Supabase.');
@@ -4838,7 +4861,8 @@ function formExtension() {
 
 /* ---------- Entrenamientos presenciales (bono de sesiones con Jesús) ---------- */
 const PRES_EST = { programada: 'Programada', dada: 'Hecha', tarde: 'Aviso con menos de 24 h · cuenta como hecha', cancelada: 'Cancelada a tiempo · no cuenta' };
-const cuentaPres = p => p.estado === 'dada' || p.estado === 'tarde';
+const esValPres = p => /valoraci[oó]n/i.test(p?.tipo || '');
+const cuentaPres = p => !esValPres(p) && (p.estado === 'dada' || p.estado === 'tarde' || (p.estado === 'programada' && p.fecha && p.fecha < hoyISO()));
 const ordPres = (a, b) => ((a.fecha || '9999-12-31') + (a.hora || '')).localeCompare((b.fecha || '9999-12-31') + (b.hora || ''));
 /* Reservas de Calendly confirmadas sin fecha: la fecha está en el calendario de Jesús */
 const fLargaP = p => p.fecha ? fLarga(p.fecha) : 'Fecha en tu calendario de Calendly';
@@ -4848,23 +4872,31 @@ const fNum = iso => { const d = fecha(iso); return `${d.getDate()}/${d.getMonth(
 const REGLA_24H = 'Si se avisa con menos de 24 horas de antelación y no está justificado, la sesión cuenta como hecha.';
 function datosPres(srv, lista) {
   const hechas = lista.filter(cuentaPres).sort(ordPres), total = srv?.sesiones_incluidas || 0;
-  const prox = lista.filter(p => p.estado === 'programada' && (!p.fecha || p.fecha >= hoyISO())).sort(ordPres);
-  return { total, hechas, prox, quedan: Math.max(0, total - hechas.length - prox.length) }; // quedan = sin usar ni reservar
+  const prox = lista.filter(p => !esValPres(p) && p.estado === 'programada' && (!p.fecha || p.fecha >= hoyISO())).sort(ordPres);
+  /* Valoraciones (no cuentan como sesión): la inicial es el lanzamiento presencial; la final compara con la inicial */
+  const vDe = re => { const l = lista.filter(p => esValPres(p) && re.test(p.tipo) && p.estado !== 'cancelada').sort(ordPres); return l.find(p => p.estado !== 'programada' || (p.fecha && p.fecha < hoyISO())) || l[0] || null; };
+  const val = { ini: srv?.valoracion_inicial || lista.some(p => esValPres(p) && /inicial/i.test(p.tipo)) ? { p: vDe(/inicial/i) } : null, fin: srv?.valoracion_final || lista.some(p => esValPres(p) && /final/i.test(p.tipo)) ? { p: vDe(/final/i) } : null };
+  return { total, hechas, prox, val, quedan: Math.max(0, total - hechas.length - prox.length) }; // quedan = sin usar ni reservar
 }
 function vPresenciales(srv, lista, coach) {
   lista = lista || [];
+  const estP = p => p.estado === 'programada' && p.fecha && p.fecha < hoyISO() ? 'dada' : p.estado;
   if (!srv?.modulo_presencial && !srv?.sesiones_incluidas && !lista.length) return '';
   const D = datosPres(srv, lista), ocup = [...D.hechas, ...D.prox], n = Math.max(D.total, ocup.length);
   const cajas = [...Array(n)].map((_, k) => { const p = ocup[k];
-    if (p) return `<button class="caja ${p.estado}" data-act="verPres" data-id="${p.id}" aria-label="Sesión ${k + 1}, ${esc(fLargaP(p))}"><b>${k + 1}</b><span>${fNumP(p)}</span></button>`;
+    if (p) return `<button class="caja ${estP(p)}" data-act="verPres" data-id="${p.id}" aria-label="Sesión ${k + 1}, ${esc(fLargaP(p))}"><b>${k + 1}</b><span>${fNumP(p)}</span></button>`;
     return `<button class="caja libre" data-act="${coach ? 'nuevaPres' : 'reservarPres'}" aria-label="Sesión ${k + 1}: ${coach ? 'programar' : 'reservar'}"><b>${k + 1}</b><span>${coach ? '＋' : 'Reservar'}</span></button>`; }).join('');
+  const cajaVal = (v, t) => { if (!v) return ''; const p = v.p, hecha = p && (p.estado !== 'programada' || (p.fecha && p.fecha < hoyISO()));
+    return p ? `<button class="caja val ${hecha ? 'dada' : 'programada'}" data-act="${coach ? 'editarPres' : 'verPres'}" data-id="${p.id}" aria-label="${t}"><b>${t === 'Valoración inicial' ? 'V0' : 'VF'}</b><span>${hecha ? '✓ ' : ''}${fNumP(p)}</span></button>`
+      : `<button class="caja val libre" data-act="${coach ? 'nuevaPresVal' : 'reservarPres'}" data-t="${t}" aria-label="${t}: ${coach ? 'programar' : 'reservar'}"><b>${t === 'Valoración inicial' ? 'V0' : 'VF'}</b><span>${coach ? '＋' : 'Reservar'}</span></button>`; };
+  const vals = D.val.ini || D.val.fin ? `<div class="stack" style="gap:6px"><span class="small muted">Incluido además de las sesiones: ${[D.val.ini && '<b>valoración inicial</b> (lanzamiento)', D.val.fin && '<b>valoración final</b> (comparativa con la inicial)'].filter(Boolean).join(' y ')}. No cuentan como entrenamiento.</span></div>` : '';
   const reservar = !coach && D.total && D.quedan > 0 ? `<button class="btn full" data-act="reservarPres">Reservar entrenamiento con Jesús</button>` : '';
-  const sincBtn = coach ? '' : `<button class="btn ghost full" data-act="sincCal">↻ Actualizar mis reservas de Calendly</button>`;
+  const sincBtn = `<button class="btn ghost full" data-act="sincCal">↻ ${coach ? 'Traer las reservas de Calendly de todos tus alumnos' : 'Actualizar mis reservas de Calendly'}</button>`;
   return `<section class="section"><div class="section-head"><h2>${coach ? 'Entrenamientos presenciales' : 'Tus entrenamientos conmigo'}</h2>${coach ? '<button class="btn sm" data-act="nuevaPres">＋ Añadir</button>' : ''}</div><div class="card stack">
     ${D.total ? `<div class="row"><div class="grow"><b class="num" style="font-family:var(--display);font-size:26px">${D.hechas.length} de ${D.total}</b><div class="small muted">sesiones hechas</div></div><div style="text-align:right"><b class="num" style="font-family:var(--display);font-size:26px;color:var(--blue)">${D.quedan}</b><div class="small muted">${D.quedan === 1 ? 'queda' : 'quedan'}</div></div></div>` : `<p class="small muted">${coach ? 'Indica en "Servicio → Editar" cuántas sesiones presenciales incluye su bono.' : 'Jesús indicará aquí tu bono de sesiones.'}</p>`}
-    ${n ? `<div class="cajas">${cajas}</div><div class="row small muted" style="gap:12px;flex-wrap:wrap"><span><i class="lp hecha"></i> Hecha</span><span><i class="lp tarde"></i> Aviso &lt; 24 h (cuenta)</span><span><i class="lp prog"></i> Reservada</span><span><i class="lp libre"></i> Por usar</span></div>` : ''}
+    ${vals}${n || D.val.ini || D.val.fin ? `<div class="cajas">${cajaVal(D.val.ini, 'Valoración inicial')}${cajas}${cajaVal(D.val.fin, 'Valoración final')}</div><div class="row small muted" style="gap:12px;flex-wrap:wrap"><span><i class="lp hecha"></i> Hecha</span><span><i class="lp tarde"></i> Aviso &lt; 24 h (cuenta)</span><span><i class="lp prog"></i> Reservada</span><span><i class="lp libre"></i> Por usar</span></div>` : ''}
     <div class="stack" style="gap:6px"><span class="eyebrow">Próximos entrenamientos</span>${D.prox.map(p => `<div class="line" data-act="${coach ? 'editarPres' : 'verPres'}" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">${esc(fLargaP(p))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</b>${p.tipo ? `<div class="small"><b>${esc(p.tipo)}</b></div>` : ''}${p.nota ? `<div class="small muted">${esc(p.nota)}</div>` : ''}</div><span class="small" style="color:var(--blue-text)">${coach ? 'Editar' : 'Ver / cancelar'} ›</span></div>`).join('') || '<div class="small muted">No hay ninguno programado.</div>'}</div>
-    ${D.hechas.length ? `<div class="stack" style="gap:6px"><span class="eyebrow">Ya canjeados</span>${D.hechas.slice().reverse().map(p => `<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><span class="caja mini ${p.estado}"><b>${ocup.indexOf(p) + 1}</b></span><div class="grow"><b class="small">${esc(fLargaP(p))}</b><div class="small muted">${esc(qEntreno(p, coach) || (p.estado === 'tarde' ? 'Aviso con menos de 24 h' : p.nota || 'Sesión presencial'))}</div></div><span class="small muted">›</span></div>`).join('')}</div>` : ''}
+    ${D.hechas.length ? `<div class="stack" style="gap:6px"><span class="eyebrow">Ya canjeados</span>${D.hechas.slice().reverse().map(p => `<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><span class="caja mini ${estP(p)}"><b>${ocup.indexOf(p) + 1}</b></span><div class="grow"><b class="small">${esc(fLargaP(p))}</b><div class="small muted">${esc(qEntreno(p, coach) || (p.estado === 'tarde' ? 'Aviso con menos de 24 h' : p.nota || 'Sesión presencial'))}</div></div><span class="small muted">›</span></div>`).join('')}</div>` : ''}
     ${reservar}${sincBtn}
     ${!coach && D.prox.length ? `<button class="btn ghost full" data-act="cancelarPresLista">Cancelar una sesión reservada</button>` : ''}
     ${coach ? `<p class="small muted">Calendly y WhatsApp: ${S.calendly ? `<a href="${esc(S.calendly)}" target="_blank" rel="noopener">${esc(S.calendly.replace(/^https?:\/\//, ''))}</a>` : 'sin configurar'} · <button class="linkbtn" data-act="configCalendly">${S.calendly ? 'Cambiar' : 'Configurar'}</button></p>` : ''}
@@ -4961,6 +4993,7 @@ async function formPres(id) {
   if (!dias.length) { const r = await sb.from('programas').select('id,activo,dias(id,numero,nombre,foco)').eq('alumno_id', S.ficha.id).eq('activo', true).order('id', { ascending: false }).limit(1); dias = (r.data?.[0]?.dias || []).sort((a, b) => a.numero - b.numero); }
   abrirSheet(`<form class="stack" id="f-pres"><h2>${p ? 'Editar sesión presencial' : 'Sesión presencial'}</h2>
     <div style="display:grid;grid-template-columns:1fr 110px;gap:8px"><label class="f">Fecha<input type="date" id="pr-f" value="${p?.fecha || hoyISO()}"></label><label class="f">Hora<input type="time" id="pr-h" value="${hhmm(p?.hora)}"></label></div>
+    <div class="chips" id="pr-tipo-r"><span class="small muted">Es:</span>${['Entrenamiento', 'Valoración inicial', 'Valoración final'].map(t => `<button type="button" class="pill ${(t === 'Entrenamiento' ? !esValPres(p) : (p?.tipo || S.presVal) === t) ? 'blue' : ''}" data-t="${t}">${t}</button>`).join('')}</div>
     <label class="f">Estado<select id="pr-e">${Object.entries(PRES_EST).map(([k, l]) => `<option value="${k}" ${(p?.estado || 'programada') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
     ${dias.length ? `<label class="f">Entrenamiento de su programa<select id="pr-dia"><option value="">— Otro (escríbelo abajo) —</option>${dias.map(d => `<option value="${d.id}" ${p?.dia_id === d.id || (!p?.dia_id && p?.tipo === etiquetaDia(d)) ? 'selected' : ''}>${esc(etiquetaDia(d))}</option>`).join('')}</select></label>` : ''}
     <label class="f">Título del entrenamiento<input type="text" id="pr-tt" list="pr-dl" value="${esc(p?.tipo || '')}" placeholder="Escríbelo tú, p. ej. Complementario: core y movilidad"><datalist id="pr-dl">${dias.map(d => `<option value="${esc(etiquetaDia(d))}"></option>`).join('')}</datalist></label>
@@ -4970,6 +5003,8 @@ async function formPres(id) {
     <button class="btn full" type="submit">Guardar</button>${p ? '<button class="btn ghost full" type="button" id="pr-del" style="color:var(--bad)">Eliminar</button>' : ''}</form>`);
   const llenar = () => { const f = $('#pr-f').value; $('#pr-s').innerHTML = '<option value="">— Ninguno —</option>' + sesDia(f).map(s => `<option value="${s.id}" ${p?.sesion_id === s.id ? 'selected' : ''}>${esc(nomDia(s.dias) + ' · ' + (s.dias?.foco || ''))}</option>`).join(''); };
   llenar(); $('#pr-f').addEventListener('change', llenar);
+  if (!p && S.presVal) { setTimeout(() => { const tt = $('#pr-tt'); if (tt) tt.value = S.presVal; S.presVal = null; }, 0); }
+  $('#pr-tipo-r').addEventListener('click', ev => { const b = ev.target.closest('[data-t]'); if (!b) return; document.querySelectorAll('#pr-tipo-r .pill').forEach(x => x.classList.toggle('blue', x === b)); const tt = $('#pr-tt'); if (tt) tt.value = b.dataset.t === 'Entrenamiento' ? (esValPres({ tipo: tt.value }) ? '' : tt.value) : b.dataset.t; });
   $('#pr-dia')?.addEventListener('change', ev => { const d = dias.find(x => x.id === +ev.target.value); if (d) $('#pr-tt').value = etiquetaDia(d); });
   $('#f-pres').addEventListener('submit', async e => {
     e.preventDefault();
@@ -5035,10 +5070,15 @@ async function sincronizarCalendly(manual) {
     const { data, error } = await sb.functions.invoke('rapid-action');
     if (error) throw error;
     if (data?.error) throw new Error(data.error);
-    if (data?.nuevas || data?.canceladas) {
-      await cargarAlumno(S.user.id); render();
-      toast(data.nuevas ? 'Reserva descontada de tu bono' : 'Reserva cancelada');
+    const coach = S.modo === 'coach', n = (data?.nuevas || 0) + (data?.vinculadas || 0);
+    if (n || data?.canceladas) {
+      if (coach) { const r = await sb.from('presenciales').select('alumno_id,estado,fecha,hora,tipo'); if (!r.error) S.c.presenciales = r.data || []; if (S.ficha) { const q = await sb.from('presenciales').select('*').eq('alumno_id', S.ficha.id).order('fecha'); S.ficha.pres = q.data || S.ficha.pres; } }
+      else await cargarAlumno(S.user.id);
+      render();
+      if (manual || !coach) toast(coach ? `${n} reserva${n === 1 ? '' : 's'} nueva${n === 1 ? '' : 's'}${data.canceladas ? ` · ${data.canceladas} cancelada${data.canceladas === 1 ? '' : 's'}` : ''}` : n ? 'Reserva descontada de tu bono' : 'Reserva cancelada');
     } else if (manual) toast('No hay reservas nuevas');
+    if (coach && manual && data?.sinAlumno?.length) abrirSheet(`<div class="stack"><h2>Reservas sin alumno</h2><p class="small muted">Estas reservas de Calendly no coinciden con el email ni el nombre de ningún alumno. Pon en su perfil el mismo email que usa en Calendly.</p>${data.sinAlumno.map(x => `<div class="line"><div class="grow"><b class="small">${esc(x.nombre || '—')}</b><div class="small muted">${esc(x.email || '')} · ${esc(fLarga(String(x.inicio).slice(0, 10)))}</div></div></div>`).join('')}<button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
+    try { localStorage.setItem('lof-cal-sync', String(Date.now())); } catch (e) { }
     return data;
   } catch (err) { console.error(err); if (manual) toast('No se han podido actualizar: ' + String(err.message || err).slice(0, 160)); return null; }
 }
@@ -5048,7 +5088,7 @@ function formEntrenarCon(alumnoId) {
   const pres = S.ficha?.id === alumnoId ? (S.ficha.pres || []) : [], D = datosPres(srv, pres), conBono = srv?.modulo_presencial || D.total;
   abrirSheet(`<form class="stack" id="f-ec"><h2>Entrenar con ${esc((a.nombre || '').split(' ')[0])}</h2>
     <label class="f">Fecha del entrenamiento<input type="date" id="ec-f" value="${hoyISO()}"></label>
-    ${conBono ? `<label class="row small"><input type="checkbox" id="ec-p" checked style="width:20px;height:20px"> Canjea 1 sesión presencial${D.total ? ` (le quedan ${D.total - D.hechas.length} de ${D.total})` : ''}</label><p class="small muted" id="ec-info"></p>` : ''}
+    ${conBono ? `<label class="row small"><input type="checkbox" id="ec-p" checked style="width:20px;height:20px"> Canjea 1 sesión presencial${D.total ? ` (le quedan ${D.quedan + (D.prox.length ? D.prox.length : 0)} de ${D.total}${D.prox.length ? `, ${D.prox.length} ya reservada${D.prox.length > 1 ? 's' : ''}` : ''})` : ''}</label><p class="small muted" id="ec-info"></p>` : ''}
     <button class="btn full" type="submit">Empezar</button></form>`);
   const info = () => { const f = $('#ec-f').value, pg = pres.find(p => p.estado === 'programada' && p.fecha === f); if ($('#ec-info')) $('#ec-info').textContent = pg ? `Tiene una sesión programada ese día${pg.hora ? ' a las ' + hhmm(pg.hora) : ''}: se marcará como hecha.` : ''; };
   info(); $('#ec-f').addEventListener('change', info);
@@ -5059,7 +5099,10 @@ function formEntrenarCon(alumnoId) {
   });
 }
 async function registrarPresencial(sesId) {
-  const o = S.obj; if (!o?.presencial) return;
+  const o = S.obj; if (!o) return;
+  try { localStorage.removeItem(`lof-pres-${o.id}-${o.fecha}`); } catch (e) { }
+  /* Si no se marcó el canje pero tenía una sesión reservada ese día (Calendly o tuya), esa reserva pasa a hecha */
+  if (!o.presencial) { const { data } = await sb.from('presenciales').select('id,tipo').eq('alumno_id', o.id).eq('fecha', o.fecha || hoyISO()).eq('estado', 'programada').limit(1); const pg = (data || []).find(x => !esValPres(x)); if (!pg) return; o.presencial = true; o.presProg = pg.id; }
   const fila = { estado: 'dada', sesion_id: sesId };
   const r = o.presProg ? await sb.from('presenciales').update(fila).eq('id', o.presProg) : await sb.from('presenciales').insert({ ...fila, alumno_id: o.id, fecha: o.fecha || hoyISO() });
   if (r.error) { console.error(r.error); toast('Sesión guardada, pero la presencial no: ' + motivoPres(r.error)); }
@@ -6314,7 +6357,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v233';
+const APP_VER = 'v234';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -6539,6 +6582,7 @@ document.addEventListener('click', async e => {
     case 'editarBloques': formBloquesProceso(); break;
     case 'extension': formExtension(); break;
     case 'nuevaPres': formPres(); break;
+    case 'nuevaPresVal': S.presVal = b.dataset.t; formPres(); break;
     case 'editarPres': formPres(+b.dataset.id); break;
     case 'presVerSesion': cerrarSheet(); await verSesion(+b.dataset.id); break;
     case 'nuevoCiclo': formNuevoCiclo(); break;
