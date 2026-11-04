@@ -435,7 +435,7 @@ function render() {
   const tabs = coach ? [['inicio', 'Tu día'], ['alumnos', 'Alumnos'], ['plantillas', 'Plantillas'], ['ejercicios', 'Ejercicios'], ['pagos', 'Economía']] : tabsAlumno();
   const actual = coach ? S.ctab : S.tab;
   const esCoach = S.perfil.rol === 'coach';
-  const vistas = { hoy: vHoy, entreno: vEntreno, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, tests: vProgreso, coach: Acomp.vTuCoach, inicio: Negocio.vInicio, habitos: Habitos.vista, alumnos: vAlumnos, pagos: () => Negocio.vEconomia() + vPagos(), ejercicios: vEjercicios, plantillas: vPlantillas };
+  const vistas = { hoy: vHoy, entreno: vEntreno, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, tests: vProgreso, coach: Acomp.vTuCoach, inicio: Negocio.vInicio, habitos: Habitos.vista, alumnos: vAlumnos, pagos: vEconomiaTabs, ejercicios: vEjercicios, plantillas: vPlantillas };
   $('#app').innerHTML = `<header class="top">
       <button type="button" class="badge" data-act="inicio" aria-label="Ir al inicio" style="background:none;border:0;padding:0;cursor:pointer;text-align:left;color:inherit;font:inherit"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : esc(S.perfil.metodologia || 'Tu proceso')}</strong></div></button>
       <div class="row" style="gap:8px">${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
@@ -2099,6 +2099,7 @@ async function cargarCoach() {
   { const mc = await sb.from('movilidad_catalogo').select('*').order('titulo'); S.c.movCat = mc.error ? null : (mc.data || []); }
   { const t = await sb.from('tareas_coach').select('*').is('hecha_at', null); S.c.tareas = t.error ? null : (t.data || []); }
   S.c.facturas = fa.data || []; S.c.facturasError = !!fa.error; S.c.fiscal = Object.fromEntries((ap.data || []).map(x => [x.clave, x.valor]));
+  Tarifas.cargar(S.c.fiscal.tarifas || {});  /* precios y servicios que has cambiado en Economía → Programas */
   calAuto(20);
 }
 /* ---------- Agenda de sesiones presenciales (la app manda; Google Calendar las recibe) ---------- */
@@ -4307,7 +4308,8 @@ function formServicio() {
     if (error && /nutri_fase/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 57 en Supabase.');
     if (error && /objetivo_pasos/.test(error.message || '')) { delete row.objetivo_pasos; ({ error } = await guardar(row)); toast('Para guardar el objetivo de pasos falta ejecutar el Bloque 10'); }
     if (error) return fallo(error);
-    if (cuotas.length) { const { error: ep } = await sb.from('pagos').insert(cuotas.map(c => ({ ...c, alumno_id: S.ficha.id }))); toast(ep ? 'Servicio guardado, pero el plan de pagos no: ' + (ep.message || '') : `Plan de pagos creado: ${cuotas.length} cuota${cuotas.length === 1 ? '' : 's'}`); }
+    if (cuotas.length) { let { error: ep } = await sb.from('pagos').insert(cuotas.map(c => ({ ...c, alumno_id: S.ficha.id, tarifa: tSel.id })));
+      if (ep && /tarifa/.test(ep.message || '')) ({ error: ep } = await sb.from('pagos').insert(cuotas.map(c => ({ ...c, alumno_id: S.ficha.id })))); toast(ep ? 'Servicio guardado, pero el plan de pagos no: ' + (ep.message || '') : `Plan de pagos creado: ${cuotas.length} cuota${cuotas.length === 1 ? '' : 's'}`); }
     const np = $('#sv-prev').value === '' ? null : Math.max(0, +$('#sv-prev').value || 0);
     if (np != null && np !== (S.ficha.previas || 0)) { const m = await fijarPrevias(S.ficha.id, row.inicio, np); if (m) toast(m); }
     cerrarSheet(); toast('Servicio guardado'); await cargarCoach(); if (S.ficha.id === S.user.id) await cargarAlumno(S.user.id); abrirFicha(S.ficha.id);
@@ -5051,7 +5053,8 @@ function formExtension() {
     }
     const tX = tarAmp(), cuotasX = tX && $('#ex-genp').checked ? Tarifas.plan(tX, opPagoX()) : [];
     const sesPT = ex.tipo === 'pt' && ex.op ? sesionesDe(ex.op, 3) + (ex.forma === 'unico' ? tX?.bonusUnico || 0 : 0) : 0;
-    if (cuotasX.length) { const { error: ep } = await sb.from('pagos').insert(cuotasX.map(c => ({ ...c, alumno_id: f.id }))); if (ep) toast('Las cuotas no se han podido crear: ' + (ep.message || '')); }
+    if (cuotasX.length) { let { error: ep } = await sb.from('pagos').insert(cuotasX.map(c => ({ ...c, alumno_id: f.id, tarifa: tX.id })));
+      if (ep && /tarifa/.test(ep.message || '')) ({ error: ep } = await sb.from('pagos').insert(cuotasX.map(c => ({ ...c, alumno_id: f.id })))); if (ep) toast('Las cuotas no se han podido crear: ' + (ep.message || '')); }
     const ext = [...extensionesDe(srv), { nombre, semanas: sem, desde, tipo: ex.tipo, ...(ex.tipo === 'pt' ? { frecuencia: ex.op, sesiones: sesPT } : {}), ...(ex.tipo === 'online' ? { meses: ex.op } : {}) }];
     const upd = { duracion_semanas: total + sem, extensiones: ext }; if (sesPT) Object.assign(upd, { sesiones_incluidas: (srv.sesiones_incluidas || 0) + sesPT, modulo_presencial: true });
     let { error } = await sb.from('servicios').update(upd).eq('id', srv.id);
@@ -6482,6 +6485,13 @@ function lineaPago(p) {
     <div class="stack" style="gap:6px;align-items:flex-end"><b class="num" style="font-family:var(--display);font-size:20px">${fmtNum(p.importe, 2)} €</b>
     ${st === 'pagado' ? `<div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="pill ok">Pagado</span>${(() => { const fa = (S.c.facturas || []).find(x => x.pago_id === p.id); return fa ? `<button class="btn sm ghost" data-act="verFactura" data-id="${fa.id}">Factura ${esc(fa.numero)}</button>` : `<button class="btn sm" data-act="nuevaFactura" data-id="${p.id}">Factura</button><button class="btn sm ghost" data-act="deshacerPago" data-id="${p.id}">Deshacer pago</button>`; })()}</div>` : `<div class="row" style="gap:6px">${st === 'vencido' ? `<button class="btn sm ghost" data-act="recordar" data-id="${p.id}">Recordatorio</button>` : ''}<button class="btn sm${st === 'vencido' ? '' : ' ghost'}" data-act="pagar" data-id="${p.id}">Pagado</button></div>`}</div></div>`;
 }
+/* Economía en tres pestañas: Programas (indicadores y tarifas), Caja y gastos, Cobros */
+function vEconomiaTabs() {
+  let t = S.ecoTab; if (!t) { try { t = localStorage.getItem('lof-eco-tab'); } catch (e) { } t = S.ecoTab = t || 'programas'; }
+  const tabs = [['programas', 'Programas'], ['caja', 'Caja y gastos'], ['cobros', 'Cobros']];
+  return `<nav class="eco-tabs" aria-label="Economía">${tabs.map(([k, l]) => `<button class="${k === t ? 'on' : ''}" data-act="ecoTab" data-t="${k}" aria-current="${k === t ? 'page' : 'false'}">${l}</button>`).join('')}</nav>`
+    + (t === 'caja' ? Negocio.vEconomia() : t === 'cobros' ? vPagos() : `<section class="stack"><span class="eyebrow">Tu negocio</span><h1>Economía</h1></section>` + Programas.vista());
+}
 function vPagos() {
   const hoy = hoyISO(), P = S.c.pagos;
   const venc = P.filter(p => !p.pagado_at && p.vence < hoy), pend = P.filter(p => !p.pagado_at && p.vence >= hoy), cob = P.filter(p => p.pagado_at).slice(-15).reverse();
@@ -6570,7 +6580,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v237';
+const APP_VER = 'v238';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -6796,6 +6806,7 @@ document.addEventListener('click', async e => {
     case 'extension': formExtension(); break;
     case 'nuevaPres': formPres(); break;
     case 'pausaEditar': formPausa(+b.dataset.i); break;
+    case 'ecoTab': S.ecoTab = b.dataset.t; try { localStorage.setItem('lof-eco-tab', S.ecoTab); } catch (e) { } render(); window.scrollTo(0, 0); break;
     case 'extEditar': formExtEditar(+b.dataset.i); break;
     case 'programarSes': formProgramar(S.ficha?.id || null, b.dataset.f || null); break;
     case 'verAgenda': verAgenda(); break;

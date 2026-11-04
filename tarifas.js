@@ -61,10 +61,25 @@ const Tarifas = (() => {
     { id: 'ampon12', grupo: 'Ampliación Ruta Integral online', nombre: 'Ampliación online · 1 año', semanas: 52, meses: 12, estandar: 720, unico: D10(720), fracc: rep(12, 60) },
     { id: 'ampali', grupo: 'Ampliación de alimentación', nombre: 'Renovación alimentación y suplementación · trimestre', semanas: 13, meses: 3, estandar: 100, unico: 100, fracc: null },
   ];
+  /* Línea de producto (para las métricas): agrupa las tarifas de un mismo programa */
+  const LINEAS = [[/^ali3/, 'Alimentación online'], [/^int/, 'Plan Integral online'], [/^ent\d/, 'Entrenamiento online'], [/^ruta/, 'Ruta Integral'], [/^pres/, 'Programa presencial'],
+    [/^opo/, 'Camino Opositor'], [/^elite/, 'Élite Player'], [/^bono/, 'Bonos de sesiones'], [/^amp-/, 'Ampliación Ruta Integral'], [/^ampon/, 'Ampliación online'], [/^ampali/, 'Renovación alimentación']];
+  const lineaDe = t => t?.linea || (LINEAS.find(([re]) => re.test(t?.id || '')) || [])[1] || t?.grupo || 'Otros';
+  [...T, ...AMP].forEach(t => { t.linea = lineaDe(t); t.base = JSON.parse(JSON.stringify(t)); });
+  /* Cambios del coach (Economía → Programas): se guardan en ajustes_privados («tarifas») y se aplican encima del catálogo:
+     { cambios: { id: {campos} }, nuevas: [tarifa…], ocultas: [id…] } */
+  let cfg = { cambios: {}, nuevas: [], ocultas: [] };
+  function cargar(json) {
+    try { cfg = Object.assign({ cambios: {}, nuevas: [], ocultas: [] }, typeof json === 'string' ? JSON.parse(json || '{}') : (json || {})); } catch (e) { cfg = { cambios: {}, nuevas: [], ocultas: [] }; }
+    for (const L of [T, AMP]) { for (let i = L.length - 1; i >= 0; i--) if (L[i].nueva) L.splice(i, 1); L.forEach(t => { const id = t.id, b = JSON.parse(JSON.stringify(t.base)); Object.keys(t).forEach(k => { if (k !== 'base') delete t[k]; }); Object.assign(t, b, cfg.cambios[id] || {}); if (cfg.cambios[id]?.srv) t.srv = { ...b.srv, ...cfg.cambios[id].srv }; t.linea = lineaDe(t); }); }
+    (cfg.nuevas || []).forEach(n => { const t = { ...n, nueva: true }; t.linea = lineaDe(t); (n.amp ? AMP : T).push(t); });
+    [...T, ...AMP].forEach(t => { t.oculta = (cfg.ocultas || []).includes(t.id); });
+  }
+  const config = () => JSON.parse(JSON.stringify(cfg));
   const de = id => T.find(t => t.id === id) || AMP.find(t => t.id === id) || null;
   const eur = v => (Math.round(v * 100) / 100).toLocaleString('es-ES', { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 }) + ' €';
   const resumenFracc = f => { if (!f) return ''; const g = []; f.forEach(v => { const u = g[g.length - 1]; if (u && u.v === v) u.n++; else g.push({ v, n: 1 }); }); return g.map(x => x.n > 1 ? `${x.n} × ${eur(x.v)}` : eur(x.v)).join(' + '); };
-  const opciones = (lista, sel) => [...new Set(lista.map(t => t.grupo))].map(g => `<optgroup label="${g}">${lista.filter(t => t.grupo === g).map(t => `<option value="${t.id}" ${t.id === sel ? 'selected' : ''}>${t.nombre} · ${eur(t.estandar)}</option>`).join('')}</optgroup>`).join('');
+  const opciones = (lista, sel) => { lista = lista.filter(t => !t.oculta || t.id === sel); return [...new Set(lista.map(t => t.grupo))].map(g => `<optgroup label="${g}">${lista.filter(t => t.grupo === g).map(t => `<option value="${t.id}" ${t.id === sel ? 'selected' : ''}>${t.nombre} · ${eur(t.estandar)}</option>`).join('')}</optgroup>`).join(''); };
 
   /* Plan de pagos: forma 'unico' | 'fracc'; extra = importe añadido (p. ej. +300 € de alimentación); desc = { tipo: '%'|'€', v } descuento adicional */
   function plan(t, { forma = 'unico', inicio, extra = 0, desc = null, concepto } = {}) {
@@ -83,6 +98,11 @@ const Tarifas = (() => {
     const n = cuotas.length, ini = inicio || hoyISO(), nom = concepto || t.nombre;
     return cuotas.map((v, i) => ({ concepto: n > 1 ? `${nom} · cuota ${i + 1}/${n}` : `${nom} · pago único`, importe: v, vence: sumaMeses(ini, i) }));
   }
-  return { T, AMP, de, eur, plan, resumenFracc, opciones, mesesSem, reparte };
+  /* «200 + 2 × 125» o «3x416» → [200, 125, 125] */
+  function leeCuotas(txt) {
+    const out = []; for (const p of String(txt || '').split('+')) { const m = /^\s*(?:(\d+)\s*[x×]\s*)?([\d.,]+)\s*€?\s*$/i.exec(p); if (!m) { if (p.trim()) return null; continue; } const n = +(m[1] || 1), v = +m[2].replace(/\.(?=\d{3}\b)/g, '').replace(',', '.'); if (!(v > 0)) return null; for (let i = 0; i < n; i++) out.push(v); }
+    return out.length ? out : null;
+  }
+  return { T, AMP, de, eur, plan, resumenFracc, opciones, mesesSem, reparte, cargar, config, lineaDe, leeCuotas, FREC };
 })();
 window.Tarifas = Tarifas;
