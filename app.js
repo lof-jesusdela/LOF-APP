@@ -1249,6 +1249,17 @@ function enfocarFila(es, n) {
     document.querySelectorAll(`[data-row="${es}-${n}"]`).forEach(x => { x.classList.add('foco'); setTimeout(() => x.classList.remove('foco'), 2200); });
   }, 250);
 }
+/* Lleva a la serie n de un ejercicio: filas normales o, si tiene método (tandas), abre esa serie y va a su primera tanda */
+function irAFila(es, n) {
+  const e = Tandas.ejercicio(es);
+  if (e && Tandas.usa(e) && !document.getElementById(`row-${es}-${n}`)) {
+    const z = S.sesion; (z.abiertas ||= {})[es] = n; Tandas.pintar(es);
+    const el = document.getElementById(`rpt-${es}-${n}-0`); if (!el) return;
+    setTimeout(() => { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('foco'); setTimeout(() => el.classList.remove('foco'), 2200); }, 250);
+    return;
+  }
+  enfocarFila(es, n);
+}
 /* Peso de referencia de la 6·3·1: el objetivo de la 1.ª serie (si no hay, el peso del ejercicio) */
 const kgRef = e => { const n = parseFloat(String(kgDe(gruposDe(pautaEfectiva(e))[0]?.tramos[0]) || kgDe({ kg: e.peso_ref })).replace(',', '.')); return n > 0 ? n : null; };
 /* ¿Ejercicio unilateral? (por método, por «x lado» en la pauta o por el nombre) y si es de brazo o de pierna */
@@ -1715,7 +1726,7 @@ async function toggleSerie(b) {
   marcar(b, fila, true); setTimeout(() => Guia.pintar(), 0);
   const d = z.editar ? 0 : +b.dataset.d;
   if (z.editar) { } else if (d > 0) startTimer(d, 'Descanso · ' + b.dataset.lbl); else toast('Sin descanso: sigue con el siguiente');
-  const sig = siguienteFila(es, n); if (sig) enfocarFila(sig[0], sig[1]);
+  const sig = siguienteFila(es, n); if (sig) irAFila(sig[0], sig[1]);
   try {
     const sid = await asegurarSesion(); rows.forEach(r => r.sesion_id = sid);
     const { data, error } = await conRespaldo(() => sb.from('registros_series').insert(rows).select('id'),
@@ -6087,7 +6098,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v228';
+const APP_VER = 'v229';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}

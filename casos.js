@@ -141,17 +141,19 @@ const Casos = (() => {
   /* Tarjeta de Hoy: franja tranquila fuera de la ventana; destacada (sin presión) en la semana del control */
   /* Fotos y reflexión del mes: línea para «Pendiente» mientras la ventana del mes esté abierta y sin completar */
   /* Futbolistas y opositores no reciben el recordatorio mensual: la sección sigue en su Progreso por si quieren hacerlo */
-  const sinRecordatorio = srv => !!(srv?.modulo_futbol || srv?.oposicion);
+  /* Solo se recuerda a quien ha dado permiso de fotos; y con una foto o la reflexión ya vale: el aviso se va (si faltan vistas, lo dice Jesús) */
+  const sinRecordatorio = (srv, consent) => !!(srv?.modulo_futbol || srv?.oposicion || !consent?.fotos);
+  const yaHecho = m => !!(m && (m.vistas > 0 || m.refl));
   function pendienteMes() {
-    const D = S.d; if (!D || sinRecordatorio(D.servicio) || D.casosErr || D.puntosErr || !D.servicio?.inicio || S.vista || S.prueba) return null;
-    const act = saldo(D.servicio, D.fotosProg, D.testimonios, D.canjes).ms.find(m => m.abierto); if (!act || act.completo) return null;
+    const D = S.d; if (!D || sinRecordatorio(D.servicio, D.consent) || D.casosErr || D.puntosErr || !D.servicio?.inicio || S.vista || S.prueba) return null;
+    const act = saldo(D.servicio, D.fotosProg, D.testimonios, D.canjes).ms.find(m => m.abierto); if (!act || yaHecho(act)) return null;
     const falta = [!act.foto && `fotos ${act.vistas}/3`, !act.refl && 'reflexión del mes'].filter(Boolean).join(' y ');
     return ['📸', 'Fotos y reflexión del mes', `Falta: ${falta} · hasta el ${fLarga(act.fin)}`, 'data-act="fpSubir"', 'Hacerlo ahora'];
   }
   function tarjetaHoy(arriba) {
     const D = S.d; if (!D || D.casosErr || D.puntosErr || !D.servicio?.inicio || S.vista || S.prueba) return '';
     const P = saldo(D.servicio, D.fotosProg, D.testimonios, D.canjes), act = P.ms.find(m => m.abierto), sig = PREMIOS.find(p => p[2] > P.saldo), puede = PREMIOS.filter(p => p[2] <= P.saldo).slice(-1)[0];
-    const enVentana = !!act && !act.completo && !sinRecordatorio(D.servicio);
+    const enVentana = !!act && !yaHecho(act) && !sinRecordatorio(D.servicio, D.consent);
     if (arriba !== enVentana) return '';
     if (enVentana && arriba) return '';   // la ventana abierta sale en «Pendiente»
     if (enVentana) {
@@ -265,15 +267,15 @@ const Casos = (() => {
       sb.from('casos_exito').select('id,alumno_id,estado,tipo,created_at,respondido_at')
     ]);
     const ult = {}, n = {}; (c.data || []).forEach(x => { n[x.alumno_id] = (n[x.alumno_id] || 0) + 1; if (!ult[x.alumno_id]) ult[x.alumno_id] = x; }); 
-    const ts = await sb.from('testimonios').select('alumno_id,fecha').gte('fecha', sumaDias(hoyISO(), -14)); S.c.testimonios = ts.data || [];
+    const ts = await sb.from('testimonios').select('alumno_id,fecha').gte('fecha', sumaDias(hoyISO(), -50)); S.c.testimonios = ts.data || [];
     const cj = await sb.from('canjes').select('id,alumno_id,premio,puntos,estado').eq('estado', 'pendiente'); S.c.canjes = cj.data || [];
     S.c.consent = ult; S.c.consentN = n; S.c.fotosProg = f.data || []; S.c.casos = k.data || []; S.c.casosErr = !!(c.error || f.error);
   }
   /* Alerta: pasó la semana del control mensual y no hay fotos de progreso cerca de esa fecha */
   function alertaFotos(aid, srv) {
-    if (S.c?.casosErr || !srv?.inicio || srv.modulo_futbol || srv.oposicion) return null;
+    if (S.c?.casosErr || !srv?.inicio || srv.modulo_futbol || srv.oposicion || !S.c?.consent?.[aid]?.fotos) return null;
     const hoy = hoyISO(), c = controlesMensuales(srv, sumaDias(hoy, -4)).slice(-1)[0]; if (!c || c.fecha < sumaDias(hoy, -35)) return null;
-    const hay = (S.c.fotosProg || []).some(x => x.alumno_id === aid && x.fecha >= sumaDias(c.fecha, -10));
+    const desde = sumaDias(c.fecha, -10), hay = (S.c.fotosProg || []).some(x => x.alumno_id === aid && x.fecha >= desde) || (S.c.testimonios || []).some(x => x.alumno_id === aid && x.fecha >= desde);
     return hay ? null : `Fotos de progreso del control mensual ${c.n} (${fCorta(c.fecha)}) sin subir`;
   }
   async function cargarFicha(f) {

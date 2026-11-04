@@ -334,6 +334,8 @@ const Tandas = {
     this.pintar(es); setTimeout(() => Guia.pintar(), 0);
     const sg = this.ssSig(e, n, k); let foco;
     if (sg) { (z.abiertas ||= {})[sg[0]] = sg[1]; this.pintar(sg[0]); foco = document.getElementById(`rpt-${sg[0]}-${sg[1]}-${sg[2]}`); }
+    /* Superserie normal: con la serie terminada se salta al ejercicio unido (o al primero, para la serie siguiente), con o sin pausa entre ellos */
+    else if (this.estadoSerie(z, s, fila).est === 'on' && (S.nav?.cadena?.[es] || []).length > 1) { const sig = siguienteFila(es, n); if (sig && sig[0] !== es) return irAFila(sig[0], sig[1]); }
     foco = foco || document.getElementById(`rpt-${fila}-${k + 1}`) || document.getElementById(`rpt-${es}-${n + 1}-0`);
     if (foco && z.abiertas[es] !== -1) foco.scrollIntoView({ behavior: 'smooth', block: 'center' });
   },
