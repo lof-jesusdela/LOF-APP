@@ -29,7 +29,13 @@ const Acomp = (() => {
     $('#f-est').addEventListener('submit', async ev => {
       ev.preventDefault(); const k = document.querySelector('[name=est]:checked').value;
       const row = { estado: k, estado_desde: k === 'activo' ? null : (k === cur ? s.estado_desde || hoyISO() : hoyISO()), estado_hasta: k === 'pausado' ? $('#es-h').value || null : null, estado_nota: k === 'activo' ? null : $('#es-n').value.trim() || null };
-      const { error } = await sb.from('servicios').update(row).eq('id', s.id);
+      /* Al salir de una pausa queda guardada en el historial de pausas: así el proceso se alarga lo que duró */
+      if (cur === 'pausado' && k !== 'pausado' && s.estado_desde) {
+        const hasta = sumaDias(s.estado_hasta && s.estado_hasta <= hoyISO() ? s.estado_hasta : hoyISO(), -1);
+        if (hasta >= s.estado_desde) row.pausas = [...(Array.isArray(s.pausas) ? s.pausas : []).filter(p => p.desde !== s.estado_desde), { desde: s.estado_desde, hasta, nota: s.estado_nota || 'Pausa' }];
+      }
+      let { error } = await sb.from('servicios').update(row).eq('id', s.id);
+      if (error && row.pausas && /pausas/.test(error.message || '')) { delete row.pausas; ({ error } = await sb.from('servicios').update(row).eq('id', s.id)); if (!error) toast('Para que la pausa alargue su proceso, ejecuta el Bloque 88'); }
       if (error) return fallo(error, /estado/.test(error.message || '') ? AVISO : undefined);
       cerrarSheet(); toast(k === 'pausado' ? 'En pausa: no recibirás alertas de incumplimiento' : k === 'regreso' ? 'Regreso: 2 semanas suaves' : 'Activo'); await window.cargarCoach(); await abrirFicha(f.id);
     });
