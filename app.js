@@ -4900,8 +4900,26 @@ function vPrueba(p, lista, val, coach) {
 /* ---- Evolución: cada prueba comparada con el test anterior → mejoras y puntos a mejorar ---- */
 const numV = v => { const t = String(v ?? '').trim(), m = /^(\d+):(\d{2})/.exec(t); if (m) return +m[1] * 60 + +m[2]; return numDe(t); };
 const menorMejor = n => /ritmo|tiempo|segundos|min\/km|lesi|dolor/i.test(n || '');
-function evolucion(val, lista) {
+/* Composición corporal de una valoración: la medición de ese mismo día; si no la hay, la más cercana (hasta 21 días) o la última anterior */
+function medDeValoracion(med, f) {
+  const l = conKgGrasa((med || []).filter(m => m && m.fecha && !m.es_objetivo)).sort((a, b) => a.fecha.localeCompare(b.fecha)); if (!l.length) return null;
+  const mismo = l.filter(m => m.fecha === f).pop(); if (mismo) return mismo;
+  const dist = m => Math.abs(fecha(m.fecha) - fecha(f)) / 864e5, cerca = l.slice().sort((a, b) => dist(a) - dist(b))[0];
+  if (cerca && dist(cerca) <= 21) return cerca;
+  return l.filter(m => m.fecha < f).pop() || null;
+}
+/* Comparativa de composición entre dos valoraciones. Solo se juzga lo que tiene una dirección clara (menos grasa, más masa magra,
+   menos cintura/abdomen/cadera); el peso y el resto de perímetros se muestran sin calificar porque dependen del objetivo */
+const CAMPOS_COMP = [['Peso', 'peso', ' kg', 0], ['% de grasa', 'grasa_pct', ' %', -1], ['Kilos de grasa', 'grasa_kg', ' kg', -1], ['Masa magra', 'magra', ' kg', 1], ['Cuello', 'cuello', ' cm', 0], ['Pectoral', 'pectoral', ' cm', 0], ['Hombros', 'hombros', ' cm', 0], ['Cintura', 'cintura', ' cm', -1], ['Abdomen bajo', 'abd_bajo', ' cm', -1], ['Cadera', 'cadera', ' cm', -1], ['Brazo derecho', 'brazo_d', ' cm', 0], ['Brazo izquierdo', 'brazo_i', ' cm', 0], ['Muslo derecho', 'muslo_d', ' cm', 0], ['Muslo izquierdo', 'muslo_i', ' cm', 0], ['Gemelo derecho', 'gemelo_d', ' cm', 0], ['Gemelo izquierdo', 'gemelo_i', ' cm', 0]];
+function compComposicion(val, prev, med) {
+  const a = medDeValoracion(med, prev.fecha), b = medDeValoracion(med, val.fecha); if (!a || !b || a.fecha === b.fecha) return null;
+  const v = (m, k) => k === 'magra' ? (m.peso != null && m.grasa_kg != null ? Math.round((m.peso - m.grasa_kg) * 10) / 10 : null) : m[k] == null || m[k] === '' ? null : Number(m[k]);
+  const filas = CAMPOS_COMP.map(([l, k, u, dir]) => { const x = v(a, k), y = v(b, k); if (x == null || y == null) return null; const d = Math.round((y - x) * 10) / 10; return { l, k, u, a: x, b: y, d, juicio: !dir || Math.abs(d) < 0.05 ? 'neutro' : d * dir > 0 ? 'mejor' : 'peor' }; }).filter(Boolean);
+  return filas.length ? { a, b, filas } : null;
+}
+function evolucion(val, lista, med) {
   if (val.origen === 'alumno') return null;
+  med = med || (S.modo === 'coach' && S.ficha ? S.ficha.med : S.d?.mediciones) || [];
   const prev = (lista || []).filter(v => v.origen !== 'alumno' && v.id !== val.id && v.fecha < val.fecha).sort((a, b) => b.fecha.localeCompare(a.fecha))[0]; if (!prev) return null;
   const mej = [], baj = [], igual = [], asim = [];
   const pc = (a, b) => b ? Math.round((a - b) / Math.abs(b) * 100) : null, sg = n => (n > 0 ? '+' : '') + fmtNum(n);
@@ -4925,19 +4943,27 @@ function evolucion(val, lista) {
       (d === 0 ? igual : mejor ? mej : baj).push({ p: p.titulo, t });
     });
   });
-  return { prev, mej, baj, igual, asim };
+  const comp = compComposicion(val, prev, med);
+  (comp?.filas || []).filter(x => x.juicio !== 'neutro' || ['grasa_pct', 'grasa_kg', 'magra', 'cintura', 'abd_bajo', 'cadera'].includes(x.k)).forEach(x => {
+    if (CAMPOS_COMP.find(c => c[1] === x.k)[3] === 0) return;
+    const t = `${x.l}: ${fmtNum(x.a)} → ${fmtNum(x.b)}${x.u} (${x.d > 0 ? '+' : ''}${fmtNum(x.d)}${x.u})`;
+    (x.juicio === 'mejor' ? mej : x.juicio === 'peor' ? baj : igual).push({ p: 'Composición corporal', t });
+  });
+  return { prev, mej, baj, igual, asim, comp };
 }
 function textoEvolucion(val, ev) {
   const L = [`EVOLUCIÓN · ${fCorta(ev.prev.fecha)} → ${fCorta(val.fecha)}`, ''];
   const sec = (tit, l) => { if (l.length) { L.push(tit); l.forEach(x => L.push(`• ${x.t}`)); L.push(''); } };
-  sec('✅ MEJORAS', ev.mej); sec('⚠️ A MEJORAR', ev.baj); sec('⚖️ DESEQUILIBRIOS ENTRE LADOS (≥ 8 %)', ev.asim); sec('➖ SIN CAMBIOS', ev.igual);
+  if (ev.comp) { L.push(`📏 COMPOSICIÓN CORPORAL (${fCorta(ev.comp.a.fecha)} → ${fCorta(ev.comp.b.fecha)})`); ev.comp.filas.forEach(x => L.push(`• ${x.l}: ${fmtNum(x.a)} → ${fmtNum(x.b)}${x.u} (${x.d > 0 ? '+' : ''}${fmtNum(x.d)}${x.u})`)); L.push(''); }
+  sec('✅ MEJORAS', ev.mej.filter(x => x.p !== 'Composición corporal')); sec('⚠️ A MEJORAR', ev.baj.filter(x => x.p !== 'Composición corporal')); sec('⚖️ DESEQUILIBRIOS ENTRE LADOS (≥ 8 %)', ev.asim); sec('➖ SIN CAMBIOS', ev.igual);
   return L.join('\n').trim();
 }
 function vEvolucion(val, lista, coach) {
   const ev = evolucion(val, lista); if (!ev) return '';
   const bloque = (tit, col, l) => l.length ? `<div class="stack" style="gap:4px"><b class="small" style="color:var(--${col})">${tit} (${l.length})</b>${l.map(x => `<div class="small"><span class="muted">${esc(x.p)} · </span>${esc(x.t)}</div>`).join('')}</div>` : '';
   const vacio = !ev.mej.length && !ev.baj.length && !ev.igual.length && !ev.asim.length;
-  return `<div class="card stack"><span class="eyebrow">Evolución frente al test del ${esc(fCorta(ev.prev.fecha))} ${fecha(ev.prev.fecha).getFullYear()}</span>
+  const C = ev.comp, tabla = C ? `<div class="stack" style="gap:4px"><b class="small">📏 Composición corporal · ${esc(fCorta(C.a.fecha))} ${fecha(C.a.fecha).getFullYear()} → ${esc(fCorta(C.b.fecha))} ${fecha(C.b.fecha).getFullYear()}</b><div class="tbl" style="overflow-x:auto"><table class="nu-tab"><thead><tr><th>Medida</th><th class="num">${esc(fCorta(C.a.fecha))}</th><th class="num">${esc(fCorta(C.b.fecha))}</th><th class="num">Diferencia</th></tr></thead><tbody>${C.filas.map(x => `<tr><td>${esc(x.l)}</td><td class="num">${fmtNum(x.a)}${x.u}</td><td class="num"><b>${fmtNum(x.b)}${x.u}</b></td><td class="num" style="color:var(--${x.juicio === 'mejor' ? 'ok' : x.juicio === 'peor' ? 'warn' : 'muted'})">${x.d > 0 ? '+' : ''}${fmtNum(x.d)}${x.u}</td></tr>`).join('')}</tbody></table></div><p class="small muted" style="margin:0">Mediciones del día de cada test${C.a.fecha !== ev.prev.fecha || C.b.fecha !== val.fecha ? ' (o la más cercana)' : ''}. El peso y los perímetros de brazos, piernas, hombros y pecho se muestran sin calificar: dependen del objetivo.</p></div>` : '';
+  return `<div class="card stack"><span class="eyebrow">Evolución frente al test del ${esc(fCorta(ev.prev.fecha))} ${fecha(ev.prev.fecha).getFullYear()}</span>${tabla}
     ${vacio ? '<p class="small muted" style="margin:0">Todavía no hay pruebas con datos comparables entre los dos tests.</p>' : `${bloque('✅ Mejoras', 'ok', ev.mej)}${bloque('⚠️ Puntos a mejorar', 'warn', ev.baj)}${bloque('⚖️ Desequilibrios entre lados', 'bad', ev.asim)}${bloque('➖ Sin cambios', 'muted', ev.igual)}`}
     ${coach && !vacio ? `<div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="evoCopiar" data-id="${val.id}">Copiar informe</button><button class="btn sm ghost" data-act="evoAnadir" data-id="${val.id}">Añadirlo al informe del test</button></div>` : ''}</div>`;
 }
@@ -5837,7 +5863,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v222';
+const APP_VER = 'v223';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}

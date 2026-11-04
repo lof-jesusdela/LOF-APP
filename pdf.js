@@ -128,7 +128,8 @@ const PDF = (() => {
   }
   function htmlValoracion(val, c) {
     const med = conKgGrasa((c.med || []).slice().sort((a, b) => a.fecha.localeCompare(b.fecha)));
-    const m = med.filter(x => x.fecha <= val.fecha).pop() || med[0] || null, o = c.obj, perfil = c.perfil || {};
+    const ev = typeof evolucion === 'function' ? evolucion(val, c.vals, c.med) : null, comp = ev?.comp || null;
+    const m = comp ? comp.b : (medDeValoracion(c.med, val.fecha) || med[0] || null), o = c.obj, perfil = c.perfil || {};
     const sub = ['Control y evolución', c.srv?.producto, `${fLarga(val.fecha)} ${fecha(val.fecha).getFullYear()}`].filter(Boolean).join('  |  ');
     let n = 0, h = cabecera(val.nombre || 'Informe de valoración inicial', perfil.nombre || '', sub);
     if (val.resumen) h += `<div class="pd-keep pd-val pd-res"><h4>Informe · valoración de todo el contexto</h4><p>${esc(val.resumen)}</p></div>`;
@@ -140,9 +141,13 @@ const PDF = (() => {
       const objF = o ? [['Peso', 'peso', ' kg'], ['% grasa', 'grasa_pct', ' %'], ['Kilos de grasa', 'grasa_kg', ' kg'], ['Cintura', 'cintura', ' cm'], ['Cadera', 'cadera', ' cm'], ['Abdomen bajo', 'abd_bajo', ' cm']]
         .filter(([, k]) => o[k] != null).map(([l, k, u]) => { const d = m[k] != null ? Math.abs(Number(m[k]) - Number(o[k])) : null; return `<div class="pd-obj"><span>${l}</span><b>${n1(Number(o[k]), u)}</b>${d != null ? `<small>${d < 0.05 ? 'mantener' : `a ${fmtNum(d)}${u} del objetivo`}</small>` : ''}</div>`; }).join('') : '';
       const cl = clasifGrasa(m.grasa_pct, perfil.sexo, edadDe(perfil.fecha_nacimiento, m.fecha));
-      h += seccion(++n, 'Composición corporal y perímetros')
-        + `<div class="pd-grid3">${kpi('Peso', m.peso, ' kg')}${kpi('Grasa', m.grasa_pct, ' %')}${kpi('Kilos de grasa', m.grasa_kg, ' kg')}</div>`
-        + `<div class="pd-grid2">${filas ? `<div class="pd-card"><h4>Medidas actuales · cm</h4><table class="pd-tab">${filas}</table></div>` : ''}${objF ? `<div class="pd-card"><h4>Objetivo de composición</h4>${objF}</div>` : ''}</div>`
+      const dif = k => { const x = comp?.filas.find(f => f.k === k); return x ? `<small style="color:${x.juicio === 'mejor' ? '#1E9A5E' : x.juicio === 'peor' ? '#B9740A' : '#5D6574'}">${x.d > 0 ? '+' : ''}${fmtNum(x.d)}${x.u} desde el ${fCorta(comp.a.fecha)}</small>` : ''; };
+      const kpiC = (l, v, u, k) => `<div class="pd-card pd-kpi"><span>${l}</span><b>${n1(v, u)}</b>${dif(k)}</div>`;
+      const tablaComp = comp ? `<div class="pd-card pd-keep"><h4>Comparativa · test del ${fCorta(comp.a.fecha)} ${fecha(comp.a.fecha).getFullYear()} → ${fCorta(comp.b.fecha)} ${fecha(comp.b.fecha).getFullYear()}</h4><table class="pd-tab"><tr><th>Medida</th><th>${fCorta(comp.a.fecha)}</th><th>${fCorta(comp.b.fecha)}</th><th>Diferencia</th></tr>${comp.filas.map(x => `<tr><td>${esc(x.l)}</td><td>${n1(x.a, x.u)}</td><td><b>${n1(x.b, x.u)}</b></td><td style="font-weight:700;color:${x.juicio === 'mejor' ? '#1E9A5E' : x.juicio === 'peor' ? '#B9740A' : '#5D6574'}">${x.d > 0 ? '+' : ''}${fmtNum(x.d)}${x.u}</td></tr>`).join('')}</table><p class="pd-mini">Mediciones tomadas el día de cada valoración. En verde lo que mejora (menos grasa, más masa magra, menos cintura, abdomen y cadera); el peso y el resto de perímetros, sin calificar.</p></div>` : '';
+      h += seccion(++n, comp ? 'Composición corporal · evolución' : 'Composición corporal y perímetros')
+        + `<div class="pd-grid3">${kpiC('Peso', m.peso, ' kg', 'peso')}${kpiC('Grasa', m.grasa_pct, ' %', 'grasa_pct')}${kpiC('Kilos de grasa', m.grasa_kg, ' kg', 'grasa_kg')}</div>`
+        + (comp ? tablaComp + (objF ? `<div class="pd-card"><h4>Objetivo de composición</h4>${objF}</div>` : '')
+          : `<div class="pd-grid2">${filas ? `<div class="pd-card"><h4>Medidas actuales · cm</h4><table class="pd-tab">${filas}</table></div>` : ''}${objF ? `<div class="pd-card"><h4>Objetivo de composición</h4>${objF}</div>` : ''}</div>`)
         + (o?.nota || cl ? `<div class="pd-keep pd-foco">${o?.nota ? `<h4>Objetivo de composición corporal</h4><p>${esc(o.nota)}</p>` : ''}${cl ? `<p class="pd-mini">${cl.l} · Rango saludable para ${perfil.sexo === 'mujer' ? 'mujeres' : 'hombres'} de ${cl.tramo.replace('-', '–')} años: ${esc(RANGOS_GRASA[perfil.sexo].find(r => (edadDe(perfil.fecha_nacimiento, m.fecha) ?? 30) <= r[0]).slice(1, 3).join('–'))} %</p>` : ''}</div>` : '');
     }
     /* 02 Zonas de frecuencia cardiaca */
