@@ -2611,11 +2611,34 @@ function controlFut(lunes, modo = 'semana') {
     <p class="small muted" style="margin:0">Cada cuadrado es un día: el número es la fatiga del check diario (verde fresco → rojo destrozado); P = partido; vacío = sin rellenar.</p>
     ${fut.map(tarj).join('') || '<p class="small muted">No hay futbolistas activos.</p>'}</div>`);
 }
+/* Abre la ficha del alumno justo donde está lo que hay que mirar: pestaña, sub-pantalla y sección resaltada */
+async function irA(aid, o = {}) {
+  cerrarSheet(); S.reporte = null; S.editor = null; S.verPlan = null; S.verSes = null;
+  if (S.ficha?.id !== aid || S.ficha?.cargando) await abrirFicha(aid);
+  if (o.tab) (S.fTab ||= {})[aid] = o.tab;
+  if (o.sub) await abrirSub(o.sub); else { S.fichaSub = null; render(); window.scrollTo(0, 0); }
+  if (o.fn) await o.fn();
+  if (o.ancla) resaltar(o.ancla);
+}
+function resaltar(id) {
+  setTimeout(() => { const el = document.getElementById(id); if (!el) return; el.scrollIntoView({ behavior: 'smooth', block: 'start' }); el.classList.add('aviso-foco'); setTimeout(() => el.classList.remove('aviso-foco'), 2800); }, 350);
+}
+/* Cada aviso lleva a su sitio (por el texto del aviso): si no se reconoce, a la ficha */
 function alIr(aid, m) {
-  cerrarSheet();
-  if (/Revisión mensual (\d+)/.test(m)) { const n = +/Revisión mensual (\d+)/.exec(m)[1]; return abrirFicha(aid).then(() => formRevision(n, null)); }
+  cerrarSheet(); m = m || '';
+  const rv = /Revisión mensual (\d+)/.exec(m); if (rv) return irA(aid, { fn: () => formRevision(+rv[1], null) });
+  if (/revisi[oó]n(es)? mensual/i.test(m)) { const c = estadoAlumno(S.c.perfiles.find(x => x.id === aid) || {}).control; return irA(aid, c ? { fn: () => formRevision(c.n, null) } : { tab: 'calendario' }); }
   if (/fatiga|molestia|pico de carga|cuestionario del lunes|planificación del equipo/i.test(m)) return checkinSheet(aid);
-  return abrirFicha(aid);
+  if (/ha cambiado su peso en/i.test(m)) { const x = (S.c.cambiosPeso || []).find(c => c.alumno_id === aid && (!c.ejercicio || m.includes(c.ejercicio))); if (x?.sesion_id) return irA(aid, { fn: () => verSesion(x.sesion_id) }); return irA(aid, { sub: 'entreno' }); }
+  if (/pago|cobro/i.test(m)) return irA(aid, { tab: 'pagos' });
+  if (/devoluci[oó]n|check-in de la semana|motivaci[oó]n/i.test(m)) return irA(aid, { tab: 'checkins', ancla: 'ac-chk' });
+  if (/pr[oó]xima acci[oó]n/i.test(m)) return irA(aid, { tab: 'resumen', ancla: 'ac-prox' });
+  if (/fotos de progreso|permisos de imagen|testimonio|canje|puntos/i.test(m)) return irA(aid, { sub: 'composicion' });
+  if (/pasos|h[aá]bito/i.test(m)) return irA(aid, { sub: 'habitos' });
+  if (/alimentaci[oó]n|plato|registro temporal|coherencia|reuni[oó]n de la semana 2|entregar el plan/i.test(m)) return irA(aid, { sub: 'alimentacion', ancla: /plato/i.test(m) ? 'nu-crea' : /registro temporal/i.test(m) ? 'nu-seg' : /coherencia/i.test(m) ? 'nu-coh' : /reuni|entregar/i.test(m) ? 'nu-inc' : null });
+  if (/entrenos|entrenamiento/i.test(m)) return irA(aid, { sub: 'entreno' });
+  if (/pausa|proceso termin|queda menos de un mes|extensi[oó]n/i.test(m)) return irA(aid, { tab: 'plan' });
+  return irA(aid);
 }
 function vFutbolCoach() {
   const fut = S.c.perfiles.filter(p => p.activo !== false && S.c.servicios.some(x => x.alumno_id === p.id && x.modulo_futbol));
@@ -6099,7 +6122,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v230';
+const APP_VER = 'v231';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -6350,6 +6373,7 @@ document.addEventListener('click', async e => {
     case 'ficha': cerrarSheet(); S.iaCoach = false; if (S.obj) await aparcarOSalir(); await abrirFicha(b.dataset.id); break;
     case 'verAlertas': verAlertas(b.dataset.id); break;
     case 'alIr': alIr(b.dataset.id, b.dataset.m); break;
+    case 'irAviso': irA(b.dataset.id, { tab: b.dataset.tab || null, sub: b.dataset.sub || null, ancla: b.dataset.ancla || null }); break;
     case 'checkin': controlFut(); break;
     case 'futSem': S.ficha.semFut = b.dataset.l; S.ficha.diaFut = null; render(); break;
     case 'futDia': S.ficha.diaFut = S.ficha.diaFut === b.dataset.f ? null : b.dataset.f; render(); firmarMini(); break;

@@ -164,7 +164,7 @@ const Nutricion = (() => {
   function vCoherencia(f) {
     if (!f?.plan) return '';
     const l = coherencia(f.plan, f.srv, f.cuest), v = (f.plan.find(x => x.clave === 'contextos')?.datos?.version) || null, e = l.filter(o => o.niv === 'error').length;
-    return `<section class="section"><div class="section-head"><h2>Coherencia del plan</h2><span class="small muted">${v?.n ? `Contextos v${v.n} · ${esc(fCorta(String(v.fecha).slice(0, 10)))}` : ''}</span></div><div class="card">
+    return `<section class="section" id="nu-coh"><div class="section-head"><h2>Coherencia del plan</h2><span class="small muted">${v?.n ? `Contextos v${v.n} · ${esc(fCorta(String(v.fecha).slice(0, 10)))}` : ''}</span></div><div class="card">
       ${l.length ? l.map(lineaCoh).join('') : '<div class="coh-l"><span class="ic">✓</span><span class="grow">Resumen, calculadora, equivalencias y menús usan las mismas cifras y el mismo reparto.</span></div>'}
       ${l.length ? `<p class="note" style="margin-top:8px">${e ? `${e} punto${e > 1 ? 's' : ''} a corregir antes de publicar. ` : ''}La app no cambia nada sola: corrige en el apartado que toque.</p>` : ''}</div></section>`;
   }
@@ -416,7 +416,7 @@ const Nutricion = (() => {
     const lim = sumaDias(hoyISO(), -13), l = f.comidas.filter(x => x.fecha >= lim), dias = [...new Set(l.map(x => x.fecha))].sort().reverse();
     const conE = l.filter(x => x.encaja != null && !esCalc(x)), pct = conE.length ? Math.round(conE.reduce((t, x) => t + x.encaja, 0) / (conE.length * 2) * 100) : null;
     const crea = f.comidas.filter(x => x.compartido).slice().reverse();
-    return `<section class="section"><div class="section-head"><h2>Creaciones que comparte</h2>${crea.filter(x => !x.coach_estado).length ? `<span class="pill gold">${crea.filter(x => !x.coach_estado).length} nueva${crea.filter(x => !x.coach_estado).length > 1 ? 's' : ''}</span>` : ''}</div><div class="card stack">
+    return `<section class="section" id="nu-crea"><div class="section-head"><h2>Creaciones que comparte</h2>${crea.filter(x => !x.coach_estado).length ? `<span class="pill gold">${crea.filter(x => !x.coach_estado).length} nueva${crea.filter(x => !x.coach_estado).length > 1 ? 's' : ''}</span>` : ''}</div><div class="card stack">
       ${crea.length ? crea.map(x => { const u = fotosDe(x)[0] && fotoUrl(fotosDe(x)[0]); return `<div class="stack nu-crea" style="gap:6px"><div class="row" style="align-items:flex-start;gap:10px">${u ? `<button class="img nu-mini" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver foto"><img src="${esc(u)}" alt=""></button>` : ''}<div class="grow stack" style="gap:2px"><b class="small">${esc(x.plato || 'Plato sin nombre')}</b><span class="small muted">${esc(fCorta(x.fecha))}${x.momento ? ' · ' + esc(x.momento) : ''}${x.contexto ? ' · ' + esc(x.contexto) : ''}</span>${alimentosTxt(x) ? `<span class="small">${esc(alimentosTxt(x))}</span>` : ''}${x.nota ? `<span class="small muted">«${esc(x.nota)}»</span>` : ''}${x.coach_nota ? `<span class="small"><b>Tu respuesta:</b> ${esc(x.coach_nota)}</span>` : ''}</div>${x.coach_estado === 'anadido' ? '<span class="pill ok">Añadida</span>' : x.coach_estado === 'visto' ? '<span class="pill blue">Vista</span>' : '<span class="pill gold">Nueva</span>'}</div>
         <div class="row" style="gap:6px;flex-wrap:wrap">${x.coach_estado !== 'anadido' ? `<button class="btn sm" data-act="nuEstado" data-id="${x.id}" data-v="anadido">Añadida a sus contextos</button>` : ''}${!x.coach_estado ? `<button class="btn sm ghost" data-act="nuEstado" data-id="${x.id}" data-v="visto">Marcar vista</button>` : ''}<button class="btn sm ghost" data-act="nuNota" data-id="${x.id}">${x.coach_nota ? 'Cambiar respuesta' : 'Responder'}</button></div></div>`; }).join('') : `<p class="small muted" style="margin:0">Cuando ${esc(nom)} comparta un plato que ha creado, te aparecerá aquí para que lo añadas a sus contextos.</p>`}</div></section>
     <section class="section"><div class="section-head"><h2>Su diario de comidas</h2><span class="small muted">opcional · 14 días</span></div><div class="card stack">
@@ -465,7 +465,6 @@ const Nutricion = (() => {
       case 'nuInc': formInc(b.dataset.k); break;
       case 'nuSeg': formSeguimiento(); break;
       case 'nuCola': abrirCola(); break;
-      case 'colaFicha': cerrarSheet(); S.fichaSub = 'alimentacion'; await abrirFicha(b.dataset.id); S.fichaSub = 'alimentacion'; render(); break;
       case 'nuIncIni': { const v = $('#inc-ini')?.value; if (!v) return toast('Elige la fecha'); try { await guardarResumen(S.ficha, d => { d.inicio = v; }); await cargarPlanificacion(S.ficha); render(); toast('Fecha guardada'); } catch (err) { fallo(err); } break; }
       case 'nuGuia': S.nGuia = +b.dataset.i; render(); break;
       case 'nuIngG': S.nIngG = +b.dataset.i; render(); break;
@@ -538,7 +537,7 @@ const Nutricion = (() => {
       const sem = [sumaDias(L, -7), sumaDias(L, -14)].map(l => ingestasSemana(f.diarioLargo || [], l, f.srv));
       if (sem.every(x => x.dias < MIN_DIAS_NUTRI)) aviso = `<div class="aprox small">Las dos últimas semanas faltan registros acordados (${sem.map(x => x.dias).join(' y ')} días). Antes de insistir, revisa con ${esc(nom)} si hay dificultades de aplicación, de comprensión o demasiada carga; quizá le encaje mejor el seguimiento ligero.</div>`;
     }
-    return `<section class="section"><div class="section-head"><h2>Seguimiento acordado</h2><button class="btn sm ghost" data-act="nuSeg">✎ Cambiar</button></div><div class="card stack" style="gap:6px">
+    return `<section class="section" id="nu-seg"><div class="section-head"><h2>Seguimiento acordado</h2><button class="btn sm ghost" data-act="nuSeg">✎ Cambiar</button></div><div class="card stack" style="gap:6px">
       <div class="row small"><span class="grow">Nivel</span><b>${NIVELES[A.nivel][0]}${A.definido ? '' : ' (por defecto)'}</b></div><div class="small muted">${NIVELES[A.nivel][1]}.</div>
       <div class="row small"><span class="grow">Menú semanal</span><b>${A.menu ? 'Acordado' : 'Opcional'}</b></div>
       <div class="row small"><span class="grow">Comidas flexibles</span><b>${A.flexN != null ? A.flexN + ' a la semana' : A.flexPct + ' %'}</b></div>
@@ -580,19 +579,19 @@ const Nutricion = (() => {
     const c = S.c || {}, hoy = hoyISO(), L = lunesDe(hoy), lAnt = sumaDias(L, -7), out = [];
     (c.perfiles || []).filter(p => p.activo !== false).forEach(a => {
       const srv = (c.servicios || []).find(x => x.alumno_id === a.id); if (!srv?.modulo_nutricion || srv.modulo_futbol && !srv.modulo_nutricion) return;
-      const plan = c.planNutri?.[a.id] || [], items = [], add = (tipo, motivo, fecha, accion) => items.push({ tipo, motivo, fecha, accion, resp: 'Jesús' });
+      const plan = c.planNutri?.[a.id] || [], items = [], add = (tipo, motivo, fecha, accion, ir) => items.push({ tipo, motivo, fecha, accion, resp: 'Jesús', ir: ir || { sub: 'alimentacion' } });
       const A = acuerdoDe(plan), inc = plan.find(x => x.clave === 'incorporacion')?.datos || {}, it = inc.items || {}, publicado = plan.some(x => ENTREGAS.some(([k]) => k === x.clave) && x.visible !== false && tiene(x));
-      if (A.temporal?.revision && A.temporal.revision <= sumaDias(hoy, 2)) add('programada', `Revisar el registro temporal: ${queTemp(A.temporal)}`, A.temporal.revision, 'Ver su diario y decidir si termina o se alarga');
+      if (A.temporal?.revision && A.temporal.revision <= sumaDias(hoy, 2)) add('programada', `Revisar el registro temporal: ${queTemp(A.temporal)}`, A.temporal.revision, 'Ver su diario y decidir si termina o se alarga', { sub: 'alimentacion', ancla: 'nu-seg' });
       if (inc.inicio && !publicado) {
         const dia = diaInc(inc);
-        if (dia >= 8 && it.reunion?.estado !== 'validado') add('programada', `Reunión de la semana 2 (día ${dia} de 14)`, sumaDias(inc.inicio, 7), 'Programarla o marcarla como hecha');
-        if (dia >= 11) add('programada', `Entregar el plan (día ${dia} de 14)`, sumaDias(inc.inicio, 13), 'Importar o revisar y publicar los apartados');
+        if (dia >= 8 && it.reunion?.estado !== 'validado') add('programada', `Reunión de la semana 2 (día ${dia} de 14)`, sumaDias(inc.inicio, 7), 'Programarla o marcarla como hecha', { sub: 'alimentacion', ancla: 'nu-inc' });
+        if (dia >= 11) add('programada', `Entregar el plan (día ${dia} de 14)`, sumaDias(inc.inicio, 13), 'Importar o revisar y publicar los apartados', { sub: 'alimentacion', ancla: 'nu-inc' });
       }
-      if (publicado) { const e = coherencia(plan, srv).filter(o => o.niv === 'error'); if (e.length) add('programada', `${e.length} punto${e.length > 1 ? 's' : ''} de coherencia por corregir`, hoy, 'Abrir «Coherencia del plan»'); }
+      if (publicado) { const e = coherencia(plan, srv).filter(o => o.niv === 'error'); if (e.length) add('programada', `${e.length} punto${e.length > 1 ? 's' : ''} de coherencia por corregir`, hoy, 'Abrir «Coherencia del plan»', { sub: 'alimentacion', ancla: 'nu-coh' }); }
       const chk = (c.checkins || []).find(k => k.alumno_id === a.id && k.semana_inicio === lAnt);
-      if (chk?.aplicacion_plan === 'ayuda') add('duda', 'Pide ayuda para adaptar el plan' + (chk.dificultades ? `: «${chk.dificultades.slice(0, 90)}»` : ''), sumaDias(lAnt, 7), 'Responder en su devolución');
+      if (chk?.aplicacion_plan === 'ayuda') add('duda', 'Pide ayuda para adaptar el plan' + (chk.dificultades ? `: «${chk.dificultades.slice(0, 90)}»` : ''), sumaDias(lAnt, 7), 'Responder en su devolución', { tab: 'checkins', ancla: 'ac-chk' });
       const nc = (c.creacionesNuevas || []).filter(x => x.alumno_id === a.id).length;
-      if (nc) add('duda', `${nc} plato${nc > 1 ? 's' : ''} compartido${nc > 1 ? 's' : ''} sin revisar`, hoy, 'Revisarlos en la próxima revisión');
+      if (nc) add('duda', `${nc} plato${nc > 1 ? 's' : ''} compartido${nc > 1 ? 's' : ''} sin revisar`, hoy, 'Revisarlos en la próxima revisión', { sub: 'alimentacion', ancla: 'nu-crea' });
       if (items.length) out.push({ a, items: items.sort((x, y) => String(x.fecha).localeCompare(String(y.fecha))) });
     });
     return out.sort((x, y) => String(x.items[0].fecha).localeCompare(String(y.items[0].fecha)));
@@ -611,8 +610,8 @@ const Nutricion = (() => {
     const l = colaRevisiones(), M = metricasNutri(), TIPO = { programada: ['Programada', 'blue'], duda: ['Duda relevante', 'warn'] };
     abrirSheet(`<div class="stack"><span class="eyebrow">Nutrición</span><h2>Revisiones pendientes</h2>
       <p class="small muted" style="margin-top:-6px">Solo lo que pide una decisión tuya. Las fotos, las variaciones y los días sin registro no aparecen como incidencias.</p>
-      ${l.length ? l.map(({ a, items }) => `<div class="card stack" style="gap:6px"><div class="row"><b class="grow">${esc(a.nombre)}</b><button class="btn sm ghost" data-act="colaFicha" data-id="${a.id}">Abrir ›</button></div>
-        ${items.map(x => `<div class="coh-l"><span class="pill ${TIPO[x.tipo][1]}" style="flex:none">${TIPO[x.tipo][0]}</span><span class="grow"><b>${esc(x.motivo)}</b><br><span class="muted">${esc(fCorta(x.fecha))} · ${esc(x.resp)} · ${esc(x.accion)}</span></span></div>`).join('')}</div>`).join('') : '<div class="card small muted">No hay revisiones pendientes de nutrición.</div>'}
+      ${l.length ? l.map(({ a, items }) => `<div class="card stack" style="gap:6px"><div class="row"><b class="grow">${esc(a.nombre)}</b><button class="btn sm ghost" data-act="irAviso" data-id="${a.id}">Ficha ›</button></div>
+        ${items.map(x => `<button class="coh-l cola-ir" data-act="irAviso" data-id="${a.id}" data-sub="${x.ir.sub || ''}" data-tab="${x.ir.tab || ''}" data-ancla="${x.ir.ancla || ''}"><span class="pill ${TIPO[x.tipo][1]}" style="flex:none">${TIPO[x.tipo][0]}</span><span class="grow"><b>${esc(x.motivo)}</b><br><span class="muted">${esc(fCorta(x.fecha))} · ${esc(x.resp)} · ${esc(x.accion)}</span></span><span class="cola-flecha" aria-hidden="true">›</span></button>`).join('')}</div>`).join('') : '<div class="card small muted">No hay revisiones pendientes de nutrición.</div>'}
       <details class="card small"><summary><b>Métricas (automáticas)</b></summary><div class="stack" style="gap:4px;margin-top:6px">
         <div>Días desde el inicio de la incorporación hasta publicar el plan: <b>${M.dias != null ? fmtNum(M.dias, 0) + ' (mediana de ' + M.n + ')' : 'sin datos aún'}</b></div>
         <div>Ajustes de contextos (versiones después de la primera): <b>${M.ajustes != null ? M.ajustes + ' en ' + M.conVersion + ' alumno' + (M.conVersion > 1 ? 's' : '') : 'sin datos aún'}</b></div>
@@ -675,7 +674,7 @@ const Nutricion = (() => {
       return `<button class="line inc-l" data-act="nuInc" data-k="${k}" style="width:100%;text-align:left;cursor:pointer"><span class="inc-ic">${ic}</span><div class="grow"><b class="small">${esc(t)}</b><div class="small muted">${k === 'composicion' && resComp ? esc(resComp) : `${it[k]?.fecha ? esc(fCorta(it[k].fecha)) + ' · ' : ''}${nf ? `${nf} archivo${nf > 1 ? 's' : ''} · ` : ''}${it[k]?.calidad ? esc(it[k].calidad) + ' · ' : ''}${x?.contenido ? 'con notas' : esc(s)}`}</div></div><span class="pill ${st[1]}">${st[0]}</span></button>`; };
     const pub = k => { const x = plan.find(z => z.clave === k); return !x || !(x.contenido || (x.imagenes || []).length || (x.datos?.ctx || []).length) ? ['Vacío', ''] : x.visible === false ? ['Borrador', 'warn'] : ['Publicado', 'ok']; };
     const hechos = INC.filter(([k]) => incHecho(it[k]?.estado)).length;
-    return `<section class="section"><div class="section-head"><h2>Primeros 14 días</h2><span class="small muted">${dia ? `Día ${Math.min(dia, 99)}${dia <= 14 ? ' de 14' : ''}` : ''}</span></div>
+    return `<section class="section" id="nu-inc"><div class="section-head"><h2>Primeros 14 días</h2><span class="small muted">${dia ? `Día ${Math.min(dia, 99)}${dia <= 14 ? ' de 14' : ''}` : ''}</span></div>
       <div class="card stack" style="gap:10px"><div class="row small" style="gap:8px;flex-wrap:wrap;align-items:center"><span class="grow">Inicio de su incorporación</span><input type="date" id="inc-ini" value="${esc(r.inicio || '')}" style="max-width:170px"><button class="btn sm ghost" data-act="nuIncIni">Guardar</button></div>
         <div class="inc-bar"><i style="width:${Math.round(hechos / INC.length * 100)}%"></i></div>
         <span class="eyebrow">Semana 1 · toma de datos · ${hechos}/${INC.length}</span>${INC.map(filaE).join('')}
