@@ -2080,6 +2080,7 @@ async function cargarCoach() {
   S.c = { perfiles: per.data || [], servicios: srv.data || [], sesiones: ses.data || [], checkins: chk.data || [], diario: reg.data || [], pagos: pag.data || [], programas: prg.data || [], ejercicios: ejs.data || [] };
   await Casos.cargarCoach();
   { const r = await sb.from('cambios_peso').select('*').is('visto_at', null).order('created_at', { ascending: false }); S.c.cambiosPeso = r.data || []; }
+  { const r = await sb.from('presenciales').select('alumno_id,estado,fecha,hora'); S.c.presenciales = r.error ? null : r.data || []; }
   await Acomp.cargarCoach();
   await Negocio.cargar();
   S.c.servicios.forEach(x => x._bloques = bloquesDe((rut.data || []).filter(r => r.alumno_id === x.alumno_id)));
@@ -2112,7 +2113,7 @@ function semanaDatos(aid, lunes, src) {
    Se guarda en la tabla alertas_coach (Bloque 51); si no existe, en este dispositivo. */
 /* Tipos de aviso para el coach (por el texto del aviso): sirven para agruparlos y para elegir cuáles te llegan de cada alumno */
 const TIPOS_AL = [
-  ['pago', 'Pagos vencidos', /pago vencido|cobro/i], ['revision', 'Revisión mensual pendiente', /revisi[oó]n(es)? mensual/i],
+  ['pago', 'Pagos vencidos', /pago vencido|cobro/i], ['bono', 'Bono de sesiones por agotarse', /del bono|bono agotado/i], ['revision', 'Revisión mensual pendiente', /revisi[oó]n(es)? mensual/i],
   ['devolucion', 'Check-in sin devolución', /sin devoluci[oó]n|devoluciones/i], ['motivacion', 'Bajadas de motivación', /motivaci[oó]n/i],
   ['peso', 'Cambios de peso en ejercicios', /ha cambiado su peso/i], ['casos', 'Permisos, testimonios y canjes de puntos', /permisos de imagen|testimonio|canje|puntos/i],
   ['entrenos', 'Entrenos por debajo de lo previsto', /entrenos/i], ['pasos', 'Pasos sin registrar o bajos', /pasos/i],
@@ -2128,7 +2129,7 @@ const AVISOS_ALUMNO = [
   ['fotos', 'Fotos y reflexión del mes (y sus puntos)', 'Pendiente'], ['incorporacion', 'Cuestionarios y registro de 7 días de la incorporación', 'Pendiente'],
   ['peso', 'Pregunta al cambiar el peso de un ejercicio (te avisa a ti)', 'Entreno'], ['control', 'Aviso de su control mensual', 'Hoy'], ['casos', 'Invitación a compartir su caso de éxito', 'Hoy'],
 ];
-const avisoAl = k => !((S.d?.servicio?.avisos_alumno || {})[k] === false);
+const avisoAl = k => (!S.d?.servicio || conSeguimiento(S.d.servicio)) && !((S.d?.servicio?.avisos_alumno || {})[k] === false);
 const Alertas = {
   m: {}, local: false,
   clave: t => normaliza(t).replace(/\s+/g, ' ').trim(),
@@ -2198,9 +2199,11 @@ function estadoAlumno(a) {
   else if (ult && ant && ant.motivacion - ult.motivacion >= 3) { sube('warn'); motivos.push(`Motivación de ${ant.motivacion} a ${ult.motivacion}`); }
   const semana = new Set(ses.filter(s => s.fecha >= lunes).map(s => s.fecha + s.dia_id)).size;
   const mes = new Set(ses.filter(s => s.fecha >= sumaDias(hoy, -27)).map(s => s.fecha + s.dia_id)).size;
-  const control = revisionPendiente(srv, (c.revisiones || []).filter(r => r.alumno_id === a.id), c.revisionesErr) || (c.revisionesErr ? controlEnSemana(srv, lunes) : null);
+  const seg = conSeguimiento(srv);
+  const control = !seg ? null : revisionPendiente(srv, (c.revisiones || []).filter(r => r.alumno_id === a.id), c.revisionesErr) || (c.revisionesErr ? controlEnSemana(srv, lunes) : null);
+  { const bn = bonoDe(a.id, srv); if (bn && bn.total) { const usadas = bn.hechas.length; if (usadas >= bn.total && !bn.prox.length) { sube('warn'); motivos.push(`Bono agotado: ha usado las ${bn.total} sesiones`); } else if (bn.quedan <= 2 && usadas > 0) { sube('warn'); motivos.push(`Le ${bn.quedan === 1 ? 'queda 1 sesión' : `quedan ${bn.quedan} sesiones`} del bono (de ${bn.total})`); } } }
   if (control?.atrasada && !pausa) { sube('warn'); motivos.push(`Revisión mensual ${control.n} pendiente desde el ${fCorta(control.fecha)}`); }
-  const st = Alertas.de(a.id), items = motivos.map((m, i) => ({ m, n: niveles[i], k: Alertas.clave(m), t: tipoAlerta(m) })).filter(x => Alertas.activa(a.id, x.m)).map(x => ({ ...x, ok: st.resueltas.includes(x.k), nueva: !st.vistas.includes(x.k) }));
+  const st = Alertas.de(a.id), items = motivos.map((m, i) => ({ m, n: niveles[i], k: Alertas.clave(m), t: tipoAlerta(m) })).filter(x => (seg || ['pago', 'bono'].includes(x.t)) && Alertas.activa(a.id, x.m)).map(x => ({ ...x, ok: st.resueltas.includes(x.k), nueva: !st.vistas.includes(x.k) }));
   const pend = items.filter(x => !x.ok);
   pend.forEach(x => { const n = est.k === 'regreso' && x.n === 'bad' ? 'warn' : x.n; if (n === 'bad' || nivel === 'ok') nivel = n; });
   return { nivel, motivos: pend.map(x => x.m), items, nuevas: items.filter(x => x.nueva && !x.ok).length, ult, ultSes: ses[0], dpw, dpw4, ctx: ctxDe(a.id), semana, mes, control, ses7: semana };
@@ -2253,11 +2256,29 @@ const MODALIDADES = ['Online', 'Híbrido', 'Presencial', 'Bono', 'Sin servicio']
 const normaliza = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 const srvDe = id => (S.c?.servicios || []).find(x => x.alumno_id === id);
 const prodDe = id => srvDe(id)?.producto || '';
+/* Tipos de programa: presencial (bono de sesiones sin seguimiento, o plan con objetivos de 3, 6 o 10 meses), online o híbrido.
+   Si el servicio aún no tiene la modalidad elegida, se deduce como antes (producto «Bono…», sesiones presenciales, entreno). */
+const TIPOS_PROG = { presencial: 'Presencial', online: 'Online', hibrido: 'Híbrido' };
+const FRECUENCIAS = { '1s': '1 día por semana', '2s': '2 días por semana', '2m': '2 días al mes', '1m': '1 día al mes' };
+const semanasDeMeses = m => Math.round(m * 52 / 12);
+const sesionesDe = (frec, meses) => ({ '1s': semanasDeMeses(meses), '2s': 2 * semanasDeMeses(meses), '2m': 2 * meses, '1m': meses })[frec] || 0;
+function modalidadSrv(v) {
+  if (!v) return null; if (TIPOS_PROG[v.modalidad]) return v.modalidad;
+  if (/bono/i.test(v.producto || '')) return 'presencial';
+  const pres = !!(v.modulo_presencial || v.sesiones_incluidas), ent = v.modulo_entreno ?? true;
+  return pres && ent ? 'hibrido' : pres ? 'presencial' : 'online';
+}
+const esBono = v => !!v && modalidadSrv(v) === 'presencial' && (v.modalidad ? !v.meses : /bono/i.test(v.producto || ''));
+/* Seguimiento = revisión mensual, check-in semanal y avisos (a ti y al alumno). El bono no lo lleva salvo que lo marques */
+const conSeguimiento = v => !!v && (v.seguimiento != null ? !!v.seguimiento : !esBono(v));
 function modalidadDe(id) {
   const v = srvDe(id); if (!v) return 'Sin servicio';
-  if (/bono/i.test(v.producto || '')) return 'Bono';
-  const pres = !!(v.modulo_presencial || v.sesiones_incluidas), ent = v.modulo_entreno ?? true;
-  return pres && ent ? 'Híbrido' : pres ? 'Presencial' : 'Online';
+  return esBono(v) ? 'Bono' : TIPOS_PROG[modalidadSrv(v)];
+}
+/* Sesiones del bono: cuántas quedan sin usar ni reservar (para el aviso de bono por agotarse) */
+function bonoDe(aid, srv) {
+  if (!srv?.sesiones_incluidas || !S.c?.presenciales) return null;
+  return datosPres(srv, S.c.presenciales.filter(p => p.alumno_id === aid));
 }
 function coincideAl(d) {
   const f = S.alF, q = normaliza(f.q);
@@ -2723,6 +2744,7 @@ function alIr(aid, m) {
   if (/ha cambiado su peso en/i.test(m) && (S.c.cambiosPeso || []).filter(c => c.alumno_id === aid).length > 1) return irA(aid, { sub: 'entreno', ancla: 'ent-peso' });
   if (/ha cambiado su peso en/i.test(m)) { const x = (S.c.cambiosPeso || []).find(c => c.alumno_id === aid && (!c.ejercicio || m.includes(c.ejercicio))); if (x?.sesion_id) return irA(aid, { fn: () => verSesion(x.sesion_id) }); return irA(aid, { sub: 'entreno' }); }
   if (/pago|cobro/i.test(m)) return irA(aid, { tab: 'pagos' });
+  if (/del bono|bono agotado/i.test(m)) return irA(aid, { tab: 'calendario' });
   if (/devoluci[oó]n|check-in de la semana|motivaci[oó]n/i.test(m)) return irA(aid, { tab: 'checkins', ancla: 'ac-chk' });
   if (/pr[oó]xima acci[oó]n/i.test(m)) return irA(aid, { tab: 'resumen', ancla: 'ac-prox' });
   if (/fotos de progreso|permisos de imagen|testimonio|canje|puntos/i.test(m)) return irA(aid, { sub: 'composicion' });
@@ -3503,10 +3525,11 @@ function vFicha() {
   </div></section>
   ${Acomp.vCheckinsFicha(f, chks)}`;
   const fb3 = `  <section class="section"><div class="section-head"><h2>Plan</h2><button class="btn sm ghost" data-act="editarServicio">✎ Editar</button></div><div class="card stack">
+    ${srv ? `<div class="chips" style="gap:6px"><span class="pill blue">${esc(modalidadDe(a.id))}</span>${srv.meses ? `<span class="pill">${srv.meses} meses</span>` : ''}${FRECUENCIAS[srv.pt_frecuencia] ? `<span class="pill">Personales: ${esc(FRECUENCIAS[srv.pt_frecuencia].toLowerCase())}</span>` : ''}<span class="pill ${conSeguimiento(srv) ? 'ok' : ''}">${conSeguimiento(srv) ? 'Con seguimiento' : 'Sin seguimiento'}</span>${!srv.modalidad ? '<button class="linkbtn small" data-act="editarServicio">Elegir tipo de programa ›</button>' : ''}</div>` : ''}
     <button class="plan-b" data-act="fichaSub" data-s="plan"><div class="grow"><h3>${esc(srv?.producto || 'Sin plan asignado')} <span style="color:var(--blue-text)">›</span></h3><div class="small" style="color:var(--blue-text)">Ver toda su planificación${(() => { const m = [(srv?.modulo_entreno ?? true) && 'entrenamiento', srv?.modulo_nutricion && 'alimentación', srv?.modulo_habitos && 'hábitos'].filter(Boolean); return m.length ? ': ' + m.join(', ').replace(/, ([^,]*)$/, ' y $1') : ''; })()}</div></div></button>
     <div class="row"><div class="grow"><div class="small muted">${[f.prog && `${esc(f.prog.nombre)}${dpw ? ` · ${dpw} días por semana` : ''}`, srv?.modulo_nutricion && 'con nutrición', (srv?.modulo_presencial || srv?.sesiones_incluidas) && `${srv.sesiones_incluidas || ''} presenciales`.trim()].filter(Boolean).join(' · ') || 'Sin programa'}</div></div>${P && !P.sinFin ? `<b class="num" style="font-family:var(--display);font-size:24px">${P.pctTotal} %</b>` : ''}</div>
     ${P ? `<div class="track gordo"><i style="width:${P.pctTotal}%"></i></div><div class="row small muted"><span class="grow">${P.antes ? 'Empieza' : 'Inicio'} ${esc(fF(srv.inicio))}${!P.antes && !P.fuera ? ` · semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''}</span>${P.sinFin ? '' : `<span>Final ${esc(fF(P.ciclos[P.ciclos.length - 1].fin))}</span>`}</div>` : '<p class="small muted">Pon la fecha de inicio y la duración en "Editar".</p>'}
-    ${extensionesDe(srv).length ? `<div class="small">${extensionesDe(srv).map(x => `<span class="pill gold">${esc(x.nombre || 'Extensión')} · ${x.semanas} sem · desde ${esc(fCorta(x.desde))}</span>`).join(' ')}</div>` : ''}
+    ${extensionesDe(srv).length ? `<div class="small">${extensionesDe(srv).map(x => `<span class="pill gold">${esc(x.nombre || 'Extensión')} · ${x.tipo === 'bono' ? `${x.sesiones} sesiones · ${esc(fCorta(x.fecha))}` : `${x.semanas} sem${x.sesiones ? ` · ${x.sesiones} personales` : ''} · desde ${esc(fCorta(x.desde))}`}</span>`).join(' ')}</div>` : ''}
     ${(() => { const af = avisoFin(srv); return af ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>${af.terminado ? `Su proceso terminó el ${esc(fCorta(af.fin))}` : `Le quedan ${af.dias} días de proceso`}</b> (final ${esc(fF(af.fin))}). Si sigue contigo, añádele una extensión: continúa con sus bloques y su historial.</div><button class="btn sm gold" data-act="extension">＋ Añadir extensión</button></div>` : srv?.inicio ? '<button class="linkbtn small" data-act="extension" style="align-self:flex-start">＋ Añadir extensión del proceso</button>' : ''; })()}
     ${e.control ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>Toca su revisión mensual ${e.control.n}</b> (${esc(fCorta(e.control.fecha))}): llamada o videollamada de 10-15 minutos para ver cómo se siente, sus objetivos y su composición corporal.</div><button class="btn sm gold" data-act="revision" data-n="${e.control.n}">Registrar revisión</button></div>` : ''}
   </div></section>`;
@@ -3554,7 +3577,7 @@ function vFicha() {
       <h2 class="fx-nom">${esc(a.nombre)}</h2>
       <div class="fx-est"><span class="fx-dot ${e.nivel}"></span>${nivTxt}${pend.length ? ` · ${pend.length} aviso${pend.length > 1 ? 's' : ''}` : ''}</div>
       <div class="fx-acc fx-acc-mov"><button class="btn sm" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar</button><button class="btn sm ghost" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como</button><button class="btn sm ghost" data-act="abrirReporte" data-id="${a.id}">📋 Reporting</button></div>
-      <div class="fx-datos">${filaP('Plan', esc(srv?.producto || 'Sin plan'))}${filaP('Bloque', P && !P.antes && !P.fuera ? esc(nomCiclo(P.cc)) : '')}${filaP('Semana', P && !P.antes && !P.fuera ? `${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : P?.antes ? 'Empieza ' + esc(fCorta(srv.inicio)) : '')}${filaP('Programa', f.prog ? esc(f.prog.nombre) : '')}${filaP('Alta', esc(fF(a.fecha_alta || srv?.inicio || hoy)))}${filaP('Email', esc(a.email || ''))}<button class="fx-dato fx-pago" data-act="fTab" data-t="pagos"><span>Pagos</span><b style="${pagV.length ? 'color:var(--bad)' : ''}">${pagV.length ? `${pagV.length} vencida${pagV.length === 1 ? '' : 's'}` : pagP.length ? `Próxima ${esc(fCorta(pagP.slice().sort((x, y) => x.vence.localeCompare(y.vence))[0].vence))}` : pagos.length ? 'Al día' : 'Sin cuotas'} ›</b></button></div>
+      <div class="fx-datos">${filaP('Plan', esc(srv?.producto || 'Sin plan'))}${srv ? filaP('Tipo', esc(modalidadDe(a.id)) + (conSeguimiento(srv) ? '' : ' · sin seguimiento')) : ''}${filaP('Bloque', P && !P.antes && !P.fuera ? esc(nomCiclo(P.cc)) : '')}${filaP('Semana', P && !P.antes && !P.fuera ? `${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : P?.antes ? 'Empieza ' + esc(fCorta(srv.inicio)) : '')}${filaP('Programa', f.prog ? esc(f.prog.nombre) : '')}${filaP('Alta', esc(fF(a.fecha_alta || srv?.inicio || hoy)))}${filaP('Email', esc(a.email || ''))}<button class="fx-dato fx-pago" data-act="fTab" data-t="pagos"><span>Pagos</span><b style="${pagV.length ? 'color:var(--bad)' : ''}">${pagV.length ? `${pagV.length} vencida${pagV.length === 1 ? '' : 's'}` : pagP.length ? `Próxima ${esc(fCorta(pagP.slice().sort((x, y) => x.vence.localeCompare(y.vence))[0].vence))}` : pagos.length ? 'Al día' : 'Sin cuotas'} ›</b></button></div>
       <div class="fx-acc"><button class="btn sm" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm ghost" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como ${esc(nom)}</button><button class="btn sm ghost" data-act="abrirReporte" data-id="${a.id}">📋 Reporting</button></div>
       <details class="fx-mas"><summary>Más acciones</summary><div class="stack" style="gap:6px;margin-top:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}<button class="btn sm ghost" data-act="pausarAcceso" data-id="${a.id}" data-on="${a.acceso_pausado ? 0 : 1}">${a.acceso_pausado ? '🔓 Devolver el acceso' : '🔒 Quitar el acceso'}</button></div></details>
       ${a.activo === false ? '<p class="small muted" style="margin:0">Antiguo alumno: no genera avisos.</p>' : ''}</aside>`;
@@ -4026,11 +4049,19 @@ function formServicio() {
   abrirSheet(`<form class="stack" id="f-srv"><h2>Servicio</h2>
     <label class="f">Programa / producto contratado<input type="text" id="sv-prod" list="sv-prods" value="${esc(s.producto || '')}" placeholder="Ej. Plan Integral 6 meses" required></label>
     <datalist id="sv-prods">${[...new Set(['Plan Integral 3 meses', 'Plan Integral 6 meses', 'Plan Integral 10 meses', 'Plan Entrenamiento 3 meses', 'Plan Entrenamiento 6 meses', 'Bono 10 sesiones presenciales', 'Bono 15 sesiones presenciales', 'Zero to Fit · Integral', 'Élite Player', ...S.c.servicios.map(x => x.producto).filter(Boolean)])].map(v => `<option value="${esc(v)}">`).join('')}</datalist>
+    <div class="card stack" style="padding:12px;gap:10px"><b class="small">Tipo de programa</b>
+      <div class="chips" id="sv-mod">${Object.entries(TIPOS_PROG).map(([k, l]) => `<button type="button" class="pill" data-v="${k}">${l}</button>`).join('')}</div>
+      <div class="chips" id="sv-ptipo" hidden><button type="button" class="pill" data-v="bono">Bono de sesiones</button><button type="button" class="pill" data-v="plan">Plan con objetivos (3, 6 o 10 meses)</button></div>
+      <div class="stack" id="sv-modulos-w" style="gap:4px" hidden><span class="small muted">Lleva</span><div class="chips" id="sv-lleva"><button type="button" class="pill" data-v="ent">Entrenamiento</button><button type="button" class="pill" data-v="ali">Alimentación</button><button type="button" class="pill" data-v="ambas">Ambas</button></div></div>
+      <div class="stack" id="sv-meses-w" style="gap:4px" hidden><span class="small muted">Meses contratados</span><div class="chips" id="sv-meses"></div></div>
+      <div class="stack" id="sv-frec-w" style="gap:4px" hidden><span class="small muted">Entrenamientos personales</span><div class="chips" id="sv-frec"></div></div>
+      <label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="sv-seg" style="width:20px;height:20px;flex:none;margin-top:1px"> <span><b>Seguimiento</b>: revisión mensual, check-in semanal con devolución y avisos (a ti y en su app)</span></label>
+      <p class="small muted" id="sv-mod-txt" style="margin:0"></p></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Inicio<input type="date" id="sv-ini" value="${s.inicio || hoyISO()}"></label><label class="f">Duración (semanas)<input type="number" id="sv-dur" min="1" max="104" value="${s.duracion_semanas || ''}" placeholder="Ej. 26"></label></div>
     <label class="row small"><input type="checkbox" id="sv-pasoson" ${conPasos(s) && !(s.id == null && false) ? 'checked' : ''} style="width:20px;height:20px"> Seguimiento de pasos diarios <span class="muted">(desmárcalo para futbolistas o alumnos en buena composición)</span></label>
     <label class="f" id="sv-pasos-w" ${conPasos(s) ? '' : 'hidden'}>Objetivo de pasos diarios<input type="number" id="sv-pasos" min="0" step="500" value="${s.objetivo_pasos || ''}" placeholder="${PASOS_DEF}"></label>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Hora de acostarse objetivo<input type="time" id="sv-dormir" value="${esc(s.sueno_dormir || '')}" placeholder="23:00"></label><label class="f">Hora de levantarse objetivo<input type="time" id="sv-levantar" value="${esc(s.sueno_levantar || '')}" placeholder="08:00"></label></div>
-    <label class="f">Sesiones presenciales incluidas (bono)<input type="number" id="sv-pres" min="0" max="200" value="${s.sesiones_incluidas || ''}" placeholder="Ej. 15"></label>
+    <label class="f" id="sv-pres-w"><span id="sv-pres-l">Sesiones presenciales incluidas (bono)</span><input type="number" id="sv-pres" min="0" max="300" value="${s.sesiones_incluidas || ''}" placeholder="Ej. 15"></label>
     <div class="stack" style="gap:8px">${[['entreno', 'Entrenamiento', s.modulo_entreno ?? true], ['nutricion', 'Nutrición · plan de alimentación (pestaña Nutrición y registro de comidas)', s.modulo_nutricion], ['presencial', 'Sesiones presenciales', s.modulo_presencial], ['habitos', 'Hábitos · programa de hábitos (pestaña Hábitos; bonus). Los pasos van aparte', s.modulo_habitos], ['futbol', 'Elite Player · seguimiento de futbolista (wellness, partidos y carga)', s.modulo_futbol], ['oposicion', 'Oposición · Policía Nacional (pruebas físicas, simulacros y nota oficial)', !!s.oposicion]].map(([k, l, v]) => `<label class="row small"><input type="checkbox" id="sv-${k}" ${v ? 'checked' : ''} style="width:20px;height:20px"> ${l}</label>`).join('')}</div>
     <label class="f" id="sv-fase-w" ${s.modulo_nutricion ? '' : 'hidden'}>Fase de la alimentación<select id="sv-fase"><option value="">Automática (activo si tiene plan visible; si no, en preparación)</option>${Object.entries(Nutricion.FASES).map(([k, [l]]) => `<option value="${k}" ${s.nutri_fase === k ? 'selected' : ''}>${l}</option>`).join('')}</select><span class="small muted">En recogida y en preparación no se mide el cumplimiento: el alumno solo registra.</span></label>
     <label class="f" id="sv-com-w" ${s.modulo_nutricion ? '' : 'hidden'}>Comidas de su plan al día <span class="muted">(registro de comidas cumplidas)</span><input type="number" id="sv-com" min="1" max="8" value="${comidasDia(s)}"></label>
@@ -4039,6 +4070,32 @@ function formServicio() {
       <label class="f">¿Cuántos de esos entrenos ya ha hecho?<input type="number" id="sv-prev" min="0" max="999" value="${S.ficha.previas ?? ''}" placeholder="0"></label>
       <p class="small muted" style="margin:0">Quedan marcados como hechos en las semanas desde el inicio (sin series registradas), para que su cumplimiento y su número de entreno cuadren. Puedes cambiar el número cuando quieras.</p></div>
     <button class="btn full" type="submit">Guardar</button></form>`);
+  /* Tipo de programa: lo que eliges rellena duración, sesiones, módulos y seguimiento (todo sigue editable debajo) */
+  const st = { mod: s.id ? modalidadSrv(s) : null, ptipo: esBono(s) ? 'bono' : s.meses || !s.id ? 'plan' : modalidadSrv(s) === 'presencial' ? 'bono' : 'plan', meses: s.meses || null, frec: s.pt_frecuencia || null, segToc: s.seguimiento != null };
+  const MESES = { plan: [3, 6, 10], online: [3, 6, 9, 10, 12], hibrido: [3, 6, 10, 12] }, FREC_PLAN = { 3: ['1s'], 6: ['1s', '2m'], 10: ['1m', '2m', '1s'] };
+  const lleva = () => $('#sv-entreno').checked && $('#sv-nutricion').checked ? 'ambas' : $('#sv-nutricion').checked ? 'ali' : 'ent';
+  const marca = (sel, v) => document.querySelectorAll(sel + ' .pill').forEach(b => b.classList.toggle('blue', b.dataset.v === String(v)));
+  const pintaMod = () => {
+    const m = st.mod, bono = m === 'presencial' && st.ptipo === 'bono', plan = m === 'presencial' && st.ptipo === 'plan';
+    marca('#sv-mod', m); marca('#sv-ptipo', st.ptipo); marca('#sv-lleva', lleva());
+    $('#sv-ptipo').hidden = m !== 'presencial'; $('#sv-modulos-w').hidden = !m || m === 'presencial';
+    const lm = !m || bono ? [] : MESES[plan ? 'plan' : m]; $('#sv-meses-w').hidden = !lm.length;
+    $('#sv-meses').innerHTML = lm.map(x => `<button type="button" class="pill ${st.meses === x ? 'blue' : ''}" data-v="${x}">${x} meses</button>`).join('');
+    const lf = plan ? (FREC_PLAN[st.meses] || []) : m === 'hibrido' && $('#sv-entreno').checked ? ['1s', '2s', '2m', '1m'] : [];
+    $('#sv-frec-w').hidden = !lf.length; $('#sv-frec').innerHTML = lf.map(x => `<button type="button" class="pill ${st.frec === x ? 'blue' : ''}" data-v="${x}">${FRECUENCIAS[x]}</button>`).join('');
+    $('#sv-pres-w').hidden = m === 'online'; $('#sv-pres-l').textContent = bono ? 'Sesiones del bono' : m ? 'Entrenamientos personales incluidos' : 'Sesiones presenciales incluidas (bono)';
+    if (!st.segToc && m) $('#sv-seg').checked = !bono;
+    $('#sv-mod-txt').textContent = !m ? 'Elige el tipo para que la app sepa si lleva revisiones y avisos.' : bono ? (($('#sv-seg').checked) ? 'Bono con seguimiento activado a mano.' : 'Sin revisiones ni avisos: solo te avisará de pagos vencidos y de cuando le queden pocas sesiones. Puede subir sus fotos y medidas si quiere.') : 'Con revisión mensual, check-in semanal y avisos.';
+  };
+  $('#sv-seg').checked = conSeguimiento(s) || !s.id;
+  $('#sv-mod').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; st.mod = b.dataset.v; st.meses = null; st.frec = null; if (st.mod !== 'online') $('#sv-presencial').checked = true; if (st.mod === 'presencial') $('#sv-entreno').checked = true; pintaMod(); });
+  $('#sv-ptipo').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; st.ptipo = b.dataset.v; st.meses = null; st.frec = null; pintaMod(); });
+  $('#sv-lleva').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; const v = b.dataset.v; $('#sv-entreno').checked = v !== 'ali'; $('#sv-nutricion').checked = v !== 'ent'; $('#sv-nutricion').dispatchEvent(new Event('change')); pintaMod(); });
+  $('#sv-meses').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; st.meses = +b.dataset.v; $('#sv-dur').value = semanasDeMeses(st.meses); if (st.frec) $('#sv-pres').value = sesionesDe(st.frec, st.meses); if (st.mod === 'presencial' && !(FREC_PLAN[st.meses] || []).includes(st.frec)) st.frec = (FREC_PLAN[st.meses] || [])[0] || null, st.frec && ($('#sv-pres').value = sesionesDe(st.frec, st.meses)); $('#sv-dur').dispatchEvent(new Event('input')); pintaMod(); });
+  $('#sv-frec').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; st.frec = b.dataset.v; if (st.meses) $('#sv-pres').value = sesionesDe(st.frec, st.meses); pintaMod(); });
+  $('#sv-seg').addEventListener('change', () => { st.segToc = true; pintaMod(); });
+  $('#sv-entreno').addEventListener('change', pintaMod);
+  pintaMod();
   const dpwS = S.ficha.prog?.dias_semana || 0;
   const prevTxt = () => { const ini = $('#sv-ini').value, dur = numero($('#sv-dur').value), sem = ini ? Math.max(0, Math.floor((fecha(lunesDe(hoyISO())) - fecha(lunesDe(ini))) / 6048e5)) : 0;
     $('#sv-prev-txt').innerHTML = !dpwS ? 'Asígnale primero un programa con días por semana para calcular los entrenos incluidos.' : `Su programa incluye <b>${dpwS} entrenos por semana</b>${dur ? ` · <b>${dpwS * dur}</b> en las ${dur} semanas` : ''}. Desde el inicio hasta esta semana han pasado ${sem} ${sem === 1 ? 'semana' : 'semanas'}: hasta <b>${dpwS * sem}</b> entrenos.`;
@@ -4051,6 +4108,8 @@ function formServicio() {
     e.preventDefault();
     const row = { alumno_id: S.ficha.id, producto: $('#sv-prod').value.trim() || 'Servicio', inicio: $('#sv-ini').value, duracion_semanas: numero($('#sv-dur').value), sesiones_incluidas: numero($('#sv-pres').value),
       modulo_entreno: $('#sv-entreno').checked, modulo_nutricion: $('#sv-nutricion').checked, modulo_presencial: $('#sv-presencial').checked, activo: true };
+    const tipo = st.mod ? { modalidad: st.mod, meses: st.mod === 'presencial' && st.ptipo === 'bono' ? null : st.meses, pt_frecuencia: st.frec, seguimiento: $('#sv-seg').checked } : null;
+    if (tipo) Object.assign(row, tipo);
     if ($('#sv-habitos').checked || s.modulo_habitos) row.modulo_habitos = $('#sv-habitos').checked;
     if ($('#sv-futbol').checked || s.modulo_futbol) row.modulo_futbol = $('#sv-futbol').checked;
     if ($('#sv-oposicion').checked || s.oposicion) row.oposicion = $('#sv-oposicion').checked ? (s.oposicion || 'policia_nacional') : null;
@@ -4062,6 +4121,7 @@ function formServicio() {
     if (row.modulo_nutricion) { const nc = numero($('#sv-com').value); if (nc && (nc !== comidasDia(s) || s.comidas_dia)) row.comidas_dia = Math.max(1, Math.min(8, nc)); }
     const guardar = r => s.id ? sb.from('servicios').update(r).eq('id', s.id) : sb.from('servicios').insert(r);
     let { error } = await guardar(row);
+    if (error && tipo && /modalidad|meses|pt_frecuencia|seguimiento/.test(error.message || '')) { Object.keys(tipo).forEach(k => delete row[k]); ({ error } = await guardar(row)); if (!error) toast('Guardado sin el tipo de programa: falta ejecutar el Bloque 86 en Supabase'); }
     if (!error && !s.id) await sb.from('perfiles').update({ activo: true }).eq('id', S.ficha.id);
     if (error && /modulo_habitos/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 66 en Supabase.');
     if (error && /modulo_futbol/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 21 en Supabase.');
@@ -4647,7 +4707,7 @@ function vReporte() {
   /* Cada alumno se pinta aislado: si su ficha tiene un dato incompleto, sale un aviso en su tarjeta y el resto sigue */
   const tarjeta = (a, det) => { try { return vReporteAlumno(a, R, det); } catch (err) { console.error('Reporting de', a?.nombre, err); return `<div class="card stack"><div class="row"><b class="grow">${esc(a?.nombre || 'Alumno')}</b><span class="pill warn">Revisar ficha</span></div><p class="small muted" style="margin:0">Su informe de esta semana no se ha podido montar porque falta o está incompleto algún dato de su ficha. El resto del reporting no se ve afectado.</p><button class="btn sm ghost" data-act="reporteFicha" data-id="${a?.id}" style="align-self:flex-start">Abrir su ficha</button></div>`; } };
   if (R.alumno) { const a = S.c.perfiles.find(p => p.id === R.alumno) || { id: R.alumno, nombre: 'Alumno' }; return cab + aviso + `<section class="section">${tarjeta(a, true)}</section>`; }
-  const als = S.c.perfiles.filter(p => p && p.activo !== false && (S.c.servicios.some(x => x.alumno_id === p.id) || S.c.programas.some(x => x.alumno_id === p.id)));
+  const als = S.c.perfiles.filter(p => p && p.activo !== false && (S.c.servicios.some(x => x.alumno_id === p.id) || S.c.programas.some(x => x.alumno_id === p.id)) && (!srvDe(p.id) || conSeguimiento(srvDe(p.id))));
   const lista = als.map(a => { try { return { a, d: datosReporte(a, R) }; } catch (err) { console.error('Reporting de', a?.nombre, err); return { a, d: { score: -1 } }; } }).sort((x, y) => x.d.score - y.d.score);
   return cab + aviso + `<section class="section rep-lista"><p class="small muted">Ordenados de menor a mayor cumplimiento. Toca "Ver" para el detalle de cada alumno.</p><details class="small muted"><summary>Cómo se calcula la alimentación</summary><p style="margin:6px 0 0">Comidas del plan = comidas que el alumno marca como hechas ÷ comidas previstas de los días que registró. Solo se valora con ${MIN_DIAS_NUTRI} días o más; los días sin información no cuentan como fallo y se muestran aparte. Bien ≥ 85 %, regular 60–84 %, mal &lt; 60 %. La aplicación declarada en el check-in («aplicado», «en parte», «necesito ayuda») se muestra tal cual, sin convertirla en porcentaje. Con seguimiento ligero solo cuenta esa respuesta.</p></details>${lista.map(({ a }) => tarjeta(a, false)).join('') || '<div class="empty">Sin alumnos activos.</div>'}</section>`;
 }
@@ -4709,21 +4769,60 @@ function formBloquesProceso() {
 function formExtension() {
   const f = S.ficha, srv = f.srv; if (!srv?.id || !srv.inicio) return toast('Primero pon su servicio con fecha de inicio (Plan → Editar)');
   const P = proceso(srv), total = P?.total || srv.duracion_semanas || 0, desde = sumaDias(srv.inicio, total * 7), n = extensionesDe(srv).length + 1;
+  /* Tipos de ampliación según su programa: trimestral con entrenamientos personales (ruta integral híbrida), online de 3/6/9/12 meses,
+     alimentación de trimestre en trimestre, bono de sesiones sueltas (también para quien termina el acompañamiento) o a mano */
+  const mod = modalidadSrv(srv), soloAli = srv.modulo_nutricion && !(srv.modulo_entreno ?? true);
+  const TIPOS = [['pt', 'Trimestral con entrenamientos personales'], ['online', 'Ampliación online'], ['ali', 'Alimentación (trimestral)'], ['bono', 'Bono de sesiones sueltas'], ['libre', 'Otra (a mano)']]
+    .filter(([k]) => k === 'pt' ? mod !== 'online' : k === 'online' ? mod === 'online' && !soloAli : k === 'ali' ? !!srv.modulo_nutricion : true);
+  const def = esBono(srv) ? 'bono' : soloAli ? 'ali' : mod === 'online' ? 'online' : 'pt';
   abrirSheet(`<form class="stack" id="f-ext"><h2>Añadir extensión</h2>
-    <p class="small muted">Su proceso actual tiene ${total} semanas y termina el ${esc(fLarga(sumaDias(desde, -1)))}. La extensión empieza justo después y se añade como nuevos bloques al final, así que conserva todo su historial.</p>
+    <div class="chips" id="ex-tipo">${TIPOS.map(([k, l]) => `<button type="button" class="pill ${k === def ? 'blue' : ''}" data-v="${k}">${l}</button>`).join('')}</div>
+    <div class="stack" id="ex-op-w" style="gap:4px"><span class="small muted" id="ex-op-l"></span><div class="chips" id="ex-op"></div></div>
+    <div id="ex-bono-w" hidden class="stack" style="gap:8px"><label class="f">Sesiones del bono<input type="number" id="ex-ses" min="1" max="200" value="10"></label>
+      <label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="ex-fin" ${conSeguimiento(srv) ? '' : 'checked'} style="width:20px;height:20px;flex:none;margin-top:1px"> <span>Termina su acompañamiento: pasa a <b>bono sin seguimiento</b> (sin revisiones ni avisos)</span></label></div>
+    <div id="ex-sem-w" class="stack" style="gap:10px"><p class="small muted" style="margin:0">Su proceso actual tiene ${total} semanas y termina el ${esc(fLarga(sumaDias(desde, -1)))}. La extensión empieza justo después y se añade como nuevos bloques al final, así que conserva todo su historial.</p>
     <label class="f">Nombre<input type="text" id="ex-n" value="Extensión${n > 1 ? ' ' + n : ''}" required></label>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Semanas<input type="number" id="ex-s" min="1" max="104" value="12" required></label><label class="f">Bloques de<input type="number" id="ex-b" min="1" max="52" value="${SEM_CICLO}"><span class="small muted">semanas cada uno</span></label></div>
-    <label class="f">Objetivo de la extensión (opcional)<textarea id="ex-o" rows="2"></textarea></label>
+    <label class="f">Objetivo de la extensión (opcional)<textarea id="ex-o" rows="2"></textarea></label></div>
     <p class="small" id="ex-res"></p>
     <button class="btn full" type="submit">Guardar extensión</button></form>`);
-  const res = () => { const s2 = Math.max(1, +$('#ex-s').value || 1); $('#ex-res').innerHTML = `Desde el <b>${esc(fCorta(desde))}</b> hasta el <b>${esc(fCorta(sumaDias(desde, s2 * 7 - 1)))}</b> · proceso total ${total + s2} semanas.`; };
-  res(); $('#ex-s').addEventListener('input', res);
+  const ex = { tipo: def, op: null };
+  const OPS = { pt: ['Entrenamientos personales (3 meses)', Object.keys(FRECUENCIAS)], online: ['Meses', [3, 6, 9, 12]] };
+  const res = () => {
+    if (ex.tipo === 'bono') { const n = Math.max(1, +$('#ex-ses').value || 1); $('#ex-res').innerHTML = `Su bono pasa de ${srv.sesiones_incluidas || 0} a <b>${(srv.sesiones_incluidas || 0) + n} sesiones</b>.${$('#ex-fin').checked ? ' Sin revisiones ni avisos de seguimiento.' : ''}`; return; }
+    const s2 = Math.max(1, +$('#ex-s').value || 1), ses = ex.tipo === 'pt' && ex.op ? sesionesDe(ex.op, 3) : 0;
+    $('#ex-res').innerHTML = `Desde el <b>${esc(fCorta(desde))}</b> hasta el <b>${esc(fCorta(sumaDias(desde, s2 * 7 - 1)))}</b> · proceso total ${total + s2} semanas.${ses ? ` Suma <b>${ses} entrenamientos personales</b> a su bono (${(srv.sesiones_incluidas || 0) + ses} en total).` : ''}`;
+  };
+  const pinta = () => {
+    document.querySelectorAll('#ex-tipo .pill').forEach(b => b.classList.toggle('blue', b.dataset.v === ex.tipo));
+    const o = OPS[ex.tipo]; $('#ex-op-w').hidden = !o; $('#ex-bono-w').hidden = ex.tipo !== 'bono'; $('#ex-sem-w').hidden = ex.tipo === 'bono';
+    if (o) { $('#ex-op-l').textContent = o[0]; $('#ex-op').innerHTML = o[1].map(v => `<button type="button" class="pill ${ex.op === v ? 'blue' : ''}" data-v="${v}">${FRECUENCIAS[v] || v + ' meses'}</button>`).join(''); }
+    res();
+  };
+  const ponTipo = t => { ex.tipo = t; ex.op = t === 'pt' ? (FRECUENCIAS[srv.pt_frecuencia] ? srv.pt_frecuencia : '1s') : t === 'online' ? 3 : null;
+    const sem = t === 'online' ? semanasDeMeses(ex.op) : t === 'libre' ? 12 : 13; $('#ex-s').value = sem;
+    $('#ex-n').value = { pt: 'Ampliación trimestral', online: 'Ampliación online', ali: 'Ampliación de alimentación', bono: 'Bono de sesiones', libre: 'Extensión' }[t] + (n > 1 && t !== 'bono' ? ' ' + n : ''); pinta(); };
+  $('#ex-tipo').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (b) ponTipo(b.dataset.v); });
+  $('#ex-op').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; ex.op = ex.tipo === 'online' ? +b.dataset.v : b.dataset.v; if (ex.tipo === 'online') $('#ex-s').value = semanasDeMeses(ex.op); pinta(); });
+  ['#ex-s', '#ex-ses', '#ex-fin'].forEach(q => $(q).addEventListener('input', res)); $('#ex-fin').addEventListener('change', res);
+  ponTipo(def);
   $('#f-ext').addEventListener('submit', async e => {
     e.preventDefault(); const bt = e.target.querySelector('[type=submit]'); if (bt.disabled) return; bt.disabled = true;
     const nombre = $('#ex-n').value.trim() || 'Extensión', sem = Math.max(1, +$('#ex-s').value || 12), tb = Math.max(1, +$('#ex-b').value || SEM_CICLO), obj = $('#ex-o').value.trim();
     const fallar = (err, m) => { bt.disabled = false; fallo(err, m); };
-    const ext = [...extensionesDe(srv), { nombre, semanas: sem, desde }];
-    let { error } = await sb.from('servicios').update({ duracion_semanas: total + sem, extensiones: ext }).eq('id', srv.id);
+    if (ex.tipo === 'bono') {
+      const nS = Math.max(1, +$('#ex-ses').value || 1), fin = $('#ex-fin').checked;
+      const up = { sesiones_incluidas: (srv.sesiones_incluidas || 0) + nS, modulo_presencial: true, extensiones: [...extensionesDe(srv), { nombre, tipo: 'bono', sesiones: nS, fecha: hoyISO() }] };
+      if (fin) Object.assign(up, { modalidad: 'presencial', meses: null, seguimiento: false });
+      let { error } = await sb.from('servicios').update(up).eq('id', srv.id);
+      if (error && /modalidad|meses|seguimiento/.test(error.message || '')) { ['modalidad', 'meses', 'seguimiento'].forEach(k => delete up[k]); ({ error } = await sb.from('servicios').update(up).eq('id', srv.id)); if (!error) toast('Bono añadido. Para quitarle el seguimiento falta ejecutar el Bloque 86'); }
+      if (error) return fallar(error, /extensiones/.test(error.message || '') ? 'Falta ejecutar el Bloque 50 en Supabase.' : undefined);
+      cerrarSheet(); toast(`Bono de ${nS} sesiones añadido`); const sub = S.fichaSub; await cargarCoach(); await abrirFicha(f.id); if (sub) await abrirSub(sub); return;
+    }
+    const sesPT = ex.tipo === 'pt' && ex.op ? sesionesDe(ex.op, 3) : 0;
+    const ext = [...extensionesDe(srv), { nombre, semanas: sem, desde, tipo: ex.tipo, ...(ex.tipo === 'pt' ? { frecuencia: ex.op, sesiones: sesPT } : {}), ...(ex.tipo === 'online' ? { meses: ex.op } : {}) }];
+    const upd = { duracion_semanas: total + sem, extensiones: ext }; if (sesPT) Object.assign(upd, { sesiones_incluidas: (srv.sesiones_incluidas || 0) + sesPT, modulo_presencial: true });
+    let { error } = await sb.from('servicios').update(upd).eq('id', srv.id);
     if (error) return fallar(error, /extensiones/.test(error.message || '') ? 'Falta ejecutar el Bloque 50 en Supabase.' : undefined);
     // Bloques: si aún no tenía, se crean los del proceso original (como los ve ahora) y luego los de la extensión
     const bl = bloquesDe(f.ruta), filas = [];
@@ -6215,7 +6314,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v232';
+const APP_VER = 'v233';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
