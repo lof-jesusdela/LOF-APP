@@ -597,6 +597,42 @@ nav.tabs a.tab-wa{flex:1;padding:10px 2px 12px;display:flex;flex-direction:colum
 .fh-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.fh-kpis div{background:var(--surface,#fff);border:1px solid var(--line);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}.fh-kpis b{font-size:20px;font-family:var(--display)}.fh-kpis small{font-size:11px;color:var(--muted)}
 @media (max-width:520px){.fh-kpis{grid-template-columns:repeat(2,1fr)}}
 .fh-mas summary{cursor:pointer;color:var(--muted)}
+/* Ficha del alumno en el ordenador: cabecera en una fila, pestañas y panel de inicio en rejilla */
+.ft-wrap{position:sticky;top:0;z-index:5;margin:0!important}
+.ft-tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:thin;background:var(--bg,#F5F7FA);padding:8px 0;margin-top:4px;border-bottom:1px solid var(--line)}
+.ft-tabs button{flex:none;display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:999px;border:1px solid transparent;background:transparent;color:var(--muted);font-weight:700;font-size:14px;cursor:pointer;white-space:nowrap}
+.ft-tabs button:hover{background:var(--surface-2)}
+.ft-tabs button[aria-selected="true"]{background:var(--ink,#0B0B0C);color:#fff}
+.ft-tabs .fb-dot{min-width:20px;height:20px;font-size:11px}
+.ft-cab{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.ft-cab h2{margin:0}
+.ft-cuerpo{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+.ft-cuerpo>*{min-width:0;margin-top:0!important}
+.ft-cuerpo>.stack,.ft-cuerpo>.card:only-child,.ft-cuerpo>section:only-child{grid-column:1/-1}
+.fd-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:stretch}
+.fd-w{display:flex;flex-direction:column;gap:10px;min-width:0}
+.fd-w.span2{grid-column:span 2;grid-row:span 2}
+.fd-wt{display:flex;align-items:center;gap:8px}
+.fd-wt>b{flex:1;display:flex;align-items:center;gap:8px;font-size:15px}
+.fd-scroll{max-height:420px;overflow:auto;margin:0 -4px;padding:0 4px}
+.fd-kpis{grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}
+.fd-comp{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.fd-comp div{background:var(--surface-2);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.fd-comp span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.fd-comp b{font-family:var(--display);font-size:20px}
+.fd-comp small{font-size:11px}
+.fd-comp small.ok{color:var(--ok)}.fd-comp small.warn{color:var(--warn)}.fd-comp small.muted{color:var(--muted)}
+@media (min-width:900px){
+  .fh{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);column-gap:24px;row-gap:10px;align-items:center;background:var(--surface,#fff);border:1px solid var(--line);border-radius:20px;padding:16px 20px}
+  .fh>button[data-act="cerrarFicha"],.fh>.fh-mas,.fh>.aprox{grid-column:1/-1}
+  .fh>button[data-act="cerrarFicha"]{justify-self:start;width:auto}
+  .ft-cuerpo svg{max-height:320px}
+  .ft-tabs button{padding:8px 12px;font-size:13.5px}
+  .fh .fh-kpis{grid-template-columns:repeat(4,1fr)}
+  .fh .fh-acc{grid-column:1/-1}
+}
+@media (max-width:1300px){.fd-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.fd-w.span2{grid-column:1/-1;grid-row:auto}}
+@media (max-width:1200px){.ft-cuerpo{grid-template-columns:1fr}.fh .fh-kpis{grid-template-columns:repeat(2,1fr)}}
 .fb-lista{display:flex;flex-direction:column;gap:10px}
 .fb{background:var(--surface,#fff);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.03)}
 .fb>summary{list-style:none;display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer}
@@ -650,6 +686,10 @@ nav.tabs a.tab-wa{flex:1;padding:10px 2px 12px;display:flex;flex-direction:colum
 .card.pend .pend-linea:not(.urge) b{color:inherit}
 .card.pend .pend-linea:not(.urge) .pend-btn{background:var(--ink,#111);border-color:var(--ink,#111)}
 .nu-acuerdo summary{cursor:pointer;list-style:none}
+.cq-esc{display:grid;grid-template-columns:repeat(10,1fr);gap:4px}
+.cq-esc button{padding:9px 0;border-radius:10px;border:1px solid var(--line);background:var(--surface,#fff);font-weight:700;color:inherit}
+.cq-esc button[aria-pressed="true"]{background:var(--blue);color:#fff;border-color:var(--blue)}
+.chips button.cq-no,.chips button.cq-no[aria-pressed="true"]{background:#FDECEC;border-color:var(--bad);color:var(--bad);text-decoration:line-through}
 .nu-acuerdo ul{padding-left:18px}
 .ms-rojo{color:#C62828;font-size:12.5px;font-weight:600;margin:4px 0 0}.ms-com{display:flex;flex-direction:column;gap:4px;padding:6px 0;border-top:1px solid var(--line)}.ms-com input[type=text]{flex:1;min-width:0}.ms-k{min-width:62px}.ms-com.libre{background:var(--gold-soft);border-radius:10px;padding:6px}.ms-res{padding:10px 12px}.ms-res.mal{border-color:#C62828}
 .calc-al small.calc-cena{display:block;font-size:12.5px;font-weight:700;color:#C62828;margin-top:3px}.calc-al .calc-alt{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:12px;color:#C62828;margin:3px 0}.calc-al .calc-alt .pill{cursor:pointer;border-color:#C62828;color:#C62828;background:#FDECEA}
@@ -731,6 +771,7 @@ nav.tabs a.tab-wa{flex:1;padding:10px 2px 12px;display:flex;flex-direction:colum
 <script src="entrenaidor.js"></script>
 <script src="oposicion.js"></script>
 <script src="menusemana.js"></script>
+<script src="cuestionario.js"></script>
 <script src="app.js"></script>
 <script>
 /* Si la app se queda en «Cargando…», a los 12 s ofrece limpiar la caché y reintentar (y enseña el error si lo hay) */

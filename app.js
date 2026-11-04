@@ -375,6 +375,7 @@ async function cargarAlumno(uid) {
     S.d.revisiones = r.data || []; S.d.revisionesErr = !!r.error; S.d.temperamentos = tq.data || []; S.d.tempErr = !!tq.error; }
   await Habitos.cargar(uid, S.d);
   await Nutricion.cargar(uid, S.d);
+  await Cuest.cargar(uid, S.d);
   await Casos.cargar(uid, S.d);
   await Acomp.cargarAlumno(uid, S.d);
   { const r = await sb.from('programas').select('contexto_nombre,alternativo,' + SEL_PROGRAMA).eq('alumno_id', uid).eq('alternativo', true).order('id');
@@ -860,6 +861,10 @@ function vPendientesHoy(s) {
   const lc = checkinPend(); if (lc && new Date().getDay() !== 0) lineas.push(['✅', 'Check-in semanal sin enviar', `Semana del ${fCorta(lc)} al ${fCorta(sumaDias(lc, 6))} · es lo que Jesús usa para preparar tu revisión y ajustar tu plan. Son 2 minutos`, `data-act="abrirCheckin" data-l="${lc}"`, 'Rellenar', [3, 4, 5, 6].includes(new Date().getDay())]);
   const mp = MenuSemana.pendiente(); if (mp) lineas.push(mp);
   const fm = Casos.pendienteMes(); if (fm) lineas.push(fm);
+  if (s.modulo_nutricion && (fase === 'recogida' || fase === 'preparacion')) {
+    if (Cuest.estado('estilo') !== 'enviado') lineas.push(['📝', Cuest.estado('estilo') === 'borrador' ? 'Termina tu cuestionario de estilo de vida' : 'Cuestionario de estilo de vida', 'Unos 10 minutos sobre tu trabajo, descanso, actividad, alimentación y estrés: con esto Jesús adapta el plan a tu vida real', 'data-act="cqEstilo"', Cuest.estado('estilo') === 'borrador' ? 'Seguir' : 'Rellenar']);
+    if (Cuest.estado('preferencias') !== 'enviado') lineas.push(['🥦', 'Elige los alimentos que no te gustan', 'Tu plan se hará solo con alimentos que te gustan. Es un momento: tocas los que no quieres', 'data-act="cqPref"', 'Elegir']);
+  }
   if (s.modulo_nutricion && fase === 'recogida') lineas.push(['🍽', 'Registro de 7 días de comidas', 'Con una foto o una frase de lo que comes, sin cambiar nada: sirve para preparar tu plan a tu medida', 'data-act="tab" data-t="nutri"', 'Apuntar']);
   const tarjetas = [Acomp.tarjetaDevolucionHoy(), Nutricion.tarjetaTemporal(), Casos.lineaHoy(), Casos.tarjetaHoy(true), Bienvenida.tarjeta()].join('');
   if (!lineas.length && !tarjetas.trim()) return '';
@@ -3164,7 +3169,7 @@ function formApartado(sec, clave) {
   const fijo = APARTADOS[sec].some(([k]) => k === x.clave), ali = sec === 'alimentacion', esCtx = x.clave === 'contextos';
   /* Coherencia: lo que la revisión del plan señala de este apartado; si sus imágenes son de una versión anterior, hay que confirmarlas */
   const vCtx = ali ? (f.plan || []).find(z => z.clave === 'contextos')?.datos?.version : null, dep = ali && ['contexto', 'equivalencias', 'menus', 'platos'].includes(x.clave);
-  const coh = ali && !nuevo ? Nutricion.coherencia(f.plan || [], f.srv).filter(o => o.k === x.clave && o.niv !== 'info') : [], pideConf = dep && coh.some(o => o.niv === 'error');
+  const coh = ali && !nuevo ? Nutricion.coherencia(f.plan || [], f.srv, f.cuest).filter(o => o.k === x.clave && o.niv !== 'info') : [], pideConf = dep && coh.some(o => o.niv === 'error');
   const filaCtx = (c = {}) => `<div class="ctx-fila"><input type="text" data-c="n" value="${esc(c.n || '')}" placeholder="Tipo de día (ej. Entrenas y trabajas)"><input type="text" data-c="d" value="${esc(c.d || '')}" placeholder="Cuándo (ej. Lunes, miércoles y viernes)"><div class="ctx-num"><label>kcal<input type="number" inputmode="numeric" data-c="kcal" value="${esc(c.kcal ?? '')}"></label><label>Prot. g<input type="number" inputmode="numeric" data-c="p" value="${esc(c.p ?? '')}"></label><label>Hidr. g<input type="number" inputmode="numeric" data-c="c" value="${esc(c.c ?? '')}"></label><label>Grasa g<input type="number" inputmode="numeric" data-c="g" value="${esc(c.g ?? '')}"></label><label>Ingestas<input type="number" inputmode="numeric" min="1" max="8" data-c="ing" value="${esc(c.ing ?? '')}" placeholder="${comidasDia(f.srv)}"></label></div><details class="ctx-rep" ${(c.r || []).length ? 'open' : ''}><summary class="small"><b>Reparto por comida</b> · kcal, proteína, hidratos y grasa de cada comida${(c.r || []).length ? '' : ' <span class="muted">(sin definir)</span>'}</summary>
     <div class="ctx-rcab small muted" style="margin-top:6px" aria-hidden="true"><span>Comida</span><span>kcal</span><span>Prot. g</span><span>Hidr. g</span><span>Grasa g</span><span></span></div><div class="ctx-rf stack" style="gap:6px">${((c.r || []).length ? c.r : []).map(filaRep).join('')}</div>
     <button class="linkbtn small" type="button" data-act2="ctxRepMas">＋ Comida</button>${(c.r || []).length ? '' : ' <button class="linkbtn small" type="button" data-act2="ctxRepAuto">Rellenar con las comidas del contexto</button>'}
@@ -3393,24 +3398,53 @@ function vFicha() {
     <div class="fh-top">${avatarDe(a, 72)}<div class="grow" style="min-width:0"><span class="eyebrow">Ficha del alumno</span><h1 style="margin:2px 0 4px">${esc(a.nombre)}</h1>
       <div class="row" style="gap:6px;flex-wrap:wrap"><span class="pill ${e.nivel}">${nivTxt}</span>${srv?.producto ? `<span class="pill blue">${esc(srv.producto)}</span>` : ''}${P && !P.antes && !P.fuera ? `<span class="pill">Semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}</span>` : ''}${a.acceso_pausado ? '<span class="pill bad">Acceso pausado</span>' : ''}</div></div></div>
     <div class="fh-kpis"><div><b class="num">${dpw ? `${cur.entrenos}/${dpw}` : cur.entrenos}</b><small>entrenos semana</small></div><div><b class="num">${pasos7 != null ? fmtNum(pasos7, 0) : '—'}</b><small>pasos · 7 días</small></div><div><b class="num">${!srv?.modulo_nutricion ? '—' : !midoCoach(a.id) ? '—' : ing7.pct != null ? ing7.pct + ' %' : ing7.dias ? ing7.dias + '/7 d' : '—'}</b><small>${!srv?.modulo_nutricion ? 'sin nutrición' : !midoCoach(a.id) ? esc((Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || '').toLowerCase()) : ing7.pct != null ? 'alimentación · 7 días' : 'días registrados'}</small></div><div><b class="num">${ultM?.peso != null ? fmtNum(ultM.peso, 1) : '—'}</b><small>kg · ${ultM ? esc(fCorta(ultM.fecha)) : 'sin medir'}</small></div></div>
-    <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn sm gold" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como ${esc(nom)}</button><button class="btn sm" data-act="abrirReporte" data-id="${a.id}">📋 Reporting</button></div>
+    <div class="row fh-acc" style="flex-wrap:wrap;gap:8px"><button class="btn sm gold" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como ${esc(nom)}</button><button class="btn sm" data-act="abrirReporte" data-id="${a.id}">📋 Reporting</button></div>
     <details class="fh-mas"><summary class="small">Más acciones · ${esc(a.email || '')} · alta ${esc(fCorta(a.fecha_alta))}</summary><div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}<button class="btn sm ghost" data-act="pausarAcceso" data-id="${a.id}" data-on="${a.acceso_pausado ? 0 : 1}">${a.acceso_pausado ? '🔓 Devolver el acceso' : '🔒 Quitar el acceso (conserva el perfil)'}</button></div></details>
     ${a.activo === false ? '<div class="aprox small">Antiguo alumno: no le llegan avisos de seguimiento al coach. Sus datos siguen guardados y puede seguir usando la app. Reactívalo si vuelve a empezar un proceso.</div>' : ''}</section>
-  <section class="section fb-lista span">
-    ${ban('resumen', 1, '🔔', 'Resumen y avisos', resumen1, fb1, true)}
-    ${srv?.oposicion ? ban('oposicion', '👮', '🎯', 'Oposición · pruebas físicas', Oposicion.resumen(true), Oposicion.tarjeta(true)) : ''}
-    ${ban('checkins', 2, '✅', 'Check-ins y cumplimiento', `${dpw ? `${cur.entrenos}/${dpw} entrenos` : ''}${chks[0] ? ` · último check-in ${esc(fCorta(chks[0].semana_inicio))}` : ''}`, fb2, true)}
-    ${ban('plan', 3, '📑', 'Plan contratado y bloques', `${esc(srv?.producto || 'Sin plan')}${P && !P.antes && !P.fuera ? ` · semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''}`, fb3)}
-    ${modE ? ban('entreno', 4, '🏋️', 'Entrenamiento · bloque actual', `${esc(f.prog?.nombre || 'Sin programa')}${dpw ? ` · ${cur.entrenos}/${dpw} esta semana` : ''}`, fb4) : ''}
-    ${srv?.modulo_nutricion ? ban('nutri', 5, '🥗', 'Nutrición', !midoCoach(a.id) ? esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || 'Plan de alimentación') : ing7.pct != null ? `${ing7.pct} % de ingestas bien · ${ing7.dias} días registrados` : `${ing7.dias} de 7 días registrados`, fb5) : ''}
-    ${srv?.modulo_habitos || conPasos(srv) || Temperamento.bloqueFicha(f, a) ? ban('habitos', 6, '🧭', 'Hábitos y temperamento', pasos7 != null ? `${fmtNum(pasos7, 0)} pasos de media · objetivo ${fmtNum(obj, 0)}` : '', fb6) : ''}
-    ${ban('progreso', 7, '📈', 'Progreso y composición corporal', ultM ? `Última medición ${esc(fCorta(ultM.fecha))}${ultM.peso != null ? ' · ' + fmtNum(ultM.peso, 1) + ' kg' : ''}${ultM.grasa_pct != null ? ' · ' + fmtNum(ultM.grasa_pct, 1) + ' % grasa' : ''}` : 'Sin mediciones', fb7)}
-    ${ban('calendario', 8, '📅', 'Calendario de sesiones y revisiones', e.control ? `Toca revisión mensual ${e.control.n}` : '', fb8, true)}
-    ${ban('pagos', 9, '💳', 'Plan de pagos', pagV.length ? `<span style="color:var(--bad)">${pagV.length} vencida${pagV.length === 1 ? '' : 's'}</span>` : pagP.length ? `${pagP.length} pendiente${pagP.length === 1 ? '' : 's'}` : pagos.length ? 'Todo pagado' : 'Sin cuotas', fb9)}
-    ${ban('tests', 10, '🧪', 'Tests y valoraciones', '', vTestsFicha(f))}
-    ${ban('medidas', 11, '📸', 'Medidas, fotos y casos de éxito', '', fb11)}
+  ${(() => {
+    /* Las mismas secciones se ven como acordeón en el móvil y como pestañas con un panel de inicio en el ordenador */
+    const SECS = [
+      ['resumen', 1, '🔔', 'Resumen y avisos', resumen1, fb1, 'Avisos y notas'],
+      srv?.oposicion && ['oposicion', '👮', '🎯', 'Oposición · pruebas físicas', Oposicion.resumen(true), Oposicion.tarjeta(true), 'Oposición'],
+      ['checkins', 2, '✅', 'Check-ins y cumplimiento', `${dpw ? `${cur.entrenos}/${dpw} entrenos` : ''}${chks[0] ? ` · último check-in ${esc(fCorta(chks[0].semana_inicio))}` : ''}`, fb2, 'Check-ins'],
+      ['plan', 3, '📑', 'Plan contratado y bloques', `${esc(srv?.producto || 'Sin plan')}${P && !P.antes && !P.fuera ? ` · semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''}`, fb3, 'Plan'],
+      modE && ['entreno', 4, '🏋️', 'Entrenamiento · bloque actual', `${esc(f.prog?.nombre || 'Sin programa')}${dpw ? ` · ${cur.entrenos}/${dpw} esta semana` : ''}`, fb4, 'Entreno'],
+      srv?.modulo_nutricion && ['nutri', 5, '🥗', 'Nutrición', !midoCoach(a.id) ? esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || 'Plan de alimentación') : ing7.pct != null ? `${ing7.pct} % de ingestas bien · ${ing7.dias} días registrados` : `${ing7.dias} de 7 días registrados`, fb5, 'Nutrición'],
+      (srv?.modulo_habitos || conPasos(srv) || Temperamento.bloqueFicha(f, a)) && ['habitos', 6, '🧭', 'Hábitos y temperamento', pasos7 != null ? `${fmtNum(pasos7, 0)} pasos de media · objetivo ${fmtNum(obj, 0)}` : '', fb6, 'Hábitos'],
+      ['progreso', 7, '📈', 'Progreso y composición corporal', ultM ? `Última medición ${esc(fCorta(ultM.fecha))}${ultM.peso != null ? ' · ' + fmtNum(ultM.peso, 1) + ' kg' : ''}${ultM.grasa_pct != null ? ' · ' + fmtNum(ultM.grasa_pct, 1) + ' % grasa' : ''}` : 'Sin mediciones', fb7, 'Progreso'],
+      ['calendario', 8, '📅', 'Calendario de sesiones y revisiones', e.control ? `Toca revisión mensual ${e.control.n}` : '', fb8, 'Calendario'],
+      ['pagos', 9, '💳', 'Plan de pagos', pagV.length ? `<span style="color:var(--bad)">${pagV.length} vencida${pagV.length === 1 ? '' : 's'}</span>` : pagP.length ? `${pagP.length} pendiente${pagP.length === 1 ? '' : 's'}` : pagos.length ? 'Todo pagado' : 'Sin cuotas', fb9, 'Pagos'],
+      ['tests', 10, '🧪', 'Tests y valoraciones', '', vTestsFicha(f), 'Tests'],
+      ['medidas', 11, '📸', 'Medidas, fotos y casos de éxito', '', fb11, 'Fotos']
+    ].filter(Boolean);
+    if (!fichaEscritorio()) return `<section class="section fb-lista span">${SECS.map(x => ban(...x.slice(0, 6))).join('')}</section>`;
+    const tabs = (S.fTab ||= {}), act = SECS.some(x => x[0] === tabs[f.id]) ? tabs[f.id] : 'inicio';
+    const nav = `<section class="span ft-wrap"><nav class="ft-tabs" role="tablist" aria-label="Secciones de la ficha"><button role="tab" data-act="fTab" data-t="inicio" aria-selected="${act === 'inicio'}">🏠 Inicio${dot(1)}</button>${SECS.map(([id, n, ico, , , , corto]) => `<button role="tab" data-act="fTab" data-t="${id}" aria-selected="${act === id}">${ico} ${esc(corto)}${typeof n === 'number' && n > 1 ? dot(n) : ''}</button>`).join('')}</nav></section>`;
+    if (act !== 'inicio') { const x = SECS.find(z => z[0] === act); return `${nav}<section class="section span ft-panel"><div class="ft-cab"><h2>${x[2]} ${esc(x[3])}</h2>${x[4] ? `<span class="small muted">${x[4]}</span>` : ''}</div><div class="ft-cuerpo">${x[5]}</div></section>`; }
+    /* Inicio: lo importante de un vistazo, cada tarjeta lleva a su pestaña */
+    const ir = (t, txt = 'Ver todo') => `<button class="linkbtn small" data-act="fTab" data-t="${t}">${txt} ›</button>`;
+    const w = (cls, tit, cuerpo, pie = '') => `<div class="card fd-w ${cls}"><div class="fd-wt"><b>${tit}</b>${pie}</div>${cuerpo}</div>`;
+    const medO = f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), m0 = medO[0], m1 = medO[medO.length - 1];
+    const dlt = (k, u) => m0 && m1 && m0 !== m1 && m0[k] != null && m1[k] != null ? (() => { const d = Math.round((m1[k] - m0[k]) * 10) / 10; return `<small class="${d < 0 && k !== 'magra' ? 'ok' : d > 0 && k === 'grasa_pct' ? 'warn' : 'muted'}">${d > 0 ? '+' : ''}${fmtNum(d)}${u} desde ${esc(fCorta(m0.fecha))}</small>`; })() : '';
+    const presP = (f.pres || []).filter(x => x.fecha >= hoy && x.estado !== 'cancelada').sort((x, y) => x.fecha.localeCompare(y.fecha))[0];
+    const k0 = chks[0], dev = (f.devoluciones || [])[0];
+    const apl = k0?.aplicacion_plan ? ({ aplicado: 'Ha podido aplicar lo acordado', parte: 'Lo ha aplicado en parte', ayuda: 'Pide ayuda para adaptarlo' })[k0.aplicacion_plan] : '';
+    return `${nav}<section class="section span fd-grid">
+      ${w('span2', `🔔 Avisos ${pend.length ? `<span class="pill ${e.nivel}">${pend.length}</span>` : '<span class="pill ok">Al día</span>'}`, pend.length ? `<div class="fd-scroll">${vListaAlertas(a.id, e, false)}</div>` : '<p class="small muted" style="margin:0">Sin avisos pendientes.</p>', ir('resumen', 'Avisos, tareas y notas'))}
+      ${w('', '📊 Esta semana', `<div class="kpis fd-kpis">${(srv?.modulo_entreno ?? true) ? `<div class="kpi rep ${nivelE}"><div class="l">Entrenos</div><b class="num">${dpw ? `${cur.entrenos}/${dpw}` : cur.entrenos}</b><div class="small muted">semana pasada ${pre.entrenos}${dpwPre ? '/' + dpwPre : ''}</div></div>` : ''}${srv?.modulo_nutricion ? `<div class="kpi rep ${evN?.[0] || ''}"><div class="l">Alimentación</div><b class="num">${!midoCoach(a.id) ? '—' : ing7.pct != null ? ing7.pct + ' %' : '—'}</b><div class="small muted">${!midoCoach(a.id) ? 'aún no se mide' : ing7.dias ? ing7.dias + ' de 7 días' : 'sin registros'}</div></div>` : ''}${conPasos(srv) ? `<div class="kpi rep ${pasos7 == null ? '' : pasos7 >= obj ? 'ok' : pasos7 >= obj * .7 ? 'warn' : 'bad'}"><div class="l">Pasos</div><b class="num">${pasos7 != null ? fmtNum(pasos7, 0) : '—'}</b><div class="small muted">objetivo ${fmtNum(obj, 0)}</div></div>` : ''}</div>`, ir('checkins'))}
+      ${w('', '📑 Proceso', `<div class="stack" style="gap:6px"><b>${esc(srv?.producto || 'Sin plan asignado')}</b>${P ? `<div class="small muted">${P.antes ? 'Empieza el ' + esc(fF(srv.inicio)) : P.fuera ? 'Proceso completado' : `${esc(nomCiclo(P.cc))} · semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}`}</div><div class="track gordo"><i style="width:${P.pctTotal}%"></i></div><div class="row small muted"><span class="grow">Inicio ${esc(fF(srv.inicio))}</span>${P.sinFin ? '' : `<span>Final ${esc(fF(P.ciclos[P.ciclos.length - 1].fin))}</span>`}</div>` : '<span class="small muted">Sin fecha de inicio</span>'}</div>`, ir('plan'))}
+      ${w('', '✅ Último check-in', k0 ? `<div class="stack" style="gap:4px"><span class="small muted">Semana del ${esc(fCorta(k0.semana_inicio))}</span><div class="small">Motivación <b>${k0.motivacion ?? '—'}/10</b> · implicación <b>${k0.implicacion ?? '—'}/10</b></div>${apl ? `<div class="small">${esc(apl)}</div>` : ''}${k0.dificultades ? `<div class="small muted">«${esc(k0.dificultades.slice(0, 140))}${k0.dificultades.length > 140 ? '…' : ''}»</div>` : ''}${dev?.prioridad ? `<div class="small"><b>Prioridad:</b> ${esc(dev.prioridad)}</div>` : ''}</div>` : '<p class="small muted" style="margin:0">Aún no ha enviado ningún check-in.</p>', ir('checkins'))}
+      ${w('', '📈 Composición', m1 ? `<div class="fd-comp"><div><span>Peso</span><b>${m1.peso != null ? fmtNum(m1.peso) + ' kg' : '—'}</b>${dlt('peso', ' kg')}</div><div><span>Grasa</span><b>${m1.grasa_pct != null ? fmtNum(m1.grasa_pct) + ' %' : '—'}</b>${dlt('grasa_pct', ' %')}</div><div><span>Cintura</span><b>${m1.cintura != null ? fmtNum(m1.cintura) + ' cm' : '—'}</b>${dlt('cintura', ' cm')}</div></div><span class="small muted">Última medición: ${esc(fCorta(m1.fecha))}</span>` : '<p class="small muted" style="margin:0">Sin mediciones todavía.</p>', ir('progreso'))}
+      ${w('', '📅 Próximo', `<div class="stack" style="gap:6px">${e.control ? `<div class="small"><b>Revisión mensual ${e.control.n}</b> · ${esc(fCorta(e.control.fecha))}</div>` : ''}${presP ? `<div class="small">Presencial: <b>${esc(fCorta(presP.fecha))}${presP.hora ? ' · ' + esc(hhmm(presP.hora)) : ''}</b></div>` : ''}${pagV.length ? `<div class="small" style="color:var(--bad)"><b>${pagV.length} cuota${pagV.length > 1 ? 's' : ''} vencida${pagV.length > 1 ? 's' : ''}</b></div>` : pagP.length ? `<div class="small">Próxima cuota: <b>${esc(fCorta(pagP.slice().sort((x, y) => x.vence.localeCompare(y.vence))[0].vence))}</b></div>` : ''}${!e.control && !presP && !pagP.length ? '<span class="small muted">Nada programado.</span>' : ''}</div>`, ir('calendario'))}
+      ${srv?.modulo_nutricion ? w('', '🥗 Nutrición', `<div class="stack" style="gap:6px"><span class="pill ${Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[1] || ''}" style="align-self:flex-start">${esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || 'Plan de alimentación')}</span><div class="small muted">${midoCoach(a.id) ? (ing7.pct != null ? `${ing7.pct} % de ingestas bien en ${ing7.dias} días` : `${ing7.dias} de 7 días registrados`) : 'Registro de observación'}</div><button class="btn sm" data-act="fichaSub" data-s="alimentacion" style="align-self:flex-start">Abrir su nutrición ›</button></div>`) : ''}
+      ${w('', '📝 Notas privadas', `${f.notas.slice(0, 3).map(n => `<div class="small" style="padding:4px 0;border-bottom:1px solid var(--line)"><span class="muted num">${esc(fCorta(n.fecha))}</span> · ${esc(n.texto.slice(0, 120))}</div>`).join('') || '<p class="small muted" style="margin:0">Solo tú ves estas notas.</p>'}`, '<button class="linkbtn small" data-act="nuevaNota">＋ Nota</button>')}
+    </section>`;
+  })()}
   </section>`;
 }
+/* En el ordenador la ficha se ve con pestañas y un panel de inicio; en el móvil, con el acordeón de siempre */
+const fichaEscritorio = () => typeof matchMedia === 'function' && matchMedia('(min-width: 900px)').matches;
+try { matchMedia('(min-width: 900px)').addEventListener('change', () => { if (S.ficha && !S.fichaSub && S.modo === 'coach') render(); }); } catch (_) { /* navegador antiguo */ }
 /* Sub-pantallas de la ficha: entrenamiento, alimentación, hábitos y composición */
 async function abrirSub(sub) {
   const f = S.ficha; S.fichaSub = sub; render(); window.scrollTo(0, 0);
@@ -5863,7 +5897,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v223';
+const APP_VER = 'v224';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -6040,6 +6074,7 @@ document.addEventListener('click', async e => {
     case 'editarPrueba': formPrueba(+b.dataset.id); break;
     case 'omitir': formOmitir(+b.dataset.es, b.dataset.n); break;
     case 'deshacerOmitir': await deshacerOmitir(+b.dataset.es); break;
+    case 'fTab': (S.fTab ||= {})[S.ficha.id] = b.dataset.t; render(); document.querySelector('.ft-tabs')?.scrollIntoView({ block: 'nearest' }); break;
     case 'abrirReporte': await abrirReporte(b.dataset.id || null); break;
     case 'reporteSemana': await abrirReporte(S.reporte.alumno, sumaDias(S.reporte.lunes, +b.dataset.d)); break;
     case 'cerrarReporte': { const al = S.reporte?.alumno; S.reporte = null; if (al && S.ficha?.id === al) render(); else render(); window.scrollTo(0, 0); break; }
