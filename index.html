@@ -662,6 +662,33 @@ nav.tabs a.tab-wa{flex:1;padding:10px 2px 12px;display:flex;flex-direction:colum
 .fx-mini b{font-size:22px}
 .fx-mini small{font-size:11px;color:var(--muted)}
 @media (max-width:1150px){.fx{grid-template-columns:240px minmax(0,1fr);gap:16px}.fx-fila{grid-template-columns:1fr}}
+.fx-acc-mov{display:none}
+/* Móvil: cabecera compacta, pestañas deslizables y tarjetas una debajo de otra */
+@media (max-width:899px){
+  .fx{grid-template-columns:1fr;gap:12px}
+  .fx-perfil{position:static;display:grid;grid-template-columns:auto 1fr;column-gap:12px;row-gap:6px;align-items:center;text-align:left;padding:14px}
+  .fx-volver{grid-column:1/-1;justify-self:start}
+  .fx-av{grid-row:span 2;margin:0}
+  .fx-av>*{width:56px!important;height:56px!important;font-size:22px}
+  .fx-nom{font-size:19px;align-self:end}
+  .fx-est{align-self:start}
+  .fx-acc{display:none}
+  .fx-acc.fx-acc-mov{display:flex;flex-direction:row;grid-column:1/-1;gap:6px;margin-top:4px}
+  .fx-acc-mov .btn{flex:1;padding-left:6px;padding-right:6px;font-size:12.5px;white-space:nowrap}
+  .fx-datos{display:none}
+  .fx-mas{grid-column:1/-1}
+  .fx-tabs{margin:0 -16px;padding:0 12px}
+  .fx-tabs button{padding:11px 10px 9px;font-size:13.5px}
+  .fx-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .fx-kpi{padding:12px 14px}
+  .fx-kpi b{font-size:23px}
+  .fx-fila{grid-template-columns:1fr;gap:10px}
+  .fx-c{padding:14px 16px}
+  .fx-ring{width:92px;height:92px}
+  .fx-ring b{font-size:24px}
+  .fx-cuerpo{gap:12px}
+  .ft-cuerpo{grid-template-columns:1fr}
+}
 
 .ft-wrap{position:sticky;top:0;z-index:5;margin:0!important}
 .ft-tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:thin;background:var(--bg,#F5F7FA);padding:8px 0;margin-top:4px;border-bottom:1px solid var(--line)}

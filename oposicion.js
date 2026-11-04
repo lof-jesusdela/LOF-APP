@@ -90,6 +90,15 @@ const Oposicion = (() => {
     </div></section>`;
   }
 
+  /* Datos para el Inicio de la ficha del coach: días al examen, nota de cada prueba, media y la prueba más floja */
+  function datos(coach) {
+    const c = ctx(coach), s = c.srv, sx = c.perfil.sexo === 'hombre' ? 'hombre' : 'mujer', h = historial(c.val), obj = s.oposicion_obj || {};
+    const pr = PRUEBAS(sx).map(([k, t, ic]) => { const u = ultima(h, k), n = u ? nota(k, u.x, sx) : null, o = leer(k, obj[k]);
+      return { k, t, ic, marca: u ? fmt(k, u.x, sx) : null, fecha: u?.fecha || null, nota: n, color: colorNota(n), siguiente: n != null && n < 10 ? `Para un ${n + 1}: ${paraNota(k, n + 1, sx)}` : n === 10 ? 'Nota máxima' : `Para aprobar: ${paraNota(k, 5, sx)}`, objetivo: o != null ? fmt(k, o, sx) : null }; });
+    const completas = pr.every(x => x.nota != null), media = completas ? pr.reduce((t, x) => t + x.nota, 0) / pr.length : null, cero = pr.some(x => x.nota === 0);
+    const peor = pr.filter(x => x.nota != null).sort((a, b) => a.nota - b.nota)[0] || null;
+    return { oposicion: OPOS[s.oposicion] || s.oposicion || 'Oposición', fecha: s.oposicion_fecha || null, dias: s.oposicion_fecha ? Math.ceil((fecha(s.oposicion_fecha) - fecha(hoyISO())) / 864e5) : null, pruebas: pr, media, apto: completas ? !cero && media >= 5 : null, cero, peor, simulacros: h.length, ultimo: h[h.length - 1]?.fecha || null };
+  }
   /* Línea de resumen para el banner de la ficha */
   function resumen(coach) {
     const c = ctx(coach), s = c.srv, sx = c.perfil.sexo === 'hombre' ? 'hombre' : 'mujer', h = historial(c.val);
@@ -161,5 +170,5 @@ const Oposicion = (() => {
     else if (b.dataset.act === 'opBaremo') verBaremo(coach);
   });
 
-  return { tarjeta, resumen, nota, leer, historial, BAREMO, OPOS, claveDe };
+  return { tarjeta, resumen, datos, nota, leer, historial, BAREMO, OPOS, claveDe };
 })();
