@@ -4161,8 +4161,9 @@ function formServicio() {
       <span class="small muted" id="sv-tar-txt">Al elegirla se rellena el programa y se prepara su plan de pagos.</span>
       <div class="stack" id="sv-pago" style="gap:8px" hidden>
         <div class="chips" id="sv-forma"></div>
-        <label class="row small" id="sv-b24-w" style="gap:8px" hidden><input type="checkbox" id="sv-b24" style="width:20px;height:20px;flex:none"> <span>Decidió en 24 h: <b>+2 entrenamientos</b> de regalo</span></label>
-        <label class="row small" id="sv-xali-w" style="gap:8px" hidden><input type="checkbox" id="sv-xali" style="width:20px;height:20px;flex:none"> <span>Con alimentación y suplementación (<b>+300 €</b>)</span></label>
+        <label class="row small" id="sv-b24-w" style="gap:8px" hidden><input type="checkbox" id="sv-b24" style="width:20px;height:20px;flex:none"> <span id="sv-b24-t">Decidió en 24 h: <b>+2 entrenamientos</b> de regalo</span></label>
+        <label class="row small" id="sv-xali-w" style="gap:8px" hidden><input type="checkbox" id="sv-xali" style="width:20px;height:20px;flex:none"> <span id="sv-xali-t">Con alimentación y suplementación</span></label>
+        <span class="small muted" id="sv-bon-t"></span>
         <div style="display:grid;grid-template-columns:1fr 70px 1fr;gap:8px;align-items:end"><label class="f">Descuento adicional<input type="text" inputmode="decimal" id="sv-desc" placeholder="0"></label><label class="f"><select id="sv-desct"><option value="%">%</option><option value="€">€</option></select></label><label class="f">Primer pago<input type="date" id="sv-p0"></label></div>
         <div id="sv-cuotas" class="stack small" style="gap:2px"></div>
         <label class="row small" style="gap:8px"><input type="checkbox" id="sv-genp" style="width:20px;height:20px;flex:none"> <span>Crear su plan de pagos al guardar${(S.c.pagos || []).filter(x => x.alumno_id === S.ficha.id && !x.pagado_at).length ? ` <span class="muted">(ya tiene ${(S.c.pagos || []).filter(x => x.alumno_id === S.ficha.id && !x.pagado_at).length} cuota${(S.c.pagos || []).filter(x => x.alumno_id === S.ficha.id && !x.pagado_at).length === 1 ? '' : 's'} pendiente${(S.c.pagos || []).filter(x => x.alumno_id === S.ficha.id && !x.pagado_at).length === 1 ? '' : 's'})</span>` : ''}</span></label>
@@ -4232,7 +4233,10 @@ function formServicio() {
     const t = tarifa(); $('#sv-pago').hidden = !t; if (!t) return;
     if (!t.fracc) pg.forma = 'unico';
     $('#sv-forma').innerHTML = `<button type="button" class="pill ${pg.forma === 'unico' ? 'blue' : ''}" data-v="unico">Pago único · ${Tarifas.eur(t.unico)}${t.unico < t.estandar ? ` <s class="muted">${Tarifas.eur(t.estandar)}</s>` : ''}</button>${t.fracc ? `<button type="button" class="pill ${pg.forma === 'fracc' ? 'blue' : ''}" data-v="fracc">Fraccionado · ${Tarifas.resumenFracc(t.fracc)}</button>` : ''}`;
-    $('#sv-b24-w').hidden = !t.bonus24; $('#sv-xali-w').hidden = !t.extraAli;
+    $('#sv-b24-w').hidden = !(t.bonus24 || t.bonus24Val); $('#sv-xali-w').hidden = !t.extraAli;
+    $('#sv-b24-t').innerHTML = t.bonus24Val ? 'Decidió en 24 h: <b>valoración inicial incluida</b>' : `Decidió en 24 h: <b>+${t.bonus24 || 0} entrenamientos</b> de regalo`;
+    if (t.extraAli) $('#sv-xali-t').innerHTML = `Con alimentación y suplementación (<b>${t.extraAliTxt ? esc(t.extraAliTxt) + ' · ' : '+'}${Tarifas.eur(t.extraAli)}</b>)`;
+    $('#sv-bon-t').textContent = [t.bonusUnico && `Pago único: +${t.bonusUnico} entrenamiento${t.bonusUnico > 1 ? 's' : ''} personal${t.bonusUnico > 1 ? 'es' : ''}.`, t.bonusTxt].filter(Boolean).join(' ');
     const cs = Tarifas.plan(t, opPago()), tot = cs.reduce((a, b) => a + b.importe, 0);
     $('#sv-cuotas').innerHTML = `<b>Total ${Tarifas.eur(tot)}</b>${cs.map(c => `<span class="muted">${esc(fCorta(c.vence))} · ${Tarifas.eur(c.importe)}</span>`).join('')}`;
   };
@@ -4241,9 +4245,13 @@ function formServicio() {
     st.mod = v.modalidad; st.ptipo = v.bono ? 'bono' : 'plan'; st.meses = v.meses || null; st.frec = v.frec || null;
     $('#sv-entreno').checked = !!v.ent; $('#sv-nutricion').checked = !!v.ali || (t.extraAli && $('#sv-xali').checked); $('#sv-nutricion').dispatchEvent(new Event('change'));
     $('#sv-presencial').checked = v.modalidad !== 'online';
-    $('#sv-pres').value = v.sesiones ? v.sesiones + (t.bonus24 && $('#sv-b24').checked ? t.bonus24 : 0) : (v.modalidad === 'online' ? '' : $('#sv-pres').value);
+    $('#sv-pres').value = v.sesiones ? v.sesiones + (t.bonus24 && $('#sv-b24').checked ? t.bonus24 : 0) + (t.bonusUnico && pg.forma === 'unico' ? t.bonusUnico : 0) : (v.modalidad === 'online' ? '' : $('#sv-pres').value);
+    if (v.oposicion && $('#sv-oposicion') && !$('#sv-oposicion').checked) { $('#sv-oposicion').checked = true; $('#sv-oposicion').dispatchEvent(new Event('change')); }
+    if (v.futbol && $('#sv-futbol') && !$('#sv-futbol').checked) { $('#sv-futbol').checked = true; $('#sv-futbol').dispatchEvent(new Event('change')); }
+    if (!v.oposicion && !s.oposicion && $('#sv-oposicion')?.checked) { $('#sv-oposicion').checked = false; $('#sv-oposicion').dispatchEvent(new Event('change')); }
+    if (!v.futbol && !s.modulo_futbol && $('#sv-futbol')?.checked) { $('#sv-futbol').checked = false; $('#sv-futbol').dispatchEvent(new Event('change')); }
     if (v.meses) { $('#sv-dur').value = Tarifas.mesesSem[v.meses] || semanasDeMeses(v.meses); $('#sv-dur').dispatchEvent(new Event('input')); }
-    $('#sv-vi').checked = !!v.vi; $('#sv-vf').checked = !!v.vf; st.valToc = true;
+    $('#sv-vi').checked = !!v.vi || (t.bonus24Val && $('#sv-b24').checked); $('#sv-vf').checked = !!v.vf; st.valToc = true;
     $('#sv-seg').checked = !!v.seg; st.segToc = true;
     const prod = $('#sv-prod'); if (!prod.value.trim() || Tarifas.T.some(x => x.nombre === prod.value.trim())) prod.value = t.nombre;
     pintaMod(); pintaPago();
@@ -4251,7 +4259,7 @@ function formServicio() {
   $('#sv-p0').value = s.inicio && s.inicio >= hoyISO() ? s.inicio : ($('#sv-ini').value || hoyISO());
   $('#sv-genp').checked = !s.id || !((S.c.pagos || []).filter(x => x.alumno_id === S.ficha.id && !x.pagado_at).length);
   $('#sv-tar').addEventListener('change', aplicaTarifa);
-  $('#sv-forma').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; pg.forma = b.dataset.v; pintaPago(); });
+  $('#sv-forma').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; pg.forma = b.dataset.v; if (tarifa()?.bonusUnico) aplicaTarifa(); else pintaPago(); });
   ['#sv-b24', '#sv-xali'].forEach(q => $(q).addEventListener('change', aplicaTarifa));
   ['#sv-desc', '#sv-desct', '#sv-p0', '#sv-prod'].forEach(q => $(q).addEventListener('input', pintaPago)); $('#sv-desct').addEventListener('change', pintaPago);
   $('#sv-ini').addEventListener('change', () => { if (!s.id) $('#sv-p0').value = $('#sv-ini').value; pintaPago(); });
@@ -6562,7 +6570,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v236';
+const APP_VER = 'v237';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
