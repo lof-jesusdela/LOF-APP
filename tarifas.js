@@ -45,6 +45,7 @@ const Tarifas = (() => {
     // Bonos de entrenamientos personales (sin seguimiento, sin caducidad)
     { id: 'bono1', grupo: 'Bono de sesiones', nombre: 'Sesión suelta', srv: { modalidad: 'presencial', bono: true, ent: true, ali: false, sesiones: 1, seg: false }, estandar: 60, unico: 60, fracc: null },
     { id: 'bono5', grupo: 'Bono de sesiones', nombre: 'Bono 5 sesiones', srv: { modalidad: 'presencial', bono: true, ent: true, ali: false, sesiones: 5, seg: false }, estandar: 275, unico: 275, fracc: null },
+    { id: 'bonoverano10', grupo: 'Bono de sesiones', nombre: 'Bono verano 10 sesiones', oferta: true, ofDesde: '2026-06-01', ofHasta: '2026-09-30', srv: { modalidad: 'presencial', bono: true, ent: true, ali: false, sesiones: 10, seg: false }, estandar: 300, unico: 300, fracc: null },
     { id: 'bono8', grupo: 'Bono de sesiones', nombre: 'Bono 8 sesiones', srv: { modalidad: 'presencial', bono: true, ent: true, ali: false, sesiones: 8, seg: false }, estandar: 400, unico: 400, fracc: [200, 200] },
     { id: 'bono12', grupo: 'Bono de sesiones', nombre: 'Bono 12 sesiones', srv: { modalidad: 'presencial', bono: true, ent: true, ali: false, sesiones: 12, seg: false }, estandar: 550, unico: 550, fracc: reparte(550, 3) },
     { id: 'bono20', grupo: 'Bono de sesiones', nombre: 'Bono 20 sesiones (con valoración inicial)', srv: { modalidad: 'presencial', bono: true, ent: true, ali: false, sesiones: 20, vi: true, seg: false }, estandar: 900, unico: 900, fracc: [300, 300, 300] },
@@ -73,7 +74,8 @@ const Tarifas = (() => {
     try { cfg = Object.assign({ cambios: {}, nuevas: [], ocultas: [] }, typeof json === 'string' ? JSON.parse(json || '{}') : (json || {})); } catch (e) { cfg = { cambios: {}, nuevas: [], ocultas: [] }; }
     for (const L of [T, AMP]) { for (let i = L.length - 1; i >= 0; i--) if (L[i].nueva) L.splice(i, 1); L.forEach(t => { const id = t.id, b = JSON.parse(JSON.stringify(t.base)); Object.keys(t).forEach(k => { if (k !== 'base') delete t[k]; }); Object.assign(t, b, cfg.cambios[id] || {}); if (cfg.cambios[id]?.srv) t.srv = { ...b.srv, ...cfg.cambios[id].srv }; t.linea = lineaDe(t); }); }
     (cfg.nuevas || []).forEach(n => { const t = { ...n, nueva: true }; t.linea = lineaDe(t); (n.amp ? AMP : T).push(t); });
-    [...T, ...AMP].forEach(t => { t.oculta = (cfg.ocultas || []).includes(t.id); });
+    const hoy = new Date().toISOString().slice(0, 10);
+    [...T, ...AMP].forEach(t => { t.caducada = !!(t.oferta && ((t.ofHasta && t.ofHasta < hoy) || (t.ofDesde && t.ofDesde > hoy))); t.oculta = (cfg.ocultas || []).includes(t.id) || t.caducada; });
   }
   const config = () => JSON.parse(JSON.stringify(cfg));
   const de = id => T.find(t => t.id === id) || AMP.find(t => t.id === id) || null;

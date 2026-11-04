@@ -26,6 +26,14 @@ const Programas = (() => {
     if (ent && ali) return 'Plan Integral online';
     return ali ? 'Alimentación online' : 'Entrenamiento online';
   }
+  /* Programa que tenía en una fecha: el historial guarda los programas anteriores (p. ej. bono → Ruta Integral) */
+  const historialDe = v => (Array.isArray(v?.historial) ? v.historial : []).filter(h => h?.desde).sort((a, b) => a.desde.localeCompare(b.desde));
+  function lineaEn(v, f) {
+    const hs = historialDe(v); let h = f && hs.find(x => x.desde <= f && (!x.hasta || f <= x.hasta));
+    if (!h && f && hs.length && v.inicio && f < v.inicio) h = [...hs].reverse().find(x => x.desde <= f) || hs[0];  /* antes de lo conocido: el programa anterior más cercano */
+    if (h) { const t = h.tarifa && Tarifas.de(h.tarifa); return t ? t.linea : h.linea || lineaServicio({ producto: h.producto }); }
+    return lineaServicio(v);
+  }
   const srvAlumno = (aid, f) => { const l = (S.c.srvTodos || S.c.servicios || []).filter(v => v.alumno_id === aid).sort((a, b) => String(b.inicio || '').localeCompare(String(a.inicio || ''))); return (f && l.find(v => !v.inicio || v.inicio <= f)) || l[l.length - 1] || null; };
   function lineaPago(p) {
     const t = p.tarifa && Tarifas.de(p.tarifa); if (t) return t.linea;
@@ -33,8 +41,10 @@ const Programas = (() => {
     const porNombre = [...Tarifas.T, ...Tarifas.AMP].find(x => c.startsWith(nrm(x.nombre))); if (porNombre) return porNombre.linea;
     if (/ampliaci|renovaci/.test(c)) return /online/.test(c) ? 'Ampliación online' : /aliment/.test(c) ? 'Renovación alimentación' : 'Ampliación Ruta Integral';
     if (/bono|sesion suelta/.test(c)) return 'Bonos de sesiones';
-    return lineaServicio(srvAlumno(p.alumno_id, p.vence));
+    const v = srvAlumno(p.alumno_id, p.pagado_at || p.vence); return lineaEn(v, p.pagado_at || p.vence);
   }
+  /* ¿Se sabe con certeza a qué programa va esta cuota? (tarifa guardada o concepto con el nombre de una tarifa) */
+  const pagoSeguro = p => !!(p.tarifa && Tarifas.de(p.tarifa)) || [...Tarifas.T, ...Tarifas.AMP].some(x => nrm(p.concepto).startsWith(nrm(x.nombre)));
 
   /* ---------- Datos ---------- */
   async function cargar(forzar) {
@@ -62,10 +72,18 @@ const Programas = (() => {
       if (p.pagado_at) { x.cob[mesDe(p.pagado_at)] += imp; x.alumnosPago.add(p.alumno_id); }
       else if (p.vence < hoy) x.venc += imp; else if (p.vence <= fin) x.pend += imp;
     }
+    const conv = [];
     for (const v of S.c.srvTodos || S.c.servicios || []) {
+      const hs = historialDe(v);
+      hs.forEach((h, i) => {
+        const lh = lineaEn(v, h.desde), xh = get(lh);
+        if (h.desde >= ini && h.desde <= fin && i === 0 && (!v.inicio || h.desde < v.inicio)) xh.altas[mesDe(h.desde)]++;
+        const sig = hs[i + 1]?.desde || v.inicio, ls = hs[i + 1] ? lineaEn(v, hs[i + 1].desde) : lineaServicio(v);
+        if (sig && sig >= ini && sig <= fin && ls !== lh) conv.push({ de: lh, a: ls, fecha: sig, aid: v.alumno_id });
+      });
       const x = get(lineaServicio(v));
       if (v.tarifa) x.tarifas.add(v.tarifa);
-      if (v.inicio && v.inicio >= ini && v.inicio <= fin) { x.altas[mesDe(v.inicio)]++; if (v.forma_pago === 'unico') x.unico++; else if (v.forma_pago === 'fracc') x.fracc++; }
+      if (v.inicio && v.inicio >= ini && v.inicio <= fin && !hs.length) { x.altas[mesDe(v.inicio)]++; if (v.forma_pago === 'unico') x.unico++; else if (v.forma_pago === 'fracc') x.fracc++; }
       if (v.inicio && (!x.ultAlta || v.inicio > x.ultAlta)) x.ultAlta = v.inicio;
       if (v.inicio && v.inicio >= sumaDias(hoy, -365)) x.altas12 = (x.altas12 || 0) + 1;
       if (activo(v, hoy)) x.activos.push(v);
@@ -92,7 +110,8 @@ const Programas = (() => {
       if (x.impago >= 10 && x.venc > 0) x.flags.push(['bad', `Impagos ${x.impago} %`]);
       if (x.renov != null && x.conAmp + x.terminados >= 3 && x.renov < 30 && !/bono|ampliaci|renovaci/i.test(x.n)) x.flags.push(['warn', `Renuevan poco (${x.renov} %)`]);
     });
-    return { anio, hoy, lineas, tot, sinTarifa: (S.c.servicios || []).filter(v => v.activo && !v.tarifa) };
+    const sinPrograma = (S.c.pagos || []).filter(p => !pagoSeguro(p) && (p.pagado_at || p.vence) >= `${anio - 1}-01-01`);
+    return { anio, hoy, lineas, tot, conv, sinPrograma, sinTarifa: (S.c.servicios || []).filter(v => v.activo && !v.tarifa) };
   }
 
   /* ---------- Vista ---------- */
@@ -114,7 +133,10 @@ const Programas = (() => {
     return `<section class="stack"><div class="row" style="gap:8px;flex-wrap:wrap"><h2 class="grow" style="margin:0">Programas</h2>${[anio - 1, anio, anio + 1].filter(y => y <= +hoyISO().slice(0, 4)).map(y => `<button class="pill ${y === anio ? 'blue' : ''}" data-act="pgAnio" data-y="${y}">${y}</button>`).join('')}</div></section>
     <section class="section"><div class="kpis">${kpi(e0(t.cob), `cobrado en ${anio}`, varAnt != null ? `${varAnt >= 0 ? '▲' : '▼'} ${Math.abs(varAnt)} % vs ${anio - 1} a esta fecha` : '')}${kpi(e0(t.pend), 'previsto hasta diciembre', t.venc ? `<span style="color:var(--bad)">${e0(t.venc)} vencido</span>` : 'cuotas pendientes')}${kpi(t.activos, 'alumnos activos', `${t.altas} altas en ${anio}`)}${kpi(e0(t.medioMes), 'media al mes', t.mejorMes ? `mejor: ${MESES[t.mejorMes[1]]} (${e0(t.mejorMes[0])})` : '')}</div></section>
     ${d.sinTarifa.length ? `<section class="section"><div class="aprox small row" style="gap:8px;flex-wrap:wrap"><span class="grow"><b>${d.sinTarifa.length} alumno${d.sinTarifa.length === 1 ? '' : 's'} sin tarifa asignada.</b> La app deduce su programa por el nombre del servicio; asignarla hace las métricas exactas.</span><button class="btn sm" data-act="pgSinTarifa">Asignar tarifas</button></div></section>` : ''}
+    ${d.sinPrograma.length ? `<section class="section"><div class="aprox small row" style="gap:8px;flex-wrap:wrap"><span class="grow"><b>${d.sinPrograma.length} cuota${d.sinPrograma.length === 1 ? '' : 's'} sin programa confirmado.</b> Se asignan por el programa que tenía el alumno en esa fecha; confírmalas para que los números no bailen.</span><button class="btn sm" data-act="pgCuotas">Revisar cuotas</button></div></section>` : ''}
     <section class="section"><div class="card stack"><b>Ingresos por mes · ${anio}</b>${grafica(d)}</div></section>
+    ${d.conv.length ? `<section class="section"><div class="card stack" style="gap:6px"><b>🔁 Cambios de programa en ${anio}</b><span class="small muted">Alumnos que pasaron de un programa a otro (por ejemplo, de sesiones sueltas a Ruta Integral).</span>
+      ${Object.entries(d.conv.reduce((acc, c) => { const k = c.de + ' → ' + c.a; (acc[k] ||= []).push(c); return acc; }, {})).sort((a, b) => b[1].length - a[1].length).map(([k, l]) => `<div class="row small" style="gap:8px"><span class="grow"><b>${esc(k)}</b><span class="muted"> · ${l.map(c => esc((S.c.perfiles.find(p => p.id === c.aid)?.nombre || '').split(' ')[0])).join(', ')}</span></span><b>${l.length}</b></div>`).join('')}</div></section>` : ''}
     <section class="section"><div class="card stack" style="gap:0"><div class="row" style="padding-bottom:8px"><b class="grow">Ranking de programas</b><span class="small muted">toca uno para ver el detalle</span></div>
       ${d.lineas.map(x => `<button class="pg-fila" data-act="pgLinea" data-l="${esc(x.n)}"><i class="ley" style="background:${x.color};flex:none"></i><span class="grow stack" style="gap:2px;min-width:0"><b class="small">${esc(x.n)}</b><span class="small muted">${x.activos.length} activo${x.activos.length === 1 ? '' : 's'} · ${x.altasT} alta${x.altasT === 1 ? '' : 's'}${x.porAlumno ? ` · ${e0(x.porAlumno)}/alumno` : ''}${x.renov != null ? ` · renuevan ${x.renov} %` : ''}${x.pUnico != null ? ` · ${x.pUnico} % pago único` : ''}</span>${x.flags.length ? `<span class="row" style="gap:4px;flex-wrap:wrap">${x.flags.map(([c, f]) => `<span class="pill ${c}">${esc(f)}</span>`).join('')}</span>` : ''}<span class="pg-pct"><i style="width:${pct(x.cobT, t.cob)}%;background:${x.color}"></i></span></span><span class="stack" style="align-items:flex-end;gap:2px;flex:none"><b class="num small">${e0(x.cobT)}</b><span class="small muted">${pct(x.cobT, t.cob)} %</span>${x.pend ? `<span class="small muted">+${e0(x.pend)} prev.</span>` : ''}</span></button>`).join('') || '<div class="empty">Aún no hay cobros ni servicios este año.</div>'}</div></section>
     <section class="section"><div class="card stack" style="gap:10px">
@@ -142,7 +164,8 @@ const Programas = (() => {
         <div class="row"><span class="grow">Renuevan (ampliación al terminar)</span><b>${x.renov != null ? x.renov + ' %' : '—'}</b></div>
         <div class="row"><span class="grow">Vencido sin cobrar</span><b style="${x.venc ? 'color:var(--bad)' : ''}">${e0(x.venc)}</b></div>
         <div class="row"><span class="grow">Última alta</span><b>${x.ultAlta ? esc(fCorta(x.ultAlta)) : '—'}</b></div></div>
-      ${tars.length ? `<div class="card stack small" style="gap:4px"><b>Tarifas</b>${tars.map(t => `<button class="line" data-act="pgTarifa" data-id="${t.id}" style="background:none;border:0;text-align:left;cursor:pointer;width:100%"><span class="grow">${esc(t.nombre)}${t.oculta ? ' <span class="pill">oculta</span>' : ''}</span><b class="num">${e0(t.estandar)}</b> ✎</button>`).join('')}</div>` : ''}
+      ${tars.length ? `<div class="card stack small" style="gap:4px"><b>Tarifas · lo vendido en ${anio}</b>${tars.map(t => { const cob = (S.c.pagos || []).filter(p => p.tarifa === t.id && p.pagado_at && p.pagado_at.startsWith(String(anio))).reduce((a, p) => a + +p.importe, 0), al = new Set((S.c.pagos || []).filter(p => p.tarifa === t.id && (p.pagado_at || p.vence).startsWith(String(anio))).map(p => p.alumno_id)).size;
+        return `<button class="line" data-act="pgTarifa" data-id="${t.id}" style="background:none;border:0;text-align:left;cursor:pointer;width:100%"><span class="grow">${esc(t.nombre)}${t.oferta ? ' <span class="pill gold">oferta</span>' : ''}${t.oculta ? ' <span class="pill">oculta</span>' : ''}<span class="muted" style="display:block">${al} alumno${al === 1 ? '' : 's'} · ${e0(cob)} cobrados · precio ${e0(t.estandar)}</span></span>✎</button>`; }).join('')}</div>` : ''}
       <div class="card stack small" style="gap:2px"><b>Alumnos activos (${x.activos.length})</b>${x.activos.map(v => `<button class="linkbtn small" data-act="ficha" data-id="${v.alumno_id}" style="text-align:left">${esc(nom(v.alumno_id))}${v.inicio ? ` <span class="muted">· desde ${esc(fCorta(v.inicio))}</span>` : ''}</button>`).join('') || '<span class="muted">Ninguno ahora mismo.</span>'}</div>
       <button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
   }
@@ -150,7 +173,7 @@ const Programas = (() => {
   function vTarifas() {
     const hoy = hoyISO(), nAl = id => (S.c.srvTodos || []).filter(v => v.tarifa === id && activo(v, hoy)).length;
     const fila = t => { const v = t.srv || {}, ent = [v.meses && `${v.meses} meses`, t.semanas && !v.meses && `${t.semanas} semanas`, (v.sesiones || t.sesiones) && `${v.sesiones || t.sesiones} personales`, v.vi && 'valoración inicial', v.vf && 'valoración final', v.seg === false ? 'sin seguimiento' : null].filter(Boolean).join(' · ');
-      return `<button class="pg-tar ${t.oculta ? 'oculta' : ''}" data-act="pgTarifa" data-id="${t.id}"><span class="grow stack" style="gap:2px;min-width:0"><b class="small">${esc(t.nombre)}${t.oculta ? ' <span class="pill">oculta</span>' : ''}${t.nueva ? ' <span class="pill gold">tuya</span>' : ''}</b><span class="small muted">${ent || '—'}</span><span class="small muted">${t.unico !== t.estandar ? `Único ${e0(t.unico)}` : 'Pago único'}${t.fracc ? ` · Fraccionado ${Tarifas.resumenFracc(t.fracc)}` : ''}${t.bonus24 ? ` · 24 h +${t.bonus24}` : ''}${t.bonusUnico ? ` · único +${t.bonusUnico}` : ''}</span></span><span class="stack" style="align-items:flex-end;gap:2px;flex:none"><b class="num">${e0(t.estandar)}</b><span class="small muted">${nAl(t.id)} activo${nAl(t.id) === 1 ? '' : 's'}</span></span></button>`; };
+      return `<button class="pg-tar ${t.oculta ? 'oculta' : ''}" data-act="pgTarifa" data-id="${t.id}"><span class="grow stack" style="gap:2px;min-width:0"><b class="small">${esc(t.nombre)}${t.oculta ? ' <span class="pill">oculta</span>' : ''}${t.nueva ? ' <span class="pill gold">tuya</span>' : ''}${t.oferta ? ` <span class="pill gold">oferta${t.ofHasta ? ' hasta ' + esc(fCorta(t.ofHasta)) : ''}</span>` : ''}</b><span class="small muted">${ent || '—'}</span><span class="small muted">${t.unico !== t.estandar ? `Único ${e0(t.unico)}` : 'Pago único'}${t.fracc ? ` · Fraccionado ${Tarifas.resumenFracc(t.fracc)}` : ''}${t.bonus24 ? ` · 24 h +${t.bonus24}` : ''}${t.bonusUnico ? ` · único +${t.bonusUnico}` : ''}</span></span><span class="stack" style="align-items:flex-end;gap:2px;flex:none"><b class="num">${e0(t.estandar)}</b><span class="small muted">${nAl(t.id)} activo${nAl(t.id) === 1 ? '' : 's'}</span></span></button>`; };
     const grupos = L => [...new Set(L.map(t => t.grupo))].map(g => `<details class="pg-grupo"><summary><b class="small">${esc(g)}</b><span class="small muted">${L.filter(t => t.grupo === g).length}</span></summary>${L.filter(t => t.grupo === g).map(fila).join('')}</details>`).join('');
     return `<section class="section"><div class="section-head"><h2>Tarifas y servicios</h2><div class="row" style="gap:6px"><button class="btn sm ghost" data-act="pgTarifa" data-id="" data-amp="1">＋ Ampliación</button><button class="btn sm" data-act="pgTarifa" data-id="">＋ Tarifa</button></div></div>
       <div class="card stack" style="gap:6px"><span class="small muted">Lo que cambies aquí se aplica a los alumnos que des de alta a partir de ahora. Los planes de pago ya creados no cambian.</span>${grupos(Tarifas.T)}<b class="small" style="margin-top:6px">Ampliaciones</b>${grupos(Tarifas.AMP)}</div></section>`;
@@ -182,7 +205,9 @@ const Programas = (() => {
         <div class="row" style="gap:14px;flex-wrap:wrap">${chk('tf-ent', v.ent ?? true, 'Entrenamiento')}${chk('tf-ali', v.ali, 'Alimentación')}${chk('tf-bono', v.bono, 'Es bono de sesiones')}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">${num('tf-me', 'Meses', v.meses || '')}${num('tf-ses', 'Personales', v.sesiones || '')}<label class="f">Frecuencia<select id="tf-fq"><option value="">—</option>${Object.entries(Tarifas.FREC).map(([k, l]) => `<option value="${k}" ${v.frec === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
         <div class="row" style="gap:14px;flex-wrap:wrap">${chk('tf-vi', v.vi, 'Valoración inicial')}${chk('tf-vf', v.vf, 'Valoración final')}${chk('tf-seg', v.seg ?? true, 'Seguimiento (revisión, check-in, avisos)')}${chk('tf-fut', v.futbol, 'Fútbol')}${chk('tf-opo', v.oposicion, 'Oposición')}</div>`}</div>
-      ${chk('tf-oc', t?.oculta, 'Ocultar (no sale al elegir tarifa; los alumnos que la tienen la conservan)')}
+      <div class="card stack" style="padding:12px;gap:8px">${chk('tf-of', t?.oferta, '<b>Es una oferta</b> (verano, temporada baja…): solo se puede elegir entre estas fechas')}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="f">Desde<input type="date" id="tf-od" value="${esc(t?.ofDesde || '')}"></label><label class="f">Hasta<input type="date" id="tf-oh" value="${esc(t?.ofHasta || '')}"></label></div></div>
+      ${chk('tf-oc', t?.oculta && !t?.caducada, 'Ocultar (no sale al elegir tarifa; los alumnos que la tienen la conservan)')}
       <p class="err" id="tf-err"></p>
       <div class="row" style="gap:8px;flex-wrap:wrap">${t && !t.nueva && cfg.cambios[t.id] ? '<button type="button" class="btn ghost" id="tf-rst">Volver al original</button>' : ''}${t?.nueva ? '<button type="button" class="btn ghost" id="tf-del" style="color:var(--bad)">Eliminar</button>' : ''}<button class="btn grow" type="submit">Guardar</button></div></form>`);
     let mod = v.modalidad || 'online';
@@ -195,7 +220,8 @@ const Programas = (() => {
       const pe = n('#tf-pe'); if (!(pe > 0)) return $('#tf-err').textContent = 'Pon el precio estándar';
       const fr = $('#tf-fr').value.trim() ? Tarifas.leeCuotas($('#tf-fr').value) : null; if ($('#tf-fr').value.trim() && !fr) return $('#tf-err').textContent = 'Revisa el fraccionado';
       const datosT = { nombre: $('#tf-n').value.trim(), grupo: $('#tf-g').value.trim() || 'Otros', linea: $('#tf-l').value.trim() || undefined, estandar: pe, unico: n('#tf-pu') ?? pe, fracc: fr,
-        bonus24: n('#tf-b24') || undefined, bonusUnico: n('#tf-bu') || undefined, bonusTxt: $('#tf-bt').value.trim() || undefined };
+        bonus24: n('#tf-b24') || undefined, bonusUnico: n('#tf-bu') || undefined, bonusTxt: $('#tf-bt').value.trim() || undefined,
+        oferta: $('#tf-of').checked || undefined, ofDesde: $('#tf-of').checked ? $('#tf-od').value || undefined : undefined, ofHasta: $('#tf-of').checked ? $('#tf-oh').value || undefined : undefined };
       if (esAmp) Object.assign(datosT, { semanas: n('#tf-sem') || 13, sesiones: n('#tf-ses') || undefined });
       else Object.assign(datosT, { extraAli: n('#tf-xa') || undefined, extraAliTxt: $('#tf-xat').value.trim() || undefined,
         srv: { modalidad: mod, ent: $('#tf-ent').checked, ali: $('#tf-ali').checked, bono: $('#tf-bono').checked || undefined, meses: n('#tf-me') || undefined, sesiones: n('#tf-ses') || undefined, frec: $('#tf-fq').value || undefined, vi: $('#tf-vi').checked, vf: $('#tf-vf').checked, seg: $('#tf-seg').checked, futbol: $('#tf-fut').checked || undefined, oposicion: $('#tf-opo').checked || undefined } });
@@ -215,6 +241,24 @@ const Programas = (() => {
     });
     $('#tf-rst')?.addEventListener('click', async () => { delete cfg.cambios[t.id]; if (await guardarCfg(cfg)) { cerrarSheet(); toast('Tarifa original recuperada'); render(); } });
     $('#tf-del')?.addEventListener('click', async () => { if (!confirm('¿Eliminar esta tarifa? Los alumnos que la tengan la conservan como texto.')) return; cfg.nuevas = cfg.nuevas.filter(x => x.id !== t.id); cfg.ocultas = (cfg.ocultas || []).filter(x => x !== t.id); if (await guardarCfg(cfg)) { cerrarSheet(); toast('Tarifa eliminada'); render(); } });
+  }
+  /* Cuotas sin programa confirmado: se propone el programa que tenía el alumno en esa fecha y se guarda la tarifa en la cuota */
+  function formCuotas() {
+    const anio = S.pgAnio || +hoyISO().slice(0, 4), l = datos(anio).sinPrograma.sort((a, b) => (a.alumno_id || '').localeCompare(b.alumno_id || '') || String(a.vence).localeCompare(String(b.vence)));
+    const nom = id => S.c.perfiles.find(p => p.id === id)?.nombre || '—', todas = [...Tarifas.T, ...Tarifas.AMP];
+    const sug = p => { const v = srvAlumno(p.alumno_id, p.pagado_at || p.vence), f = p.pagado_at || p.vence, hs = v ? historialDe(v) : [];
+      const h = hs.find(x => x.desde <= f && (!x.hasta || f <= x.hasta)) || (hs.length && v.inicio && f < v.inicio ? [...hs].reverse().find(x => x.desde <= f) || hs[0] : null);
+      if (h?.tarifa) return h.tarifa; if (!h && v?.tarifa) return v.tarifa; const ln = lineaPago(p), c = todas.filter(t => t.linea === ln); return (c.find(t => Math.abs(t.estandar - p.importe) < 1 || Math.abs((t.unico || 0) - p.importe) < 1 || (t.fracc || []).some(x => Math.abs(x - p.importe) < 1)) || c[0] || {}).id || ''; };
+    const porAl = {}; l.forEach(p => (porAl[p.alumno_id] ||= []).push(p));
+    abrirSheet(`<form class="stack" id="f-cq"><h2>Revisar cuotas</h2><p class="small muted">Elige a qué tarifa pertenece cada cuota. El importe que cuenta es siempre el que cobraste de verdad, aunque el precio de la tarifa haya cambiado o fuera una oferta. Si una tarifa antigua ya no existe, créala en «＋ Tarifa» (puedes ocultarla después).</p>
+      ${Object.entries(porAl).map(([aid, ps]) => `<details class="pg-grupo" open><summary><b class="small">${esc(nom(aid))}</b><span class="small muted">${ps.length}</span></summary>${ps.map(p => `<div class="stack" style="gap:2px;padding:6px 0 6px 8px;border-top:1px dashed var(--line)"><span class="small"><b class="num">${e0(p.importe)}</b> · ${esc(fCorta(p.pagado_at || p.vence))}${p.pagado_at ? '' : ' <span class="muted">(pendiente)</span>'} · <span class="muted">${esc(p.concepto || '')}</span></span><select data-cq="${p.id}"><option value="">Sin confirmar</option>${Tarifas.opciones(todas, sug(p))}</select></div>`).join('')}</details>`).join('') || '<div class="empty">No hay cuotas por revisar.</div>'}
+      <p class="err" id="cq-err"></p><button class="btn full" type="submit">Guardar</button></form>`);
+    $('#f-cq').addEventListener('submit', async e => {
+      e.preventDefault(); const bt = e.target.querySelector('[type=submit]'); bt.disabled = true; bt.textContent = 'Guardando…';
+      const porT = {}; document.querySelectorAll('[data-cq]').forEach(s => { if (s.value) (porT[s.value] ||= []).push(+s.dataset.cq); });
+      for (const [tid, ids] of Object.entries(porT)) { const { error } = await sb.from('pagos').update({ tarifa: tid }).in('id', ids); if (error) { bt.disabled = false; bt.textContent = 'Guardar'; return $('#cq-err').textContent = /tarifa/.test(error.message || '') ? 'Falta ejecutar el Bloque 89 en Supabase.' : error.message; } S.c.pagos.forEach(p => { if (ids.includes(p.id)) p.tarifa = tid; }); }
+      cerrarSheet(); toast('Cuotas confirmadas'); render();
+    });
   }
   /* Asignar tarifa a los alumnos activos que no la tienen (solo para las métricas: no crea pagos) */
   function formSinTarifa() {
@@ -236,7 +280,8 @@ const Programas = (() => {
     else if (a === 'pgLinea') detalleLinea(b.dataset.l);
     else if (a === 'pgTarifa') formTarifa(b.dataset.id || null, b.dataset.amp === '1');
     else if (a === 'pgSinTarifa') formSinTarifa();
+    else if (a === 'pgCuotas') formCuotas();
   });
-  return { vista, cargar, lineaServicio, lineaPago, datos };
+  return { vista, cargar, lineaServicio, lineaPago, lineaEn, historialDe, datos };
 })();
 window.Programas = Programas;
