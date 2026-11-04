@@ -235,6 +235,8 @@ nav.tabs button[aria-current="page"]{color:var(--blue)}
 .imgs .img:only-child{grid-column:1/-1;aspect-ratio:16/9}
 .imgs img{width:100%;height:100%;object-fit:contain;background:#fff;display:block}
 .imgs span{position:absolute;left:6px;bottom:6px;font-size:11px;font-weight:700;background:rgba(11,11,12,.75);color:#fff;padding:2px 7px;border-radius:999px}
+.imgs .img.lam span{top:6px;bottom:auto}
+.imgs .img.lam img{padding:4px 0;box-sizing:border-box}
 .ed-ej{display:flex;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--line)}
 .ed-ej:first-child{border-top:0}
 .ed-mini{width:44px;height:44px;border-radius:10px;object-fit:cover;flex:none;background:var(--surface-2);cursor:pointer}
@@ -698,6 +700,20 @@ nav.tabs a.tab-wa{flex:1;padding:10px 2px 12px;display:flex;flex-direction:colum
 .ft-tabs .fb-dot{min-width:20px;height:20px;font-size:11px}
 .ft-cab{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px}
 .ft-cab h2{margin:0}
+/* Músculo objetivo: láminas */
+.lam-g{border:1px solid var(--line);border-radius:14px;background:var(--surface);margin-bottom:8px;overflow:hidden}
+.lam-g>summary{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;list-style:none}
+.lam-g>summary::-webkit-details-marker{display:none}
+.lam-g>summary img,.lam-sin{width:44px;height:52px;object-fit:contain;background:#fff;border-radius:8px;flex:none}
+.lam-sin{display:grid;place-items:center;font-weight:700;color:var(--muted);border:1px dashed var(--line)}
+.lam-g>p{margin:0 12px 6px}
+.lam-f{display:flex;align-items:center;gap:8px;padding:7px 12px;border-top:1px solid var(--line)}
+.lam-f select{width:auto;max-width:48%;flex:none;font-size:13px;padding:6px 8px}
+.lam-cambio{background:var(--gold-soft)}
+.lam-pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px;margin-top:6px}
+.lam-op{padding:2px;border:2px solid transparent;border-radius:10px;background:#fff;cursor:pointer;line-height:0}
+.lam-op img{width:100%;aspect-ratio:3/4;object-fit:contain}
+.lam-op[aria-checked="true"]{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold-soft)}
 .ft-cuerpo{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
 .ft-cuerpo>*{min-width:0;margin-top:0!important}
 .ft-cuerpo>.stack,.ft-cuerpo>.card:only-child,.ft-cuerpo>section:only-child{grid-column:1/-1}

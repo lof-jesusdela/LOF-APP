@@ -1127,7 +1127,7 @@ function vEjercicio(e, i, ro) {
   return `<div class="card ex ${om ? 'omitido' : ''}" id="ex-${e.id}">
     ${om ? bannerOmitido(om, !ro) : ''}
     <div class="ex-tit"><span class="exn num">${i}</span><h3>${esc(ej.nombre)}</h3></div>
-    ${ej.imagen_url || ej.musculo_img_url ? `<div class="imgs">${ej.imagen_url ? `<button class="img" data-act="verImagen" data-src="${esc(ej.imagen_url)}" aria-label="Ver imagen del ejercicio"><img src="${esc(ej.imagen_url)}" alt="${esc(ej.nombre)}" loading="lazy" onerror="this.parentNode.hidden=true"><span>Ejercicio</span></button>` : ''}${ej.musculo_img_url ? `<button class="img" data-act="verImagen" data-src="${esc(ej.musculo_img_url)}" aria-label="Ver músculo trabajado"><img src="${esc(ej.musculo_img_url)}" alt="Músculo trabajado" loading="lazy" onerror="this.parentNode.hidden=true"><span>Músculo</span></button>` : ''}</div>` : ''}
+    ${ej.imagen_url || ej.musculo_img_url ? `<div class="imgs">${ej.imagen_url ? `<button class="img" data-act="verImagen" data-src="${esc(ej.imagen_url)}" aria-label="Ver imagen del ejercicio"><img src="${esc(ej.imagen_url)}" alt="${esc(ej.nombre)}" loading="lazy" onerror="this.parentNode.hidden=true"><span>Ejercicio</span></button>` : ''}${ej.musculo_img_url ? `<button class="img${laminaDe(ej.musculo_img_url) ? ' lam' : ''}" data-act="verImagen" data-src="${esc(ej.musculo_img_url)}" aria-label="Ver músculo objetivo"><img src="${esc(ej.musculo_img_url)}" alt="Músculo objetivo${laminaDe(ej.musculo_img_url) ? ': ' + esc(laminaNombre(laminaDe(ej.musculo_img_url))) : ''}" loading="lazy" onerror="this.parentNode.hidden=true"><span>Músculo objetivo</span></button>` : ''}</div>` : ''}
     <div class="row" style="align-items:flex-start"><div class="grow">${!ej.musculo_img_url && ej.musculo ? `<div class="small muted">${esc(ej.musculo)}</div>` : ''}</div><div class="stack" style="gap:6px;align-items:flex-end">${vid}${ro ? '' : `<button class="btn sm ghost omitir-b" data-act="omitir" data-es="${e.id}" data-n="${esc(ej.nombre)}">No lo hago</button>`}</div></div>
     <div class="chips ex-chips"><span class="pill ex-series">${e.series} ${e.series === 1 ? 'serie' : 'series'}</span>${tandas ? '' : `<span class="pill">${desc ? 'Descanso ' + seg(desc) : 'Sin descanso'}</span>`}${e.metodos ? `<button class="pill ex-met" data-act="metodo" data-n="${esc(e.metodos.nombre)}">${esc(e.metodos.nombre)} ⓘ</button>` : ''}${e.aproximacion_631 ? '<button class="pill ex-met" data-act="metodo" data-n="Aproximación 6·3·1">Aproximación 6·3·1 ⓘ</button>' : ''}</div>
     ${(() => { const ag = AGARRES.find(x => x[0] === e.agarre); if (!ag) return ''; const u = S.agarres?.[ag[0]]; return `<div class="row a-medida small" style="gap:10px;align-items:center">${u ? `<button class="img mat-img" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver imagen del agarre"><img src="${esc(u)}" alt="Agarre ${ag[1]}" loading="lazy" onerror="this.parentNode.hidden=true"></button>` : ''}<span><b>Agarre:</b> ${ag[1]}</span></div>`; })()}
@@ -4005,6 +4005,71 @@ async function borrarMetodo(id) {
   const r = await sb.from('metodos').delete().eq('id', id); if (r.error) return toast('No se ha podido eliminar');
   await cargarCoach(); cerrarSheet(); toast('Método eliminado'); render();
 }
+/* Láminas de «músculo objetivo»: una imagen por músculo prioritario. La app asigna la lámina por el músculo que pusiste
+   en el ejercicio (si lo hay) o por el nombre; el coach puede cambiarla a mano. Se guarda en musculo_img_url como enlace a img/musculos/ */
+const LAMINAS = [
+  ['gluteo', 'Glúteo'], ['cuadriceps', 'Cuádriceps'], ['isquios', 'Isquiotibiales'], ['gemelos', 'Gemelos'], ['aductores', 'Aductores'],
+  ['abdominales', 'Abdominales'], ['oblicuos', 'Oblicuos / abdomen lateral'], ['lumbares', 'Lumbares'],
+  ['dorsales', 'Dorsales'], ['escapular', 'Cintura escapular'], ['pectoral', 'Pectoral'],
+  ['hombro-anterior', 'Hombro anterior'], ['hombro-medio', 'Hombro medio'], ['hombro-posterior', 'Hombro posterior'],
+  ['biceps', 'Bíceps'], ['triceps', 'Tríceps'], ['antebrazo', 'Antebrazo'],
+  ['cadena-posterior', 'Cadena posterior'], ['cadena-anterior', 'Cadena anterior'], ['cadena-lateral', 'Cadena lateral'],
+];
+const laminaUrl = k => new URL(`img/musculos/${k}.jpg`, location.href).href;
+const laminaDe = u => { const m = /img\/musculos\/([a-z-]+)\.jpg/.exec(u || ''); return m && LAMINAS.some(l => l[0] === m[1]) ? m[1] : null; };
+const laminaNombre = k => (LAMINAS.find(l => l[0] === k) || [])[1] || '';
+/* 1) Por el músculo escrito por el coach: manda el primero que aparece («Cuádriceps y glúteo» → cuádriceps) */
+const MUS_TXT = [
+  ['cadena-posterior', /cadena posterior/], ['cadena-anterior', /cadena anterior/], ['cadena-lateral', /cadena lateral/],
+  ['hombro-posterior', /(deltoides?|hombro) posterior|posterior del hombro/], ['hombro-anterior', /(deltoides?|hombro) anterior|anterior del hombro/],
+  ['hombro-medio', /(deltoides?|hombro) (medio|lateral)/], ['hombro-medio', /deltoides|hombro/, 1], ['gluteo', /gluteo/], ['cuadriceps', /cuadricep/],
+  ['isquios', /isquio|femoral/], ['gemelos', /gemelo|soleo|pantorrilla|triceps sural/], ['aductores', /aductor/],
+  ['oblicuos', /oblicuo|abdomen lateral/], ['abdominales', /abdomin|recto anterior/], ['abdominales', /core/, 1], ['lumbares', /lumbar|erector/],
+  ['escapular', /trapecio|romboide|escapul|serrato/], ['dorsales', /dorsal/], ['dorsales', /espalda/, 1], ['pectoral', /pector|pecho/],
+  ['triceps', /triceps/], ['biceps', /biceps/], ['antebrazo', /antebrazo/],
+];
+/* 2) Por el nombre del ejercicio (el orden importa: lo más específico primero) */
+const MUS_NOM = [
+  [null, /^cardio ·|movilidad|estiramiento|respiracion|foam|liberacion|masaje/],
+  ['hombro-posterior', /rotacion (externa|interna)|manguito/],
+  ['gluteo', /patada lateral|abduccion/],
+  ['cadena-anterior', /squat.?press|thruster|burpee|sprinter|secuencia push/],
+  ['cadena-lateral', /tiron.?giro|maleta|suitcase|turco|turkish|paseo .*1 mano/],
+  ['cadena-posterior', /pliometr|^saltos?\b|swing|cargada|arrancada|clean|snatch/],
+  ['triceps', /triceps|press frances|katana|patada de triceps|extension de (brazo|codo)|skull|fondos en (banco|maquina)|dipping/],
+  ['oblicuos', /(crunch|flexion|plancha|inclinacion) lateral|flexion lateral|plancha lateral|rotacion|giros?\b|pallof|woodchop|lenador|oblicuo|anti.?rotacion|russian|twist|bicho/],
+  ['abdominales', /crunch|plancha|plank|rueda abdominal|ab wheel|elevacion(es)? (de piernas|inferiores)|dead ?bug|hollow|v.?up|tijeras|abdominal|encogimiento abdominal|hoja de navaja/],
+  ['lumbares', /hiperextension|extension (lumbar|de espalda|de tronco)|superman|bird ?dog|lumbar/],
+  ['gemelos', /gemelo|soleo|talon|pantorrilla|tobillo|calf/],
+  ['aductores', /aduccion|adduccion|aductor|cierre de cadera|copenhag|zancada lateral|sentadilla sumo|sumo squat/],
+  ['isquios', /peso muerto rumano|piernas rigidas|stiff|curl femoral|femoral|isquio|nordic|buenos dias|good ?morning|curl de pierna|glute.?ham/],
+  ['gluteo', /hip thrust|puente|glute|bridge|patada|kickback|abduccion|apertura de cadera|extension de cadera|pull.?through|gluteo|clamshell|almeja|monster|peso muerto (a 1 pierna|unilateral|a una pierna)|step.?up|subida al cajon|subida/],
+  ['cadena-posterior', /peso muerto|deadlift/],
+  ['cuadriceps', /sentadilla|squat|prensa|leg press|hack|extension de (rodilla|cuadriceps|pierna)|cuadricep|zancada|desplante|lunge|sissy|pistol|bulgara|goblet/],
+  ['hombro-posterior', /hombro posterior|apertura posterior|pajaro|face pull|posterior/],
+  ['escapular', /encogimiento|trapecio|romboide|serrato|y.?t.?w|retraccion|protraccion|remo alto|apertura de espalda|escapul/],
+  ['hombro-medio', /elevacion(es)? lateral|hombro lateral|remo al menton|apertura de hombro|elevacion diagonal|lateral raise/],
+  ['hombro-anterior', /press militar|press de hombro|press landmine|landmine press|elevacion(es)? frontal|arnold|press (por encima|vertical)|hombro anterior/],
+  ['antebrazo', /antebrazo|muneca|farmer|granjero|wrist/],
+  ['biceps', /biceps|curl|martillo|predicador|prono.?supino/],
+  ['dorsales', /jalon|dominada|pull.?over|pulldown|remo|chin.?up|pull.?up|dorsal|polea al pecho/],
+  ['pectoral', /press (banca|de pecho|inclinado|declinado|plano)|pecho|pectoral|apertura|aperturas|cruces|crossover|cross.?press|pec.?deck|contractor|fondos|flexion(es)? de brazos|^flexiones|push.?up|press a 1 mano|press con mancuernas/],
+  ['hombro-medio', /hombro/],
+  ['abdominales', /core/],
+];
+const sinTildes = s => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[ºª]/g, '');
+function porNombre(nombre) { const n = sinTildes(nombre); for (const [k, re] of MUS_NOM) if (re.test(n)) return k; return null; }
+function laminaSugerida(nombre, musculo) {
+  const m = sinTildes(musculo);
+  if (m && !/cardio/.test(m)) {
+    let mejor = null, pos = 1e9, debil = 0;
+    for (const [k, re, d] of MUS_TXT) { const r = re.exec(m); if (r && (r.index < pos || (r.index === pos && debil && !d))) { pos = r.index; mejor = k; debil = d || 0; } }
+    if (mejor && !debil) return mejor;
+    if (mejor) return porNombre(nombre) || mejor;  /* «Hombro» o «Espalda» a secas: el nombre dice cuál */
+  }
+  if (/cardio/.test(m)) return null;
+  return porNombre(nombre);
+}
 /* Grupos musculares / patrones para filtrar la biblioteca (por músculo y por nombre) */
 const GRUPOS_EJ = [
   ['sup', 'Tren superior', /pecho|pectoral|press (de )?banca|aperturas|fondos|espalda|dorsal|remo|jalon|dominada|pull ?over|hombro|deltoid|elevacion(es)? (lateral|frontal)|face pull|biceps|curl|triceps|antebrazo|trapecio|encogimiento|flexion(es)? (de brazos)?|press militar|press (de )?hombro/],
@@ -4043,6 +4108,7 @@ function vEjercicios() {
   return `${bibTabs()}<section class="stack"><span class="eyebrow">Tu biblioteca</span><div class="row"><h1 class="grow">Ejercicios</h1><button class="btn sm" data-act="nuevoEjercicio">＋ Nuevo</button></div><p class="small muted">Lo que cambies aquí se ve al instante en los entrenos de todos tus alumnos.</p></section>
   <section class="section"><div class="kpis"><div class="kpi"><div class="v num">${l.length}</div><div class="l">ejercicios</div></div><div class="kpi"><div class="v num" style="color:${sinV ? 'var(--warn)' : 'var(--ok)'}">${sinV}</div><div class="l">sin vídeo</div></div><button class="kpi" data-act="ejFalta" data-v="foto" aria-pressed="${S.ejFalta === 'foto'}"><div class="v num" style="color:${sinF ? 'var(--warn)' : 'var(--ok)'}">${sinF}</div><div class="l">sin foto</div></button><button class="kpi" data-act="ejFalta" data-v="mus" aria-pressed="${S.ejFalta === 'mus'}"><div class="v num" style="color:${sinM ? 'var(--warn)' : 'var(--ok)'}">${sinM}</div><div class="l">sin músculo</div></button></div>${S.ejFalta ? `<p class="small">Mostrando solo los que no tienen ${S.ejFalta === 'mus' ? 'imagen del músculo' : 'foto'}. <button class="linkbtn small" data-act="ejFalta" data-v="">Ver todos</button></p>` : ''}
   ${S.c.movCat ? `<details class="card" style="margin-top:12px"><summary><b>🦾 Vídeos de movilidad (${S.c.movCat.length})</b> <span class="small muted">· el catálogo que sale al añadir movilidad a un día</span></summary><div class="stack" style="gap:0;margin-top:8px">${S.c.movCat.map(x => `<div class="line" data-act="movItem" data-id="${x.id}" style="cursor:pointer">${(x.imagen_url || miniYoutube(x.video_url)) ? `<img src="${esc(x.imagen_url || miniYoutube(x.video_url))}" alt="" style="width:64px;height:40px;object-fit:cover;border-radius:8px">` : ''}<div class="grow small"><b>${esc(x.titulo)}</b>${x.zona ? ` · <span class="muted">${esc(x.zona)}</span>` : ''}</div><span class="small" style="color:var(--blue-text)">Editar</span></div>`).join('')}<button class="btn sm ghost" data-act="movItem" style="align-self:flex-start;margin-top:8px">＋ Añadir vídeo</button></div></details>` : ''}
+  <button class="btn full gold" data-act="asignarLaminas">🎯 Músculo objetivo de toda la biblioteca</button><p class="note">${fuerza.filter(x => laminaDe(x.musculo_img_url)).length} de ${fuerza.length} ejercicios tienen ya su lámina de músculo objetivo. Ábrelo para revisar la propuesta y guardarla.</p>
   <button class="btn full" data-act="importarImagenes">Actualizar imágenes desde tus hojas</button><p class="note">Pone la imagen del ejercicio, la del músculo y las de cardio y movilidad que tenías en tus hojas, y repara las que no cargan.</p>
   <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm ${S.ejInt ? 'gold' : 'ghost'}" data-act="ejModoInt">${S.ejInt ? '✕ Salir de integrar' : '🔗 Integrar duplicados'}</button>${S.ejInt ? `<button class="btn sm ghost" data-act="ejDup" aria-pressed="${!!S.ejDup}">${S.ejDup ? 'Ver todos' : `Ver posibles duplicados (${nDup})`}</button>` : ''}</div>
   ${S.ejInt ? `<p class="note">Toca los ejercicios que son el mismo (marca 2 o más). Luego eliges con cuál te quedas: los demás desaparecen y todos los programas pasan a usar el que elijas.</p>` : ''}
@@ -4077,12 +4143,19 @@ function formEjercicio(id) {
     <label class="f">Nombre del ejercicio<input type="text" id="e-nom" value="${esc(x.nombre || '')}" required></label>
     ${x.imagen_url ? `<img src="${esc(x.imagen_url)}" alt="" style="width:100%;max-height:200px;object-fit:cover;border-radius:12px">` : ''}
     <label class="f">Foto del ejercicio (desde la galería o la cámara)<input type="file" id="e-foto" accept="image/*"></label>
-    ${x.musculo_img_url ? `<img src="${esc(x.musculo_img_url)}" alt="" style="width:100%;max-height:160px;object-fit:contain;border-radius:12px;background:#fff">` : ''}
-    <label class="f">Imagen del músculo trabajado<input type="file" id="e-mfoto" accept="image/*"></label>
+    <div class="f"><span>Músculo objetivo (lo que ve el alumno)</span><div class="lam-pick" id="e-lam" role="radiogroup">${LAMINAS.map(([k, n]) => `<button type="button" class="lam-op" data-k="${k}" role="radio" aria-checked="false" title="${esc(n)}"><img src="img/musculos/${k}.jpg" alt="${esc(n)}" loading="lazy"></button>`).join('')}</div>
+      ${x.musculo_img_url && !laminaDe(x.musculo_img_url) ? `<div class="row small" style="gap:8px;margin-top:6px"><img src="${esc(x.musculo_img_url)}" alt="" style="width:56px;height:56px;object-fit:contain;border-radius:8px;background:#fff"><span class="muted">Ahora tiene una imagen propia. Toca una lámina para cambiarla.</span></div>` : ''}
+      <span class="small muted" id="e-lam-t"></span></div>
+    <label class="f">O sube otra imagen del músculo<input type="file" id="e-mfoto" accept="image/*"></label>
     <label class="f">Músculo que se trabaja<input type="text" id="e-mus" value="${esc(x.musculo || '')}"></label>
     <label class="f">Descripción o claves de ejecución<textarea id="e-desc">${esc(x.descripcion || '')}</textarea></label>
     <label class="f">Enlace del vídeo (YouTube oculto)<input type="text" id="e-vid" inputmode="url" value="${esc(x.video_url || '')}" placeholder="https://youtu.be/…"></label>
     <p class="err" id="e-err"></p><button class="btn full" type="submit" id="e-btn">Guardar</button><button class="btn ghost full" type="button" id="e-del" style="color:var(--bad)" ${nuevo ? 'hidden' : ''}>Eliminar ejercicio</button></form>`);
+  let lam = laminaDe(x.musculo_img_url), lamToque = false;
+  const pintaLam = () => { document.querySelectorAll('#e-lam .lam-op').forEach(b => b.setAttribute('aria-checked', String(b.dataset.k === lam))); $('#e-lam-t').textContent = lam ? laminaNombre(lam) + (lamToque || laminaDe(x.musculo_img_url) ? '' : ' · propuesta por el nombre') : 'Sin lámina'; };
+  const sugiere = () => { if (!lamToque && !x.musculo_img_url) { lam = laminaSugerida($('#e-nom').value, $('#e-mus').value); pintaLam(); } };
+  $('#e-lam').addEventListener('click', e => { const b = e.target.closest('.lam-op'); if (!b) return; lamToque = true; lam = lam === b.dataset.k ? null : b.dataset.k; pintaLam(); });
+  ['#e-nom', '#e-mus'].forEach(q => $(q).addEventListener('input', sugiere)); sugiere(); pintaLam();
   $('#e-del').addEventListener('click', async () => {
     const { count, error: e0 } = await sb.from('ejercicios_sesion').select('id', { count: 'exact', head: true }).eq('ejercicio_id', x.id);
     if (e0) return fallo(e0);
@@ -4103,9 +4176,53 @@ function formEjercicio(id) {
       if (file) cambios.imagen_url = await subirImagenEj(file, `ej-${x.id}`);
       const mfile = $('#e-mfoto').files[0];
       if (mfile) cambios.musculo_img_url = await subirImagenEj(mfile, `mus-${x.id}`, 900);
+      else if (lam && lam !== laminaDe(x.musculo_img_url)) cambios.musculo_img_url = laminaUrl(lam);
       const { error } = await sb.from('ejercicios').update(cambios).eq('id', x.id); if (error) throw error;
       Object.assign(x, cambios); if (nuevo) S.c.ejercicios.sort((p, q) => p.nombre.localeCompare(q.nombre, 'es')); cerrarSheet(); toast(nuevo ? 'Ejercicio creado' : 'Ejercicio guardado'); await cargarAlumno(S.user.id); render();
     } catch (err) { btn.disabled = false; btn.textContent = 'Guardar'; $('#e-err').textContent = /nombre|Ya existe/.test(err?.message || '') ? err.message : motivoImg(err); console.error(err); }
+  });
+}
+/* Músculo objetivo: propone una lámina para cada ejercicio (la que ya tenga manda) y el coach la revisa antes de guardar */
+const selLamina = (v, attrs = '') => `<select ${attrs}><option value="">Sin lámina (dejar como está)</option>${LAMINAS.map(([k, n]) => `<option value="${k}" ${k === v ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
+async function asignarLaminas() {
+  const lista = S.c.ejercicios.filter(x => !/^cardio ·/i.test(x.nombre || '') && !/cardio/i.test(x.musculo || ''))
+    .map(x => { const ya = laminaDe(x.musculo_img_url); return { x, ya, prop: ya || laminaSugerida(x.nombre, x.musculo) }; });
+  const elec = {}; lista.forEach(r => { elec[r.x.id] = r.prop || ''; });
+  let nProg = 0;
+  try { const r = await sb.from('ejercicios_sesion').select('id', { count: 'exact', head: true }).not('musculo_img_url', 'is', null); nProg = r.error ? 0 : r.count || 0; } catch (e) { }
+  const grupos = [['', 'Sin lámina'], ...LAMINAS];
+  const pinta = () => grupos.map(([k, n]) => {
+    const rs = lista.filter(r => (r.prop || '') === k); if (!rs.length) return '';
+    return `<details class="lam-g" ${k ? '' : 'open'}><summary>${k ? `<img src="img/musculos/${k}.jpg" alt="">` : '<span class="lam-sin">?</span>'}<b class="grow">${esc(n)}</b><span class="pill">${rs.length}</span></summary>
+      ${k ? '' : '<p class="small muted">No he sabido a qué músculo asignarlos (movilidad, pliometría muy mixta…). Elige tú o déjalos sin lámina.</p>'}
+      ${rs.sort((a, b) => a.x.nombre.localeCompare(b.x.nombre, 'es')).map(r => `<div class="lam-f"><span class="grow small">${esc(r.x.nombre)}${r.x.musculo ? `<span class="muted"> · ${esc(r.x.musculo)}</span>` : ''}${r.ya ? '' : ' <span class="pill gold">nueva</span>'}</span>${selLamina(elec[r.x.id], `data-lam="${r.x.id}" aria-label="Músculo objetivo de ${esc(r.x.nombre)}"`)}</div>`).join('')}</details>`;
+  }).join('');
+  const nuevas = lista.filter(r => r.prop && r.prop !== r.ya).length, sin = lista.filter(r => !r.prop).length;
+  abrirSheet(`<div class="stack"><h2>Músculo objetivo</h2>
+    <p class="small">He puesto a cada ejercicio la lámina de su músculo prioritario, según el músculo que escribiste o según el nombre. Revisa por grupos y cambia lo que no te encaje. Tus alumnos verán la lámina con el rótulo «Músculo objetivo».</p>
+    <div class="chips"><span class="pill gold">${nuevas} por guardar</span><span class="pill ok">${lista.length - nuevas - sin} ya tenían lámina</span>${sin ? `<span class="pill warn">${sin} sin lámina</span>` : ''}</div>
+    <div id="lam-l">${pinta()}</div>
+    ${nProg ? `<label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="lam-p" checked style="width:auto;margin-top:3px"> Quitar también las ${nProg} fotos de músculo puestas solo en un programa concreto, para que todos vean la lámina</label>` : ''}
+    <p class="err" id="lam-err"></p>
+    <div style="position:sticky;bottom:0;padding:10px 0;background:var(--bg)"><button class="btn full gold" id="lam-b">Guardar láminas</button></div></div>`);
+  $('#lam-l').addEventListener('change', e => { const el = e.target.closest('[data-lam]'); if (el) { elec[+el.dataset.lam] = el.value; el.closest('.lam-f').classList.add('lam-cambio'); } });
+  $('#lam-b').addEventListener('click', async () => {
+    const bt = $('#lam-b'), porK = {};
+    lista.forEach(r => { const k = elec[r.x.id]; if (k && k !== r.ya) (porK[k] = porK[k] || []).push(r.x); });
+    const total = Object.values(porK).reduce((a, l) => a + l.length, 0), quitar = $('#lam-p')?.checked;
+    if (!total && !quitar) { cerrarSheet(); return toast('No había nada que cambiar'); }
+    bt.disabled = true; bt.textContent = 'Guardando…';
+    try {
+      for (const [k, xs] of Object.entries(porK)) {
+        const url = laminaUrl(k);
+        for (let i = 0; i < xs.length; i += 100) {
+          const { error } = await sb.from('ejercicios').update({ musculo_img_url: url }).in('id', xs.slice(i, i + 100).map(x => x.id)); if (error) throw error;
+        }
+        xs.forEach(x => { x.musculo_img_url = url; });
+      }
+      if (quitar) { const { error } = await sb.from('ejercicios_sesion').update({ musculo_img_url: null }).not('musculo_img_url', 'is', null); if (error) throw error; }
+      cerrarSheet(); toast(`Músculo objetivo guardado en ${total} ejercicio${total === 1 ? '' : 's'}`); render();
+    } catch (err) { bt.disabled = false; bt.textContent = 'Guardar láminas'; $('#lam-err').textContent = 'No se ha podido guardar: ' + (err.message || 'revisa la conexión'); console.error(err); }
   });
 }
 /* Sube una imagen al bucket público «ejercicios» y devuelve su URL. Si el navegador no puede reducirla (HEIC…), sube el original */
@@ -5568,7 +5685,7 @@ function formEjSesion(id, bloqueId) {
         const ya = document.querySelector('input[name="es-nal"]:checked')?.value === 'solo' ? null : lib.find(x => normaliza(x.nombre) === normaliza(nombre));
         if (ya) ejId = ya.id;
         else {
-          const nuevo = { nombre, musculo: $('#es-nmus').value.trim() || null, video_url: $('#es-nvid').value.trim() || null };
+          const nuevo = { nombre, musculo: $('#es-nmus').value.trim() || null, video_url: $('#es-nvid').value.trim() || null }, lamN = laminaSugerida(nombre, nuevo.musculo); if (lamN) nuevo.musculo_img_url = laminaUrl(lamN);
           if (document.querySelector('input[name="es-nal"]:checked')?.value === 'solo') nuevo.privado = true;
           const { data, error } = await sb.from('ejercicios').insert(nuevo).select().single(); if (error) throw error;
           S.c.ejercicios.push(data); S.c.ejercicios.sort((x, y) => x.nombre.localeCompare(y.nombre, 'es')); ejId = data.id;
@@ -5938,7 +6055,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v226';
+const APP_VER = 'v227';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -6251,6 +6368,7 @@ document.addEventListener('click', async e => {
     case 'verImagenes': abrirSheet(`<div class="stack">${b.dataset.s.split('|').map(u => `<img src="${esc(u)}" alt="" style="width:100%;border-radius:12px;background:var(--surface-2)">`).join('')}</div>`); break;
     case 'verImagen': abrirSheet(`<div class="stack"><img src="${esc(b.dataset.src)}" alt="" style="width:100%;border-radius:12px;background:var(--surface-2)"><a class="btn ghost full" href="${esc(b.dataset.src)}" target="_blank" rel="noopener">Abrir para guardar o imprimir</a><button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`); break;
     case 'importarImagenes': await importarImagenes(); break;
+    case 'asignarLaminas': asignarLaminas(); break;
     case 'editarPrograma': await abrirEditor(b.dataset.id); break;
     case 'cerrarEditor': if (S.editor?.plantilla) { S.editor = null; S.ctab = 'plantillas'; await cargarPlantillas(); render(); window.scrollTo(0, 0); break; }
       S.editor = null; S.verPlan = null; if (S.ficha && !S.ficha.cargando) await cargarProgramasFicha(S.ficha); render(); window.scrollTo(0, 0); break;
