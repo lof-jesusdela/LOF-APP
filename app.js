@@ -856,17 +856,17 @@ function vPendientesHoy(s) {
     const hecho = x => !!x && (x.pasos != null || x.ingestas != null || x.comidas_hechas != null || !!x.alimentacion || !!x.observacion);
     const faltan = ventanaRegistro().filter(f => f < hoy && (!s.inicio || f >= s.inicio) && !hecho(S.d.diario.find(x => x.fecha === f)));
     const lunesHoy = hoy === lunesDe(hoy), plazo = lunesHoy ? 'Hoy es el último día para completar la semana pasada' : 'Puedes completarlos hasta el domingo';
-    if (faltan.length) lineas.push(['📝', faltan.length === 1 ? 'Te falta registrar un día' : `Te faltan ${faltan.length} días por registrar`, faltan.map(f => fecha(f).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' })).join(' · ') + ` · ${conPasos(s) ? 'tus pasos' : ''}${conPasos(s) && exige && s.modulo_nutricion && fase === 'activo' ? ' y ' : ''}${s.modulo_nutricion && fase === 'activo' && Nutricion.acuerdo(S.d).nivel === 'habitual' ? 'las comidas de tu plan' : ''}, para que Jesús vea tu semana real. ${plazo}.`, faltan[0] ? `data-act="irRegistroDia" data-f="${faltan[0]}"` : '', 'Rellenar', faltan.length >= 4 || lunesHoy]);
+    if (faltan.length && avisoAl('registro')) lineas.push(['📝', faltan.length === 1 ? 'Te falta registrar un día' : `Te faltan ${faltan.length} días por registrar`, faltan.map(f => fecha(f).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' })).join(' · ') + ` · ${conPasos(s) ? 'tus pasos' : ''}${conPasos(s) && exige && s.modulo_nutricion && fase === 'activo' ? ' y ' : ''}${s.modulo_nutricion && fase === 'activo' && Nutricion.acuerdo(S.d).nivel === 'habitual' ? 'las comidas de tu plan' : ''}, para que Jesús vea tu semana real. ${plazo}.`, faltan[0] ? `data-act="irRegistroDia" data-f="${faltan[0]}"` : '', 'Rellenar', faltan.length >= 4 || lunesHoy]);
   }
-  const lc = checkinPend(); if (lc && new Date().getDay() !== 0) lineas.push(['✅', 'Check-in semanal sin enviar', `Semana del ${fCorta(lc)} al ${fCorta(sumaDias(lc, 6))} · es lo que Jesús usa para preparar tu revisión y ajustar tu plan. Son 2 minutos`, `data-act="abrirCheckin" data-l="${lc}"`, 'Rellenar', [3, 4, 5, 6].includes(new Date().getDay())]);
-  const mp = MenuSemana.pendiente(); if (mp) lineas.push(mp);
-  const fm = Casos.pendienteMes(); if (fm) lineas.push(fm);
-  if (s.modulo_nutricion && (fase === 'recogida' || fase === 'preparacion')) {
+  const lc = checkinPend(); if (lc && new Date().getDay() !== 0 && avisoAl('checkin')) lineas.push(['✅', 'Check-in semanal sin enviar', `Semana del ${fCorta(lc)} al ${fCorta(sumaDias(lc, 6))} · es lo que Jesús usa para preparar tu revisión y ajustar tu plan. Son 2 minutos`, `data-act="abrirCheckin" data-l="${lc}"`, 'Rellenar', [3, 4, 5, 6].includes(new Date().getDay())]);
+  const mp = avisoAl('menu') && MenuSemana.pendiente(); if (mp) lineas.push(mp);
+  const fm = avisoAl('fotos') && Casos.pendienteMes(); if (fm) lineas.push(fm);
+  if (s.modulo_nutricion && (fase === 'recogida' || fase === 'preparacion') && avisoAl('incorporacion')) {
     if (Cuest.estado('estilo') !== 'enviado') lineas.push(['📝', Cuest.estado('estilo') === 'borrador' ? 'Termina tu cuestionario de estilo de vida' : 'Cuestionario de estilo de vida', 'Unos 10 minutos sobre tu trabajo, descanso, actividad, alimentación y estrés: con esto Jesús adapta el plan a tu vida real', 'data-act="cqEstilo"', Cuest.estado('estilo') === 'borrador' ? 'Seguir' : 'Rellenar']);
     if (Cuest.estado('preferencias') !== 'enviado') lineas.push(['🥦', 'Elige los alimentos que no te gustan', 'Tu plan se hará solo con alimentos que te gustan. Es un momento: tocas los que no quieres', 'data-act="cqPref"', 'Elegir']);
   }
-  if (s.modulo_nutricion && fase === 'recogida') lineas.push(['🍽', 'Registro de 7 días de comidas', 'Con una foto o una frase de lo que comes, sin cambiar nada: sirve para preparar tu plan a tu medida', 'data-act="tab" data-t="nutri"', 'Apuntar']);
-  const tarjetas = [Acomp.tarjetaDevolucionHoy(), Nutricion.tarjetaTemporal(), Casos.lineaHoy(), Casos.tarjetaHoy(true), Bienvenida.tarjeta()].join('');
+  if (s.modulo_nutricion && fase === 'recogida' && avisoAl('incorporacion')) lineas.push(['🍽', 'Registro de 7 días de comidas', 'Con una foto o una frase de lo que comes, sin cambiar nada: sirve para preparar tu plan a tu medida', 'data-act="tab" data-t="nutri"', 'Apuntar']);
+  const tarjetas = [Acomp.tarjetaDevolucionHoy(), Nutricion.tarjetaTemporal(), (avisoAl('casos') ? Casos.lineaHoy() : ''), (avisoAl('fotos') ? Casos.tarjetaHoy(true) : ''), Bienvenida.tarjeta()].join('');
   if (!lineas.length && !tarjetas.trim()) return '';
   /* La alerta roja solo cuando algo va de verdad tarde (check-in de la semana pasada a partir del miércoles, 4+ días sin registrar o último día para completar la semana) */
   const urge = lineas.some(l => l[5]);
@@ -985,7 +985,7 @@ function vHoy() {
   ${vCheckinTarjeta()}
   ${MenuSemana.tarjeta()}
   ${vProcesoGlobal(s)}
-  ${Casos.tarjetaHoy(false)}
+  ${avisoAl('fotos') ? Casos.tarjetaHoy(false) : ''}
   ${Temperamento.tarjetaHoy()}
   ${s.modulo_futbol || !s.modulo_habitos ? '' : Habitos.tarjetaHoy(true)}
   `;
@@ -1793,7 +1793,7 @@ setInterval(() => { if (navigator.onLine && Cola.leer().length) Cola.enviar(); }
 const Peso = {
   /* Al terminar el ejercicio (todas sus series marcadas): si se usó un peso distinto al pautado, ¿se queda para las próximas semanas o fue algo temporal? */
   revisar(es, fila, T, sid) {
-    const z = S.sesion; z.pesoPreg ||= {}; if (z.pesoPreg[es]) return;
+    const z = S.sesion; z.pesoPreg ||= {}; if (z.pesoPreg[es] || !avisoAl('peso')) return;
     const e = S.dia.bloques_sesion.flatMap(b => b.ejercicios_sesion).find(x => x.id === es); if (!e || esSinPeso(e)) return;
     const series = +e.series || 0, hechas = Object.keys(z.regs || {}).filter(k => k.startsWith(es + '-')).length;
     if (series && hechas < series) return;   // aún no ha terminado el ejercicio
@@ -2110,15 +2110,45 @@ function semanaDatos(aid, lunes, src) {
 }
 /* Estado de las alertas del coach: vistas (quita la notificación) y solventadas (pasa a verde).
    Se guarda en la tabla alertas_coach (Bloque 51); si no existe, en este dispositivo. */
+/* Tipos de aviso para el coach (por el texto del aviso): sirven para agruparlos y para elegir cuáles te llegan de cada alumno */
+const TIPOS_AL = [
+  ['pago', 'Pagos vencidos', /pago vencido|cobro/i], ['revision', 'Revisión mensual pendiente', /revisi[oó]n(es)? mensual/i],
+  ['devolucion', 'Check-in sin devolución', /sin devoluci[oó]n|devoluciones/i], ['motivacion', 'Bajadas de motivación', /motivaci[oó]n/i],
+  ['peso', 'Cambios de peso en ejercicios', /ha cambiado su peso/i], ['casos', 'Permisos, testimonios y canjes de puntos', /permisos de imagen|testimonio|canje|puntos/i],
+  ['entrenos', 'Entrenos por debajo de lo previsto', /entrenos/i], ['pasos', 'Pasos sin registrar o bajos', /pasos/i],
+  ['alimentacion', 'Alimentación por debajo de lo acordado', /alimentaci[oó]n/i], ['fotos', 'Fotos del mes sin subir', /fotos de progreso/i],
+  ['habitos', 'Ajustes de sus hábitos', /h[aá]bito/i], ['futbol', 'Fútbol: fatiga, molestias, carga y cuestionarios', /fatiga|molestia|carga|acwr|cuestionario|planificaci[oó]n del equipo|partido/i],
+  ['proxima', 'Tu próxima acción con él/ella', /pr[oó]xima acci[oó]n/i], ['proceso', 'Fin de proceso y pausas', /pausa|proceso|queda menos de un mes|extensi[oó]n/i],
+  ['otros', 'Otros avisos', /./],
+];
+const tipoAlerta = m => (TIPOS_AL.find(t => t[2].test(m || '')) || TIPOS_AL[TIPOS_AL.length - 1])[0];
+/* Lo que el alumno ve en su app (Pendiente, Hoy y entreno): el coach puede apagarlo por alumno */
+const AVISOS_ALUMNO = [
+  ['registro', 'Días sin registrar (pasos, comidas)', 'Pendiente'], ['checkin', 'Check-in semanal', 'Pendiente'], ['menu', 'Menú de la semana', 'Pendiente'],
+  ['fotos', 'Fotos y reflexión del mes (y sus puntos)', 'Pendiente'], ['incorporacion', 'Cuestionarios y registro de 7 días de la incorporación', 'Pendiente'],
+  ['peso', 'Pregunta al cambiar el peso de un ejercicio (te avisa a ti)', 'Entreno'], ['control', 'Aviso de su control mensual', 'Hoy'], ['casos', 'Invitación a compartir su caso de éxito', 'Hoy'],
+];
+const avisoAl = k => !((S.d?.servicio?.avisos_alumno || {})[k] === false);
 const Alertas = {
   m: {}, local: false,
   clave: t => normaliza(t).replace(/\s+/g, ' ').trim(),
   async cargar() {
     const r = await sb.from('alertas_coach').select('*');
     if (r.error) { this.local = true; try { this.m = JSON.parse(localStorage.getItem('lof-alertas') || '{}'); } catch (e) { this.m = {}; } return; }
-    this.local = false; this.m = Object.fromEntries((r.data || []).map(x => [x.alumno_id, { vistas: x.vistas || [], resueltas: x.resueltas || [], notas: x.notas || {} }]));
+    this.local = false; this.m = Object.fromEntries((r.data || []).map(x => [x.alumno_id, { vistas: x.vistas || [], resueltas: x.resueltas || [], notas: x.notas || {}, config: x.config || null }]));
+    try { const lc = JSON.parse(localStorage.getItem('lof-alertas-cfg') || '{}'); Object.entries(lc).forEach(([aid, c]) => { const x = this.de(aid); if (!x.config) x.config = c; }); } catch (e) { }
   },
   de(aid) { return this.m[aid] || (this.m[aid] = { vistas: [], resueltas: [] }); },
+  cfg(aid) { return this.de(aid).config || {}; },
+  silenciado(aid) { const h = this.cfg(aid).silencio; return h && h >= hoyISO() ? h : null; },
+  activa(aid, m) { if (this.silenciado(aid)) return false; return !(this.cfg(aid).off || []).includes(tipoAlerta(m)); },
+  async guardarCfg(aid, cfg) {
+    const x = this.de(aid); x.config = cfg;
+    try { const lc = JSON.parse(localStorage.getItem('lof-alertas-cfg') || '{}'); lc[aid] = cfg; localStorage.setItem('lof-alertas-cfg', JSON.stringify(lc)); } catch (e) { }
+    if (this.local) return true;
+    const { error } = await sb.from('alertas_coach').upsert({ alumno_id: aid, vistas: x.vistas, resueltas: x.resueltas, notas: x.notas || {}, config: cfg, actualizado_at: new Date().toISOString() }, { onConflict: 'alumno_id' });
+    return !error || !/config/.test(error.message || '') ? !error : 'sincol';
+  },
   async guardar(aid) {
     const x = this.de(aid);
     if (!this.local) { let { error } = await sb.from('alertas_coach').upsert({ alumno_id: aid, vistas: x.vistas, resueltas: x.resueltas, notas: x.notas || {}, actualizado_at: new Date().toISOString() }, { onConflict: 'alumno_id' }); if (error && /notas/.test(error.message || '')) ({ error } = await sb.from('alertas_coach').upsert({ alumno_id: aid, vistas: x.vistas, resueltas: x.resueltas, actualizado_at: new Date().toISOString() }, { onConflict: 'alumno_id' })); if (!error) return; this.local = true; }
@@ -2170,22 +2200,40 @@ function estadoAlumno(a) {
   const mes = new Set(ses.filter(s => s.fecha >= sumaDias(hoy, -27)).map(s => s.fecha + s.dia_id)).size;
   const control = revisionPendiente(srv, (c.revisiones || []).filter(r => r.alumno_id === a.id), c.revisionesErr) || (c.revisionesErr ? controlEnSemana(srv, lunes) : null);
   if (control?.atrasada && !pausa) { sube('warn'); motivos.push(`Revisión mensual ${control.n} pendiente desde el ${fCorta(control.fecha)}`); }
-  const st = Alertas.de(a.id), items = motivos.map((m, i) => ({ m, n: niveles[i], k: Alertas.clave(m) })).map(x => ({ ...x, ok: st.resueltas.includes(x.k), nueva: !st.vistas.includes(x.k) }));
+  const st = Alertas.de(a.id), items = motivos.map((m, i) => ({ m, n: niveles[i], k: Alertas.clave(m), t: tipoAlerta(m) })).filter(x => Alertas.activa(a.id, x.m)).map(x => ({ ...x, ok: st.resueltas.includes(x.k), nueva: !st.vistas.includes(x.k) }));
   const pend = items.filter(x => !x.ok);
   pend.forEach(x => { const n = est.k === 'regreso' && x.n === 'bad' ? 'warn' : x.n; if (n === 'bad' || nivel === 'ok') nivel = n; });
   return { nivel, motivos: pend.map(x => x.m), items, nuevas: items.filter(x => x.nueva && !x.ok).length, ult, ultSes: ses[0], dpw, dpw4, ctx: ctxDe(a.id), semana, mes, control, ses7: semana };
 }
 /* Lista de incidencias con su botón de solventado (las solventadas, tachadas y con deshacer) */
+/* Avisos parecidos juntos: dos o más del mismo tipo salen en una sola línea (p. ej. «Cambios de peso en 10 ejercicios») */
+function agruparAlertas(items) {
+  const out = [], por = {};
+  items.forEach(x => { const t = x.t || tipoAlerta(x.m); if (t === 'otros') return out.push({ t, items: [x] }); if (!por[t]) out.push(por[t] = { t, items: [] }); por[t].items.push(x); });
+  return out.map(g => {
+    const l = g.items, n = l.some(x => x.n === 'bad') ? 'bad' : l[0].n, nueva = l.some(x => x.nueva && !x.ok);
+    if (l.length === 1) return { ...g, m: l[0].m, n, nueva, sub: '' };
+    const corto = x => (/peso en (.+?):/i.exec(x.m) || [])[1] || x.m.replace(/\s*\(.*$/, '');
+    const nombres = l.map(corto), sub = nombres.slice(0, 3).join(' · ') + (nombres.length > 3 ? ` · y ${nombres.length - 3} más` : '');
+    const tit = { peso: `Cambios de peso en ${l.length} ejercicios`, casos: `${l.length} novedades de permisos, testimonios o puntos`, entrenos: 'Entrenos por debajo de lo previsto', futbol: `${l.length} avisos de fútbol` }[g.t] || `${(TIPOS_AL.find(t => t[0] === g.t) || [])[1] || 'Avisos'} (${l.length})`;
+    return { ...g, m: tit, n, nueva, sub };
+  });
+}
+const msDe = g => g.items.map(x => x.m).join('\n');
 function vListaAlertas(aid, e, conResueltas = false) {
-  const l = e.items.filter(x => conResueltas || !x.ok);
-  return `<div class="stack" style="gap:6px">${l.map(x => `<div class="row small" style="gap:8px;align-items:flex-start"><span class="al-dot-s" style="background:var(--${x.ok ? 'ok' : x.n})"></span><span class="grow" ${x.ok ? '' : `data-act="alIr" data-id="${aid}" data-m="${esc(x.m)}" role="button" style="cursor:pointer;text-decoration:underline dotted"`} ${x.ok ? 'style="text-decoration:line-through;color:var(--muted)"' : ''}>${esc(x.m)}${x.ok && Alertas.de(aid).notas?.[x.k] ? `<span style="display:block;text-decoration:none;color:var(--ok)">✓ ${esc(Alertas.de(aid).notas[x.k].t || 'Atendida')} · ${esc(fCorta(Alertas.de(aid).notas[x.k].f))}</span>` : ''}${(x.nueva || S.ficha?.recien?.has(x.k)) && !x.ok ? ' <span class="pill bad">Nueva</span>' : ''}</span><button class="btn sm ${x.ok ? 'ghost' : ''}" data-act="alResolver" data-id="${aid}" data-m="${esc(x.m)}" data-on="${x.ok ? 0 : 1}">${x.ok ? 'Deshacer' : '✓ Solventado'}</button></div>`).join('')}</div>`;
+  const pend = agruparAlertas(e.items.filter(x => !x.ok)), hechas = conResueltas ? e.items.filter(x => x.ok) : [];
+  const nota = x => Alertas.de(aid).notas?.[x.k];
+  const sil = Alertas.silenciado(aid);
+  return `<div class="stack" style="gap:6px">${sil ? `<div class="aprox small">🔕 Avisos silenciados ${sil >= '9999' ? 'hasta que los reactives' : 'hasta el ' + esc(fLarga(sil))}. <button class="linkbtn small" data-act="alConfig" data-id="${aid}">Cambiar</button></div>` : ''}
+    ${pend.map(g => `<div class="row small" style="gap:8px;align-items:flex-start"><span class="al-dot-s" style="background:var(--${g.n})"></span><span class="grow" data-act="alIr" data-id="${aid}" data-m="${esc(g.items[0].m)}" data-g="${g.items.length > 1 ? g.t : ''}" role="button" style="cursor:pointer"><span style="text-decoration:underline dotted">${esc(g.m)}</span>${g.sub ? `<span class="muted" style="display:block">${esc(g.sub)}</span>` : ''}${g.nueva || g.items.some(x => S.ficha?.recien?.has(x.k)) ? ' <span class="pill bad">Nueva</span>' : ''}</span><button class="btn sm" data-act="alResolver" data-id="${aid}" data-m="${esc(msDe(g))}" data-on="1">✓ Solventado</button></div>`).join('')}
+    ${hechas.map(x => `<div class="row small" style="gap:8px;align-items:flex-start"><span class="al-dot-s" style="background:var(--ok)"></span><span class="grow" style="text-decoration:line-through;color:var(--muted)">${esc(x.m)}${nota(x) ? `<span style="display:block;text-decoration:none;color:var(--ok)">✓ ${esc(nota(x).t || 'Atendida')} · ${esc(fCorta(nota(x).f))}</span>` : ''}</span><button class="btn sm ghost" data-act="alResolver" data-id="${aid}" data-m="${esc(x.m)}" data-on="0">Deshacer</button></div>`).join('')}</div>`;
 }
 function verAlertas(id) {
   const a = S.c.perfiles.find(x => x.id === id); if (!a) return;
   const e = estadoAlumno(a), lab = { ok: 'En camino', warn: 'Atención', bad: 'Revisar' };
   abrirSheet(`<div class="stack"><span class="eyebrow">Alertas</span><h2>${esc(a.nombre)}</h2><span class="pill ${e.nivel}" style="align-self:flex-start">${lab[e.nivel]}</span>
     ${e.motivos.length ? vListaAlertas(a.id, e) : '<p class="aprox small" style="margin:0">✅ <b>Todo al día.</b> No tiene incidencias pendientes.</p>'}
-    <button class="btn full" data-act="ficha" data-id="${a.id}">Abrir su ficha</button></div>`);
+    <div class="row" style="gap:8px"><button class="btn ghost" data-act="alConfig" data-id="${a.id}">🔔 Ajustes de avisos</button><button class="btn grow" data-act="ficha" data-id="${a.id}">Abrir su ficha</button></div></div>`);
 }
 function vAntiguos() {
   const ant = S.c.perfiles.filter(p => p.activo === false && p.rol !== 'coach');
@@ -2244,7 +2292,7 @@ function vAlumnos() {
       <select id="al-prog" aria-label="Programa"><option value="">Todos los programas</option>${progs.map(x => `<option ${S.alF.p === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
       <select id="al-mod" aria-label="Modalidad"><option value="">Todas las modalidades</option>${MODALIDADES.map(x => `<option ${S.alF.m === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
     ${S.alF.k ? `<div class="row" style="gap:8px;margin:8px 0"><span class="pill ${S.alF.k === 'todos' ? 'blue' : 'bad'}">Mostrando: ${{ todos: 'todos los perfiles activos', alerta: 'necesitan atención', vencidos: 'con pagos vencidos' }[S.alF.k]}</span><button class="linkbtn small" data-act="alFiltro" data-k="">Quitar filtro</button></div>` : ''}
-    <div class="card">${est.map(({ a, e }) => `<div class="line al-fila" data-act="ficha" data-id="${a.id}" data-n="${esc(normaliza(a.nombre))}" data-p="${esc(prodDe(a.id))}" data-m="${esc(modalidadDe(a.id))}" data-al="${e.nivel !== 'ok' ? 1 : 0}" data-v="${vencIds.has(a.id) ? 1 : 0}" style="cursor:pointer"${visibleAl(a, e) ? '' : ' hidden'}><span style="width:4px;align-self:stretch;border-radius:2px;background:var(--${e.nivel})"></span><i class="al-dot ${e.nuevas ? 'nueva' : ''}" data-act="verAlertas" data-id="${a.id}" role="button" aria-label="Ver alertas de ${esc(a.nombre)}" style="background:var(--${e.nivel})"></i>${avatarDe(a, 40)}<div class="grow stack" style="gap:3px"><div class="row"><h3 class="grow">${esc(a.nombre)}</h3>${e.ctx ? `<span class="pill gold" title="Semana adaptada">${esc(e.ctx.contexto_nombre || 'Contexto')}</span>` : ''}${e.control ? '<span class="pill gold">Revisión mensual</span>' : ''}${e.nuevas ? `<span class="pill bad">${e.nuevas} ${e.nuevas === 1 ? 'nueva' : 'nuevas'}</span>` : ''}<span class="pill ${e.nivel}">${lab[e.nivel]}</span></div><div class="small muted">${esc((c.servicios.find(s => s.alumno_id === a.id) || {}).producto || 'Sin servicio')}${e.ult ? ` · motivación ${e.ult.motivacion}/10` : ''}</div>${e.dpw ? barra('Semana', e.semana, e.dpw) + barra('Últimas 4 semanas', e.mes, e.dpw4 || e.dpw * 4) : ''}${e.motivos.length ? `<div class="small">${esc(e.motivos.join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no hay alumnos.</div>'}<div class="empty" id="al-nada" hidden>Ningún alumno coincide con la búsqueda.</div></div>
+    <div class="card">${est.map(({ a, e }) => `<div class="line al-fila" data-act="ficha" data-id="${a.id}" data-n="${esc(normaliza(a.nombre))}" data-p="${esc(prodDe(a.id))}" data-m="${esc(modalidadDe(a.id))}" data-al="${e.nivel !== 'ok' ? 1 : 0}" data-v="${vencIds.has(a.id) ? 1 : 0}" style="cursor:pointer"${visibleAl(a, e) ? '' : ' hidden'}><span style="width:4px;align-self:stretch;border-radius:2px;background:var(--${e.nivel})"></span><i class="al-dot ${e.nuevas ? 'nueva' : ''}" data-act="verAlertas" data-id="${a.id}" role="button" aria-label="Ver alertas de ${esc(a.nombre)}" style="background:var(--${e.nivel})"></i>${avatarDe(a, 40)}<div class="grow stack" style="gap:3px"><div class="row"><h3 class="grow">${esc(a.nombre)}</h3>${e.ctx ? `<span class="pill gold" title="Semana adaptada">${esc(e.ctx.contexto_nombre || 'Contexto')}</span>` : ''}${e.control ? '<span class="pill gold">Revisión mensual</span>' : ''}${e.nuevas ? `<span class="pill bad">${e.nuevas} ${e.nuevas === 1 ? 'nueva' : 'nuevas'}</span>` : ''}<span class="pill ${e.nivel}">${lab[e.nivel]}</span></div><div class="small muted">${esc((c.servicios.find(s => s.alumno_id === a.id) || {}).producto || 'Sin servicio')}${e.ult ? ` · motivación ${e.ult.motivacion}/10` : ''}</div>${e.dpw ? barra('Semana', e.semana, e.dpw) + barra('Últimas 4 semanas', e.mes, e.dpw4 || e.dpw * 4) : ''}${e.motivos.length ? `<div class="small">${esc(agruparAlertas(e.items.filter(x => !x.ok)).map(g => g.m).join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no hay alumnos.</div>'}<div class="empty" id="al-nada" hidden>Ningún alumno coincide con la búsqueda.</div></div>
   <p class="note">Para dar de alta a un alumno nuevo, créalo en Supabase → Authentication → Users. Su perfil aparecerá aquí solo.</p></section>
   ${Casos.resumenCoach()}`;
 }
@@ -2611,6 +2659,49 @@ function controlFut(lunes, modo = 'semana') {
     <p class="small muted" style="margin:0">Cada cuadrado es un día: el número es la fatiga del check diario (verde fresco → rojo destrozado); P = partido; vacío = sin rellenar.</p>
     ${fut.map(tarj).join('') || '<p class="small muted">No hay futbolistas activos.</p>'}</div>`);
 }
+/* Cambios de peso que ha decidido el alumno, juntos en su Entrenamiento: cada uno lleva a su sesión */
+function vCambiosPeso(aid) {
+  const l = (S.c.cambiosPeso || []).filter(x => x.alumno_id === aid); if (!l.length) return '';
+  const ses = id => (S.ficha?.ses || []).find(x => x.id === id), porSes = {};
+  l.forEach(x => (porSes[x.sesion_id || 0] ||= []).push(x));
+  return `<section class="section" id="ent-peso"><div class="section-head"><h2>Cambios de peso por revisar</h2><button class="btn sm ghost" data-act="pesoVisto" data-id="${aid}">✓ Revisados</button></div><div class="card stack" style="gap:10px">
+    ${Object.entries(porSes).map(([sid, xs]) => { const s0 = ses(+sid), f = s0?.fecha || String(xs[0].created_at || '').slice(0, 10);
+      return `<div class="stack" style="gap:4px"><div class="row"><b class="small grow">${f ? esc(fLarga(f)) : 'Sesión'}${s0?.dias?.nombre ? ' · ' + esc(s0.dias.nombre) : ''}</b>${+sid ? `<button class="linkbtn small" data-act="verSesion" data-id="${sid}">Ver la sesión ›</button>` : ''}</div>
+        ${xs.map(x => `<div class="small" style="padding-left:10px"><b>${esc(x.ejercicio || 'Ejercicio')}</b>: ${esc(x.antes || '—')} → <b>${esc(x.despues || '—')}</b></div>`).join('')}</div>`; }).join('')}
+    <p class="note" style="margin:0">Los cambia el alumno al terminar un ejercicio con otro peso. Al abrir la sesión, o con «Revisados», dejan de salir en tus avisos.</p></div></section>`;
+}
+async function pesoVisto(aid) {
+  const ids = (S.c.cambiosPeso || []).filter(x => x.alumno_id === aid).map(x => x.id); if (!ids.length) return;
+  const { error } = await sb.from('cambios_peso').update({ visto_at: new Date().toISOString() }).in('id', ids); if (error) return fallo(error);
+  S.c.cambiosPeso = S.c.cambiosPeso.filter(x => !ids.includes(x.id));
+}
+/* Ajustes de avisos por alumno: silenciar, qué te llega a ti y qué ve él/ella en su app */
+function formAvisos(aid) {
+  const a = S.c.perfiles.find(x => x.id === aid); if (!a) return;
+  const cfg = Alertas.cfg(aid), off = cfg.off || [], sil = Alertas.silenciado(aid), srv = S.c.servicios.find(x => x.alumno_id === aid) || {}, va = srv.avisos_alumno || {}, nom = a.nombre.split(' ')[0];
+  const chk = (id, on, t, sub) => `<label class="row small" style="gap:10px;align-items:flex-start;padding:6px 0;border-top:1px solid var(--line)"><input type="checkbox" ${id} ${on ? 'checked' : ''} style="width:22px;height:22px;flex:none;margin-top:1px"><span class="grow">${esc(t)}${sub ? `<span class="muted" style="display:block">${esc(sub)}</span>` : ''}</span></label>`;
+  const opS = [['', 'No'], ['7', '1 semana'], ['14', '2 semanas'], ['30', '1 mes'], ['siempre', 'Hasta que lo reactive']];
+  abrirSheet(`<div class="stack"><span class="eyebrow">Avisos</span><h2>${esc(a.nombre)}</h2>
+    <div class="card stack" style="gap:8px"><b>Silenciar sus avisos</b><span class="small muted">No te sale nada de ${esc(nom)} en alumnos, Tu día ni su ficha. Útil en vacaciones, lesión o pausa.</span>
+      <div class="chips" id="av-sil">${opS.map(([v, t]) => `<button type="button" class="pill ${(!sil && !v) || (sil && v === 'siempre' && sil >= '9999') ? 'blue' : ''}" data-v="${v}" aria-pressed="false">${t}</button>`).join('')}</div>
+      ${sil ? `<span class="small">🔕 Ahora: silenciado ${sil >= '9999' ? 'hasta que lo reactives' : 'hasta el ' + esc(fLarga(sil))}</span>` : ''}</div>
+    <div class="card stack" style="gap:0"><b style="margin-bottom:6px">Qué avisos de ${esc(nom)} te llegan a ti</b>${TIPOS_AL.filter(t => t[0] !== 'otros').map(([k, t]) => chk(`data-avc="${k}"`, !off.includes(k), t)).join('')}</div>
+    <div class="card stack" style="gap:0"><b style="margin-bottom:6px">Qué le sale a ${esc(nom)} en su app</b>${AVISOS_ALUMNO.map(([k, t, d]) => chk(`data-ava="${k}"`, va[k] !== false, t, d)).join('')}</div>
+    <p class="err" id="av-err"></p><button class="btn full" id="av-b">Guardar</button></div>`);
+  let silV = null;
+  $('#av-sil').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; silV = b.dataset.v; document.querySelectorAll('#av-sil .pill').forEach(x => x.classList.toggle('blue', x === b)); });
+  $('#av-b').addEventListener('click', async () => {
+    const bt = $('#av-b'); bt.disabled = true; bt.textContent = 'Guardando…';
+    const nuevo = { ...cfg, off: [...document.querySelectorAll('[data-avc]')].filter(x => !x.checked).map(x => x.dataset.avc) };
+    if (silV != null) nuevo.silencio = silV === '' ? null : silV === 'siempre' ? '9999-12-31' : sumaDias(hoyISO(), +silV);
+    const vaN = Object.fromEntries([...document.querySelectorAll('[data-ava]')].map(x => [x.dataset.ava, x.checked]));
+    const r1 = await Alertas.guardarCfg(aid, nuevo);
+    let falta = r1 === 'sincol';
+    if (srv.id || srv.alumno_id) { const { error } = await sb.from('servicios').update({ avisos_alumno: vaN }).eq('alumno_id', aid).eq('activo', true); if (error) falta = true; else srv.avisos_alumno = vaN; }
+    if (S.ficha?.srv && S.ficha.id === aid) S.ficha.srv.avisos_alumno = vaN;
+    cerrarSheet(); toast(falta ? 'Guardado en este dispositivo. Ejecuta el Bloque 85 para que se aplique en todas partes y en la app del alumno' : 'Avisos guardados'); render();
+  });
+}
 /* Abre la ficha del alumno justo donde está lo que hay que mirar: pestaña, sub-pantalla y sección resaltada */
 async function irA(aid, o = {}) {
   cerrarSheet(); S.reporte = null; S.editor = null; S.verPlan = null; S.verSes = null;
@@ -2629,6 +2720,7 @@ function alIr(aid, m) {
   const rv = /Revisión mensual (\d+)/.exec(m); if (rv) return irA(aid, { fn: () => formRevision(+rv[1], null) });
   if (/revisi[oó]n(es)? mensual/i.test(m)) { const c = estadoAlumno(S.c.perfiles.find(x => x.id === aid) || {}).control; return irA(aid, c ? { fn: () => formRevision(c.n, null) } : { tab: 'calendario' }); }
   if (/fatiga|molestia|pico de carga|cuestionario del lunes|planificación del equipo/i.test(m)) return checkinSheet(aid);
+  if (/ha cambiado su peso en/i.test(m) && (S.c.cambiosPeso || []).filter(c => c.alumno_id === aid).length > 1) return irA(aid, { sub: 'entreno', ancla: 'ent-peso' });
   if (/ha cambiado su peso en/i.test(m)) { const x = (S.c.cambiosPeso || []).find(c => c.alumno_id === aid && (!c.ejercicio || m.includes(c.ejercicio))); if (x?.sesion_id) return irA(aid, { fn: () => verSesion(x.sesion_id) }); return irA(aid, { sub: 'entreno' }); }
   if (/pago|cobro/i.test(m)) return irA(aid, { tab: 'pagos' });
   if (/devoluci[oó]n|check-in de la semana|motivaci[oó]n/i.test(m)) return irA(aid, { tab: 'checkins', ancla: 'ac-chk' });
@@ -3462,7 +3554,7 @@ function vFicha() {
       <h2 class="fx-nom">${esc(a.nombre)}</h2>
       <div class="fx-est"><span class="fx-dot ${e.nivel}"></span>${nivTxt}${pend.length ? ` · ${pend.length} aviso${pend.length > 1 ? 's' : ''}` : ''}</div>
       <div class="fx-acc fx-acc-mov"><button class="btn sm" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar</button><button class="btn sm ghost" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como</button><button class="btn sm ghost" data-act="abrirReporte" data-id="${a.id}">📋 Reporting</button></div>
-      <div class="fx-datos">${filaP('Plan', esc(srv?.producto || 'Sin plan'))}${filaP('Bloque', P && !P.antes && !P.fuera ? esc(nomCiclo(P.cc)) : '')}${filaP('Semana', P && !P.antes && !P.fuera ? `${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : P?.antes ? 'Empieza ' + esc(fCorta(srv.inicio)) : '')}${filaP('Programa', f.prog ? esc(f.prog.nombre) : '')}${filaP('Alta', esc(fF(a.fecha_alta || srv?.inicio || hoy)))}${filaP('Email', esc(a.email || ''))}</div>
+      <div class="fx-datos">${filaP('Plan', esc(srv?.producto || 'Sin plan'))}${filaP('Bloque', P && !P.antes && !P.fuera ? esc(nomCiclo(P.cc)) : '')}${filaP('Semana', P && !P.antes && !P.fuera ? `${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : P?.antes ? 'Empieza ' + esc(fCorta(srv.inicio)) : '')}${filaP('Programa', f.prog ? esc(f.prog.nombre) : '')}${filaP('Alta', esc(fF(a.fecha_alta || srv?.inicio || hoy)))}${filaP('Email', esc(a.email || ''))}<button class="fx-dato fx-pago" data-act="fTab" data-t="pagos"><span>Pagos</span><b style="${pagV.length ? 'color:var(--bad)' : ''}">${pagV.length ? `${pagV.length} vencida${pagV.length === 1 ? '' : 's'}` : pagP.length ? `Próxima ${esc(fCorta(pagP.slice().sort((x, y) => x.vence.localeCompare(y.vence))[0].vence))}` : pagos.length ? 'Al día' : 'Sin cuotas'} ›</b></button></div>
       <div class="fx-acc"><button class="btn sm" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm ghost" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como ${esc(nom)}</button><button class="btn sm ghost" data-act="abrirReporte" data-id="${a.id}">📋 Reporting</button></div>
       <details class="fx-mas"><summary>Más acciones</summary><div class="stack" style="gap:6px;margin-top:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}<button class="btn sm ghost" data-act="pausarAcceso" data-id="${a.id}" data-on="${a.acceso_pausado ? 0 : 1}">${a.acceso_pausado ? '🔓 Devolver el acceso' : '🔒 Quitar el acceso'}</button></div></details>
       ${a.activo === false ? '<p class="small muted" style="margin:0">Antiguo alumno: no genera avisos.</p>' : ''}</aside>`;
@@ -3489,7 +3581,7 @@ function vFicha() {
       const prox = [e.control && ['🗓', `Revisión mensual ${e.control.n}`, fCorta(e.control.fecha)], presP && ['🏋️', 'Sesión presencial', `${fCorta(presP.fecha)}${presP.hora ? ' · ' + hhmm(presP.hora) : ''}`], pagV.length ? ['💳', `${pagV.length} cuota${pagV.length > 1 ? 's' : ''} vencida${pagV.length > 1 ? 's' : ''}`, 'Revisar'] : pagP.length && ['💳', 'Próxima cuota', fCorta(pagP.slice().sort((x, y) => x.vence.localeCompare(y.vence))[0].vence)], P && !P.sinFin && !P.fuera && ['🏁', 'Fin del proceso', fCorta(P.ciclos[P.ciclos.length - 1].fin)]].filter(Boolean);
       const k0 = chks[0], dev = (f.devoluciones || [])[0];
       const cCumpl = `<div class="card fx-c fx-cumpl"><div class="fx-ct">Cumplimiento <span class="muted">· últimas 4 semanas</span></div><div class="fx-cumpl-in">${anillo}<div class="fx-partes">${partes.map(([l, v, sub]) => `<div class="fx-parte"><div class="row"><span class="grow">${l}</span><b>${v} %</b></div><span class="fx-bar"><i style="width:${v}%;background:${v >= 85 ? 'var(--ok)' : v >= 60 ? 'var(--gold)' : 'var(--bad)'}"></i></span><small>${esc(sub)}</small></div>`).join('') || '<p class="small muted">Aún no hay semanas completas con datos.</p>'}</div></div><p class="fx-nota">Media de lo que se mide en su plan. Cada parte cuenta igual.</p></div>`;
-      const cPend = `<div class="card fx-c"><div class="fx-ct">Pendiente de ti ${pend.length ? `<span class="fx-num">${pend.length}</span>` : ''}</div>${pend.length ? `<div class="fx-lista">${pend.slice(0, 5).map(x => `<div class="fx-al"><span class="fx-dot ${x.n}"></span><span class="grow" data-act="alIr" data-id="${a.id}" data-m="${esc(x.m)}" role="button">${esc(x.m)}</span><button class="fx-ok" data-act="alResolver" data-id="${a.id}" data-m="${esc(x.m)}" data-on="1" title="Marcar como solventado" aria-label="Marcar como solventado">✓</button></div>`).join('')}</div>${pend.length > 5 ? `<button class="linkbtn small" data-act="fTab" data-t="resumen">Ver los ${pend.length} avisos ›</button>` : ''}` : '<div class="fx-vacio">✓ Todo al día</div>'}</div>`;
+      const cPend = `<div class="card fx-c"><div class="fx-ct">Pendiente de ti ${pend.length ? `<span class="fx-num">${pend.length}</span>` : ''}</div>${(() => { const G = agruparAlertas(pend); return G.length ? `<div class="fx-lista">${G.slice(0, 5).map(g => `<div class="fx-al"><span class="fx-dot ${g.n}"></span><span class="grow" data-act="alIr" data-id="${a.id}" data-m="${esc(g.items[0].m)}" data-g="${g.items.length > 1 ? g.t : ''}" role="button">${esc(g.m)}${g.sub ? `<small class="muted" style="display:block">${esc(g.sub)}</small>` : ''}</span><button class="fx-ok" data-act="alResolver" data-id="${a.id}" data-m="${esc(msDe(g))}" data-on="1" title="Marcar como solventado" aria-label="Marcar como solventado">✓</button></div>`).join('')}</div>${G.length > 5 ? `<button class="linkbtn small" data-act="fTab" data-t="resumen">Ver todos los avisos ›</button>` : ''}` : `<div class="fx-vacio">${Alertas.silenciado(a.id) ? '🔕 Avisos silenciados' : '✓ Todo al día'}</div>`; })()}<button class="linkbtn small" data-act="alConfig" data-id="${a.id}" style="margin-top:6px">🔔 Ajustes de avisos</button></div>`;
       const cChk = `<div class="card fx-c"><div class="fx-ct">Último check-in</div>${k0 ? `<div class="fx-chk"><span class="muted small">Semana del ${esc(fCorta(k0.semana_inicio))}</span><div class="fx-mini"><div><b>${k0.motivacion ?? '—'}</b><small>motivación</small></div><div><b>${k0.implicacion ?? '—'}</b><small>implicación</small></div></div>${k0.dificultades ? `<p class="small" style="margin:0">«${esc(k0.dificultades.slice(0, 160))}${k0.dificultades.length > 160 ? '…' : ''}»</p>` : ''}${dev?.prioridad ? `<p class="small muted" style="margin:0">Tu prioridad para él: ${esc(dev.prioridad)}</p>` : ''}</div>` : '<div class="fx-vacio">Aún no ha enviado ningún check-in</div>'}</div>`;
       const cProx = l => `<div class="card fx-c"><div class="fx-ct">Próximo</div>${l.length ? `<div class="fx-lista">${l.map(([ic, t, d]) => `<div class="fx-prox"><span class="fx-ic">${ic}</span><span class="grow">${esc(t)}</span><b>${esc(d)}</b></div>`).join('')}</div>` : '<div class="fx-vacio">Nada programado</div>'}</div>`;
       const kEnt = (srv?.modulo_entreno ?? true) ? kpi('Entrenos esta semana', dpw ? `${cur.entrenos}<small>/${dpw}</small>` : cur.entrenos, `Semana pasada ${pre.entrenos}${dpwPre ? '/' + dpwPre : ''}`, dpw ? cur.entrenos / dpw * 100 : null, 'checkins') : '';
@@ -3540,7 +3632,7 @@ function vFichaSub(f, a) {
     const dpwB = f.prog?.dias_semana || 0, dpw = dpwEn(a.id, lunes, dpwB), dpw4 = [0, 1, 2, 3].reduce((t, k) => t + dpwEn(a.id, sumaDias(lunes, -7 * k), dpwB), 0), P = proceso(srv), linea = s2 => `<div class="line" data-act="verSesion" data-id="${s2.id}" style="cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(s2.fecha))}</span><div class="grow"><div class="small"><b>${esc(nomDia(s2.dias))}</b> · ${esc(s2.dias?.foco || '')} · ${nSeriesReg(s2.registros_series)} series${s2.duracion_min ? ` · ${s2.duracion_min} min` : ''}${s2.cansancio ? ` · cansancio ${s2.cansancio}/5` : ''}${(s2.omitidos || []).length ? ` · ${s2.omitidos.length} no realizado${s2.omitidos.length > 1 ? 's' : ''}` : ''}</div>${s2.nota ? `<div class="small muted">"${esc(s2.nota)}"</div>` : ''}</div><span class="small" style="color:var(--blue-text)">›</span></div>`;
     const semana = f.ses.filter(x => x.fecha >= lunes), bloque = P && !P.antes ? f.ses.filter(x => x.fecha >= P.cc.ini && x.fecha <= P.cc.fin && x.fecha < lunes) : [];
     const unicas = l => new Set(l.map(x => x.fecha + x.dia_id)).size, mes = unicas(f.todas.filter(x => x.fecha >= sumaDias(hoy, -27)));
-    return cab('Entrenamiento') + vZonasFC({ vals: f.val, perfil: a, srv, coach: true }) + vRitmosVAM({ vals: f.val, perfil: a, coach: true }) + (() => { const h = vSelectorProgs(a.id, null); return h ? `<section class="section"><div class="card">${h}</div></section>` : ''; })() + vContextos(f, a) + `
+    return cab('Entrenamiento') + vCambiosPeso(a.id) + vZonasFC({ vals: f.val, perfil: a, srv, coach: true }) + vRitmosVAM({ vals: f.val, perfil: a, coach: true }) + (() => { const h = vSelectorProgs(a.id, null); return h ? `<section class="section"><div class="card">${h}</div></section>` : ''; })() + vContextos(f, a) + `
     <section class="section"><div class="section-head"><h2>Semana patrón</h2><button class="btn sm" data-act="editarPrograma" data-id="${a.id}">${f.prog ? '✎ Editar' : 'Crear programa'}</button></div><div class="card small">${f.prog ? `<b>${esc(f.prog.nombre)}</b> · ${dpw || '—'} días por semana<div class="muted" style="margin-top:4px">Se repite cada semana que no tenga un contexto temporal. Para que una semana que has preparado pase a ser la patrón, pulsa «⭐ Hacerla semana patrón» en su contexto.</div>` : 'Aún no tiene programa.'}</div></section>
     <section class="section"><h2>Esta semana</h2><div class="card">${dpw ? barra('Entrenos de la semana', unicas(semana), dpw, '') + barra('Últimas 4 semanas', mes, dpw4, '') : ''}${semana.map(linea).join('') || '<div class="empty">Aún no ha entrenado esta semana.</div>'}</div></section>
     ${P && !P.antes ? `<section class="section"><h2>Resto del bloque · ${esc(nomCiclo(P.cc))}</h2><div class="card">${bloque.map(linea).join('') || '<div class="empty">Sin entrenamientos anteriores en este bloque.</div>'}</div></section>` : ''}
@@ -3795,7 +3887,8 @@ function vEventos(srv, pres) {
   const hoy = hoyISO(), lunes = lunesDe(hoy), ev = [];
   const rev = revisionPendiente(srv, S.d?.revisiones || [], S.d?.revisionesErr);
   const cEsta = rev || (S.d?.revisionesErr ? controlEnSemana(srv, lunes) : null), cProx = !cEsta && controlEnSemana(srv, sumaDias(lunes, 7));
-  if (rev) ev.push(`<div class="line evento"><div class="ico gold">${svg('progreso')}</div><div class="grow"><b class="small">Toca tu revisión mensual con Jesús</b><div class="small muted">Una llamada o videollamada de 10-15 minutos para ver cómo te sientes, cómo vas con tus objetivos y tu composición corporal. Escríbele para agendarla.</div><div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px">${waJesus(`Hola Jesús, me toca la revisión mensual ${rev.n}. ¿Cuándo te viene bien la llamada?`) ? `<a class="btn sm" href="${esc(waJesus(`Hola Jesús, me toca la revisión mensual ${rev.n}. ¿Cuándo te viene bien la llamada?`))}" target="_blank" rel="noopener">Agendar por WhatsApp</a>` : ''}${srv?.modulo_presencial ? '' : '<button class="btn sm ghost" data-act="misMedidas">Añadir mis medidas</button>'}</div></div></div>`);
+  if (!avisoAl('control')) { /* el coach lo ha quitado para este alumno */ }
+  else if (rev) ev.push(`<div class="line evento"><div class="ico gold">${svg('progreso')}</div><div class="grow"><b class="small">Toca tu revisión mensual con Jesús</b><div class="small muted">Una llamada o videollamada de 10-15 minutos para ver cómo te sientes, cómo vas con tus objetivos y tu composición corporal. Escríbele para agendarla.</div><div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px">${waJesus(`Hola Jesús, me toca la revisión mensual ${rev.n}. ¿Cuándo te viene bien la llamada?`) ? `<a class="btn sm" href="${esc(waJesus(`Hola Jesús, me toca la revisión mensual ${rev.n}. ¿Cuándo te viene bien la llamada?`))}" target="_blank" rel="noopener">Agendar por WhatsApp</a>` : ''}${srv?.modulo_presencial ? '' : '<button class="btn sm ghost" data-act="misMedidas">Añadir mis medidas</button>'}</div></div></div>`);
   else if (cEsta) ev.push(`<div class="line evento"><div class="ico gold">${svg('progreso')}</div><div class="grow"><b class="small">Esta semana toca tu control mensual ${cEsta.n}</b><div class="small muted">Composición corporal, ajustes y mejoras: tienes pendiente la reunión de seguimiento mensual con Jesús.${srv?.modulo_presencial ? '' : ' Antes de la reunión, tómate tus medidas y tus fotos de progreso.'}</div>${srv?.modulo_presencial ? '' : '<button class="btn sm" data-act="misMedidas" style="margin-top:8px">Añadir medidas y fotos</button>'}</div></div>`);
   else if (cProx) ev.push(`<div class="line evento"><div class="ico">${svg('progreso')}</div><div class="grow"><b class="small">La semana que viene: control mensual ${cProx.n}</b><div class="small muted">Semana del ${esc(fCorta(cProx.lunes))}. Reunión de seguimiento, composición corporal y ajustes.</div></div></div>`);
   (pres || []).filter(p => p.estado === 'programada' && p.fecha >= hoy && p.fecha <= sumaDias(hoy, 13)).sort(ordPres).slice(0, 3)
@@ -6122,7 +6215,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v231';
+const APP_VER = 'v232';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -6373,6 +6466,8 @@ document.addEventListener('click', async e => {
     case 'ficha': cerrarSheet(); S.iaCoach = false; if (S.obj) await aparcarOSalir(); await abrirFicha(b.dataset.id); break;
     case 'verAlertas': verAlertas(b.dataset.id); break;
     case 'alIr': alIr(b.dataset.id, b.dataset.m); break;
+    case 'alConfig': formAvisos(b.dataset.id); break;
+    case 'pesoVisto': await pesoVisto(b.dataset.id); toast('Cambios de peso revisados'); render(); break;
     case 'irAviso': irA(b.dataset.id, { tab: b.dataset.tab || null, sub: b.dataset.sub || null, ancla: b.dataset.ancla || null }); break;
     case 'checkin': controlFut(); break;
     case 'futSem': S.ficha.semFut = b.dataset.l; S.ficha.diaFut = null; render(); break;
@@ -6382,7 +6477,7 @@ document.addEventListener('click', async e => {
     case 'bvIr': Bienvenida.abrir(+b.dataset.i); break;
     case 'bvFin': Bienvenida.fin(); break;
     case 'bvVer': Bienvenida.abrir(0); break;
-    case 'alResolver': { const enSheet = !!b.closest('#sheet'), on = b.dataset.on === '1', nota = on ? prompt('¿Cómo lo has atendido? (opcional, ej. «hablado por WhatsApp»)', 'Hablado por WhatsApp') : null; if (on && nota === null) break; await Alertas.resolver(b.dataset.id, b.dataset.m, on, nota); toast(b.dataset.on === '1' ? 'Marcado como solventado' : 'Vuelve a estar pendiente'); render(); if (enSheet) verAlertas(b.dataset.id); break; }
+    case 'alResolver': { const enSheet = !!b.closest('#sheet'), on = b.dataset.on === '1', nota = on ? prompt('¿Cómo lo has atendido? (opcional, ej. «hablado por WhatsApp»)', 'Hablado por WhatsApp') : null; if (on && nota === null) break; const ms = b.dataset.m.split('\n'); for (const m of ms) await Alertas.resolver(b.dataset.id, m, on, nota); if (on && ms.some(m => /ha cambiado su peso/i.test(m))) await pesoVisto(b.dataset.id); toast(on ? (ms.length > 1 ? `${ms.length} avisos solventados` : 'Marcado como solventado') : 'Vuelve a estar pendiente'); render(); if (enSheet) verAlertas(b.dataset.id); break; }
     case 'alFiltro': S.alF.k = S.alF.k === b.dataset.k ? '' : b.dataset.k; if (S.obj) await aparcarOSalir(); S.ficha = null; S.reporte = null; S.factura = null; S.editor = null; S.ctab = 'alumnos'; render(); if (S.alF.k) $('#al-lista')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
     case 'inicio': if (S.modo === 'coach') { if (S.obj) await aparcarOSalir(); Object.assign(S, { iaCoach: false, reporte: null, factura: null, ficha: null, editor: null, verSes: null, verPlan: null, valEd: null, fichaSub: null, ctab: 'inicio' }); } else { S.ia = false; if (!S.dia) S.tab = 'hoy'; } cerrarSheet(); render(); window.scrollTo(0, 0); break;
     case 'cerrarFicha': S.ficha = null; S.verSes = null; S.verPlan = null; S.valEd = null; render(); break;
