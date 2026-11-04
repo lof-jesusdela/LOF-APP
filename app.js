@@ -4014,28 +4014,47 @@ const LAMINAS = [
   ['hombro-anterior', 'Hombro anterior'], ['hombro-medio', 'Hombro medio'], ['hombro-posterior', 'Hombro posterior'],
   ['biceps', 'Bíceps'], ['triceps', 'Tríceps'], ['antebrazo', 'Antebrazo'],
   ['cadena-posterior', 'Cadena posterior'], ['cadena-anterior', 'Cadena anterior'], ['cadena-lateral', 'Cadena lateral'],
+  ['tren-inferior', 'Tren inferior completo'], ['tren-superior', 'Tren superior completo'], ['cuerpo-completo', 'Cuerpo completo'],
 ];
+/* Para decidir las láminas globales: pierna, empuje y tracción (el tronco no cuenta para ninguno) */
+const LAM_PIERNA = ['gluteo', 'cuadriceps', 'isquios', 'gemelos', 'aductores', 'cadena-posterior', 'tren-inferior'];
+const LAM_EMPUJE = ['pectoral', 'hombro-anterior', 'hombro-medio', 'triceps'], LAM_TRACCION = ['dorsales', 'escapular', 'hombro-posterior', 'biceps'];
+const LAM_BRAZO = [...LAM_EMPUJE, ...LAM_TRACCION, 'antebrazo', 'tren-superior'];
+/* Varios músculos a la vez → pierna + brazo = cuerpo completo; empuje + tracción = tren superior; varios de pierna (minPierna) = tren inferior */
+function laminaCombinada(keys, minPierna) {
+  const k = [...new Set(keys.filter(Boolean))]; if (k.length < 2) return null;
+  if (k.includes('cuerpo-completo')) return 'cuerpo-completo';
+  const pierna = k.filter(x => LAM_PIERNA.includes(x)), brazo = k.filter(x => LAM_BRAZO.includes(x));
+  if (pierna.length && brazo.length) return 'cuerpo-completo';
+  if (brazo.includes('tren-superior') || (brazo.some(x => LAM_EMPUJE.includes(x)) && brazo.some(x => LAM_TRACCION.includes(x)))) return 'tren-superior';
+  if (pierna.includes('tren-inferior') || pierna.length >= minPierna) return 'tren-inferior';
+  return null;
+}
 const laminaUrl = k => new URL(`img/musculos/${k}.jpg`, location.href).href;
 const laminaDe = u => { const m = /img\/musculos\/([a-z-]+)\.jpg/.exec(u || ''); return m && LAMINAS.some(l => l[0] === m[1]) ? m[1] : null; };
 const laminaNombre = k => (LAMINAS.find(l => l[0] === k) || [])[1] || '';
 /* 1) Por el músculo escrito por el coach: manda el primero que aparece («Cuádriceps y glúteo» → cuádriceps) */
 const MUS_TXT = [
+  ['cuerpo-completo', /cuerpo (completo|entero)|full ?body|global/], ['tren-superior', /tren superior/], ['tren-inferior', /tren inferior|piernas? (completas?|enteras?)/],
   ['cadena-posterior', /cadena posterior/], ['cadena-anterior', /cadena anterior/], ['cadena-lateral', /cadena lateral/],
   ['hombro-posterior', /(deltoides?|hombro) posterior|posterior del hombro/], ['hombro-anterior', /(deltoides?|hombro) anterior|anterior del hombro/],
   ['hombro-medio', /(deltoides?|hombro) (medio|lateral)/], ['hombro-medio', /deltoides|hombro/, 1], ['gluteo', /gluteo/], ['cuadriceps', /cuadricep/],
   ['isquios', /isquio|femoral/], ['gemelos', /gemelo|soleo|pantorrilla|triceps sural/], ['aductores', /aductor/],
   ['oblicuos', /oblicuo|abdomen lateral/], ['abdominales', /abdomin|recto anterior/], ['abdominales', /core/, 1], ['lumbares', /lumbar|erector/],
   ['escapular', /trapecio|romboide|escapul|serrato/], ['dorsales', /dorsal/], ['dorsales', /espalda/, 1], ['pectoral', /pector|pecho/],
-  ['triceps', /triceps/], ['biceps', /biceps/], ['antebrazo', /antebrazo/],
+  ['triceps', /triceps/], ['biceps', /biceps/], ['antebrazo', /antebrazo/], ['tren-inferior', /piernas?\b/, 1],
 ];
 /* 2) Por el nombre del ejercicio (el orden importa: lo más específico primero) */
 const MUS_NOM = [
   [null, /^cardio ·|movilidad|estiramiento|respiracion|foam|liberacion|masaje/],
   ['hombro-posterior', /rotacion (externa|interna)|manguito/],
   ['gluteo', /patada lateral|abduccion/],
-  ['cadena-anterior', /squat.?press|thruster|burpee|sprinter|secuencia push/],
-  ['cadena-lateral', /tiron.?giro|maleta|suitcase|turco|turkish|paseo .*1 mano/],
-  ['cadena-posterior', /pliometr|^saltos?\b|swing|cargada|arrancada|clean|snatch/],
+  ['cuerpo-completo', /squat.?press|thruster|burpee|turco|turkish|cargada|arrancada|clean|snatch|wall.?ball|man.?maker|tiron.?giro|cuerpo completo|full.?body/],
+  ['tren-superior', /push.{0,3}pull|tren superior/],
+  ['tren-inferior', /pliometr|\bsaltos?\b|skipping|multisalto|tren inferior|peso muerto (con )?(barra )?hexagonal|trap.?bar/],
+  ['cadena-anterior', /sprinter/],
+  ['cadena-lateral', /maleta|suitcase|paseo .*1 mano/],
+  ['cadena-posterior', /swing/],
   ['triceps', /triceps|press frances|katana|patada de triceps|extension de (brazo|codo)|skull|fondos en (banco|maquina)|dipping/],
   ['oblicuos', /(crunch|flexion|plancha|inclinacion) lateral|flexion lateral|plancha lateral|rotacion|giros?\b|pallof|woodchop|lenador|oblicuo|anti.?rotacion|russian|twist|bicho/],
   ['abdominales', /crunch|plancha|plank|rueda abdominal|ab wheel|elevacion(es)? (de piernas|inferiores)|dead ?bug|hollow|v.?up|tijeras|abdominal|encogimiento abdominal|hoja de navaja/],
@@ -4056,14 +4075,26 @@ const MUS_NOM = [
   ['pectoral', /press (banca|de pecho|inclinado|declinado|plano)|pecho|pectoral|apertura|aperturas|cruces|crossover|cross.?press|pec.?deck|contractor|fondos|flexion(es)? de brazos|^flexiones|push.?up|press a 1 mano|press con mancuernas/],
   ['hombro-medio', /hombro/],
   ['abdominales', /core/],
+  ['pectoral', /\bpress\b/],
 ];
 const sinTildes = s => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[ºª]/g, '');
-function porNombre(nombre) { const n = sinTildes(nombre); for (const [k, re] of MUS_NOM) if (re.test(n)) return k; return null; }
+const porRegla = n => { for (const [k, re] of MUS_NOM) if (re.test(n)) return k; return null; };
+/* Ejercicios encadenados («Sentadilla + press», «Zancada con remo»): cada parte da su músculo y se combinan */
+const PARTES_EJ = /\s*\+\s*| con (?=press|remo|curl|elevacion|jalon|salto)| y (?=press|remo|curl|sentadilla|zancada|peso muerto|salto|jalon)/;
+function porNombre(nombre) {
+  const n = sinTildes(nombre), k = porRegla(n);
+  if (!k || ['cuerpo-completo', 'tren-superior', 'tren-inferior'].includes(k)) return k;
+  const partes = n.split(PARTES_EJ).filter(x => x && x.trim());
+  return (partes.length > 1 && laminaCombinada(partes.map(porRegla), 2)) || k;
+}
 function laminaSugerida(nombre, musculo) {
   const m = sinTildes(musculo);
   if (m && !/cardio/.test(m)) {
     let mejor = null, pos = 1e9, debil = 0;
     for (const [k, re, d] of MUS_TXT) { const r = re.exec(m); if (r && (r.index < pos || (r.index === pos && debil && !d))) { pos = r.index; mejor = k; debil = d || 0; } }
+    const mm = m.replace(/triceps sural/g, 'gemelo'), hits = MUS_TXT.map(([k, re, d]) => { const r = re.exec(mm); return r && { k, i: r.index, d }; }).filter(Boolean);
+    const todos = hits.filter(h => !h.d || !hits.some(o => !o.d && o.i === h.i)).map(h => h.k), comb = laminaCombinada(todos, 3);
+    if (comb && !['cuerpo-completo', 'tren-superior', 'tren-inferior'].includes(mejor)) return comb;  /* «Cuádriceps, glúteo, isquios» → tren inferior */
     if (mejor && !debil) return mejor;
     if (mejor) return porNombre(nombre) || mejor;  /* «Hombro» o «Espalda» a secas: el nombre dice cuál */
   }
@@ -4186,7 +4217,8 @@ function formEjercicio(id) {
 const selLamina = (v, attrs = '') => `<select ${attrs}><option value="">Sin lámina (dejar como está)</option>${LAMINAS.map(([k, n]) => `<option value="${k}" ${k === v ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
 async function asignarLaminas() {
   const lista = S.c.ejercicios.filter(x => !/^cardio ·/i.test(x.nombre || '') && !/cardio/i.test(x.musculo || ''))
-    .map(x => { const ya = laminaDe(x.musculo_img_url); return { x, ya, prop: ya || laminaSugerida(x.nombre, x.musculo) }; });
+    .map(x => { const ya = laminaDe(x.musculo_img_url), sug = laminaSugerida(x.nombre, x.musculo), glob = ['cuerpo-completo', 'tren-superior', 'tren-inferior'].includes(sug);
+      return { x, ya, prop: ya && !(glob && sug !== ya) ? ya : sug || ya }; });  /* las láminas globales (nuevas) se proponen también sobre la que ya tenía */
   const elec = {}; lista.forEach(r => { elec[r.x.id] = r.prop || ''; });
   let nProg = 0;
   try { const r = await sb.from('ejercicios_sesion').select('id', { count: 'exact', head: true }).not('musculo_img_url', 'is', null); nProg = r.error ? 0 : r.count || 0; } catch (e) { }
@@ -4195,7 +4227,7 @@ async function asignarLaminas() {
     const rs = lista.filter(r => (r.prop || '') === k); if (!rs.length) return '';
     return `<details class="lam-g" ${k ? '' : 'open'}><summary>${k ? `<img src="img/musculos/${k}.jpg" alt="">` : '<span class="lam-sin">?</span>'}<b class="grow">${esc(n)}</b><span class="pill">${rs.length}</span></summary>
       ${k ? '' : '<p class="small muted">No he sabido a qué músculo asignarlos (movilidad, pliometría muy mixta…). Elige tú o déjalos sin lámina.</p>'}
-      ${rs.sort((a, b) => a.x.nombre.localeCompare(b.x.nombre, 'es')).map(r => `<div class="lam-f"><span class="grow small">${esc(r.x.nombre)}${r.x.musculo ? `<span class="muted"> · ${esc(r.x.musculo)}</span>` : ''}${r.ya ? '' : ' <span class="pill gold">nueva</span>'}</span>${selLamina(elec[r.x.id], `data-lam="${r.x.id}" aria-label="Músculo objetivo de ${esc(r.x.nombre)}"`)}</div>`).join('')}</details>`;
+      ${rs.sort((a, b) => a.x.nombre.localeCompare(b.x.nombre, 'es')).map(r => `<div class="lam-f"><span class="grow small">${esc(r.x.nombre)}${r.x.musculo ? `<span class="muted"> · ${esc(r.x.musculo)}</span>` : ''}${!r.ya ? ' <span class="pill gold">nueva</span>' : r.prop !== r.ya ? ` <span class="pill gold">antes: ${esc(laminaNombre(r.ya))}</span>` : ''}</span>${selLamina(elec[r.x.id], `data-lam="${r.x.id}" aria-label="Músculo objetivo de ${esc(r.x.nombre)}"`)}</div>`).join('')}</details>`;
   }).join('');
   const nuevas = lista.filter(r => r.prop && r.prop !== r.ya).length, sin = lista.filter(r => !r.prop).length;
   abrirSheet(`<div class="stack"><h2>Músculo objetivo</h2>
@@ -6055,7 +6087,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v227';
+const APP_VER = 'v228';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
