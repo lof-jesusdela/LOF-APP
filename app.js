@@ -1425,7 +1425,7 @@ function vSesionCerrada() {
     ${v.antFecha ? `<p class="note">Debajo de cada serie ves lo que hizo la vez anterior (${esc(fCorta(v.antFecha))}).</p>` : ''}</section>
   ${(v.cambios || []).length ? `<section class="section"><div class="card stack" style="border:2px solid var(--gold)"><span class="eyebrow">⚖️ Ha cambiado su peso en esta sesión</span>${v.cambios.map(x => `<div class="small"><b>${esc(x.ejercicio || 'Ejercicio')}</b>: ${esc(x.antes || '')} → <b>${esc(x.despues || '')}</b> · desde ahora es su pauta</div>`).join('')}<span class="small muted">Lo eligió él al terminar la serie. Si no te encaja, cámbialo en su programa.</span></div></section>` : ''}
   <section class="section">${vBloquesDia(d, cont, v)}
-  ${v.huerfanas.length ? `<div class="card stack"><span class="eyebrow">Ejercicios que ya no están en el programa</span>${v.huerfanas.map(r => `<div class="small num">Serie ${r.serie}: ${r.kg == null ? '—' : fmtNum(r.kg, 2) + ' kg'} × ${r.repeticiones ?? '—'} · RIR ${r.rir ?? '—'}</div>`).join('')}</div>` : ''}
+  ${v.huerfanas.length ? `<div class="card stack"><span class="eyebrow">Ejercicios que ya no están en el programa</span>${v.huerfanas.map(r => `<div class="small num">${r.ejercicio_nombre ? `<b>${esc(r.ejercicio_nombre)}</b> · ` : ''}Serie ${r.serie}: ${r.kg == null ? '—' : fmtNum(r.kg, 2) + ' kg'} × ${r.repeticiones ?? '—'} · RIR ${r.rir ?? '—'}</div>`).join('')}</div>` : ''}
   <button class="btn full ghost" data-act="cerrarVerSesion">Volver a la ficha</button>
   <button class="btn full ghost" data-act="borrarRegistro" style="color:var(--bad);margin-top:8px">Eliminar este entrenamiento registrado</button></section>`;
 }
@@ -3586,7 +3586,7 @@ async function verSesion(id) {
   ordenarDia(dia);
   const ant = S.ficha.ses.filter(x => x.dia_id === ses.dia_id && x.fecha < ses.fecha && x.registros_series.length).sort((x, y) => y.fecha.localeCompare(x.fecha))[0];
   const ids = [id, ant?.id].filter(Boolean);
-  const { data, error } = await conRespaldo(() => sb.from('registros_series').select('sesion_id,ejercicio_sesion_id,serie,tramo,kg,repeticiones,rir').in('sesion_id', ids),
+  const { data, error } = await conRespaldo(() => sb.from('registros_series').select('sesion_id,ejercicio_sesion_id,serie,tramo,kg,repeticiones,rir,ejercicio_nombre').in('sesion_id', ids),
     () => sb.from('registros_series').select('sesion_id,ejercicio_sesion_id,serie,kg,repeticiones,rir').in('sesion_id', ids));
   if (error) return fallo(error, 'No se ha podido cargar la sesión.');
   const esIds = new Set(dia.bloques_sesion.flatMap(b => b.ejercicios_sesion.map(e => e.id)));
@@ -3603,10 +3603,11 @@ async function verSesion(id) {
   render(); window.scrollTo(0, 0);
 }
 async function verSesionLista(id) {
-  const { data, error } = await sb.from('registros_series').select('serie,kg,repeticiones,rir,ejercicios_sesion(orden,ejercicios(nombre),bloques_sesion(letra))').eq('sesion_id', id).order('serie');
+  const { data, error } = await conRespaldo(() => sb.from('registros_series').select('serie,kg,repeticiones,rir,ejercicio_nombre,ejercicios_sesion(orden,ejercicios(nombre),bloques_sesion(letra))').eq('sesion_id', id).order('serie'),
+    () => sb.from('registros_series').select('serie,kg,repeticiones,rir,ejercicios_sesion(orden,ejercicios(nombre),bloques_sesion(letra))').eq('sesion_id', id).order('serie'));
   if (error) return fallo(error, 'No se ha podido cargar la sesión.');
   const g = {};
-  (data || []).forEach(r => { const es = r.ejercicios_sesion, k = `${es?.bloques_sesion?.letra || ''}${String(es?.orden || 0).padStart(2, '0')}`; (g[k] ||= { n: es?.ejercicios?.nombre || 'Ejercicio', s: [] }).s.push(r); });
+  (data || []).forEach(r => { const es = r.ejercicios_sesion, k = `${es?.bloques_sesion?.letra || ''}${String(es?.orden || 0).padStart(2, '0')}`; (g[es ? k : 'zz' + (r.ejercicio_nombre || '')] ||= { n: es?.ejercicios?.nombre || r.ejercicio_nombre || 'Ejercicio quitado del programa', s: [] }).s.push(r); });
   const porSerie = l => Object.values(l.reduce((m, r) => ((m[r.serie] ||= []).push(r), m), {}));
   const txtR = r => `${r.kg == null ? '—' : fmtNum(r.kg, 2) + ' kg'} × ${r.repeticiones ?? '—'} rep${r.rir != null ? ' · RIR ' + r.rir : ''}`;
   abrirSheet(`<div class="stack"><h2>Series registradas</h2>${Object.keys(g).sort().map(k => `<div class="stack" style="gap:4px"><h3>${esc(g[k].n)}</h3>${porSerie(g[k].s).map(l => `<div class="small num">Serie ${l[0].serie}: ${l.length > 1 ? l.map((r, i) => `<span class="muted">T${i + 1}</span> ${txtR(r)}`).join(' · ') + ` <span class="muted">(${l.length} tandas)</span>` : txtR(l[0])}</div>`).join('')}</div>`).join('') || '<p class="muted">No hay series registradas.</p>'}<button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
@@ -5790,7 +5791,7 @@ function formEjSesion(id, bloqueId) {
       cerrarSheet(); toast('Ejercicio guardado'); refrescarEditor();
     } catch (err) { fallo(err, /agarre/i.test(err.message || '') ? 'Falta ejecutar el Bloque 73 en Supabase para guardar el tipo de agarre.' : /nombre|video_url|musculo_img_url/i.test(err.message || '') ? 'Falta ejecutar el Bloque 46 en Supabase para guardar nombre, vídeo o músculo solo en este programa.' : /privado|imagen_url/i.test(err.message || '') ? 'Falta ejecutar el Bloque 43 en Supabase para guardar fotos o ejercicios solo de este programa.' : /material|nota|column/i.test(err.message || '') ? 'Falta ejecutar el Bloque 39 en Supabase para guardar el material y la descripción.' : /bucket|row-level|security/i.test(err.message || '') ? 'Supabase no deja subir imágenes: ejecuta el Bloque 38.' : undefined); }
   });
-  $('#es-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para quitarlo'; return; } const { error } = await sb.from('ejercicios_sesion').delete().eq('id', e.id); if (error) return fallo(error, 'No se puede quitar: ya tiene series registradas. Puedes cambiarlo por otro ejercicio.'); cerrarSheet(); toast('Ejercicio quitado'); refrescarEditor(); });
+  $('#es-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para quitarlo'; return; } const { error } = await sb.from('ejercicios_sesion').delete().eq('id', e.id); if (error) return fallo(error, /foreign|violates|registros/i.test(error.message || '') ? 'Para quitar ejercicios que ya se han entrenado falta ejecutar el Bloque 84 en Supabase.' : 'No se ha podido quitar el ejercicio.'); cerrarSheet(); toast('Ejercicio quitado · lo que ya entrenó se queda en su historial'); refrescarEditor(); });
 }
 /* Bloques: reordenar letras (A, B, C…), crear uno a continuación, unir con el anterior y separar desde un ejercicio */
 /* ---------- Élite Player: añadir partes a un día (movilidad del catálogo, fuerza, cardio, invisible, enfriamiento) ---------- */
@@ -6098,7 +6099,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v229';
+const APP_VER = 'v230';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
