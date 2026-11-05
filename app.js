@@ -4462,7 +4462,7 @@ function formServicio() {
         <label class="row small" id="sv-b24-w" style="gap:8px" hidden><input type="checkbox" id="sv-b24" style="width:20px;height:20px;flex:none"> <span id="sv-b24-t">Decidió en 24 h: <b>+2 entrenamientos</b> de regalo</span></label>
         <label class="row small" id="sv-xali-w" style="gap:8px" hidden><input type="checkbox" id="sv-xali" style="width:20px;height:20px;flex:none"> <span id="sv-xali-t">Con alimentación y suplementación</span></label>
         <span class="small muted" id="sv-bon-t"></span>
-        <div style="display:grid;grid-template-columns:1fr 70px 1fr;gap:8px;align-items:end"><label class="f">Descuento adicional<input type="text" inputmode="decimal" id="sv-desc" placeholder="0"></label><label class="f"><select id="sv-desct"><option value="%">%</option><option value="€">€</option></select></label><label class="f">Primer pago<input type="date" id="sv-p0"></label></div>
+        <div style="display:grid;grid-template-columns:1fr 128px 1fr;gap:8px;align-items:end"><label class="f">Ajustar precio<input type="text" inputmode="decimal" id="sv-desc" placeholder="—"></label><label class="f"><select id="sv-desct" aria-label="Tipo de ajuste"><option value="=">Precio final €</option><option value="%">Dto. %</option><option value="€">Dto. €</option></select></label><label class="f">Primer pago<input type="date" id="sv-p0"></label></div>
         <div id="sv-cuotas" class="stack small" style="gap:2px"></div>
         <label class="row small" style="gap:8px"><input type="checkbox" id="sv-genp" style="width:20px;height:20px;flex:none"> <span>Crear su plan de pagos al guardar${(S.c.pagos || []).filter(x => x.alumno_id === S.ficha.id && !x.pagado_at).length ? ` <span class="muted">(ya tiene ${(S.c.pagos || []).filter(x => x.alumno_id === S.ficha.id && !x.pagado_at).length} cuota${(S.c.pagos || []).filter(x => x.alumno_id === S.ficha.id && !x.pagado_at).length === 1 ? '' : 's'} pendiente${(S.c.pagos || []).filter(x => x.alumno_id === S.ficha.id && !x.pagado_at).length === 1 ? '' : 's'})</span>` : ''}</span></label>
       </div></div>
@@ -5324,7 +5324,7 @@ function formExtension() {
     <label class="f">Objetivo de la extensión (opcional)<textarea id="ex-o" rows="2"></textarea></label></div>
     <p class="small" id="ex-res"></p>
     <div class="card stack" id="ex-pago" style="padding:12px;gap:8px" hidden><b class="small">Pago</b><div class="chips" id="ex-forma"></div><span class="small muted" id="ex-bon"></span>
-      <div style="display:grid;grid-template-columns:1fr 70px 1fr;gap:8px;align-items:end"><label class="f">Descuento adicional<input type="text" inputmode="decimal" id="ex-desc" placeholder="0"></label><label class="f"><select id="ex-desct"><option value="%">%</option><option value="€">€</option></select></label><label class="f">Primer pago<input type="date" id="ex-p0" value="${hoyISO()}"></label></div>
+      <div style="display:grid;grid-template-columns:1fr 128px 1fr;gap:8px;align-items:end"><label class="f">Ajustar precio<input type="text" inputmode="decimal" id="ex-desc" placeholder="—"></label><label class="f"><select id="ex-desct" aria-label="Tipo de ajuste"><option value="=">Precio final €</option><option value="%">Dto. %</option><option value="€">Dto. €</option></select></label><label class="f">Primer pago<input type="date" id="ex-p0" value="${hoyISO()}"></label></div>
       <div id="ex-cuotas" class="stack small" style="gap:2px"></div>
       <label class="row small" style="gap:8px"><input type="checkbox" id="ex-genp" checked style="width:20px;height:20px;flex:none"> <span>Crear las cuotas en su plan de pagos</span></label></div>
     <button class="btn full" type="submit">Guardar extensión</button></form>`);
@@ -6970,7 +6970,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v255';
+const APP_VER = 'v256';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}

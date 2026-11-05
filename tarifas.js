@@ -84,7 +84,7 @@ const Tarifas = (() => {
   const resumenFracc = f => { if (!f) return ''; const g = []; f.forEach(v => { const u = g[g.length - 1]; if (u && u.v === v) u.n++; else g.push({ v, n: 1 }); }); return g.map(x => x.n > 1 ? `${x.n} × ${eur(x.v)}` : eur(x.v)).join(' + '); };
   const opciones = (lista, sel) => { lista = lista.filter(t => !t.oculta || t.id === sel); return [...new Set(lista.map(t => t.grupo))].map(g => `<optgroup label="${g}">${lista.filter(t => t.grupo === g).map(t => `<option value="${t.id}" ${t.id === sel ? 'selected' : ''}>${t.nombre} · ${eur(t.estandar)}</option>`).join('')}</optgroup>`).join(''); };
 
-  /* Plan de pagos: forma 'unico' | 'fracc'; extra = importe añadido (p. ej. +300 € de alimentación); desc = { tipo: '%'|'€', v } descuento adicional */
+  /* Plan de pagos: forma 'unico' | 'fracc'; extra = importe añadido (p. ej. +300 € de alimentación); desc = { tipo: '%'|'€'|'=', v } descuento adicional o precio final manual */
   function plan(t, { forma = 'unico', inicio, extra = 0, desc = null, concepto } = {}) {
     if (!t) return [];
     let cuotas;
@@ -94,7 +94,8 @@ const Tarifas = (() => {
     } else cuotas = [Math.round(((t.unico ?? t.estandar) + extra) * 100) / 100];  // el +300 de alimentación va a precio completo
     const total = cuotas.reduce((a, b) => a + b, 0);
     if (desc?.v > 0) {
-      const quita = desc.tipo === '%' ? total * desc.v / 100 : Math.min(desc.v, total), k = (total - quita) / total;
+      /* '%' o '€' = descuento; '=' = precio final que pones tú (más alto o más bajo), repartido entre las cuotas */
+      const quita = desc.tipo === '=' ? total - desc.v : desc.tipo === '%' ? total * desc.v / 100 : Math.min(desc.v, total), k = (total - quita) / total;
       cuotas = cuotas.map(v => Math.round(v * k * 100) / 100);
       const dif = Math.round((total - quita - cuotas.reduce((a, b) => a + b, 0)) * 100) / 100; cuotas[0] = Math.round((cuotas[0] + dif) * 100) / 100;
     }
