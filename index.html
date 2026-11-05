@@ -912,6 +912,12 @@ nav.tabs a.tab-wa{flex:1;padding:10px 2px 12px;display:flex;flex-direction:colum
 .ag-ahora{position:absolute;left:0;right:0;height:2px;background:#e53935;z-index:2;pointer-events:none}.ag-ahora::before{content:'';position:absolute;left:-4px;top:-4px;width:10px;height:10px;border-radius:50%;background:#e53935}
 .ag-ley{display:flex;flex-wrap:wrap;gap:4px 12px;padding:8px 10px;border-top:1px solid var(--line)}.ag-dot{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:4px;background:#3b6ff5}.ag-dot.ok{background:#1e9a5e}.ag-dot.warn{background:#e08a1e}.ag-dot.val{background:#b8901e}
 .ag-vistas{display:flex;gap:4px;background:var(--soft,#eef1f6);padding:4px;border-radius:12px}.ag-vistas button{flex:1;border:0;background:none;padding:8px;border-radius:9px;font-weight:600;cursor:pointer;color:inherit}.ag-vistas button.on{background:var(--card,#fff);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.cap-bar{display:flex;height:14px;border-radius:8px;background:var(--soft,#eef1f6);overflow:hidden}.cap-bar i{display:block;height:100%}.cap-ok,.cap-ley .cap-ok{background:#1e9a5e}.cap-pl,.cap-ley .cap-pl{background:var(--blue,#0057ff)}.cap-over{background:#e08a1e}.cap-mg,.cap-ley .cap-mg{margin-left:auto;background:repeating-linear-gradient(45deg,#c9d0db 0 4px,transparent 4px 8px)}
+.cap-ley{display:flex;flex-wrap:wrap;gap:4px 12px;color:var(--muted,#6b7280)}.cap-ley i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+.cm-ico{width:24px;flex:none;text-align:center}.cm-tit{text-align:left;color:inherit;font-size:14px;padding:0;text-decoration:none!important}.cm-it.hoy,.cm-it.en_curso{background:rgba(0,87,255,.04)}
+.cm-prog{height:8px;border-radius:6px;background:var(--soft,#eef1f6);overflow:hidden}.cm-prog i{display:block;height:100%;background:#1e9a5e}
+.cm-barra{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;margin:0 0 12px;border-radius:14px;background:var(--card,#fff);border:2px solid var(--blue,#0057ff);box-shadow:0 4px 14px rgba(0,0,0,.08)}
+.mj-ia{margin:10px 0}.eco-mini{border:1px solid var(--line)}
 </style>
 </head>
 <body>
@@ -938,6 +944,7 @@ nav.tabs a.tab-wa{flex:1;padding:10px 2px 12px;display:flex;flex-direction:colum
 <script src="casos.js"></script>
 <script src="acomp.js"></script>
 <script src="negocio.js"></script>
+<script src="compromisos.js"></script>
 <script src="tandas.js"></script>
 <script src="entrenaidor.js"></script>
 <script src="oposicion.js"></script>

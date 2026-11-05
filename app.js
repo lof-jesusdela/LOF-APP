@@ -443,7 +443,7 @@ function seguro(fn) {
   catch (err) { console.error(err); return `<section class="section"><div class="card stack"><b>No se ha podido abrir esta pantalla</b><p class="small muted">Mándale a Jesús este mensaje: ${esc(String(err && err.message || err).slice(0, 200))}</p></div></section>`; }
 }
 function render() {
-  const coach = S.modo === 'coach';
+  const coach = S.modo === 'coach'; if (coach && typeof Compromisos !== 'undefined') Compromisos.invalidar();
   if (S.tab === 'tests') S.tab = 'progreso';   // los tests viven ahora dentro de Progreso
   if (S.tab === 'checkin') S.tab = 'hoy';       // el check-in vive ahora al final de Hoy
   const tabs = coach ? [['inicio', 'Tu día'], ['alumnos', 'Alumnos'], ['plantillas', 'Plantillas'], ['ejercicios', 'Ejercicios'], ['pagos', 'Economía']] : tabsAlumno();
@@ -454,7 +454,7 @@ function render() {
       <button type="button" class="badge" data-act="inicio" aria-label="Ir al inicio" style="background:none;border:0;padding:0;cursor:pointer;text-align:left;color:inherit;font:inherit"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : esc(S.perfil.metodologia || 'Tu proceso')}</strong></div></button>
       <div class="row" style="gap:8px">${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
       <button class="avatar" data-act="cuenta" aria-label="Mi cuenta">${esCoach ? '<img src="icons/coach.jpg" alt="">' : S.perfil.foto_url ? `<img src="${esc(S.perfil.foto_url)}" alt="">` : esc((S.perfil.nombre || '?').slice(0, 2).toUpperCase())}</button></div>
-    </header>${S.prueba ? vBannerPrueba() : S.vista ? vBannerVista() : vBarraYo()}${coach && ANCHO.matches ? vLateral(actual) : !coach && ANCHO.matches ? vLateralAlumno(tabs, actual) : ''}<main id="main" class="${coach ? claseMain() : claseMainAlumno(actual)}">${(S.iaCoach && coach) ? seguro(IA.vCoach) : (S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vDuo() + vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? seguro(vFicha) : (!coach && S.ia) ? seguro(IA.vChat) : (!coach && Temperamento.activo()) ? seguro(Temperamento.vista) : seguro(vistas[actual])}</main>${coach ? Clip.barra() : ''}${vBarraEntreno()}${IA.vFab(coach)}`;
+    </header>${S.prueba ? vBannerPrueba() : S.vista ? vBannerVista() : vBarraYo()}${coach && ANCHO.matches ? vLateral(actual) : !coach && ANCHO.matches ? vLateralAlumno(tabs, actual) : ''}<main id="main" class="${coach ? claseMain() : claseMainAlumno(actual)}">${(S.iaCoach && coach) ? seguro(IA.vCoach) : (S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vDuo() + vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vBarraBloque() + seguro(vFicha) : (!coach && S.ia) ? seguro(IA.vChat) : (!coach && Temperamento.activo()) ? seguro(Temperamento.vista) : seguro(vistas[actual])}</main>${coach ? Clip.barra() : ''}${vBarraEntreno()}${IA.vFab(coach)}`;
   document.body.classList.toggle('modo-coach', coach);
   document.body.classList.toggle('modo-alumno', !coach && ANCHO.matches);
   if (coach) aplicarFiltroAl();
@@ -2121,6 +2121,7 @@ async function cargarCoach() {
   S.c.facturas = fa.data || []; S.c.facturasError = !!fa.error; S.c.fiscal = Object.fromEntries((ap.data || []).map(x => [x.clave, x.valor]));
   Tarifas.cargar(S.c.fiscal.tarifas || {});  /* precios y servicios que has cambiado en Economía → Programas */
   calAuto(20); setTimeout(() => archivarBonosCerrados().catch(e => console.warn(e)), 1500);
+  Compromisos.invalidar(); Compromisos.sincronizar().catch(e => console.warn('Compromisos', e));
 }
 /* ---------- Agenda de sesiones presenciales (la app manda; Google Calendar las recibe) ---------- */
 const durSesion = () => Math.max(15, Math.min(240, parseInt(S.c?.fiscal?.agenda_min) || 60));
@@ -2307,6 +2308,8 @@ const Alertas = {
   async resolver(aid, motivo, on, nota) { const x = this.de(aid), k = this.clave(motivo); x.notas ||= {}; x.resueltas = on ? [...new Set([...x.resueltas, k])].slice(-60) : x.resueltas.filter(z => z !== k); if (on && !x.vistas.includes(k)) x.vistas.push(k); if (on) x.notas[k] = { t: nota || '', f: hoyISO() }; else delete x.notas[k]; await this.guardar(aid); }
 };
 /* Alertas: semana anterior incumplida, o semana en curso por debajo del 50 % a partir del sábado */
+/* Compromisos (lo que tienes que hacer tú): no se marcan con ✓ ni se esconden al silenciar; se resuelven al hacerlos */
+const T_COMPROMISO = ['pago', 'revision', 'devolucion', 'proxima', 'proceso'];
 function estadoAlumno(a) {
   const c = S.c, hoy = hoyISO(), lunes = lunesDe(hoy), dow = (fecha(hoy).getDay() + 6) % 7; // 0 = lunes … 6 = domingo
   const srv = c.servicios.find(x => x.alumno_id === a.id), dpwBase = (c.programas.find(p => p.alumno_id === a.id) || {}).dias_semana || 0, obj = objPasos(srv);
@@ -2351,7 +2354,7 @@ function estadoAlumno(a) {
   const control = !seg ? null : revisionPendiente(srv, (c.revisiones || []).filter(r => r.alumno_id === a.id), c.revisionesErr) || (c.revisionesErr ? controlEnSemana(srv, lunes) : null);
   { const bn = bonoDe(a.id, srv); if (bn && bn.total) { const usadas = bn.hechas.length; if (usadas >= bn.total && !bn.prox.length) { sube('warn'); const ci = cierreBono(srv, S.c.presenciales.filter(p => p.alumno_id === a.id)); motivos.push(`Bono agotado: ha usado las ${bn.total} sesiones${ci ? ` · tiene su resumen y la oferta en la app; se archiva el ${fCorta(ci.limite)}` : ''}`); } else if (bn.quedan <= 2 && usadas > 0) { sube('warn'); motivos.push(`Le ${bn.quedan === 1 ? 'queda 1 sesión' : `quedan ${bn.quedan} sesiones`} del bono (de ${bn.total})`); } } }
   if (control?.atrasada && !pausa) { sube('warn'); motivos.push(`Revisión mensual ${control.n} pendiente desde el ${fCorta(control.fecha)}`); }
-  const st = Alertas.de(a.id), items = esFamilia(a.id) ? [] : motivos.map((m, i) => ({ m, n: niveles[i], k: Alertas.clave(m), t: tipoAlerta(m) })).filter(x => (seg || ['pago', 'bono'].includes(x.t)) && Alertas.activa(a.id, x.m)).map(x => ({ ...x, ok: st.resueltas.includes(x.k), nueva: !st.vistas.includes(x.k) }));
+  const st = Alertas.de(a.id), items = esFamilia(a.id) ? [] : motivos.map((m, i) => ({ m, n: niveles[i], k: Alertas.clave(m), t: tipoAlerta(m) })).map(x => ({ ...x, comp: T_COMPROMISO.includes(x.t) })).filter(x => (seg || ['pago', 'bono'].includes(x.t)) && (x.comp ? !(Alertas.cfg(a.id).off || []).includes(x.t) : Alertas.activa(a.id, x.m))).map(x => ({ ...x, ok: !x.comp && st.resueltas.includes(x.k), nueva: !st.vistas.includes(x.k) }));
   const pend = items.filter(x => !x.ok);
   pend.forEach(x => { const n = est.k === 'regreso' && x.n === 'bad' ? 'warn' : x.n; if (n === 'bad' || nivel === 'ok') nivel = n; });
   return { nivel, motivos: pend.map(x => x.m), items, nuevas: items.filter(x => x.nueva && !x.ok).length, ult, ultSes: ses[0], dpw, dpw4, ctx: ctxDe(a.id), semana, mes, control, ses7: semana };
@@ -2383,7 +2386,8 @@ function verAlertas(id) {
   const a = S.c.perfiles.find(x => x.id === id); if (!a) return;
   const e = estadoAlumno(a), lab = { ok: 'En camino', warn: 'Atención', bad: 'Revisar' };
   abrirSheet(`<div class="stack"><span class="eyebrow">Alertas</span><h2>${esc(a.nombre)}</h2><span class="pill ${e.nivel}" style="align-self:flex-start">${lab[e.nivel]}</span>
-    ${e.motivos.length ? vListaAlertas(a.id, e) : '<p class="aprox small" style="margin:0">✅ <b>Todo al día.</b> No tiene incidencias pendientes.</p>'}
+    <b class="small">Pendiente de ti</b>${Compromisos.vFicha(a.id, false)}
+    <b class="small">Avisos</b>${e.items.some(x => !x.ok && !x.comp) ? vListaAlertas(a.id, { ...e, items: e.items.filter(x => !x.comp) }) : '<p class="small muted" style="margin:0">Sin avisos.</p>'}
     <div class="row" style="gap:8px"><button class="btn ghost" data-act="alConfig" data-id="${a.id}">🔔 Ajustes de avisos</button><button class="btn grow" data-act="ficha" data-id="${a.id}">Abrir su ficha</button></div></div>`);
 }
 function vAntiguos() {
@@ -3669,7 +3673,7 @@ function formTarea(id, alumnoId) {
 }
 async function tareaHecha(id) {
   const { error } = await sb.from('tareas_coach').update({ hecha_at: new Date().toISOString() }).eq('id', id); if (error) return fallo(error);
-  S.c.tareas = (S.c.tareas || []).filter(x => x.id !== id); toast('Tarea hecha ✓'); render();
+  S.c.tareas = (S.c.tareas || []).filter(x => x.id !== id); Compromisos.invalidar(); toast('Tarea hecha ✓'); render();
 }
 function histAvisos(aid) {
   const a = S.c.perfiles.find(x => x.id === aid); if (!a) return; const e = estadoAlumno(a), st = Alertas.de(aid), l = e.items.filter(x => x.ok);
@@ -3702,8 +3706,9 @@ function vFicha() {
   const ultM = f.med[0], pagP = pagos.filter(p => !p.pagado_at), pagV = pagP.filter(p => p.vence < hoy);
   const modE = srv?.modulo_entreno ?? true;
   const fb1 = `<div class="stack" style="gap:12px">${Acomp.vResumen(f, a)}
-    <div class="card stack"><div class="row"><b class="grow">Avisos</b>${pend.length ? `<span class="pill ${e.nivel}">${pend.length} pendiente${pend.length === 1 ? '' : 's'}</span>` : '<span class="pill ok">✅ Todo al día</span>'}</div>
-      ${pend.length ? vListaAlertas(a.id, e, false) : '<p class="small muted" style="margin:0">Sin avisos pendientes. Los que solventas desaparecen de aquí y quedan en el historial.</p>'}
+    <div class="card stack" id="ac-pend"><div class="row"><b class="grow">Pendiente de ti</b>${Compromisos.deAlumno(a.id).length ? '' : '<span class="pill ok">✓ Nada pendiente</span>'}</div>${Compromisos.vFicha(a.id, false)}</div>
+    <div class="card stack"><div class="row"><b class="grow">Avisos</b>${pend.filter(x => !x.comp).length ? `<span class="pill ${e.nivel}">${pend.filter(x => !x.comp).length}</span>` : '<span class="pill">Sin avisos</span>'}</div>
+      ${pend.filter(x => !x.comp).length ? vListaAlertas(a.id, { ...e, items: e.items.filter(x => !x.comp) }, false) : '<p class="small muted" style="margin:0">Señales de su semana (pasos, motivación, cambios de peso…). Las que marcas como vistas pasan al historial.</p>'}
       ${hechas.length ? `<button class="linkbtn small" data-act="histAvisos" data-id="${a.id}" style="align-self:flex-start">🗂 Historial de avisos solventados (${hechas.length})</button>` : ''}</div>
     ${vTareasFicha(a)}
     <div class="card stack"><div class="row"><b class="grow">Notas privadas</b><button class="btn sm ghost" data-act="nuevaNota">＋ Nota</button></div>${f.notas.map(n => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(n.fecha))}</span><div class="small grow">${esc(n.texto)}</div></div>`).join('') || '<div class="small muted">Solo tú ves estas notas.</div>'}</div>
@@ -3799,7 +3804,9 @@ function vFicha() {
       const prox = [e.control && ['🗓', `Revisión mensual ${e.control.n}`, fCorta(e.control.fecha)], presP && ['🏋️', 'Sesión presencial', `${fCorta(presP.fecha)}${presP.hora ? ' · ' + hhmm(presP.hora) : ''}`], pagV.length ? ['💳', `${pagV.length} cuota${pagV.length > 1 ? 's' : ''} vencida${pagV.length > 1 ? 's' : ''}`, 'Revisar'] : pagP.length && ['💳', 'Próxima cuota', fCorta(pagP.slice().sort((x, y) => x.vence.localeCompare(y.vence))[0].vence)], P && !P.sinFin && !P.fuera && ['🏁', 'Fin del proceso', fCorta(P.ciclos[P.ciclos.length - 1].fin)]].filter(Boolean);
       const k0 = chks[0], dev = (f.devoluciones || [])[0];
       const cCumpl = `<div class="card fx-c fx-cumpl"><div class="fx-ct">Cumplimiento <span class="muted">· últimas 4 semanas</span></div><div class="fx-cumpl-in">${anillo}<div class="fx-partes">${partes.map(([l, v, sub]) => `<div class="fx-parte"><div class="row"><span class="grow">${l}</span><b>${v} %</b></div><span class="fx-bar"><i style="width:${v}%;background:${v >= 85 ? 'var(--ok)' : v >= 60 ? 'var(--gold)' : 'var(--bad)'}"></i></span><small>${esc(sub)}</small></div>`).join('') || '<p class="small muted">Aún no hay semanas completas con datos.</p>'}</div></div><p class="fx-nota">Media de lo que se mide en su plan. Cada parte cuenta igual.</p></div>`;
-      const cPend = `<div class="card fx-c"><div class="fx-ct">Pendiente de ti ${pend.length ? `<span class="fx-num">${pend.length}</span>` : ''}</div>${(() => { const G = agruparAlertas(pend); return G.length ? `<div class="fx-lista">${G.slice(0, 5).map(g => `<div class="fx-al"><span class="fx-dot ${g.n}"></span><span class="grow" data-act="alIr" data-id="${a.id}" data-m="${esc(g.items[0].m)}" data-g="${g.items.length > 1 ? g.t : ''}" role="button">${esc(g.m)}${g.sub ? `<small class="muted" style="display:block">${esc(g.sub)}</small>` : ''}</span><button class="fx-ok" data-act="alResolver" data-id="${a.id}" data-m="${esc(msDe(g))}" data-on="1" title="Marcar como solventado" aria-label="Marcar como solventado">✓</button></div>`).join('')}</div>${G.length > 5 ? `<button class="linkbtn small" data-act="fTab" data-t="resumen">Ver todos los avisos ›</button>` : ''}` : `<div class="fx-vacio">${Alertas.silenciado(a.id) ? '🔕 Avisos silenciados' : '✓ Todo al día'}</div>`; })()}<button class="linkbtn small" data-act="alConfig" data-id="${a.id}" style="margin-top:6px">🔔 Ajustes de avisos</button></div>`;
+      const cmA = Compromisos.deAlumno(a.id), cmN = cmA.filter(x => !(x.futuro && x.estado === 'pendiente')).length, avP = pend.filter(x => !x.comp);
+      const cPend = `<div class="card fx-c"><div class="fx-ct">Pendiente de ti ${cmN ? `<span class="fx-num">${cmN}</span>` : ''}</div>${Compromisos.vFicha(a.id, true)}
+        <div class="row small" style="gap:10px;margin-top:8px;flex-wrap:wrap">${avP.length ? `<button class="linkbtn small" data-act="fTab" data-t="resumen">🔔 ${avP.length} aviso${avP.length === 1 ? '' : 's'} ›</button>` : `<span class="muted">${Alertas.silenciado(a.id) ? '🔕 Avisos silenciados' : 'Sin avisos'}</span>`}<button class="linkbtn small" data-act="alConfig" data-id="${a.id}">Ajustes de avisos</button></div></div>`;
       const cChk = `<div class="card fx-c"><div class="fx-ct">Último check-in</div>${k0 ? `<div class="fx-chk"><span class="muted small">Semana del ${esc(fCorta(k0.semana_inicio))}</span><div class="fx-mini"><div><b>${k0.motivacion ?? '—'}</b><small>motivación</small></div><div><b>${k0.implicacion ?? '—'}</b><small>implicación</small></div></div>${k0.dificultades ? `<p class="small" style="margin:0">«${esc(k0.dificultades.slice(0, 160))}${k0.dificultades.length > 160 ? '…' : ''}»</p>` : ''}${dev?.prioridad ? `<p class="small muted" style="margin:0">Tu prioridad para él: ${esc(dev.prioridad)}</p>` : ''}</div>` : '<div class="fx-vacio">Aún no ha enviado ningún check-in</div>'}</div>`;
       const cProx = l => `<div class="card fx-c"><div class="fx-ct">Próximo</div>${l.length ? `<div class="fx-lista">${l.map(([ic, t, d]) => `<div class="fx-prox"><span class="fx-ic">${ic}</span><span class="grow">${esc(t)}</span><b>${esc(d)}</b></div>`).join('')}</div>` : '<div class="fx-vacio">Nada programado</div>'}</div>`;
       const kEnt = (srv?.modulo_entreno ?? true) ? kpi('Entrenos esta semana', dpw ? `${cur.entrenos}<small>/${dpw}</small>` : cur.entrenos, `Semana pasada ${pre.entrenos}${dpwPre ? '/' + dpwPre : ''}`, dpw ? cur.entrenos / dpw * 100 : null, 'checkins') : '';
@@ -4282,6 +4289,13 @@ function formHistorial(i) {
     if (i >= 0) h[i] = e2; else h.push(e2); guarda(h.sort((a, b) => a.desde.localeCompare(b.desde)));
   });
   $('#hi-del')?.addEventListener('click', ev => { const b = ev.currentTarget; if (!b.dataset.ok) { b.dataset.ok = 1; b.textContent = 'Pulsa otra vez para eliminarlo'; return; } h.splice(i, 1); guarda(h); });
+}
+/* Mientras trabajas un bloque (p. ej. devoluciones elegidas para hoy): progreso, siguiente y volver a Hoy sin perder el sitio */
+function vBarraBloque() {
+  const b = S.bloque; if (!b) return '';
+  const T = Compromisos.T[b.tipo], p = Compromisos.progreso(b.tipo), sig = Compromisos.siguiente(b.tipo), act = Compromisos.buscar(b.actual);
+  return `<div class="cm-barra" role="region" aria-label="Bloque de trabajo"><span class="grow small"><b>${T.ico} ${T.n}</b> · ${p.res} de ${p.total || p.res} hechas hoy${act ? ' · <span class="muted">esta aún no está resuelta</span>' : b.actual ? ' · <span style="color:var(--ok)">✓ resuelta</span>' : ''}</span>
+    ${sig ? `<button class="btn sm" data-act="cmSiguiente" data-t="${b.tipo}">Siguiente ›</button>` : ''}<button class="btn sm ghost" data-act="bloqueVolver">Volver a Hoy</button></div>`;
 }
 function formServicio() {
   const s = S.ficha.srv || {};
@@ -5018,6 +5032,8 @@ function vReporteAlumno(a, R, detalle) {
       ${!conPasos(d.srv) ? '' : caja('Pasos', w.pasosMedia != null ? fmtNum(w.pasosMedia, 0) : '—', `obj. ${fmtNum(d.obj, 0)} · ${w.diasPasos}/7 días`, d.nivel(d.pctP))}</div>
     ${d.srv?.modulo_nutricion && midoCoach(a.id) && (w.chk?.aplicacion_plan || w.ing.dias < 7) ? `<div class="small muted">${w.chk?.aplicacion_plan ? `Aplicación declarada: <b>${esc(aplTxt(w.chk.aplicacion_plan))}</b>` : 'Aplicación declarada: sin respuesta'}${Nutricion.acuerdoDe(planNutriDe(a.id)).nivel === 'habitual' ? ` · comidas marcadas en ${w.ing.dias} de 7 días · ${7 - w.ing.dias} sin información` : ''}</div>` : ''}
     ${w.cansancio || w.poderio || w.chk ? `<div class="row small muted" style="flex-wrap:wrap;gap:8px">${w.cansancio ? `<span class="pill">Cansancio medio ${fmtNum(w.cansancio)}/5</span>` : ''}${w.poderio ? `<span class="pill">Poderío medio ${fmtNum(w.poderio)}/5</span>` : ''}${w.chk ? `<span class="pill">Motivación ${w.chk.motivacion}/10 · implicación ${w.chk.implicacion}/10</span>` : '<span class="pill warn">Sin check-in</span>'}</div>` : ''}
+    ${(() => { if (!conSeguimiento(d.srv) || !w.chk) return ''; const dv = (S.c.devoluciones || []).find(x => x.alumno_id === a.id && x.semana_inicio === R.lunes), cm = Compromisos.buscar(`dev:${a.id}:${R.lunes}`);
+      return `<div class="small">💬 Devolución de esta semana: ${dv ? '<span class="pill ok">Enviada</span>' : cm ? `${Compromisos.chip(cm)} <span class="muted">${Compromisos.venceTxt(cm)}</span>` : '<span class="muted">sin datos</span>'}</div>`; })()}
     ${d.control ? `<div class="aprox small"><b>Esa semana tocaba el control mensual ${d.control.n}</b> (composición corporal, ajustes y reunión de seguimiento).</div>` : ''}
     ${d.pres.length ? `<div class="small">Presenciales: ${d.pres.map(p => `${fCorta(p.fecha)} (${({ dada: 'hecha', tarde: 'aviso < 24 h', programada: 'reservada', cancelada: 'cancelada' })[p.estado] || p.estado})`).join(' · ')}</div>` : ''}
     ${com.length ? `<div class="stack" style="gap:6px"><span class="eyebrow">Lo que ha contado</span>${com.map(([t, f, x]) => `<div class="rep-c"><span class="small muted">${esc(t)} · ${esc(fCorta(f))}</span><div class="small">${esc(x)}</div></div>`).join('')}${!detalle && d.coment.length > 4 ? `<span class="small muted">y ${d.coment.length - 4} más…</span>` : ''}</div>` : '<p class="small muted">No ha dejado comentarios esta semana.</p>'}
@@ -6736,7 +6752,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v247';
+const APP_VER = 'v248';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -7007,6 +7023,14 @@ document.addEventListener('click', async e => {
     case 'nuevaPres': formPres(); break;
     case 'pausaEditar': formPausa(+b.dataset.i); break;
     case 'histEditar': formHistorial(+b.dataset.i); break;
+    case 'cmIr': cerrarSheet(); await Compromisos.ir(b.dataset.id, !!S.bloque); break;
+    case 'cmHoy': await Compromisos.elegirHoy([b.dataset.id], true); toast('Elegido para hoy'); break;
+    case 'cmProg': Compromisos.formReprogramar(b.dataset.id); break;
+    case 'cmEstado': await Compromisos.marcar(b.dataset.id, b.dataset.v); break;
+    case 'cmElegir': Negocio.formElegir(b.dataset.t); break;
+    case 'cmSiguiente': Negocio.siguiente(b.dataset.t); break;
+    case 'cmImportantes': Negocio.verImportantes(); break;
+    case 'bloqueVolver': { const t = S.bloque?.tipo; S.bloque = null; S.ficha = null; S.ctab = 'inicio'; render(); setTimeout(() => document.getElementById('cm-b-' + t)?.scrollIntoView({ block: 'center' }), 50); break; }
     case 'isoCrono': isoCrono(b); break;
     case 'isoParar': isoCerrar(true); break;
     case 'isoCerrar': isoCerrar(false); break;

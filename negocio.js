@@ -25,6 +25,7 @@ const Negocio = (() => {
     ]);
     const [ag, ci, me, sa, mo, re, rc] = r.map(x => x.data || []);
     Object.assign(S.c, { agenda: ag, cierres: ci, mejoras: me, saldos: sa, movs: mo, reservas: re, recordatorios: rc, recErr: !!r[6].error, negErr: r.slice(0, 6).some(x => x.error) });
+    if (typeof Compromisos !== 'undefined') Compromisos.invalidar();
   }
   async function guardarAjuste(clave, valor) {
     const { error } = await sb.from('ajustes_privados').upsert({ clave, valor: String(valor) }, { onConflict: 'clave' }); if (error) return fallo(error);
@@ -45,7 +46,8 @@ const Negocio = (() => {
       <p class="small">Esta semana (desde el ${esc(fCorta(l))}): <b>${s.con ? 'con hijos' : 'sin hijos'}</b>. Las semanas se alternan; si una semana cambia, márcalo aquí.</p>
       <div class="chips" id="cap-sem">${[['con', 'Esta semana con hijos'], ['sin', 'Esta semana sin hijos']].map(([k, t]) => `<button type="button" data-v="${k}" aria-pressed="${(s.con ? 'con' : 'sin') === k}">${t}</button>`).join('')}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Horas al día · con hijos<input type="number" id="cap-con" min="0" max="14" step="0.5" value="${cfg('con') || DEF.con}"></label><label class="f">Horas al día · sin hijos<input type="number" id="cap-sin" min="0" max="14" step="0.5" value="${cfg('sin') || DEF.sin}"></label></div>
-      <p class="small muted">Son horas de trabajo con alumnos y negocio (sin contar los entrenamientos presenciales). Los minutos de cada tarea son orientativos y los puedes cambiar.</p>
+      <label class="f">Margen para imprevistos (%)<input type="number" id="cap-mg" min="0" max="50" step="5" value="${margen()}"></label>
+      <p class="small muted">Son horas de trabajo con alumnos y negocio (sin contar los entrenamientos presenciales, que se muestran aparte). El margen se reserva para imprevistos. Los minutos de cada tarea son orientativos.</p>
       <button class="btn full" type="submit">Guardar</button></form>`);
     $('#cap-sem').addEventListener('click', ev => { const b = ev.target.closest('[data-v]'); if (!b) return; document.querySelectorAll('#cap-sem [data-v]').forEach(x => x.setAttribute('aria-pressed', x === b)); });
     $('#f-cap').addEventListener('submit', async e => {
@@ -53,42 +55,19 @@ const Negocio = (() => {
       let ov = {}; try { ov = JSON.parse(cfg('override') || '{}'); } catch (er) { }
       const auto = (() => { const n = Math.round((fecha(l) - fecha(lunesDe(cfg('ref') || DEF.ref))) / 6048e5); return Math.abs(n) % 2 === 1 ? 'con' : 'sin'; })();
       if (v === auto) delete ov[l]; else ov[l] = v;
-      await guardarAjuste('cap_con', $('#cap-con').value || DEF.con); await guardarAjuste('cap_sin', $('#cap-sin').value || DEF.sin); await guardarAjuste('cap_override', JSON.stringify(ov));
+      await guardarAjuste('cap_con', $('#cap-con').value || DEF.con); await guardarAjuste('cap_sin', $('#cap-sin').value || DEF.sin); await guardarAjuste('cap_override', JSON.stringify(ov)); await guardarAjuste('cap_margen', Math.max(0, Math.min(50, +$('#cap-mg').value || 0)));
       cerrarSheet(); toast('Capacidad guardada'); render();
     });
   }
 
   /* En rojo por algo que no sea solo un cobro vencido (eso ya va en «Cobros vencidos», sin duplicar) */
   const soloNoPago = e => e.motivos.some(m => !/^Pago vencido/.test(m));
-  /* ---------- Propuestas del día (a partir de lo que ya existe; no cada dato es una tarea) ---------- */
-  function propuestas() {
-    const hoy = hoyISO(), c = S.c, als = c.perfiles.filter(esCliente), out = [];
-    const nom = a => (a.nombre || '').split(' ')[0];
-    const est = als.map(a => ({ a, e: estadoAlumno(a) }));
-    // 1) Próximas acciones con fecha (las fijaste tú)
-    als.forEach(a => { const s = c.seguimiento?.[a.id]; if (s?.proxima_accion && s.proxima_fecha && s.proxima_fecha <= hoy) out.push({ k: 'accion:' + a.id, titulo: `${s.proxima_accion}`, motivo: `Próxima acción de ${a.nombre}${s.proxima_fecha < hoy ? ' · pasada desde el ' + fCorta(s.proxima_fecha) : ' · para hoy'}`, accion: 'Hacerla y marcarla como hecha en su ficha', min: 15, plazo: s.proxima_fecha, rank: s.proxima_fecha < hoy ? 1 : 2, ir: a.id }); });
-    // 2) Revisiones mensuales (atrasadas o esta semana)
-    const rev = est.filter(x => x.e.control); if (rev.length) out.push({ k: 'revisiones', titulo: rev.length === 1 ? `Revisión mensual de ${nom(rev[0].a)}` : `Revisiones mensuales: ${rev.length}`, motivo: rev.map(x => `${nom(x.a)}${x.e.control.atrasada ? ' (atrasada)' : ''}`).join(' · '), accion: 'Llamada o videollamada de 10-15 min y registrar la revisión', min: 15 * rev.length, plazo: hoy, rank: rev.some(x => x.e.control.atrasada) ? 2 : 4, lista: rev.map(x => x.a.id) });
-    // 3) Devoluciones de check-in pendientes
-    const dev = als.filter(a => conSeguimiento(srvDe(a.id)) && Acomp.alertaDevolucion(a.id)); if (dev.length) out.push({ k: 'devoluciones', titulo: `Devoluciones semanales: ${dev.length}`, motivo: dev.map(nom).join(' · '), accion: 'Revisar el borrador de cada una y enviarla', min: 8 * dev.length, plazo: hoy, rank: 3, lista: dev.map(a => a.id) });
-    // 4) Cobros vencidos
-    const venc = c.pagos.filter(p => !p.pagado_at && p.vence < hoy); if (venc.length) out.push({ k: 'cobros', titulo: `Cobros vencidos: ${venc.length} · ${eur(venc.reduce((t, p) => t + +p.importe, 0))}`, motivo: venc.map(p => `${nom(c.perfiles.find(a => a.id === p.alumno_id) || {})} ${eur(p.importe)} (${fCorta(p.vence)})`).join(' · '), accion: 'Recordar el pago o marcarlo como cobrado', min: 5 * venc.length, plazo: venc.map(p => p.vence).sort()[0], rank: 2, eco: true });
-    // 5) Alumnos en rojo sin atender (no repetidos con lo anterior)
-    const rojos = est.filter(x => x.e.nivel === 'bad' && soloNoPago(x.e) && !out.some(o => o.ir === x.a.id || (o.lista || []).includes(x.a.id))); if (rojos.length) out.push({ k: 'rojos', titulo: rojos.length === 1 ? `Atender a ${nom(rojos[0].a)}` : `Alumnos en rojo: ${rojos.length}`, motivo: rojos.map(x => `${nom(x.a)}: ${x.e.motivos[0] || ''}`).join(' · '), accion: 'Ver sus alertas, actuar y marcarlas como solventadas con una nota', min: 10 * rojos.length, plazo: hoy, rank: 2, lista: rojos.map(x => x.a.id), importante: true });
-    // 6) Canjes de puntos y gastos que vencen
-    const cj = (c.canjes || []); if (cj.length) out.push({ k: 'canjes', titulo: `Canjes de puntos por aplicar: ${cj.length}`, motivo: 'Te los han pedido tus alumnos', accion: 'Aplicarlos o rechazarlos en su ficha', min: 5 * cj.length, plazo: hoy, rank: 5 });
-    const gv = (c.movs || []).filter(m => m.tipo === 'gasto' && !m.pagado && m.fecha <= sumaDias(hoy, 3)); if (gv.length) out.push({ k: 'gastos', titulo: `Pagos a realizar: ${gv.length} · ${eur(gv.reduce((t, m) => t + +m.importe, 0))}`, motivo: gv.map(m => `${m.concepto} (${fCorta(m.fecha)})`).join(' · '), accion: 'Pagarlos y marcarlos como pagados en Economía', min: 5 * gv.length, plazo: gv.map(m => m.fecha).sort()[0], rank: gv.some(m => m.fecha < hoy) ? 1 : 3, eco: true });
-    return out.sort((a, b) => a.rank - b.rank || (a.plazo || '').localeCompare(b.plazo || ''));
-  }
-  /* Tareas del día: propuestas (con su estado guardado) + tareas tuyas; las reprogramadas a otro día no salen hoy */
+  /* Tareas tuyas del día (los compromisos con alumnos viven en Compromisos: una sola fuente) */
+  function propuestas() { return []; }
   function delDia(f = hoyISO()) {
     const ag = S.c.agenda || [], propias = ag.filter(x => x.fecha === f && !x.origen);
-    const items = propuestas().map(p => { const r = ag.find(x => x.fecha === f && x.origen === p.k); return { ...p, id: r?.id, estado: r?.estado || 'pendiente', min: r?.minutos ?? p.min, prioridad: r?.prioridad || false, nota: r?.nota }; })
-      .concat(ag.filter(x => x.fecha === f && x.origen && !propuestas().some(p => p.k === x.origen)).map(r => ({ k: r.origen, id: r.id, titulo: r.titulo, motivo: r.motivo, accion: r.accion, min: r.minutos, estado: r.estado, prioridad: r.prioridad, plazo: f, rank: 3, nota: r.nota, guardada: true })))
-      .concat(propias.map(r => ({ k: 'propia:' + r.id, id: r.id, titulo: r.titulo, motivo: r.motivo || 'Tarea tuya', accion: r.accion, min: r.minutos, estado: r.estado, prioridad: r.prioridad, plazo: f, rank: r.prioridad ? 0 : 6, propia: true, nota: r.nota })));
-    const marcadas = items.filter(x => x.prioridad);
-    const prio = (marcadas.length ? marcadas : items.filter(x => x.estado === 'pendiente').slice(0, 3)).slice(0, 3);
-    return { items, prio, otras: items.filter(x => !prio.includes(x)) };
+    const items = propias.map(r => ({ k: 'propia:' + r.id, id: r.id, titulo: r.titulo, motivo: r.motivo || 'Tarea tuya', accion: r.accion, min: r.minutos, estado: r.estado, prioridad: r.prioridad, plazo: f, rank: r.prioridad ? 0 : 6, propia: true, nota: r.nota }));
+    return { items, prio: items.filter(x => x.prioridad), otras: items.filter(x => !x.prioridad) };
   }
   const pendientesAnteriores = () => (S.c.agenda || []).filter(x => x.fecha < hoyISO() && x.estado === 'pendiente' && !x.origen);
 
@@ -140,51 +119,149 @@ const Negocio = (() => {
     await cargar(); render();
   }
 
-  /* ---------- Vista: Hoy del coach ---------- */
+  /* ---------- Vista: Hoy del coach ----------
+     A. jornada y capacidad · B. atención prioritaria (máx. 3, sin ocultar críticos) · C. seguimiento elegido para hoy
+     D. próximas sesiones y compromisos · E. economía compacta · F. cierre de jornada */
+  const margen = () => Math.max(0, Math.min(50, +(cfg('margen') ?? 15)));
+  function criticos() {
+    /* Solo señales graves que no son ya un compromiso (un cobro vencido va en su bloque, no aquí) */
+    return S.c.perfiles.filter(esCliente).map(a => ({ a, m: estadoAlumno(a).items.find(i => !i.ok && i.n === 'bad' && !i.comp)?.m })).filter(x => x.m);
+  }
+  function capacidad() {
+    const hoy = hoyISO(), cap = semana(), C = Compromisos, ab = C.abiertos();
+    const eleg = ab.filter(x => ['hoy', 'en_curso'].includes(x.estado)), minEleg = eleg.reduce((t, x) => t + (+x.min || 0), 0);
+    const res = C.resueltosHoy(), minRes = res.reduce((t, r) => t + (+r.minutos || 0), 0);
+    const d = delDia(), tPend = d.items.filter(x => x.estado === 'pendiente'), minT = tPend.reduce((t, x) => t + (+x.min || 0), 0), minTh = d.items.filter(x => x.estado === 'hecha').reduce((t, x) => t + (+x.min || 0), 0);
+    const ses = (S.c.presenciales || []).filter(p => p.fecha === hoy && p.estado !== 'cancelada'), minSes = ses.length * durSesion();
+    const disp = cap.min, mg = Math.round(disp * margen() / 100), util = Math.max(0, disp - mg), usado = minRes + minTh + minEleg + minT;
+    return { cap, eleg, minEleg, res, minRes, minT, minTh, ses, minSes, disp, mg, util, usado, sobra: usado > util };
+  }
+  function vCapacidad(k) {
+    const pc = v => k.disp ? Math.max(0, Math.min(100, v / k.disp * 100)) : 0;
+    const seg = (v, c, t) => v > 0 ? `<i class="cap-${c}" style="width:${pc(v)}%" title="${t}: ~${hm(v)}"></i>` : '';
+    const hecho = k.minRes + k.minTh, pend = k.minEleg + k.minT;
+    return `<section class="section"><div class="card stack" style="gap:8px"><div class="row" style="gap:8px"><span class="small grow"><b>${k.cap.con ? '👨‍👧‍👦 Semana con hijos' : '🧭 Semana sin hijos'}</b> · ${k.cap.horas} h para seguimiento y negocio</span><button class="linkbtn small" data-act="agCapacidad">Ajustar</button></div>
+      <div class="cap-bar" role="img" aria-label="Hecho ${hm(hecho)}, por hacer ${hm(pend)}, margen ${hm(k.mg)} de ${hm(k.disp)}">${seg(hecho, 'ok', 'Hecho hoy')}${seg(Math.min(pend, Math.max(0, k.util - hecho)), 'pl', 'Elegido por hacer')}${k.usado > k.util ? seg(k.usado - k.util, 'over', 'Por encima de lo disponible') : ''}<i class="cap-mg" style="width:${pc(k.mg)}%" title="Margen para imprevistos"></i></div>
+      <div class="cap-ley small"><span><i class="cap-ok"></i>Hecho ~${hm(hecho)}</span><span><i class="cap-pl"></i>Por hacer ~${hm(pend)}</span><span><i class="cap-mg"></i>Margen ${margen()} %</span>${k.ses.length ? `<span>🏋️ ${k.ses.length} sesi${k.ses.length === 1 ? 'ón' : 'ones'} presencial${k.ses.length === 1 ? '' : 'es'} (~${hm(k.minSes)}, aparte)</span>` : ''}</div>
+      <div class="small ${k.sobra ? '' : 'muted'}">${k.sobra ? `<b style="color:var(--warn)">⚠ Lo elegido (~${hm(k.usado)}) pasa de lo disponible (~${hm(k.util)} sin el margen).</b> Programa algo para otro día.` : !k.eleg.length && !k.minT && !hecho ? 'Aún no has elegido seguimiento para hoy. No hace falta llenar el día: elige solo lo que quieras hacer.' : `Libre ~${hm(Math.max(0, k.util - k.usado))}. Estimaciones orientativas: no es una meta.`}</div></div></section>`;
+  }
+  function vPrioridades() {
+    const C = Compromisos, cr = criticos(), ab = C.abiertos().filter(x => x.atraso > 0 || x.vence === hoyISO() || x.estado === 'en_curso').sort(C.ordenar);
+    const items = [...cr.map(x => ({ cr: true, a: x.a, m: x.m })), ...ab.filter(x => !cr.some(c => c.a.id === x.aid)).map(x => ({ x }))];
+    const top = items.slice(0, 3), resto = items.length - top.length, crResto = cr.length - top.filter(y => y.cr).length;
+    const f = y => y.cr ? `<div class="line" style="gap:10px;align-items:flex-start"><span class="cm-ico" aria-hidden="true">🔴</span><div class="grow stack" style="gap:2px"><button class="linkbtn cm-tit" data-act="alIr" data-id="${y.a.id}" data-m="${esc(y.m || '')}"><b>${esc(y.a.nombre)}</b> · ${esc(y.m || 'Revisar')}</button><span class="small" style="color:var(--bad)">Atención prioritaria</span></div></div>`
+      : C.fila(y.x, true, true).replace('class="line cm-it', `class="line cm-it${y.x.atraso > 7 ? ' tarde' : ''}`);
+    return `<section class="section"><div class="section-head"><h2>Requiere atención</h2>${items.length ? `<span class="small muted">${items.length} en total</span>` : ''}</div>
+      <div class="card">${top.map(f).join('') || '<div class="empty">Nada vencido ni urgente. 👌</div>'}
+      ${resto > 0 ? `<button class="linkbtn small" data-act="cmImportantes" style="margin-top:6px;${crResto > 0 ? 'color:var(--bad);font-weight:700' : ''}">${crResto > 0 ? `🔴 ${crResto} caso${crResto === 1 ? '' : 's'} prioritario${crResto === 1 ? '' : 's'} más` : `Ver ${resto} más`} ›</button>` : ''}</div></section>`;
+  }
+  function verImportantes() {
+    const C = Compromisos, cr = criticos(), ab = C.abiertos().filter(x => x.atraso > 0 || x.vence === hoyISO() || x.estado === 'en_curso').sort(C.ordenar);
+    abrirSheet(`<div class="stack"><h2>Requiere atención</h2>${cr.length ? `<span class="eyebrow">Atención prioritaria · ${cr.length}</span><div class="card">${cr.map(x => `<div class="line" style="gap:10px"><span>🔴</span><button class="linkbtn grow cm-tit" data-act="alIr" data-id="${x.a.id}" data-m="${esc(x.m || '')}"><b>${esc(x.a.nombre)}</b> · ${esc(x.m || '')}</button></div>`).join('')}</div>` : ''}
+      ${ab.length ? `<span class="eyebrow">Vencidos o de hoy · ${ab.length}</span><div class="card">${ab.map(x => C.fila(x, true, false)).join('')}</div>` : ''}${!cr.length && !ab.length ? '<div class="empty">Nada pendiente.</div>' : ''}</div>`);
+  }
+  function vBloques() {
+    const C = Compromisos, ab = C.abiertos(), d = delDia();
+    const grupos = C.ORDEN.map(t => ({ t, l: ab.filter(x => x.tipo === t).sort(C.ordenar), p: C.progreso(t) })).filter(g => g.l.length || g.p.res);
+    const g0 = g => `<div class="card row cm-bl" id="cm-b-${g.t}" style="gap:8px;padding:12px 14px"><span class="cm-ico" aria-hidden="true">${C.T[g.t].ico}</span><span class="grow"><b class="small">${C.T[g.t].n}</b> <span class="small muted">· ${g.l.length} pendiente${g.l.length === 1 ? '' : 's'}${g.l.some(x => x.atraso) ? ` (${g.l.filter(x => x.atraso).length} vencido${g.l.filter(x => x.atraso).length === 1 ? '' : 's'})` : ''}</span></span><button class="btn sm ghost" data-act="cmElegir" data-t="${g.t}">Elegir</button></div>`;
+    const g1 = g => { if (!g.p.total) return g0(g); const eleg = g.l.filter(x => ['hoy', 'en_curso'].includes(x.estado)), T = C.T[g.t], pct = g.p.total ? Math.round(g.p.res / g.p.total * 100) : 0;
+      return `<div class="card stack cm-bl" id="cm-b-${g.t}" style="gap:8px"><div class="row" style="gap:8px"><span class="cm-ico" aria-hidden="true">${T.ico}</span><b class="grow">${T.n}</b><span class="small muted">${g.p.total ? `<b>${g.p.res} de ${g.p.total}</b> hechas hoy · ` : ''}${g.l.length} pendiente${g.l.length === 1 ? '' : 's'}</span></div>
+        ${g.p.total ? `<div class="cm-prog" role="progressbar" aria-valuenow="${g.p.res}" aria-valuemin="0" aria-valuemax="${g.p.total}" aria-label="${T.n}: ${g.p.res} de ${g.p.total} hechas hoy"><i style="width:${pct}%"></i></div>` : ''}
+        ${eleg.length ? `<div>${eleg.map(x => C.fila(x, true, true)).join('')}</div>` : `<span class="small muted">${g.l.length ? 'Ninguna elegida para hoy.' : 'Todo lo elegido está hecho.'}</span>`}
+        <div class="row" style="gap:8px;flex-wrap:wrap">${g.l.length ? `<button class="btn sm ghost" data-act="cmElegir" data-t="${g.t}">${eleg.length ? 'Cambiar selección' : 'Elegir para hoy'}</button>` : ''}${eleg.length ? `<button class="btn sm" data-act="cmSiguiente" data-t="${g.t}">Empezar siguiente ›</button>` : ''}</div></div>`; };
+    const ant = pendientesAnteriores();
+    return `<section class="section"><div class="section-head"><h2>Seguimiento de hoy</h2><button class="btn sm ghost" data-act="agTarea">＋ Tarea</button></div>
+      <div class="stack" style="gap:10px">${grupos.map(g1).join('') || '<div class="card empty">Sin seguimiento pendiente.</div>'}
+      ${d.items.length ? `<div class="card stack" style="gap:6px"><div class="row"><span class="cm-ico">✅</span><b class="grow">Tus tareas de hoy</b></div>${d.items.map(it => filaPropia(it)).join('')}</div>` : ''}
+      ${ant.length ? `<div class="card stack" style="gap:6px"><b class="small">Tareas tuyas sin cerrar de días anteriores</b><p class="small muted" style="margin:0">No se pasan solas a hoy: decide qué hacer con cada una.</p>${ant.map(r => `<div class="line" style="flex-wrap:wrap;gap:8px"><span class="grow small">${esc(r.titulo)} <span class="muted">· ${esc(fCorta(r.fecha))}</span></span><button class="btn sm ghost" data-act="agAnterior" data-id="${r.id}" data-v="hoy">A hoy</button><button class="btn sm ghost" data-act="agAnterior" data-id="${r.id}" data-v="hecha">Hecha</button><button class="btn sm ghost" data-act="agAnterior" data-id="${r.id}" data-v="descartar">Descartar</button></div>`).join('')}</div>` : ''}</div></section>`;
+  }
+  const filaPropia = it => `<div class="line ag-it ${it.estado}" style="align-items:flex-start;gap:10px"><button class="ag-chk" data-act="agHecha" data-k="${esc(it.k)}" aria-label="${it.estado === 'hecha' ? 'Marcar como pendiente' : 'Marcar como hecha'}">${it.estado === 'hecha' ? '✓' : ''}</button>
+      <div class="grow stack" style="gap:2px"><span class="small" style="${it.estado !== 'pendiente' ? 'text-decoration:line-through;color:var(--muted)' : ''}">${esc(it.titulo)}</span><span class="small muted">~${hm(it.min)}${it.nota ? ' · ' + esc(it.nota) : ''}</span></div><button class="btn sm ghost" data-act="agItem" data-k="${esc(it.k)}" aria-label="Cambiar o reprogramar">✎</button></div>`;
+  function formElegir(tipo) {
+    const C = Compromisos, l = C.abiertos().filter(x => x.tipo === tipo).sort(C.ordenar), k = capacidad(), T = C.T[tipo];
+    const otros = k.usado - l.filter(x => ['hoy', 'en_curso'].includes(x.estado)).reduce((t, x) => t + (+x.min || 0), 0);
+    const yaHay = l.some(x => ['hoy', 'en_curso'].includes(x.estado));
+    let hueco = Math.max(0, k.util - otros); const sug = new Set();
+    if (!yaHay) for (const x of l) { if (sug.size >= 3 || x.min > hueco) break; sug.add(x.id); hueco -= x.min; }
+    abrirSheet(`<form class="stack" id="f-cme"><h2>${T.ico} ${T.n}</h2><p class="small muted" style="margin-top:-6px">Elige las que harás hoy. Las demás siguen pendientes con su fecha real; no se pasan solas a mañana.</p>
+      <div class="card">${l.map(x => `<label class="line" style="gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" data-cm="${esc(x.id)}" data-min="${x.min}" ${['hoy', 'en_curso'].includes(x.estado) || sug.has(x.id) ? 'checked' : ''} style="width:22px;height:22px;flex:none;margin-top:2px"><span class="grow stack" style="gap:2px"><span class="small">${x.aid ? `<b>${esc(C.nom(x.aid))}</b> · ` : ''}${esc(x.titulo)}</span><span class="small muted">${C.venceTxt(x)} · ~${hm(x.min)}${x.estado === 'esperando' ? ' · esperando respuesta' : ''}</span></span></label>`).join('')}</div>
+      <div class="small" id="cme-t"></div>
+      <button class="btn full" type="submit">Guardar selección</button></form>`);
+    const tot = () => { const m = [...document.querySelectorAll('[data-cm]:checked')].reduce((t, i) => t + +i.dataset.min, 0), n = document.querySelectorAll('[data-cm]:checked').length, sob = otros + m > k.util;
+      $('#cme-t').innerHTML = `${n} elegida${n === 1 ? '' : 's'} · ~${hm(m)}. Con lo demás de hoy: ~${hm(otros + m)} de ~${hm(k.util)} disponibles${sob ? ' · <b style="color:var(--warn)">no cabe todo</b>' : ''}. <span class="muted">(orientativo)</span>`; };
+    tot(); $('#f-cme').addEventListener('change', tot);
+    $('#f-cme').addEventListener('submit', async e => {
+      e.preventDefault(); const bt = e.target.querySelector('[type=submit]'); bt.disabled = true;
+      const on = [], off = []; document.querySelectorAll('[data-cm]').forEach(i => { const x = l.find(y => y.id === i.dataset.cm); if (i.checked && !['hoy', 'en_curso'].includes(x.estado)) on.push(x.id); if (!i.checked && x.estado === 'hoy') off.push(x.id); });
+      if (on.length) await C.elegirHoy(on, true); if (off.length) await C.elegirHoy(off, false);
+      cerrarSheet(); render();
+    });
+  }
+  function siguiente(tipo) {
+    const x = Compromisos.siguiente(tipo);
+    if (!x) { S.bloque = null; render(); return toast('No quedan elegidas para hoy en este bloque'); }
+    Compromisos.ir(x.id, true);
+  }
+  function vProximos() {
+    const hoy = hoyISO(), man = sumaDias(hoy, 1), nom = id => S.c.perfiles.find(p => p.id === id)?.nombre || 'Alumno', ahora = new Date().toTimeString().slice(0, 5);
+    const ses = (S.c.presenciales || []).filter(p => (p.fecha === hoy && (!p.hora || hhmm(p.hora) >= ahora) || p.fecha === man) && p.estado !== 'cancelada' && p.estado !== 'dada').sort(ordPres).slice(0, 6);
+    const pr = Compromisos.proximos(7).slice(0, 6);
+    if (!ses.length && !pr.length) return '';
+    return `<section class="section"><div class="section-head"><h2>Próximo</h2><button class="linkbtn small" data-act="verAgenda">Agenda ›</button></div><div class="card">
+      ${ses.map(p => `<div class="line" style="gap:10px"><b class="num small" style="width:68px;flex:none">${p.fecha === hoy ? 'Hoy' : 'Mañana'} ${esc(hhmm(p.hora) || '')}</b><button class="linkbtn grow cm-tit" data-act="agendaIr" data-id="${p.alumno_id}" data-p="${p.id || ''}">🏋️ <b>${esc(nom(p.alumno_id))}</b> · ${esc(p.tipo || 'Entrenamiento')}</button></div>`).join('')}
+      ${pr.map(x => `<div class="line" style="gap:10px"><b class="num small" style="width:68px;flex:none">${esc(fCorta(x.para || x.vence))}</b><button class="linkbtn grow cm-tit" data-act="cmIr" data-id="${esc(x.id)}">${Compromisos.T[x.tipo].ico} ${x.aid ? `<b>${esc(Compromisos.nom(x.aid))}</b> · ` : ''}${esc(x.titulo)}</button>${Compromisos.chip(x)}</div>`).join('')}</div></section>`;
+  }
+  function vEcoMini() {
+    const k = calc(), prov = (typeof Programas !== 'undefined' && S.c.srvTodos) ? '' : '';
+    return `<section class="section"><button class="card row eco-mini" data-act="ctab" data-t="pagos" style="width:100%;text-align:left;gap:12px;cursor:pointer">
+      <span class="grow stack" style="gap:2px"><span class="eyebrow">Economía · 30 días</span><span class="small">${k.caja != null ? `Caja estimada <b class="num">${eur(k.caja)}</b> <span class="muted">(saldo del ${esc(fCorta(k.saldo.fecha))})</span>` : '<span class="muted">Falta tu saldo real para estimar la caja</span>'}</span>
+      <span class="small muted">Cobros previstos +${eur(k.cobros30)}${k.vencidos.length ? ` · <b style="color:var(--warn)">${k.vencidos.length} vencido${k.vencidos.length === 1 ? '' : 's'} ${eur(k.sum(k.vencidos))}</b>` : ''}</span></span><span aria-hidden="true">›</span></button></section>`;
+  }
   function vInicio() {
     if (S.c.negErr) return `<section class="stack"><span class="eyebrow">${esc(fLarga(hoyISO()))}</span><h1>Tu día</h1></section><section class="section"><div class="card small muted">${AVISO}</div></section>`;
-    const hoy = hoyISO(), d = delDia(), cap = semana(), pend = d.items.filter(x => x.estado === 'pendiente'), carga = pend.reduce((t, x) => t + (+x.min || 0), 0), hechas = d.items.filter(x => x.estado === 'hecha').length;
-    const ci = (S.c.cierres || []).find(x => x.fecha === hoy), ant = pendientesAnteriores();
-    const pct = cap.min ? Math.min(100, Math.round(carga / cap.min * 100)) : 100, sobra = carga > cap.min;
-    const fila = (it, grande) => `<div class="line ag-it ${it.estado}" style="align-items:flex-start;gap:10px"><button class="ag-chk" data-act="agHecha" data-k="${esc(it.k)}" aria-label="${it.estado === 'hecha' ? 'Marcar como pendiente' : 'Marcar como hecha'}" aria-pressed="${it.estado === 'hecha'}">${it.estado === 'hecha' ? '✓' : ''}</button>
-      <div class="grow stack" style="gap:3px"><b class="${grande ? '' : 'small'}" style="${it.estado !== 'pendiente' ? 'text-decoration:line-through;color:var(--muted)' : ''}">${esc(it.titulo)}</b>${it.motivo ? `<span class="small muted">${esc(it.motivo.slice(0, 160))}${it.motivo.length > 160 ? '…' : ''}</span>` : ''}${grande && it.accion ? `<span class="small">→ ${esc(it.accion)}</span>` : ''}${it.lista?.length > 1 ? `<span class="row small" style="gap:4px 10px;flex-wrap:wrap">${it.lista.map(id => { const a = S.c.perfiles.find(x => x.id === id); return a ? `<button class="linkbtn small" data-act="alIr" data-id="${id}" data-m="${esc(it.titulo)}">${esc(a.nombre.split(' ')[0])} ›</button>` : ''; }).join('')}</span>` : ''}
-        <span class="small muted">⏱ ~${hm(it.min)} (orientativo)${it.plazo && it.plazo < hoy ? ` · <b style="color:var(--warn)">vence ${esc(fCorta(it.plazo))}</b>` : it.plazo ? ' · hoy' : ''}${it.estado === 'reprogramada' ? ' · reprogramada' : it.estado === 'descartada' ? ' · descartada' : ''}${it.nota ? ' · ' + esc(it.nota) : ''}</span></div>
-      <div class="stack" style="gap:4px;align-items:flex-end"><button class="btn sm ghost" data-act="agEstrella" data-k="${esc(it.k)}" aria-label="${it.prioridad ? 'Quitar de prioridades' : 'Hacer prioridad'}" title="Prioridad">${it.prioridad ? '★' : '☆'}</button><button class="btn sm ghost" data-act="agItem" data-k="${esc(it.k)}" aria-label="Cambiar o reprogramar">✎</button>${it.ir ? `<button class="linkbtn small" data-act="alIr" data-id="${it.ir}" data-m="${esc(it.titulo + ' · ' + (it.motivo || ''))}">Ir ›</button>` : it.lista?.length === 1 ? `<button class="linkbtn small" data-act="alIr" data-id="${it.lista[0]}" data-m="${esc(it.titulo + ' · ' + (it.motivo || ''))}">Ir ›</button>` : it.eco ? `<button class="linkbtn small" data-act="ctab" data-t="pagos">Economía ›</button>` : ''}</div></div>`;
-    return `<section class="stack"><span class="eyebrow">${esc(fLarga(hoy))}</span><h1>Tu día</h1><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="programarSes">📅 Programar sesión</button><button class="btn sm ghost" data-act="verAgenda">Agenda de sesiones</button></div></section>${IA.vTarjetaCoach()}${vTareasAlumnos()}
-      ${ci ? `<section class="section"><div class="card stack" style="border:2px solid var(--ok)"><b>✓ Jornada terminada a las ${esc(new Date(ci.cerrado_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }))}</b>${(ci.pendientes || []).length ? `<div class="small" style="color:var(--warn)">Queda sin resolver: ${ci.pendientes.map(esc).join(' · ')}</div>` : '<div class="small muted">Sin compromisos vencidos pendientes.</div>'}${ci.proximo ? `<div class="small">Próximo bloque: <b>${esc(ci.proximo)}</b></div>` : ''}<button class="linkbtn small" data-act="agCierre" style="align-self:flex-start">Revisar el cierre</button></div></section>` : ''}
-      <section class="section"><div class="card stack"><div class="row"><span class="small grow"><b>${cap.con ? '👨‍👧‍👦 Semana con hijos' : '🧭 Semana sin hijos'}</b> · ${cap.horas} h hoy</span><button class="linkbtn small" data-act="agCapacidad">Ajustar</button></div>
-        <div class="track gordo"><i style="width:${pct}%;background:${sobra ? 'var(--warn)' : 'var(--blue)'}"></i></div>
-        <div class="small">${sobra ? `<b style="color:var(--warn)">No cabe:</b> lo pendiente suma ~${hm(carga)} para ${cap.horas} h. Reprograma o simplifica (✎) lo menos urgente.` : `Pendiente ~${hm(carga)} de ${cap.horas} h · ${hechas} ${hechas === 1 ? 'hecha' : 'hechas'}`}</div></div></section>
-      ${ant.length ? `<section class="section"><h2>Sin cerrar de días anteriores</h2><p class="small muted">Decide qué hacer con cada una: no se pasan solas al día siguiente.</p><div class="card">${ant.map(r => `<div class="line" style="flex-wrap:wrap;gap:8px"><div class="grow"><b class="small">${esc(r.titulo)}</b><div class="small muted">${esc(fCorta(r.fecha))} · ~${hm(r.minutos)}</div></div><button class="btn sm" data-act="agAnt" data-id="${r.id}" data-q="hoy">Hoy</button><button class="btn sm ghost" data-act="agAnt" data-id="${r.id}" data-q="hecha">Hecha</button><button class="btn sm ghost" data-act="agAnt" data-id="${r.id}" data-q="descartar">Descartar</button></div>`).join('')}</div></section>` : ''}
-      <section class="section"><div class="section-head"><h2>Lo importante de hoy</h2><button class="btn sm ghost" data-act="agTarea">＋ Tarea</button></div>
-        <div class="card">${d.prio.map(x => fila(x, true)).join('') || '<div class="empty">Nada urgente hoy. Buen día para avanzar en una mejora del negocio.</div>'}</div>
-        <p class="small muted">${d.items.some(x => x.prioridad) ? 'Prioridades elegidas por ti (★).' : 'Propuestas por fecha y urgencia: confírmalas o cambia con ★.'}</p></section>
-      ${d.otras.length ? `<section class="section"><details class="card" ${d.otras.some(x => x.importante && x.estado === 'pendiente') ? 'open' : ''}><summary><b>Otras tareas e incidencias (${d.otras.filter(x => x.estado === 'pendiente').length} pendientes)</b>${d.otras.some(x => x.importante && x.estado === 'pendiente') ? ' <span class="pill bad">Incluye alumnos en rojo</span>' : ''}</summary>${d.otras.map(x => fila(x, false)).join('')}</details></section>` : ''}
+    const hoy = hoyISO(), ci = (S.c.cierres || []).find(x => x.fecha === hoy), k = capacidad();
+    return `<section class="stack"><span class="eyebrow">${esc(fLarga(hoy))}</span><h1>Tu día</h1><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="programarSes">📅 Programar sesión</button><button class="btn sm ghost" data-act="verAgenda">Agenda</button></div></section>
+      ${vCapacidad(k)}
+      ${ci ? `<section class="section"><div class="card stack" style="border:2px solid var(--ok);gap:4px"><b>✓ Jornada cerrada a las ${esc(new Date(ci.cerrado_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }))}</b>${(ci.pendientes || []).length ? `<div class="small">Quedó abierto: ${ci.pendientes.map(esc).join(' · ')}</div>` : ''}${ci.proximo ? `<div class="small">Próximo bloque: <b>${esc(ci.proximo)}</b></div>` : ''}<button class="linkbtn small" data-act="agCierre" style="align-self:flex-start">Revisar el cierre</button></div></section>` : ''}
+      ${vPrioridades()}
+      ${vBloques()}
+      ${vProximos()}
+      ${vEcoMini()}
+      <section class="section"><button class="btn full ${ci ? 'ghost' : 'dark'}" data-act="agCierre">${ci ? 'Revisar el cierre de hoy' : 'Cerrar la jornada'}</button></section>
       ${vRecordatorios(null)}
-      ${vEcoResumen()}
-      ${vMejoras()}
-      <section class="section"><button class="btn full ${ci ? 'ghost' : 'dark'}" data-act="agCierre">${ci ? 'Revisar el cierre de hoy' : 'Cerrar la jornada'}</button></section>`;
+      ${vMejoras()}`;
   }
 
-  /* ---------- Cierre de jornada: basado en compromisos reales, sin ocultar lo que queda ---------- */
+  /* ---------- Cierre de jornada: lo resuelto, lo que sigue abierto y lo programado. No hace falta vaciar nada ---------- */
   function formCierre() {
-    const hoy = hoyISO(), d = delDia(), pend = d.items.filter(x => x.estado === 'pendiente');
-    const rojos = S.c.perfiles.filter(esCliente).map(a => ({ a, e: estadoAlumno(a) })).filter(x => x.e.nivel === 'bad' && soloNoPago(x.e));
-    const venc = S.c.pagos.filter(p => !p.pagado_at && p.vence < hoy), gastosV = (S.c.movs || []).filter(m => m.tipo === 'gasto' && !m.pagado && m.fecha < hoy);
-    const prox = (S.c.agenda || []).filter(x => x.fecha > hoy && x.estado === 'pendiente').sort((a, b) => a.fecha.localeCompare(b.fecha))[0];
-    const ok = b => b ? '<span style="color:var(--ok);font-weight:700">✓</span>' : '<span style="color:var(--warn);font-weight:700">!</span>';
+    const C = Compromisos, hoy = hoyISO(), d = delDia(), res = C.resueltosHoy(), propH = d.items.filter(x => x.estado === 'hecha');
+    const abiertosHoy = C.abiertos().filter(x => ['hoy', 'en_curso'].includes(x.estado)), propP = d.items.filter(x => x.estado === 'pendiente');
+    const prog = C.todos().filter(x => x.estado === 'programado'), esp = C.todos().filter(x => x.estado === 'esperando'), cr = criticos();
+    const prox = prog.slice().sort((a, b) => a.para.localeCompare(b.para))[0], ci = (S.c.cierres || []).find(x => x.fecha === hoy);
     abrirSheet(`<form class="stack" id="f-ci"><h2>Cierre de la jornada</h2>
-      <div class="stack" style="gap:6px"><div class="small">${ok(!pend.length)} <b>Prioridades y tareas de hoy</b>: ${pend.length ? `quedan ${pend.length} sin decidir` : 'todas atendidas o reprogramadas'}</div>${pend.map(x => `<div class="row small" style="gap:6px;padding-left:18px"><span class="grow">${esc(x.titulo)}</span><button type="button" class="btn sm ghost" data-act="agHecha" data-k="${esc(x.k)}">Hecha</button><button type="button" class="btn sm ghost" data-act="agItem" data-k="${esc(x.k)}">Reprogramar</button></div>`).join('')}</div>
-      <div class="stack" style="gap:6px"><div class="small">${ok(!rojos.length)} <b>Incidencias importantes</b>: ${rojos.length ? `${rojos.length} ${rojos.length === 1 ? 'alumno sigue' : 'alumnos siguen'} en rojo` : 'ninguna sin atender'}</div>${rojos.map(x => `<div class="small" style="padding-left:18px">${esc(x.a.nombre)}: ${esc(x.e.motivos[0] || '')} <button type="button" class="linkbtn small" data-act="alIr" data-id="${x.a.id}" data-m="${esc(x.e.motivos[0] || '')}">Atender ›</button></div>`).join('')}</div>
-      <div class="stack" style="gap:6px"><div class="small">${ok(!venc.length && !gastosV.length)} <b>Vencimientos económicos</b>: ${venc.length || gastosV.length ? `${venc.length} cobros y ${gastosV.length} pagos vencidos` : 'nada vencido'}</div>${venc.length || gastosV.length ? '<label class="row small" style="gap:8px;padding-left:18px"><input type="checkbox" id="ci-v" style="width:20px;height:20px"> Los he revisado hoy</label>' : ''}</div>
-      <label class="f">Próximo bloque de trabajo<input type="text" id="ci-p" value="${esc(prox ? prox.titulo : '')}" placeholder="Ej. mañana 9:00 · devoluciones y revisión de Laura" required></label>
-      <p class="small muted">Puedes terminar aunque queden tareas futuras. Lo que siga vencido quedará escrito en el cierre, sin esconderlo.</p>
-      <button class="btn full" type="submit">Dar la jornada por terminada</button></form>`);
+      <div class="stack" style="gap:4px"><b class="small">✅ Resuelto hoy · ${res.length + propH.length}</b>${[...res.map(r => r.titulo), ...propH.map(x => x.titulo)].map(t => `<div class="small muted">· ${esc(t)}</div>`).join('') || '<div class="small muted">Nada marcado como resuelto hoy.</div>'}</div>
+      <div class="stack" style="gap:6px"><b class="small">🔵 Sigue abierto de hoy · ${abiertosHoy.length + propP.length}</b>${abiertosHoy.length + propP.length ? '<p class="small muted" style="margin:0">Decide con cada uno: programarlo para otro día, dejarlo esperando respuesta o dejarlo abierto (seguirá en pendientes con su fecha real, sin ocupar mañana).</p>' : '<div class="small muted">Nada.</div>'}
+        ${abiertosHoy.map(x => `<div class="card stack" style="padding:10px;gap:6px"><span class="small">${C.T[x.tipo].ico} ${x.aid ? `<b>${esc(C.nom(x.aid))}</b> · ` : ''}${esc(x.titulo)} <span class="muted">· ${C.venceTxt(x)}</span></span>
+          <div class="row" style="gap:6px;flex-wrap:wrap"><select data-ci="${esc(x.id)}" style="flex:1;min-width:150px"><option value="">Dejar abierto</option><option value="prog">Programar para…</option><option value="esp">Espero respuesta</option></select><input type="date" data-cif="${esc(x.id)}" min="${sumaDias(hoy, 1)}" value="${sumaDias(hoy, 1)}" hidden style="flex:1;min-width:140px"></div></div>`).join('')}
+        ${propP.map(x => `<div class="row small" style="gap:8px"><span class="grow">✅ ${esc(x.titulo)}</span><button type="button" class="btn sm ghost" data-act="agItem" data-k="${esc(x.k)}">Reprogramar</button></div>`).join('')}</div>
+      <div class="stack" style="gap:4px"><b class="small">📅 Programado o esperando · ${prog.length + esp.length}</b>${[...prog.map(x => `${esc(fCorta(x.para))} · ${x.aid ? esc(C.corto(x.aid)) + ': ' : ''}${esc(x.titulo)}`), ...esp.map(x => `⏳ ${x.aid ? esc(C.corto(x.aid)) + ': ' : ''}${esc(x.titulo)}`)].slice(0, 8).map(t => `<div class="small muted">· ${t}</div>`).join('') || '<div class="small muted">Nada.</div>'}</div>
+      ${cr.length ? `<div class="aprox small"><span>🔴 ${cr.length} caso${cr.length === 1 ? '' : 's'} de atención prioritaria siguen en «Requiere atención»: ${cr.map(x => esc(x.a.nombre.split(' ')[0])).join(', ')}.</span></div>` : ''}
+      <label class="f">Próximo bloque de trabajo (opcional)<input type="text" id="ci-p" value="${esc(ci?.proximo || (prox ? `${fCorta(prox.para)} · ${C.T[prox.tipo].n.toLowerCase()}` : ''))}" placeholder="Ej. mañana 9:00 · devoluciones"></label>
+      <button class="btn full" type="submit">Cerrar la jornada</button></form>`);
+    document.querySelectorAll('[data-ci]').forEach(s => s.addEventListener('change', () => { document.querySelector(`[data-cif="${CSS.escape(s.dataset.ci)}"]`).hidden = s.value !== 'prog'; }));
     $('#f-ci').addEventListener('submit', async e => {
-      e.preventDefault();
-      const quedan = [...pend.map(x => x.titulo), ...rojos.map(x => `${x.a.nombre} en rojo`), ...(venc.length && !$('#ci-v')?.checked ? [`${venc.length} cobros vencidos sin revisar`] : []), ...(gastosV.length && !$('#ci-v')?.checked ? [`${gastosV.length} pagos vencidos sin revisar`] : [])];
-      const { error } = await sb.from('cierres').upsert({ fecha: hoy, cerrado_at: new Date().toISOString(), proximo: $('#ci-p').value.trim(), pendientes: quedan }, { onConflict: 'fecha' });
-      if (error) return fallo(error, AVISO); cerrarSheet(); await cargar(); render(); toast(quedan.length ? 'Jornada cerrada con pendientes anotados' : 'Jornada terminada');
+      e.preventDefault(); const bt = e.target.querySelector('[type=submit]'); bt.disabled = true;
+      const quedan = [];
+      for (const s of document.querySelectorAll('[data-ci]')) {
+        const x = C.buscar(s.dataset.ci); if (!x) continue;
+        if (s.value === 'esp') await C.marcar(x.id, 'esperando');
+        else if (s.value === 'prog') { const f = document.querySelector(`[data-cif="${CSS.escape(x.id)}"]`).value; if (f) { await sb.from('agenda').update({ estado: 'reprogramada', nota: `Al cierre: programado para el ${fCorta(f)}` }).eq('id', x.fila?.id || -1); const r = await sb.from('agenda').insert({ fecha: f, origen: x.id, titulo: x.fila?.titulo || x.titulo, motivo: x.m || null, minutos: x.min, estado: 'programada', alumno_id: x.aid || null, vence: x.vence || null }); if (r.error && /vence/.test(r.error.message || '')) await sb.from('agenda').insert({ fecha: f, origen: x.id, titulo: x.fila?.titulo || x.titulo, minutos: x.min, estado: 'programada', alumno_id: x.aid || null }); } }
+        else quedan.push(`${x.aid ? C.corto(x.aid) + ': ' : ''}${x.titulo}`);
+      }
+      propP.forEach(x => quedan.push(x.titulo));
+      const { error } = await sb.from('cierres').upsert({ fecha: hoy, cerrado_at: new Date().toISOString(), proximo: $('#ci-p').value.trim() || null, pendientes: quedan }, { onConflict: 'fecha' });
+      if (error) { bt.disabled = false; return fallo(error, AVISO); }
+      cerrarSheet(); await cargar(); C.invalidar(); render(); toast('Jornada cerrada');
     });
   }
 
@@ -229,7 +306,7 @@ const Negocio = (() => {
   /* ---------- Mejoras del negocio: máximo 3 abiertas ---------- */
   function vMejoras() {
     const l = S.c.mejoras || [], ab = l.filter(x => x.estado === 'abierta'), ideas = l.filter(x => x.estado === 'idea');
-    return `<section class="section"><details class="card"><summary><b>Mejoras del negocio</b> <span class="small muted">· ${ab.length} de 3 en marcha${ideas.length ? ` · ${ideas.length} ideas` : ''}</span></summary><div class="stack" style="gap:6px;margin-top:8px">
+    return `<section class="section"><details class="card"><summary><b>Mejoras del negocio</b> <span class="small muted">· ${ab.length} de 3 en marcha${ideas.length ? ` · ${ideas.length} ideas` : ''} · opcional</span></summary>${typeof IA !== 'undefined' && IA.vTarjetaCoach ? `<div class="mj-ia">${IA.vTarjetaCoach()}</div>` : ''}<div class="stack" style="gap:6px;margin-top:8px">
       ${ab.map(x => `<div class="row small" style="gap:8px"><span class="grow">🔧 ${esc(x.titulo)}</span><button class="btn sm ghost" data-act="mjEstado" data-id="${x.id}" data-v="hecha">Hecha</button><button class="btn sm ghost" data-act="mjEstado" data-id="${x.id}" data-v="idea">Aparcar</button></div>`).join('')}
       ${ideas.map(x => `<div class="row small" style="gap:8px"><span class="grow muted">💡 ${esc(x.titulo)}</span>${ab.length < 3 ? `<button class="btn sm ghost" data-act="mjEstado" data-id="${x.id}" data-v="abierta">Empezar</button>` : ''}</div>`).join('')}
       <div class="row" style="gap:8px"><input type="text" id="mj-t" placeholder="Nueva idea de mejora" class="grow"><button class="btn sm" data-act="mjNueva">Añadir</button></div>
@@ -354,5 +431,5 @@ const Negocio = (() => {
   }
   async function revisionHecha() { await guardarAjuste('eco_revision', hoyISO()); toast('Revisión semanal anotada'); render(); }
 
-  return { vRecordatorios, formRec, moverRec, hechoRec, cargar, vInicio, vEconomia, vEcoResumen, semana, propuestas, delDia, formCapacidad, formItem, formTarea, hecha, estrella, decidirAnterior, formCierre, nuevaMejora, estadoMejora, formSaldo, formMov, formReserva, revisionHecha, calc };
+  return { verImportantes, formElegir, siguiente, capacidad, criticos, vRecordatorios, formRec, moverRec, hechoRec, cargar, vInicio, vEconomia, vEcoResumen, semana, propuestas, delDia, formCapacidad, formItem, formTarea, hecha, estrella, decidirAnterior, formCierre, nuevaMejora, estadoMejora, formSaldo, formMov, formReserva, revisionHecha, calc };
 })();
