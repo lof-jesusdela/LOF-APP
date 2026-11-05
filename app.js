@@ -2619,6 +2619,16 @@ const progDeCiclo = (f, P) => c => {
   const l = f.programas || [], con = l.filter(p => p.ciclo === c.n);
   return con.find(p => p.activo !== false) || con[con.length - 1] || (P && c.n === P.ciclo && f.progFull && f.progFull.ciclo == null ? f.progFull : null);
 };
+/* Futbolistas: la semana en curso tal como la has ajustado (o la patrón si esta semana no se ha tocado) */
+function vSemanaEnCurso(f, a) {
+  const L0 = lunesDe(hoyISO()), c = ctxEnSemana(f.contextos, L0), pr = c || f.progFull, nom = (a.nombre || '').split(' ')[0];
+  const dias = (pr?.dias || []).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0));
+  return `<section class="section"><div class="section-head"><h2>Semana en curso</h2><span class="small muted">del ${esc(fCorta(L0))} al ${esc(fCorta(sumaDias(L0, 6)))}</span></div>
+    <div class="card stack"><div class="row" style="gap:8px;flex-wrap:wrap"><span class="pill ${c ? 'ok' : ''}">${c ? '✓ Ajustada' : 'Sin ajustar · semana patrón'}</span><span class="small grow">${c ? esc(c.contexto_nombre || '') : 'Esta semana entrena su programa base.'}</span>
+      ${c ? `<button class="btn sm ghost" data-act="sesionesContexto" data-id="${c.id}">✎ Editar sus sesiones</button>` : `<button class="btn sm" data-act="semAjustar" data-l="${L0}">Ajustar esta semana</button>`}</div>
+      ${dias.length ? `<div>${dias.map(d => `<div class="line" data-act="verPlan" data-p="${pr.id}" data-d="${d.id}" style="cursor:pointer"><span class="pill gold num">${d.numero}</span><div class="grow"><b class="small">${esc(nomDia(d))}</b>${d.foco ? ` <span class="small muted">· ${esc(d.foco)}</span>` : ''}<div class="small muted">${(d.bloques_sesion || []).filter(b => b.tipo === 'fuerza').reduce((t, b) => t + (b.ejercicios_sesion || []).length, 0)} ejercicios</div></div><span class="small muted">›</span></div>`).join('')}</div>
+      <p class="note">Toca un día para verlo tal como lo ve ${esc(nom)}.</p>` : '<div class="empty">Sin entrenamientos en esta semana.</div>'}</div></section>`;
+}
 function vBloqueActual(f, a) {
   const pr = f.progFull, P = proceso(f.srv), nom = (a.nombre || '').split(' ')[0];
   const cab = P && !P.antes && !P.fuera ? `${esc(nomCiclo(P.cc))} · semana ${P.semCiclo} de ${P.cc.sem}` : 'Programa activo';
@@ -3848,7 +3858,7 @@ function vFicha() {
     ${(() => { const af = avisoFin(srv); return af ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>${af.terminado ? `Su proceso terminó el ${esc(fCorta(af.fin))}` : `Le quedan ${af.dias} días de proceso`}</b> (final ${esc(fF(af.fin))}). Si sigue contigo, añádele una extensión: continúa con sus bloques y su historial.</div><button class="btn sm gold" data-act="extension">＋ Añadir extensión</button></div>` : srv?.inicio ? '<button class="linkbtn small" data-act="extension" style="align-self:flex-start">＋ Añadir extensión del proceso</button>' : ''; })()}
     ${e.control ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>Toca su revisión mensual ${e.control.n}</b> (${esc(fCorta(e.control.fecha))}): llamada o videollamada de 10-15 minutos para ver cómo se siente, sus objetivos y su composición corporal.</div><button class="btn sm gold" data-act="revision" data-n="${e.control.n}">Registrar revisión</button></div>` : ''}
   </div></section>`;
-  const fb4 = `${vBloqueActual(f, a)}<div style="padding:0 2px"><button class="btn ghost full" data-act="fichaSub" data-s="entreno">Programas, contextos y zonas de FC ›</button></div>${IA.vFicha(f, a)}`;
+  const fb4 = `${srv?.modulo_futbol ? vSemanaEnCurso(f, a) + `<details class="card" style="margin:0 0 14px"><summary><b>Semana patrón</b> <span class="small muted">· su programa base</span></summary>${vBloqueActual(f, a)}</details>` : vBloqueActual(f, a)}<div style="padding:0 2px"><button class="btn ghost full" data-act="fichaSub" data-s="entreno">Programas, contextos y zonas de FC ›</button></div>${IA.vFicha(f, a)}`;
   const fb5 = `<div class="card stack"><div class="small muted">${!midoCoach(a.id) ? `${esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || '')} · registro de observación: ${ing7.dias} de 7 días apuntados` : ing7.pct != null ? `Últimos 7 días: <b>${ing7.pct} %</b> de ingestas bien en ${ing7.dias} días registrados (${esc(evN[1] || '')})` : ing7.dias ? `${ing7.dias} de 7 días registrados · pocos para valorar` : esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || 'Plan de alimentación')}</div><button class="btn full" data-act="fichaSub" data-s="alimentacion">Abrir su nutrición ›</button></div>`;
   const fb6 = `${Temperamento.bloqueFicha(f, a)}${conPasos(srv) || srv?.modulo_habitos ? `<div style="padding:0 2px"><button class="btn ghost full" data-act="fichaSub" data-s="habitos">${srv?.modulo_habitos ? 'Hábitos y pasos' : 'Pasos'} ›</button></div>` : ''}`;
   const fb7 = `  <section class="section"><div class="section-head"><h2>Composición corporal</h2><div class="row" style="gap:6px"><button class="btn sm ghost" data-act="objetivoComp">🎯 Objetivo</button><button class="btn sm ghost" data-act="nuevaMedicion">＋ Medición</button></div></div>
@@ -6960,7 +6970,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v254';
+const APP_VER = 'v255';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
