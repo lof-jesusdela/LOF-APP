@@ -63,7 +63,9 @@ const Programas = (() => {
     const L = {}, get = n => (L[n] ||= { n, cob: Array(12).fill(0), altas: Array(12).fill(0), pend: 0, venc: 0, alumnosPago: new Set(), activos: [], unico: 0, fracc: 0, conAmp: 0, terminados: 0, ultAlta: null, tarifas: new Set() });
     const mesDe = f => +f.slice(5, 7) - 1;
     let cobAnt = 0; const iniAnt = `${anio - 1}-01-01`, hastaAnt = `${anio - 1}${hasta.slice(4)}`;
+    const fam = id => (S.c.servicios || []).some(v => v.alumno_id === id && v.activo !== false && v.tarifa === 'familia');
     for (const p of S.c.pagos || []) {
+      if (fam(p.alumno_id) && !p.tarifa) continue;
       const imp = +p.importe || 0;
       if (p.pagado_at && p.pagado_at >= iniAnt && p.pagado_at <= hastaAnt) cobAnt += imp;
       const enAnio = p.pagado_at ? p.pagado_at >= ini && p.pagado_at <= fin : p.vence >= ini && p.vence <= fin;
@@ -74,6 +76,7 @@ const Programas = (() => {
     }
     const conv = [];
     for (const v of S.c.srvTodos || S.c.servicios || []) {
+      if (v.tarifa === 'familia') continue;
       const hs = historialDe(v);
       hs.forEach((h, i) => {
         const lh = lineaEn(v, h.desde), xh = get(lh);
@@ -110,7 +113,7 @@ const Programas = (() => {
       if (x.impago >= 10 && x.venc > 0) x.flags.push(['bad', `Impagos ${x.impago} %`]);
       if (x.renov != null && x.conAmp + x.terminados >= 3 && x.renov < 30 && !/bono|ampliaci|renovaci/i.test(x.n)) x.flags.push(['warn', `Renuevan poco (${x.renov} %)`]);
     });
-    const sinPrograma = (S.c.pagos || []).filter(p => !pagoSeguro(p) && (p.pagado_at || p.vence) >= `${anio - 1}-01-01`);
+    const sinPrograma = (S.c.pagos || []).filter(p => !pagoSeguro(p) && !fam(p.alumno_id) && (p.pagado_at || p.vence) >= `${anio - 1}-01-01`);
     return { anio, hoy, lineas, tot, conv, sinPrograma, sinTarifa: (S.c.servicios || []).filter(v => v.activo && !v.tarifa) };
   }
 

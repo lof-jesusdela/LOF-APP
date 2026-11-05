@@ -2293,7 +2293,7 @@ function estadoAlumno(a) {
   const control = !seg ? null : revisionPendiente(srv, (c.revisiones || []).filter(r => r.alumno_id === a.id), c.revisionesErr) || (c.revisionesErr ? controlEnSemana(srv, lunes) : null);
   { const bn = bonoDe(a.id, srv); if (bn && bn.total) { const usadas = bn.hechas.length; if (usadas >= bn.total && !bn.prox.length) { sube('warn'); motivos.push(`Bono agotado: ha usado las ${bn.total} sesiones`); } else if (bn.quedan <= 2 && usadas > 0) { sube('warn'); motivos.push(`Le ${bn.quedan === 1 ? 'queda 1 sesión' : `quedan ${bn.quedan} sesiones`} del bono (de ${bn.total})`); } } }
   if (control?.atrasada && !pausa) { sube('warn'); motivos.push(`Revisión mensual ${control.n} pendiente desde el ${fCorta(control.fecha)}`); }
-  const st = Alertas.de(a.id), items = motivos.map((m, i) => ({ m, n: niveles[i], k: Alertas.clave(m), t: tipoAlerta(m) })).filter(x => (seg || ['pago', 'bono'].includes(x.t)) && Alertas.activa(a.id, x.m)).map(x => ({ ...x, ok: st.resueltas.includes(x.k), nueva: !st.vistas.includes(x.k) }));
+  const st = Alertas.de(a.id), items = esFamilia(a.id) ? [] : motivos.map((m, i) => ({ m, n: niveles[i], k: Alertas.clave(m), t: tipoAlerta(m) })).filter(x => (seg || ['pago', 'bono'].includes(x.t)) && Alertas.activa(a.id, x.m)).map(x => ({ ...x, ok: st.resueltas.includes(x.k), nueva: !st.vistas.includes(x.k) }));
   const pend = items.filter(x => !x.ok);
   pend.forEach(x => { const n = est.k === 'regreso' && x.n === 'bad' ? 'warn' : x.n; if (n === 'bad' || nivel === 'ok') nivel = n; });
   return { nivel, motivos: pend.map(x => x.m), items, nuevas: items.filter(x => x.nueva && !x.ok).length, ult, ultSes: ses[0], dpw, dpw4, ctx: ctxDe(a.id), semana, mes, control, ses7: semana };
@@ -2345,6 +2345,9 @@ S.alF = S.alF || { q: '', p: '', m: '', k: '' };
 const MODALIDADES = ['Online', 'Híbrido', 'Presencial', 'Bono', 'Sin servicio'];
 const normaliza = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 const srvDe = id => (S.c?.servicios || []).find(x => x.alumno_id === id);
+/* Familia y perfiles de prueba: usan la app entera pero no cuentan en reporting, avisos ni economía */
+const esFamilia = id => srvDe(id)?.tarifa === 'familia';
+const esCliente = p => p && p.activo !== false && p.rol !== 'coach' && !esFamilia(p.id);
 const prodDe = id => srvDe(id)?.producto || '';
 /* Tipos de programa: presencial (bono de sesiones sin seguimiento, o plan con objetivos de 3, 6 o 10 meses), online o híbrido.
    Si el servicio aún no tiene la modalidad elegida, se deduce como antes (producto «Bono…», sesiones presenciales, entreno). */
@@ -2384,7 +2387,7 @@ function aplicarFiltroAl() {
   document.querySelectorAll('.lat-al button[data-n]').forEach(el => { el.hidden = !!q && !el.dataset.n.includes(q); });
 }
 function vAlumnos() {
-  const c = S.c, als = c.perfiles.filter(p => p.activo !== false);
+  const c = S.c, als = c.perfiles.filter(p => p.activo !== false && !esFamilia(p.id)), fam = c.perfiles.filter(p => p.activo !== false && esFamilia(p.id));
   const est = als.map(a => ({ a, e: estadoAlumno(a) })), orden = { bad: 0, warn: 1, ok: 2 };
   const rk = rangoReciente(); est.sort((x, y) => rk(x.a.id) - rk(y.a.id) || orden[x.e.nivel] - orden[y.e.nivel]);
   const lab = { ok: 'En camino', warn: 'Atención', bad: 'Revisar' };
@@ -2404,6 +2407,7 @@ function vAlumnos() {
       <select id="al-mod" aria-label="Modalidad"><option value="">Todas las modalidades</option>${MODALIDADES.map(x => `<option ${S.alF.m === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
     ${S.alF.k ? `<div class="row" style="gap:8px;margin:8px 0"><span class="pill ${S.alF.k === 'todos' ? 'blue' : 'bad'}">Mostrando: ${{ todos: 'todos los perfiles activos', alerta: 'necesitan atención', vencidos: 'con pagos vencidos' }[S.alF.k]}</span><button class="linkbtn small" data-act="alFiltro" data-k="">Quitar filtro</button></div>` : ''}
     <div class="card">${est.map(({ a, e }) => `<div class="line al-fila" data-act="ficha" data-id="${a.id}" data-n="${esc(normaliza(a.nombre))}" data-p="${esc(prodDe(a.id))}" data-m="${esc(modalidadDe(a.id))}" data-al="${e.nivel !== 'ok' ? 1 : 0}" data-v="${vencIds.has(a.id) ? 1 : 0}" style="cursor:pointer"${visibleAl(a, e) ? '' : ' hidden'}><span style="width:4px;align-self:stretch;border-radius:2px;background:var(--${e.nivel})"></span><i class="al-dot ${e.nuevas ? 'nueva' : ''}" data-act="verAlertas" data-id="${a.id}" role="button" aria-label="Ver alertas de ${esc(a.nombre)}" style="background:var(--${e.nivel})"></i>${avatarDe(a, 40)}<div class="grow stack" style="gap:3px"><div class="row"><h3 class="grow">${esc(a.nombre)}</h3>${e.ctx ? `<span class="pill gold" title="Semana adaptada">${esc(e.ctx.contexto_nombre || 'Contexto')}</span>` : ''}${e.control ? '<span class="pill gold">Revisión mensual</span>' : ''}${e.nuevas ? `<span class="pill bad">${e.nuevas} ${e.nuevas === 1 ? 'nueva' : 'nuevas'}</span>` : ''}<span class="pill ${e.nivel}">${lab[e.nivel]}</span></div><div class="small muted">${esc((c.servicios.find(s => s.alumno_id === a.id) || {}).producto || 'Sin servicio')}${e.ult ? ` · motivación ${e.ult.motivacion}/10` : ''}</div>${e.dpw ? barra('Semana', e.semana, e.dpw) + barra('Últimas 4 semanas', e.mes, e.dpw4 || e.dpw * 4) : ''}${e.motivos.length ? `<div class="small">${esc(agruparAlertas(e.items.filter(x => !x.ok)).map(g => g.m).join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no hay alumnos.</div>'}<div class="empty" id="al-nada" hidden>Ningún alumno coincide con la búsqueda.</div></div>
+  ${fam.length ? `<section class="section"><div class="section-head"><h2>Familia y pruebas</h2><span class="small muted">no cuentan en reporting ni economía</span></div><div class="card">${fam.map(a => `<div class="line" data-act="ficha" data-id="${a.id}" style="cursor:pointer"><span class="grow"><b>${esc(a.nombre || '')}</b></span><span class="pill">👪 Familia</span></div>`).join('')}</div></section>` : ''}
   <p class="note">Para dar de alta a un alumno nuevo, créalo en Supabase → Authentication → Users. Su perfil aparecerá aquí solo.</p></section>
   ${Casos.resumenCoach()}`;
 }
@@ -4262,7 +4266,7 @@ function formServicio() {
   const tarifa = () => Tarifas.de($('#sv-tar').value);
   const opPago = () => { const t = tarifa(); if (!t) return null; return { forma: pg.forma, inicio: $('#sv-p0').value || $('#sv-ini').value, extra: t.extraAli && $('#sv-xali').checked ? t.extraAli : 0, desc: numero($('#sv-desc').value) ? { tipo: $('#sv-desct').value, v: numero($('#sv-desc').value) } : null, concepto: $('#sv-prod').value.trim() || t.nombre }; };
   const pintaPago = () => {
-    const t = tarifa(); $('#sv-pago').hidden = !t; if (!t) return;
+    const t = tarifa(); $('#sv-pago').hidden = !t || !t.estandar; $('#sv-tar-txt').textContent = t && !t.estandar ? 'No es cliente: usa la app entera, pero no cuenta en reporting, avisos ni economía.' : 'Al elegirla se rellena el programa y se prepara su plan de pagos.'; if (!t || !t.estandar) return;
     if (!t.fracc) pg.forma = 'unico';
     $('#sv-forma').innerHTML = `<button type="button" class="pill ${pg.forma === 'unico' ? 'blue' : ''}" data-v="unico">Pago único · ${Tarifas.eur(t.unico)}${t.unico < t.estandar ? ` <s class="muted">${Tarifas.eur(t.estandar)}</s>` : ''}</button>${t.fracc ? `<button type="button" class="pill ${pg.forma === 'fracc' ? 'blue' : ''}" data-v="fracc">Fraccionado · ${Tarifas.resumenFracc(t.fracc)}</button>` : ''}`;
     $('#sv-b24-w').hidden = !(t.bonus24 || t.bonus24Val); $('#sv-xali-w').hidden = !t.extraAli;
@@ -4334,7 +4338,7 @@ function formServicio() {
     if (row.modulo_nutricion) { const nc = numero($('#sv-com').value); if (nc && (nc !== comidasDia(s) || s.comidas_dia)) row.comidas_dia = Math.max(1, Math.min(8, nc)); }
     const guardar = r => s.id ? sb.from('servicios').update(r).eq('id', s.id) : sb.from('servicios').insert(r);
     if (vals) Object.assign(row, vals);
-    const tSel = tarifa(), cuotas = tSel && $('#sv-genp').checked ? Tarifas.plan(tSel, opPago()) : [];
+    const tSel = tarifa(), cuotas = tSel && tSel.estandar > 0 && $('#sv-genp').checked ? Tarifas.plan(tSel, opPago()) : [];
     const extra88 = {}; if (tSel) Object.assign(extra88, { tarifa: tSel.id, forma_pago: pg.forma }); { const v = $('#sv-spv').value; if (v !== '' || s.sesiones_previas) extra88.sesiones_previas = v === '' ? null : Math.max(0, +v || 0); }
     Object.assign(row, extra88);
     const extra90 = {}; if (cambioProg() && $('#sv-cmb').checked) { const h = Array.isArray(s.historial) ? s.historial : [], nuevo = $('#sv-cmbf').value || hoyISO();
@@ -4932,7 +4936,7 @@ function vReporte() {
   /* Cada alumno se pinta aislado: si su ficha tiene un dato incompleto, sale un aviso en su tarjeta y el resto sigue */
   const tarjeta = (a, det) => { try { return vReporteAlumno(a, R, det); } catch (err) { console.error('Reporting de', a?.nombre, err); return `<div class="card stack"><div class="row"><b class="grow">${esc(a?.nombre || 'Alumno')}</b><span class="pill warn">Revisar ficha</span></div><p class="small muted" style="margin:0">Su informe de esta semana no se ha podido montar porque falta o está incompleto algún dato de su ficha. El resto del reporting no se ve afectado.</p><button class="btn sm ghost" data-act="reporteFicha" data-id="${a?.id}" style="align-self:flex-start">Abrir su ficha</button></div>`; } };
   if (R.alumno) { const a = S.c.perfiles.find(p => p.id === R.alumno) || { id: R.alumno, nombre: 'Alumno' }; return cab + aviso + `<section class="section">${tarjeta(a, true)}</section>`; }
-  const als = S.c.perfiles.filter(p => p && p.activo !== false && (S.c.servicios.some(x => x.alumno_id === p.id) || S.c.programas.some(x => x.alumno_id === p.id)) && (!srvDe(p.id) || conSeguimiento(srvDe(p.id))));
+  const als = S.c.perfiles.filter(p => p && p.activo !== false && !esFamilia(p.id) && (S.c.servicios.some(x => x.alumno_id === p.id) || S.c.programas.some(x => x.alumno_id === p.id)) && (!srvDe(p.id) || conSeguimiento(srvDe(p.id))));
   const lista = als.map(a => { try { return { a, d: datosReporte(a, R) }; } catch (err) { console.error('Reporting de', a?.nombre, err); return { a, d: { score: -1 } }; } }).sort((x, y) => x.d.score - y.d.score);
   return cab + aviso + `<section class="section rep-lista"><p class="small muted">Ordenados de menor a mayor cumplimiento. Toca "Ver" para el detalle de cada alumno.</p><details class="small muted"><summary>Cómo se calcula la alimentación</summary><p style="margin:6px 0 0">Comidas del plan = comidas que el alumno marca como hechas ÷ comidas previstas de los días que registró. Solo se valora con ${MIN_DIAS_NUTRI} días o más; los días sin información no cuentan como fallo y se muestran aparte. Bien ≥ 85 %, regular 60–84 %, mal &lt; 60 %. La aplicación declarada en el check-in («aplicado», «en parte», «necesito ayuda») se muestra tal cual, sin convertirla en porcentaje. Con seguimiento ligero solo cuenta esa respuesta.</p></details>${lista.map(({ a }) => tarjeta(a, false)).join('') || '<div class="empty">Sin alumnos activos.</div>'}</section>`;
 }
@@ -6631,7 +6635,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v239';
+const APP_VER = 'v240';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}

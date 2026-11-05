@@ -62,7 +62,7 @@ const Negocio = (() => {
   const soloNoPago = e => e.motivos.some(m => !/^Pago vencido/.test(m));
   /* ---------- Propuestas del día (a partir de lo que ya existe; no cada dato es una tarea) ---------- */
   function propuestas() {
-    const hoy = hoyISO(), c = S.c, als = c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach'), out = [];
+    const hoy = hoyISO(), c = S.c, als = c.perfiles.filter(esCliente), out = [];
     const nom = a => (a.nombre || '').split(' ')[0];
     const est = als.map(a => ({ a, e: estadoAlumno(a) }));
     // 1) Próximas acciones con fecha (las fijaste tú)
@@ -169,7 +169,7 @@ const Negocio = (() => {
   /* ---------- Cierre de jornada: basado en compromisos reales, sin ocultar lo que queda ---------- */
   function formCierre() {
     const hoy = hoyISO(), d = delDia(), pend = d.items.filter(x => x.estado === 'pendiente');
-    const rojos = S.c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach').map(a => ({ a, e: estadoAlumno(a) })).filter(x => x.e.nivel === 'bad' && soloNoPago(x.e));
+    const rojos = S.c.perfiles.filter(esCliente).map(a => ({ a, e: estadoAlumno(a) })).filter(x => x.e.nivel === 'bad' && soloNoPago(x.e));
     const venc = S.c.pagos.filter(p => !p.pagado_at && p.vence < hoy), gastosV = (S.c.movs || []).filter(m => m.tipo === 'gasto' && !m.pagado && m.fecha < hoy);
     const prox = (S.c.agenda || []).filter(x => x.fecha > hoy && x.estado === 'pendiente').sort((a, b) => a.fecha.localeCompare(b.fecha))[0];
     const ok = b => b ? '<span style="color:var(--ok);font-weight:700">✓</span>' : '<span style="color:var(--warn);font-weight:700">!</span>';

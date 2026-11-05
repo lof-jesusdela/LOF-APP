@@ -336,7 +336,7 @@ const Casos = (() => {
   /* Resumen en el panel: casos de éxito disponibles */
   function resumenCoach() {
     if (S.c?.casosErr || !S.c?.consent) return '';
-    const act = S.c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach'), con = Object.values(S.c.consent).filter(c => act.some(a => a.id === c.alumno_id));
+    const act = S.c.perfiles.filter(esCliente), con = Object.values(S.c.consent).filter(c => act.some(a => a.id === c.alumno_id));
     const t = con.filter(c => c.testimonio).length, fo = con.filter(c => c.fotos).length, ap = (S.c.casos || []).filter(x => x.estado === 'aprobado').length, pe = (S.c.casos || []).filter(x => x.estado === 'pendiente').length, sin = act.length - con.length;
     return `<section class="section"><h2>Casos de éxito</h2><div class="kpis"><div class="kpi"><div class="v num">${t}</div><div class="l">autorizan testimonio</div></div><div class="kpi"><div class="v num">${fo}</div><div class="l">autorizan fotos sin cara</div></div><div class="kpi"><div class="v num" style="color:var(--ok)">${ap}</div><div class="l">aprobados para publicar${pe ? ` · ${pe} esperando` : ''}</div></div></div>${sin ? `<p class="small muted">${sin} ${sin === 1 ? 'alumno aún no ha decidido' : 'alumnos aún no han decidido'}.</p>` : ''}</section>`;
   }

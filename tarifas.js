@@ -45,6 +45,7 @@ const Tarifas = (() => {
     // Bonos de entrenamientos personales (sin seguimiento, sin caducidad)
     { id: 'bono1', grupo: 'Bono de sesiones', nombre: 'Sesión suelta', srv: { modalidad: 'presencial', bono: true, ent: true, ali: false, sesiones: 1, seg: false }, estandar: 60, unico: 60, fracc: null },
     { id: 'bono5', grupo: 'Bono de sesiones', nombre: 'Bono 5 sesiones', srv: { modalidad: 'presencial', bono: true, ent: true, ali: false, sesiones: 5, seg: false }, estandar: 275, unico: 275, fracc: null },
+    { id: 'familia', grupo: 'Familia y pruebas', nombre: 'Familia / pruebas (no es cliente)', srv: { modalidad: 'hibrido', ent: true, ali: true, seg: false }, estandar: 0, unico: 0, fracc: null },
     { id: 'bonoverano10', grupo: 'Bono de sesiones', nombre: 'Bono verano 10 sesiones', oferta: true, ofDesde: '2026-06-01', ofHasta: '2026-09-30', srv: { modalidad: 'presencial', bono: true, ent: true, ali: false, sesiones: 10, seg: false }, estandar: 300, unico: 300, fracc: null },
     { id: 'bono8', grupo: 'Bono de sesiones', nombre: 'Bono 8 sesiones', srv: { modalidad: 'presencial', bono: true, ent: true, ali: false, sesiones: 8, seg: false }, estandar: 400, unico: 400, fracc: [200, 200] },
     { id: 'bono12', grupo: 'Bono de sesiones', nombre: 'Bono 12 sesiones', srv: { modalidad: 'presencial', bono: true, ent: true, ali: false, sesiones: 12, seg: false }, estandar: 550, unico: 550, fracc: reparte(550, 3) },
