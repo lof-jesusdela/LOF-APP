@@ -43,7 +43,7 @@ const Compromisos = (() => {
     }
     // Revisión mensual: la que toca ahora (hasta 3 días antes) o la próxima de los 7 días siguientes
     if (!pausa && !c.revisionesErr && !avisoFin(srv)?.terminado) {
-      const revs = (c.revisiones || []).filter(r => r.alumno_id === aid), hecha = x => revs.some(r => r.control_n === x.n || (r.fecha >= sumaDias(x.fecha, -10) && r.fecha <= sumaDias(x.fecha, 25)));
+      const revs = (c.revisiones || []).filter(r => r.alumno_id === aid), hecha = x => revs.some(r => r.estado !== 'borrador' && (r.control_n === x.n || (r.fecha >= sumaDias(x.fecha, -10) && r.fecha <= sumaDias(x.fecha, 25))));
       const cs = controlesMensuales(srv, sumaDias(hoy, 7)).filter(x => x.fecha >= sumaDias(hoy, -35) && !hecha(x));
       const x = cs[0]; if (x) add('rev', x.n, { t: 'revision', vence: x.fecha, titulo: `Revisión mensual ${x.n}`, m: `Revisión mensual ${x.n} pendiente desde el ${fCorta(x.fecha)}`, n: x.n });
     }

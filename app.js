@@ -385,7 +385,7 @@ async function cargarAlumno(uid) {
   if (S.d.servicio) S.d.servicio._bloques = bloquesDe(S.d.ruta);
   if (S.d.servicio?.modulo_futbol) await cargarFutbol(uid, S.d);
   { const [r, tq] = await Promise.all([sb.from('revisiones').select('*').eq('alumno_id', uid).order('fecha', { ascending: false }), sb.from('temperamentos').select('*').eq('alumno_id', uid).order('fecha', { ascending: false }).order('id', { ascending: false })]);
-    S.d.revisiones = r.data || []; S.d.revisionesErr = !!r.error; S.d.temperamentos = tq.data || []; S.d.tempErr = !!tq.error; }
+    S.d.revisiones = (r.data || []).filter(x => S.modo === 'coach' && !S.vista ? true : x.estado !== 'borrador'); S.d.revisionesErr = !!r.error; S.d.temperamentos = tq.data || []; S.d.tempErr = !!tq.error; }
   await Habitos.cargar(uid, S.d);
   await Nutricion.cargar(uid, S.d);
   await Cuest.cargar(uid, S.d);
@@ -2571,32 +2571,81 @@ function revisionPendiente(srv, revs, sinTabla) {
   if (sinTabla || !srv?.inicio) return null;
   const hoy = hoyISO(), cs = controlesMensuales(srv, sumaDias(hoy, 3)).filter(c => c.fecha >= sumaDias(hoy, -35));
   const c = cs[cs.length - 1]; if (!c) return null;
-  if ((revs || []).some(r => r.control_n === c.n || (r.fecha >= sumaDias(c.fecha, -10) && r.fecha <= sumaDias(c.fecha, 25)))) return null;
+  if ((revs || []).some(r => r.estado !== 'borrador' && (r.control_n === c.n || (r.fecha >= sumaDias(c.fecha, -10) && r.fecha <= sumaDias(c.fecha, 25))))) return null;
   return { ...c, atrasada: hoy > sumaDias(c.fecha, 7) };
 }
+/* Revisión mensual guiada: 1) último acuerdo 2) novedades con su fuente 3) qué se mantiene, qué cambia y la prioridad
+   4) devolución para el alumno (borrador hasta que la publicas) 5) próxima revisión. Un borrador no resuelve la revisión */
+const Revision = {
+  novedades(aid, d0) {
+    const out = [], f = S.ficha?.id === aid ? S.ficha : null, hoy = hoyISO();
+    const ses = (f ? f.todas.map(x => ({ ...x, alumno_id: aid })) : (S.c.sesiones || []).filter(x => x.alumno_id === aid)).filter(x => x.fecha > d0 && !x.previa);
+    const n = new Set(ses.map(x => x.fecha + x.dia_id)).size;
+    let prev = 0; for (let l = lunesDe(sumaDias(d0, 1)); l <= hoy; l = sumaDias(l, 7)) { const fin = sumaDias(l, 6); if (fin < hoy) prev += dpwEn(aid, l, (S.c.programas.find(p => p.alumno_id === aid) || {}).dias_semana || 0); }
+    out.push({ t: `${n} entreno${n === 1 ? '' : 's'} registrado${n === 1 ? '' : 's'}${prev ? ` (previstos ${prev} en semanas completas)` : ''}`, src: 'registros de entreno' });
+    const ch = (S.c.checkins || []).filter(k => k.alumno_id === aid && k.semana_inicio >= d0);
+    if (ch.length) { const mv = ch.filter(k => k.motivacion != null).map(k => k.motivacion); out.push({ t: `${ch.length} check-in${ch.length === 1 ? '' : 's'}${mv.length ? ` · motivación ${mv[mv.length - 1]}→${mv[0]}/10` : ''}`, src: 'check-ins' }); }
+    const ap = ch.filter(k => k.aplicacion_plan).map(k => aplTxt(k.aplicacion_plan).toLowerCase());
+    if (ap.length) out.push({ t: `Alimentación: ${[...new Set(ap)].map(x => `${ap.filter(y => y === x).length}× ${x}`).join(', ')}`, src: 'check-ins (lo declara el alumno)' });
+    const med = (f ? f.med : []).slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), m0 = med.filter(m => m.fecha <= d0).pop(), m1 = med.filter(m => m.fecha > d0).pop();
+    if (m0 && m1 && m0.peso != null && m1.peso != null) out.push({ t: `Peso ${fmtNum(m0.peso)} → ${fmtNum(m1.peso)} kg`, src: `mediciones ${fCorta(m0.fecha)} y ${fCorta(m1.fecha)}` });
+    else if (m1) out.push({ t: `Nueva medición${m1.peso != null ? ` · ${fmtNum(m1.peso)} kg` : ''}`, src: `medición del ${fCorta(m1.fecha)}` });
+    const notas = ses.filter(x => x.nota || x.nota_revision);
+    if (notas.length) out.push({ t: `${notas.length} comentario${notas.length === 1 ? '' : 's'} en sus entrenos: «${String(notas[0].nota_revision || notas[0].nota).slice(0, 90)}»`, src: 'notas del alumno' });
+    const pres = (S.c.presenciales || []).filter(p => p.alumno_id === aid && p.fecha > d0 && p.fecha <= hoy && p.estado === 'dada').length;
+    if (pres) out.push({ t: `${pres} sesión${pres === 1 ? '' : 'es'} presencial${pres === 1 ? '' : 'es'}`, src: 'agenda' });
+    return out;
+  }
+};
 function formRevision(n, id) {
   const f = S.ficha, a = S.c.perfiles.find(p => p.id === f.id) || {}, r = id ? (S.c.revisiones || []).find(x => x.id === id) || {} : {};
-  abrirSheet(`<form class="stack" id="f-rev"><h2>Revisión mensual${n || r.control_n ? ' ' + (n || r.control_n) : ''}</h2><p class="small muted">${esc(a.nombre || '')}: 10-15 minutos para ver cómo se siente, sus objetivos y su composición corporal.</p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Fecha<input type="date" id="rv-f" value="${r.fecha || hoyISO()}"></label><label class="f">Formato<select id="rv-t">${['Videollamada', 'Llamada', 'Presencial'].map(v => `<option ${v === r.formato ? 'selected' : ''}>${v}</option>`).join('')}</select></label></div>
-    <label class="f">¿Cómo se siente?${escala10('rv-s', r.sensacion, ['1 · Muy mal', '10 · Genial'])}</label>
-    <label class="f">Consecución de objetivos<textarea id="rv-o" rows="2" placeholder="Qué ha conseguido este mes y qué le falta">${esc(r.objetivos || '')}</textarea></label>
-    <label class="f">Resumen y objetivos para el próximo mes (lo ve el alumno)<textarea id="rv-r" rows="3">${esc(r.resumen || '')}</textarea></label>
-    ${id ? '' : '<label class="f">Nota privada (solo tú, se guarda en tus notas)<textarea id="rv-n" rows="2"></textarea></label>'}
-    <button class="btn full" type="submit">Guardar revisión</button></form>`);
-  $('#f-rev').addEventListener('submit', async e => {
-    e.preventDefault();
-    const row = { alumno_id: f.id, control_n: n || r.control_n || null, fecha: $('#rv-f').value, formato: $('#rv-t').value, sensacion: valEscala('rv-s'), objetivos: $('#rv-o').value.trim() || null, resumen: $('#rv-r').value.trim() || null };
-    const nota = $('#rv-n')?.value.trim();
-    const q = id ? await sb.from('revisiones').update(row).eq('id', id) : await sb.from('revisiones').insert(row);
-    if (q.error) return fallo(q.error, /revisiones/.test(q.error.message || '') ? 'Falta ejecutar el Bloque 22 en Supabase.' : undefined);
-    if (nota) await sb.from('notas_coach').insert({ alumno_id: f.id, texto: `Revisión mensual${row.control_n ? ' ' + row.control_n : ''}: ${nota}` });
-    cerrarSheet(); toast('Revisión guardada'); const r2 = await sb.from('revisiones').select('*').order('fecha', { ascending: false }); S.c.revisiones = r2.data || []; S.c.revisionesErr = !!r2.error; abrirFicha(f.id);
+  const prev = (S.c.revisiones || []).filter(x => x.alumno_id === f.id && x.estado !== 'borrador' && x.id !== id).sort((x, y) => y.fecha.localeCompare(x.fecha))[0];
+  const dv = (f.devoluciones || [])[0], d0 = prev?.fecha || dv?.semana_inicio || f.srv?.inicio || sumaDias(hoyISO(), -30), nov = Revision.novedades(f.id, d0);
+  const nn = n || r.control_n, sigC = f.srv ? controlesMensuales(f.srv, sumaDias(hoyISO(), 80)).find(c => c.n === (nn || 0) + 1 || (!nn && c.fecha > hoyISO())) : null;
+  const paso = (k, t, html) => `<div class="rv-paso"><span class="rv-k">${k}</span><div class="grow stack" style="gap:6px"><b>${t}</b>${html}</div></div>`;
+  abrirSheet(`<form class="stack" id="f-rev"><h2>Revisión mensual${nn ? ' ' + nn : ''}</h2><p class="small muted" style="margin-top:-6px">${esc(a.nombre || '')} · 10-15 min. Nada se envía hasta que pulses «Publicar».${r.estado === 'borrador' ? ' <span class="pill gold">Borrador</span>' : ''}</p>
+    ${paso(1, 'Último acuerdo', prev ? `<div class="small">${esc(fCorta(prev.fecha))} · ${prev.prioridad ? `<b>Prioridad:</b> ${esc(prev.prioridad)}` : esc(prev.resumen || prev.objetivos || 'sin texto')}${prev.cambia ? `<br><b>Cambió:</b> ${esc(prev.cambia)}` : ''}${prev.mantiene ? `<br><b>Se mantuvo:</b> ${esc(prev.mantiene)}` : ''}</div>` : dv ? `<div class="small">Devolución del ${esc(fCorta(dv.semana_inicio))}${dv.prioridad ? ` · <b>Prioridad:</b> ${esc(dv.prioridad)}` : ''}</div>` : '<div class="small muted">Es su primera revisión.</div>')}
+    ${paso(2, `Novedades desde el ${esc(fCorta(d0))}`, nov.length ? `<ul class="small rv-nov">${nov.map(x => `<li>${esc(x.t)} <span class="muted">· ${esc(x.src)}</span></li>`).join('')}</ul>` : '<div class="small muted">Sin datos nuevos.</div>')}
+    ${paso(3, 'Qué decidís', `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Fecha<input type="date" id="rv-f" value="${r.fecha || hoyISO()}"></label><label class="f">Formato<select id="rv-t">${['Videollamada', 'Llamada', 'Presencial'].map(v => `<option ${v === r.formato ? 'selected' : ''}>${v}</option>`).join('')}</select></label></div>
+      <label class="f">¿Cómo se siente?${escala10('rv-s', r.sensacion, ['1 · Muy mal', '10 · Genial'])}</label>
+      <label class="f">Se mantiene<textarea id="rv-m" rows="2" placeholder="Lo que funciona y seguimos igual">${esc(r.mantiene || '')}</textarea></label>
+      <label class="f">Cambia<textarea id="rv-c" rows="2" placeholder="Ajustes de entreno, alimentación o hábitos">${esc(r.cambia || '')}</textarea></label>
+      <label class="f">Prioridad del próximo mes<input type="text" id="rv-p" value="${esc(r.prioridad || '')}" placeholder="Una sola cosa, la más importante"></label>
+      <label class="f">Consecución de objetivos<textarea id="rv-o" rows="2" placeholder="Qué ha conseguido y qué le falta">${esc(r.objetivos || '')}</textarea></label>`)}
+    ${paso(4, 'Devolución para el alumno', `<textarea id="rv-r" rows="4" placeholder="Lo que verá en su app">${esc(r.resumen || '')}</textarea><button type="button" class="btn sm ghost" id="rv-bor" style="align-self:flex-start">✍️ Preparar borrador con lo anterior</button>`)}
+    ${paso(5, 'Próxima revisión', `<label class="f">Fecha<input type="date" id="rv-px" value="${esc(r.proxima || sigC?.fecha || '')}"></label><span class="small muted">${sigC ? `Por su plan toca el ${esc(fCorta(sigC.fecha))}. Si pones otra fecha, queda programada.` : 'Sin próxima revisión en su plan.'}</span>`)}
+    ${id ? '' : '<label class="f">Nota privada (solo tú)<textarea id="rv-n" rows="2"></textarea></label>'}
+    <p class="err" id="rv-err"></p>
+    <div class="row" style="gap:8px"><button type="button" class="btn ghost grow" id="rv-borr">Guardar borrador</button><button class="btn grow" type="submit">Publicar al alumno</button></div></form>`);
+  $('#rv-bor').addEventListener('click', () => {
+    const nom = (a.nombre || '').split(' ')[0], m = $('#rv-m').value.trim(), c = $('#rv-c').value.trim(), p = $('#rv-p').value.trim();
+    $('#rv-r').value = [`${nom}, gracias por la revisión de este mes.`, m && `Seguimos igual con: ${m}.`, c && `Cambiamos: ${c}.`, p && `Tu prioridad para el próximo mes: ${p}.`].filter(Boolean).join('\n');
   });
+  const guardar = async publicar => {
+    const row = { alumno_id: f.id, control_n: nn || null, fecha: $('#rv-f').value, formato: $('#rv-t').value, sensacion: valEscala('rv-s'), objetivos: $('#rv-o').value.trim() || null, resumen: $('#rv-r').value.trim() || null };
+    const nuevos = { mantiene: $('#rv-m').value.trim() || null, cambia: $('#rv-c').value.trim() || null, prioridad: $('#rv-p').value.trim() || null, estado: publicar ? 'publicada' : 'borrador', proxima: $('#rv-px').value || null };
+    if (publicar && !row.resumen) return $('#rv-err').textContent = 'Escribe la devolución para el alumno (o prepárala con el botón) antes de publicar.';
+    const nota = $('#rv-n')?.value.trim();
+    const q = x => id ? sb.from('revisiones').update(x).eq('id', id).select().single() : sb.from('revisiones').insert(x).select().single();
+    let res = await q({ ...row, ...nuevos });
+    if (res.error && /mantiene|cambia|prioridad|estado|proxima/.test(res.error.message || '')) {
+      if (!publicar) return $('#rv-err').textContent = 'Para guardar borradores falta ejecutar el Bloque 92 en Supabase.';
+      res = await q({ ...row, objetivos: [row.objetivos, nuevos.mantiene && 'Se mantiene: ' + nuevos.mantiene, nuevos.cambia && 'Cambia: ' + nuevos.cambia, nuevos.prioridad && 'Prioridad: ' + nuevos.prioridad].filter(Boolean).join('\n') || null });
+      if (!res.error) toast('Guardada sin los campos nuevos: ejecuta el Bloque 92');
+    }
+    if (res.error) return fallo(res.error, /revisiones/.test(res.error.message || '') ? 'Falta ejecutar el Bloque 22 en Supabase.' : undefined);
+    if (nota) await sb.from('notas_coach').insert({ alumno_id: f.id, texto: `Revisión mensual${row.control_n ? ' ' + row.control_n : ''}: ${nota}` });
+    if (publicar && nuevos.proxima && sigC && nuevos.proxima !== sigC.fecha) await sb.from('agenda').insert({ fecha: nuevos.proxima, origen: `rev:${f.id}:${sigC.n}`, titulo: `Revisión mensual · ${a.nombre}: Revisión mensual ${sigC.n}`, minutos: 20, estado: nuevos.proxima > hoyISO() ? 'programada' : 'pendiente', alumno_id: f.id }).then(() => Negocio.cargar());
+    cerrarSheet(); toast(publicar ? 'Revisión publicada: ya la ve en su app' : 'Borrador guardado (no lo ve el alumno)');
+    const r2 = await sb.from('revisiones').select('*').order('fecha', { ascending: false }); S.c.revisiones = r2.data || []; S.c.revisionesErr = !!r2.error; Compromisos.invalidar(); abrirFicha(f.id);
+  };
+  $('#rv-borr').addEventListener('click', () => guardar(false));
+  $('#f-rev').addEventListener('submit', e => { e.preventDefault(); guardar(true); });
 }
 function vRevisionesFicha(a) {
   const l = (S.c.revisiones || []).filter(r => r.alumno_id === a.id);
   if (!l.length) return '';
-  return `<section class="section"><div class="section-head"><h2>Revisiones mensuales</h2><button class="btn sm ghost" data-act="revision">＋ Revisión</button></div><div class="card">${l.map(r => `<div class="line" data-act="revision" data-id="${r.id}" style="align-items:flex-start;cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(r.fecha))}</span><div class="grow small"><b>${r.control_n ? 'Revisión ' + r.control_n : 'Revisión'}</b> · ${esc(r.formato || '')}${r.sensacion ? ` · se siente <b>${r.sensacion}/10</b>` : ''}${r.resumen ? `<div class="muted">${esc(r.resumen)}</div>` : ''}</div></div>`).join('')}</div></section>`;
+  return `<section class="section"><div class="section-head"><h2>Revisiones mensuales</h2><button class="btn sm ghost" data-act="revision">＋ Revisión</button></div><div class="card">${l.map(r => `<div class="line" data-act="revision" data-id="${r.id}" style="align-items:flex-start;cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(r.fecha))}</span><div class="grow small"><b>${r.control_n ? 'Revisión ' + r.control_n : 'Revisión'}</b>${r.estado === 'borrador' ? ' <span class="pill gold">Borrador · no la ve</span>' : ''} · ${esc(r.formato || '')}${r.sensacion ? ` · se siente <b>${r.sensacion}/10</b>` : ''}${r.prioridad ? `<div><b>Prioridad:</b> ${esc(r.prioridad)}</div>` : ''}${r.resumen ? `<div class="muted">${esc(r.resumen)}</div>` : ''}</div></div>`).join('')}</div></section>`;
 }
 /* ======================= ELITE PLAYER · futbolistas: partidos, wellness y carga ======================= */
 const ZONAS = ['Isquiotibiales', 'Aductor', 'Cuádriceps', 'Gemelo', 'Tobillo', 'Rodilla', 'Cadera / pubis', 'Espalda', 'Otra'];
@@ -3754,7 +3803,7 @@ function vFicha() {
   ${(() => {
     /* Las mismas secciones se ven como acordeón en el móvil y como pestañas con un panel de inicio en el ordenador */
     const SECS = [
-      ['resumen', 1, '🔔', 'Resumen y avisos', resumen1, fb1, 'Avisos y notas'],
+      ['resumen', 1, '🔔', 'Pendientes, avisos y notas', resumen1, fb1, 'Pendientes y notas'],
       srv?.oposicion && ['oposicion', '👮', '🎯', 'Oposición · pruebas físicas', Oposicion.resumen(true), Oposicion.tarjeta(true), 'Oposición'],
       ['checkins', 2, '✅', 'Check-ins y cumplimiento', `${dpw ? `${cur.entrenos}/${dpw} entrenos` : ''}${chks[0] ? ` · último check-in ${esc(fCorta(chks[0].semana_inicio))}` : ''}`, fb2, 'Check-ins'],
       ['plan', 3, '📑', 'Plan contratado y bloques', `${esc(srv?.producto || 'Sin plan')}${P && !P.antes && !P.fuera ? ` · semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''}`, fb3, 'Plan'],
@@ -3762,8 +3811,8 @@ function vFicha() {
       srv?.modulo_nutricion && ['nutri', 5, '🥗', 'Nutrición', !midoCoach(a.id) ? esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || 'Plan de alimentación') : ing7.pct != null ? `${ing7.pct} % de ingestas bien · ${ing7.dias} días registrados` : `${ing7.dias} de 7 días registrados`, fb5, 'Nutrición'],
       (srv?.modulo_habitos || conPasos(srv) || Temperamento.bloqueFicha(f, a)) && ['habitos', 6, '🧭', 'Hábitos y temperamento', pasos7 != null ? `${fmtNum(pasos7, 0)} pasos de media · objetivo ${fmtNum(obj, 0)}` : '', fb6, 'Hábitos'],
       ['progreso', 7, '📈', 'Progreso y composición corporal', ultM ? `Última medición ${esc(fCorta(ultM.fecha))}${ultM.peso != null ? ' · ' + fmtNum(ultM.peso, 1) + ' kg' : ''}${ultM.grasa_pct != null ? ' · ' + fmtNum(ultM.grasa_pct, 1) + ' % grasa' : ''}` : 'Sin mediciones', fb7, 'Progreso'],
-      ['calendario', 8, '📅', 'Calendario de sesiones y revisiones', e.control ? `Toca revisión mensual ${e.control.n}` : '', fb8, 'Calendario'],
-      ['pagos', 9, '💳', 'Plan de pagos', pagV.length ? `<span style="color:var(--bad)">${pagV.length} vencida${pagV.length === 1 ? '' : 's'}</span>` : pagP.length ? `${pagP.length} pendiente${pagP.length === 1 ? '' : 's'}` : pagos.length ? 'Todo pagado' : 'Sin cuotas', fb9, 'Pagos'],
+      ['calendario', 8, '📅', 'Revisiones y sesiones', e.control ? `Toca revisión mensual ${e.control.n}` : '', fb8, 'Calendario'],
+      ['pagos', 9, '💳', 'Gestión · plan de pagos', pagV.length ? `<span style="color:var(--bad)">${pagV.length} vencida${pagV.length === 1 ? '' : 's'}</span>` : pagP.length ? `${pagP.length} pendiente${pagP.length === 1 ? '' : 's'}` : pagos.length ? 'Todo pagado' : 'Sin cuotas', fb9, 'Pagos'],
       ['tests', 10, '🧪', 'Tests y valoraciones', '', vTestsFicha(f), 'Tests'],
       ['medidas', 11, '📸', 'Medidas, fotos y casos de éxito', '', fb11, 'Fotos']
     ].filter(Boolean);
@@ -3781,7 +3830,15 @@ function vFicha() {
       <div class="fx-acc"><button class="btn sm" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm ghost" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como ${esc(nom)}</button><button class="btn sm ghost" data-act="abrirReporte" data-id="${a.id}">📋 Reporting</button></div>
       <details class="fx-mas"><summary>Más acciones</summary><div class="stack" style="gap:6px;margin-top:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}<button class="btn sm ghost" data-act="pausarAcceso" data-id="${a.id}" data-on="${a.acceso_pausado ? 0 : 1}">${a.acceso_pausado ? '🔓 Devolver el acceso' : '🔒 Quitar el acceso'}</button></div></details>
       ${a.activo === false ? '<p class="small muted" style="margin:0">Antiguo alumno: no genera avisos.</p>' : ''}</aside>`;
-    const nav = `<nav class="fx-tabs" role="tablist" aria-label="Secciones de la ficha"><button role="tab" data-act="fTab" data-t="inicio" aria-selected="${act === 'inicio'}">Inicio</button>${SECS.map(([id, n, , , , , corto]) => { const d = typeof n === 'number' && n > 1 ? dot(n) : id === 'resumen' ? dot(1) : ''; return `<button role="tab" data-act="fTab" data-t="${id}" aria-selected="${act === id}">${esc(corto)}${d ? '<i class="fx-tdot"></i>' : ''}</button>`; }).join('')}</nav>`;
+    /* 12 secciones en 3 principales (Resumen, Seguimiento, Plan) y el resto en «Más» */
+    const GR = [['inicio', 'Resumen', ['inicio']], ['seg', 'Seguimiento', ['resumen', 'checkins', 'calendario']], ['plan', 'Plan', ['plan', 'oposicion']],
+      ['entreno', 'Entreno', ['entreno']], ['nutri', 'Nutrición', ['nutri']], ['habitos', 'Hábitos', ['habitos']], ['evol', 'Evolución', ['progreso', 'tests', 'medidas']], ['gest', 'Gestión', ['pagos']]]
+      .map(([k, n, ids]) => [k, n, ids.filter(id => id === 'inicio' || SECS.some(x => x[0] === id))]).filter(g => g[2].length);
+    const grAct = GR.find(g => g[2].includes(act)) || GR[0], prin = GR.slice(0, 3), mas = GR.slice(3), enMas = mas.includes(grAct);
+    const dotDe = ids => ids.some(id => { const x = SECS.find(z => z[0] === id); return x && (typeof x[1] === 'number' && x[1] > 1 ? dot(x[1]) : id === 'resumen' ? dot(1) : ''); }) ? '<i class="fx-tdot"></i>' : '';
+    const nav = `<nav class="fx-tabs" role="tablist" aria-label="Secciones de la ficha">${prin.map(g => `<button role="tab" data-act="fTab" data-t="${g[2][0]}" aria-selected="${g === grAct}">${esc(g[1])}${dotDe(g[2])}</button>`).join('')}
+      <details class="fx-mas-t"><summary role="tab" aria-selected="${enMas}">${enMas ? esc(grAct[1]) : 'Más'} ▾</summary><div class="fx-mas-m">${mas.map(g => `<button data-act="fTab" data-t="${g[2][0]}" aria-current="${g === grAct}">${esc(g[1])}${dotDe(g[2])}</button>`).join('')}</div></details></nav>
+      ${grAct[2].length > 1 ? `<div class="fx-sub" role="tablist">${grAct[2].map(id => { const x = SECS.find(z => z[0] === id); return x ? `<button class="pill ${id === act ? 'blue' : ''}" data-act="fTab" data-t="${id}">${esc(id === 'resumen' ? 'Pendientes y notas' : x[6])}</button>` : ''; }).join('')}</div>` : ''}`;
     let cuerpo;
     if (act !== 'inicio') { const x = SECS.find(z => z[0] === act); cuerpo = `<div class="fx-cab"><h2>${esc(x[3])}</h2>${x[4] ? `<span class="small muted">${x[4]}</span>` : ''}</div><div class="ft-cuerpo">${x[5]}</div>`; }
     else {
@@ -3801,13 +3858,33 @@ function vFicha() {
         conPasos(srv) && kpi('Pasos · 7 días', pasos7 != null ? fmtNum(pasos7, 0) : '—', `Objetivo ${fmtNum(obj, 0)}`, pasos7 != null ? pasos7 / obj * 100 : null, 'habitos'),
         kpi('Peso', m1?.peso != null ? `${fmtNum(m1.peso)}<small> kg</small>` : '—', m1 ? `${dl('peso', ' kg') ? dl('peso', ' kg') + ' desde el inicio' : 'Medido el ' + esc(fCorta(m1.fecha))}` : 'Sin mediciones', null, 'progreso')].filter(Boolean).join('');
       const presP = (f.pres || []).filter(x => x.fecha >= hoy && x.estado !== 'cancelada').sort((x, y) => x.fecha.localeCompare(y.fecha))[0];
-      const prox = [e.control && ['🗓', `Revisión mensual ${e.control.n}`, fCorta(e.control.fecha)], presP && ['🏋️', 'Sesión presencial', `${fCorta(presP.fecha)}${presP.hora ? ' · ' + hhmm(presP.hora) : ''}`], pagV.length ? ['💳', `${pagV.length} cuota${pagV.length > 1 ? 's' : ''} vencida${pagV.length > 1 ? 's' : ''}`, 'Revisar'] : pagP.length && ['💳', 'Próxima cuota', fCorta(pagP.slice().sort((x, y) => x.vence.localeCompare(y.vence))[0].vence)], P && !P.sinFin && !P.fuera && ['🏁', 'Fin del proceso', fCorta(P.ciclos[P.ciclos.length - 1].fin)]].filter(Boolean);
+      const prox = (() => { const l = [], add = (ic, t, iso, extra = '') => iso && l.push([ic, t, `${fCorta(iso)}${extra}`, iso]);
+        const cm = Compromisos.deAlumno(a.id).filter(x => x.tipo !== 'cobro' && x.tipo !== 'fin');
+        cm.forEach(x => add(Compromisos.T[x.tipo].ico, `${Compromisos.T[x.tipo].uno}${x.estado === 'programado' ? ' (programada)' : ''}`, x.para || x.vence || hoy));
+        if (!cm.some(x => x.tipo === 'rev') && conSeguimiento(srv) && !avisoFin(srv)?.terminado) { const nx = controlesMensuales(srv, sumaDias(hoy, 70)).find(c => c.fecha > hoy); if (nx) add('🗓', `Revisión mensual ${nx.n}`, nx.fecha); }
+        if (presP) add('🏋️', 'Sesión presencial', presP.fecha, presP.hora ? ' · ' + hhmm(presP.hora) : '');
+        if (pagV.length) l.push(['💳', `${pagV.length} cuota${pagV.length > 1 ? 's' : ''} vencida${pagV.length > 1 ? 's' : ''}`, 'Revisar', '0000']);
+        else if (pagP.length) add('💳', 'Próxima cuota', pagP.slice().sort((x, y) => x.vence.localeCompare(y.vence))[0].vence);
+        if (P && !P.sinFin && !P.fuera) add('🏁', 'Fin del proceso', P.ciclos[P.ciclos.length - 1].fin);
+        return l.sort((x, y) => x[3].localeCompare(y[3])).slice(0, 5); })();
       const k0 = chks[0], dev = (f.devoluciones || [])[0];
       const cCumpl = `<div class="card fx-c fx-cumpl"><div class="fx-ct">Cumplimiento <span class="muted">· últimas 4 semanas</span></div><div class="fx-cumpl-in">${anillo}<div class="fx-partes">${partes.map(([l, v, sub]) => `<div class="fx-parte"><div class="row"><span class="grow">${l}</span><b>${v} %</b></div><span class="fx-bar"><i style="width:${v}%;background:${v >= 85 ? 'var(--ok)' : v >= 60 ? 'var(--gold)' : 'var(--bad)'}"></i></span><small>${esc(sub)}</small></div>`).join('') || '<p class="small muted">Aún no hay semanas completas con datos.</p>'}</div></div><p class="fx-nota">Media de lo que se mide en su plan. Cada parte cuenta igual.</p></div>`;
       const cmA = Compromisos.deAlumno(a.id), cmN = cmA.filter(x => !(x.futuro && x.estado === 'pendiente')).length, avP = pend.filter(x => !x.comp);
       const cPend = `<div class="card fx-c"><div class="fx-ct">Pendiente de ti ${cmN ? `<span class="fx-num">${cmN}</span>` : ''}</div>${Compromisos.vFicha(a.id, true)}
         <div class="row small" style="gap:10px;margin-top:8px;flex-wrap:wrap">${avP.length ? `<button class="linkbtn small" data-act="fTab" data-t="resumen">🔔 ${avP.length} aviso${avP.length === 1 ? '' : 's'} ›</button>` : `<span class="muted">${Alertas.silenciado(a.id) ? '🔕 Avisos silenciados' : 'Sin avisos'}</span>`}<button class="linkbtn small" data-act="alConfig" data-id="${a.id}">Ajustes de avisos</button></div></div>`;
       const cChk = `<div class="card fx-c"><div class="fx-ct">Último check-in</div>${k0 ? `<div class="fx-chk"><span class="muted small">Semana del ${esc(fCorta(k0.semana_inicio))}</span><div class="fx-mini"><div><b>${k0.motivacion ?? '—'}</b><small>motivación</small></div><div><b>${k0.implicacion ?? '—'}</b><small>implicación</small></div></div>${k0.dificultades ? `<p class="small" style="margin:0">«${esc(k0.dificultades.slice(0, 160))}${k0.dificultades.length > 160 ? '…' : ''}»</p>` : ''}${dev?.prioridad ? `<p class="small muted" style="margin:0">Tu prioridad para él: ${esc(dev.prioridad)}</p>` : ''}</div>` : '<div class="fx-vacio">Aún no ha enviado ningún check-in</div>'}</div>`;
+      const cAcuerdo = (() => {
+        const revs = (S.c.revisiones || []).filter(r => r.alumno_id === a.id && r.estado !== 'borrador'), r0 = revs[0], dv = (f.devoluciones || [])[0];
+        const ac = r0 && (!dv || r0.fecha >= dv.semana_inicio) ? { f: r0.fecha, src: `Revisión mensual${r0.control_n ? ' ' + r0.control_n : ''}`, t: r0.prioridad || r0.cambia || r0.resumen || r0.objetivos } : dv ? { f: dv.semana_inicio, src: `Devolución de la semana del ${fCorta(dv.semana_inicio)}`, t: dv.prioridad || dv.ajuste || dv.texto } : null;
+        const d0 = ac?.f || null, obj = objetivoDe(f.ruta), ctx = ctxDe(a.id);
+        const nov = d0 ? Revision.novedades(a.id, d0) : [];
+        const sig = Compromisos.deAlumno(a.id).sort(Compromisos.ordenar)[0], rv = Compromisos.deAlumno(a.id).find(x => x.tipo === 'rev' && !x.futuro);
+        return `<div class="card fx-c fx-acuerdo"><div class="fx-ct">Objetivo y acuerdo</div>
+          <div class="fx-ac-g"><div><span class="fx-l">🎯 Objetivo</span><p>${esc(obj || 'Sin objetivo escrito')}${ctx?.n ? `<br><span class="muted small">Contexto: ${esc(ctx.n)}</span>` : ''}</p></div>
+          <div><span class="fx-l">🤝 Último acuerdo${ac ? ` · ${esc(fCorta(ac.f))}` : ''}</span><p>${ac ? `${esc(String(ac.t || 'Sin prioridad escrita').slice(0, 220))}<br><span class="muted small">Fuente: ${esc(ac.src)}</span>` : '<span class="muted">Aún no hay revisión ni devolución.</span>'}</p></div>
+          ${d0 ? `<div><span class="fx-l">🔄 Desde entonces</span>${nov.length ? `<ul class="fx-nov">${nov.slice(0, 4).map(n => `<li>${esc(n.t)} <span class="muted small">· ${esc(n.src)}</span></li>`).join('')}</ul>` : '<p class="muted">Sin novedades registradas.</p>'}</div>` : ''}
+          <div><span class="fx-l">➡️ Próximo paso</span><p>${sig ? `${Compromisos.T[sig.tipo].ico} ${esc(Compromisos.T[sig.tipo].uno)}: ${esc(sig.titulo)} <span class="muted small">· ${Compromisos.venceTxt(sig)}</span>` : '<span class="muted">Nada pendiente.</span>'}</p></div></div>
+          ${rv ? `<button class="btn sm" data-act="revisionGuiada" data-n="${rv.n}" style="align-self:flex-start">🗓 Empezar revisión mensual ${rv.n}</button>` : ''}</div>`; })();
       const cProx = l => `<div class="card fx-c"><div class="fx-ct">Próximo</div>${l.length ? `<div class="fx-lista">${l.map(([ic, t, d]) => `<div class="fx-prox"><span class="fx-ic">${ic}</span><span class="grow">${esc(t)}</span><b>${esc(d)}</b></div>`).join('')}</div>` : '<div class="fx-vacio">Nada programado</div>'}</div>`;
       const kEnt = (srv?.modulo_entreno ?? true) ? kpi('Entrenos esta semana', dpw ? `${cur.entrenos}<small>/${dpw}</small>` : cur.entrenos, `Semana pasada ${pre.entrenos}${dpwPre ? '/' + dpwPre : ''}`, dpw ? cur.entrenos / dpw * 100 : null, 'checkins') : '';
       if (srv?.modulo_futbol) {
@@ -3819,7 +3896,7 @@ function vFicha() {
         const lCtx = f.contextos || contextosDe(a.id), semF = [[lunes, 'Esta semana'], [sumaDias(lunes, 7), 'La que viene']].map(([l, t]) => { const c = ctxEnSemana(lCtx, l); return `<div class="fx-prox"><span class="grow"><b>${t}</b> <span class="muted small">· ${esc(fCorta(l))}</span><br><span class="small ${c ? '' : 'muted'}">${c ? '✓ Ajustada' : 'Semana patrón'}</span></span><button class="btn sm ghost" data-act="avisarSemana" data-al="${a.id}" data-l="${l}">🔔 Avisar</button></div>`; }).join('');
         const cSem = `<div class="card fx-c"><div class="fx-ct">Semana de entreno</div><div class="fx-lista">${semF}</div><button class="linkbtn small" data-act="fTab" data-t="checkins" style="align-self:flex-start">Ajustar o ver su calendario ›</button></div>`;
         const cMol = `<div class="card fx-c"><div class="fx-ct">Molestias · 7 días</div>${mol.length ? `<div class="fx-lista">${mol.slice(0, 4).map(x => `<div class="fx-prox"><span class="fx-ic">🩹</span><span class="grow">${esc([].concat(x.z).join(', '))}${x.t ? ` · <span class="muted">${esc(x.t.slice(0, 80))}</span>` : ''}</span><b>${esc(fCorta(x.f))}</b></div>`).join('')}</div>` : '<div class="fx-vacio">Sin molestias</div>'}</div>`;
-        cuerpo = `<div class="fx-kpis">${kF}</div><div class="fx-fila">${cSem}${cPend}</div><div class="fx-fila">${cMol}${cProx(prox)}</div>`;
+        cuerpo = `${cAcuerdo}<div class="fx-kpis">${kF}</div><div class="fx-fila">${cSem}${cPend}</div><div class="fx-fila">${cMol}${cProx(prox)}</div>`;
       } else if (srv?.oposicion) {
         /* Opositor: examen, nota de cada prueba y lo que le falta */
         const O = Oposicion.datos(true);
@@ -3827,8 +3904,8 @@ function vFicha() {
           kpi('Nota media', O.media != null ? `<span style="color:var(--${O.apto ? 'ok' : O.cero ? 'bad' : 'warn'})">${fmtNum(O.media, 1)}</span>` : '—', O.media != null ? (O.apto ? 'Apto con sus últimas marcas' : O.cero ? 'Un 0 elimina' : 'Necesita un 5') : 'Faltan marcas de alguna prueba', O.media != null ? O.media * 10 : null, 'oposicion'),
           kEnt, kpi('Prueba más floja', O.peor ? esc(O.peor.t.split(' ')[0]) : '—', O.peor ? esc(O.peor.siguiente) : 'Sin simulacros', null, 'oposicion')].join('');
         const cPr = `<div class="card fx-c"><div class="fx-ct">Pruebas físicas <span class="muted">· ${O.simulacros} simulacro${O.simulacros === 1 ? '' : 's'}</span></div><div class="fx-lista">${O.pruebas.map(x => `<div class="fx-prox"><span class="fx-ic">${x.ic}</span><span class="grow"><b>${esc(x.t)}</b><br><span class="small muted">${x.marca ? esc(x.marca) + ' · ' + esc(fCorta(x.fecha)) + ' · ' : ''}${esc(x.siguiente)}${x.objetivo ? ' · 🎯 ' + esc(x.objetivo) : ''}</span></span><span class="op-nota ${x.color}">${x.nota ?? '–'}</span></div>`).join('')}</div><div class="row" style="gap:8px"><button class="btn sm ghost" data-act="opSim" data-c="1">＋ Simulacro</button><button class="linkbtn small" data-act="fTab" data-t="oposicion">Ver evolución ›</button></div></div>`;
-        cuerpo = `<div class="fx-kpis">${kO}</div><div class="fx-fila">${cPr}${cPend}</div><div class="fx-fila">${cCumpl}${cProx(prox)}</div>`;
-      } else cuerpo = `<div class="fx-kpis">${kpis}</div><div class="fx-fila">${cCumpl}${cPend}</div><div class="fx-fila">${cChk}${cProx(prox)}</div>`;
+        cuerpo = `${cAcuerdo}<div class="fx-kpis">${kO}</div><div class="fx-fila">${cPr}${cPend}</div><div class="fx-fila">${cCumpl}${cProx(prox)}</div>`;
+      } else cuerpo = `${cAcuerdo}<div class="fx-fila">${cPend}${cProx(prox)}</div><div class="fx-kpis">${kpis}</div><div class="fx-fila">${cChk}${cCumpl}</div>`;
     }
     return `<section class="span fx">${perfil}<div class="fx-main">${nav}<div class="fx-cuerpo">${cuerpo}</div></div></section>`;
   })()}
@@ -6752,7 +6829,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v248';
+const APP_VER = 'v249';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -7106,6 +7183,7 @@ document.addEventListener('click', async e => {
     case 'probarPlantilla': await probarPlantilla(+b.dataset.id); break;
     case 'salirPrueba': await salirPrueba(); break;
     case 'revision': formRevision(+b.dataset.n || null, b.dataset.id ? +b.dataset.id : null); break;
+    case 'revisionGuiada': formRevision(+b.dataset.n || null, null); break;
     case 'verGps': { const r = await sb.storage.from('gps').createSignedUrls([b.dataset.r], 3600); const u = r.data?.[0]?.signedUrl; if (!u) { toast('No se ha podido abrir el archivo'); break; } if (/\.pdf$/i.test(b.dataset.r)) window.open(u, '_blank', 'noopener'); else abrirSheet(`<div class="stack"><img src="${esc(u)}" alt="GPS" style="width:100%;border-radius:12px"><a class="btn ghost full" href="${esc(u)}" target="_blank" rel="noopener">Abrir en grande</a><button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`); break; }
     case 'wellnessSem': { const l = $('#fs-sem-' + b.dataset.al)?.value || lunesDe(hoyISO()); formWellness(b.dataset.t, b.dataset.t === 'lunes' ? l : sumaDias(l, -1), b.dataset.al); break; }
     case 'wellness': formWellness(b.dataset.t, b.dataset.f || null, b.dataset.al || null); break;
