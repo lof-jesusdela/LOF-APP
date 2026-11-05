@@ -143,8 +143,8 @@ async function cargarPerfil() {
   if (!data.consentimiento_at) return Casos.vistaInicial();
   S.modo = data.rol === 'coach' ? 'coach' : 'alumno';
   await Promise.all([cargarAlumno(S.user.id), cargarAjustes()]);
-  avisoCheckin(); avisoFutbol(); refrescarPush();
-  if (!window._lofVis) { window._lofVis = true; document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (S.modo === 'alumno') { avisoCheckin(); avisoFutbol(); } const antes = !!S.reanudar; detectarEntrenoEnCurso(); if (antes !== !!S.reanudar && $('#sheet').hidden) render(); } }); }
+  avisoCheckin(); avisoFutbol(); avisoCuota(); refrescarPush();
+  if (!window._lofVis) { window._lofVis = true; document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (S.modo === 'alumno') { avisoCheckin(); avisoFutbol(); avisoCuota(); } const antes = !!S.reanudar; detectarEntrenoEnCurso(); if (antes !== !!S.reanudar && $('#sheet').hidden) render(); } }); }
   if (S.modo === 'coach') await cargarCoach();
   detectarEntrenoEnCurso();
   render();
@@ -384,6 +384,7 @@ async function cargarAlumno(uid) {
   { const cA = ctxEnSemana(ctxs, lunesDe(hoyISO())); if (cA) { S.d.programa = cA; S.d.contexto = cA; } }
   if (S.d.servicio) S.d.servicio._bloques = bloquesDe(S.d.ruta);
   if (S.d.servicio?.modulo_futbol) await cargarFutbol(uid, S.d);
+  { const pg = await sb.from('pagos').select('id,concepto,importe,vence,pagado_at').eq('alumno_id', uid).is('pagado_at', null).order('vence'); S.d.pagosPend = pg.error ? [] : (pg.data || []); }
   { const [r, tq] = await Promise.all([sb.from('revisiones').select('*').eq('alumno_id', uid).order('fecha', { ascending: false }), sb.from('temperamentos').select('*').eq('alumno_id', uid).order('fecha', { ascending: false }).order('id', { ascending: false })]);
     S.d.revisiones = (r.data || []).filter(x => S.modo === 'coach' && !S.vista ? true : x.estado !== 'borrador'); S.d.revisionesErr = !!r.error; S.d.temperamentos = tq.data || []; S.d.tempErr = !!tq.error; }
   await Habitos.cargar(uid, S.d);
@@ -521,6 +522,12 @@ function checkinPend() {
   return (D.checkins || []).some(c => c.semana_inicio === obj) ? null : obj;
 }
 const tocaCheckin = () => !!checkinPend();
+async function avisoCuota() {
+  const c = cuotaPend(); if (!c || !('Notification' in window) || Notification.permission !== 'granted') return;
+  const hoy = hoyISO(), toca = c.x.some(p => p.vence === hoy) || c.dias === 3 || (c.dias > 3 && c.dias % 7 === 3); if (!toca) return;
+  const k = 'lof-aviso-cuota-' + hoy; try { if (localStorage.getItem(k)) return; localStorage.setItem(k, '1'); } catch (e) { }
+  try { const reg = await navigator.serviceWorker?.ready, op = { body: c.venc.length ? 'Tienes una cuota pendiente de pago. Si ya la pagaste, avisa a Jesús.' : 'Hoy vence tu cuota.', icon: 'icons/icon-192.png', tag: 'cuota' }; reg ? reg.showNotification('Recordatorio de pago', op) : new Notification('Recordatorio de pago', op); } catch (e) { }
+}
 async function avisoCheckin() {
   if (!tocaCheckin() || !('Notification' in window) || Notification.permission !== 'granted') return;
   const k = 'lof-aviso-chk-' + hoyISO(); try { if (localStorage.getItem(k)) return; localStorage.setItem(k, '1'); } catch (e) { }
@@ -867,6 +874,16 @@ const Bienvenida = {
   }
 };
 /* ---------- Hoy: lo pendiente en un solo sitio (sin repetir lo que ya está en «Lo que toca hoy») ---------- */
+/* Cuota fraccionada que vence en 3 días o ya vencida: le sale en Pendiente como el check-in o las fotos. Desaparece cuando Jesús la marca como pagada */
+function cuotaPend() {
+  const s = S.d?.servicio, l = S.d?.pagosPend || []; if (!s || s.tarifa === 'familia' || (s.avisos_alumno || {}).pago === false) return null;
+  const fracc = s.forma_pago === 'fracc' || l.length > 1 || (S.d?.pagosPend || []).some(p => /cuota \d|\(\d+\/\d+\)/i.test(p.concepto || ''));
+  if (!fracc) return null;
+  const hoy = hoyISO(), x = l.filter(p => p.vence && p.vence <= sumaDias(hoy, 3)).sort((a, b) => a.vence.localeCompare(b.vence));
+  if (!x.length) return null;
+  const venc = x.filter(p => p.vence < hoy), dias = venc.length ? Math.round((fecha(hoy) - fecha(venc[0].vence)) / 864e5) : 0;
+  return { x, venc, dias, total: x.reduce((t, p) => t + +p.importe, 0) };
+}
 function vPendientesHoy(s) {
   /* Todo lo que se quedó sin hacer y conviene rellenar: registros de días pasados, fotos y reflexión del mes, check-in semanal y menú de la semana */
   const hoy = hoyISO(), lineas = [], fase = Nutricion.fase(S.d), activo = Acomp.estado(s).k !== 'pausado';
@@ -879,6 +896,10 @@ function vPendientesHoy(s) {
   }
   const lc = checkinPend(); if (lc && new Date().getDay() !== 0 && avisoAl('checkin')) lineas.push(['✅', 'Check-in semanal sin enviar', `Semana del ${fCorta(lc)} al ${fCorta(sumaDias(lc, 6))} · es lo que Jesús usa para preparar tu revisión y ajustar tu plan. Son 2 minutos`, `data-act="abrirCheckin" data-l="${lc}"`, 'Rellenar', [3, 4, 5, 6].includes(new Date().getDay())]);
   const mp = avisoAl('menu') && MenuSemana.pendiente(); if (mp) lineas.push(mp);
+  { const c = cuotaPend(); if (c) { const p0 = c.x[0], eur2 = n => fmtNum(+n, 2).replace(/,00$/, '') + ' €';
+    lineas.push(['💳', c.venc.length ? (c.venc.length === 1 ? 'Tienes una cuota pendiente de pago' : `Tienes ${c.venc.length} cuotas pendientes de pago`) : p0.vence === hoyISO() ? 'Hoy vence tu cuota' : `Tu próxima cuota vence el ${fecha(p0.vence).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' })}`,
+      `${c.x.map(p => `${p.concepto || 'Cuota'} · ${eur2(p.importe)}${p.vence < hoyISO() ? ` (venció el ${fCorta(p.vence)})` : ''}`).join(' · ')}. Si ya la has pagado, avisa a Jesús y desaparecerá cuando la registre`,
+      `data-act="cuotaAviso"`, 'Avisar a Jesús', c.dias > 3]); } }
   const fm = avisoAl('fotos') && Casos.pendienteMes(); if (fm) lineas.push(fm);
   if (s.modulo_nutricion && (fase === 'recogida' || fase === 'preparacion') && avisoAl('incorporacion')) {
     if (Cuest.estado('estilo') !== 'enviado') lineas.push(['📝', Cuest.estado('estilo') === 'borrador' ? 'Termina tu cuestionario de estilo de vida' : 'Cuestionario de estilo de vida', 'Unos 10 minutos sobre tu trabajo, descanso, actividad, alimentación y estrés: con esto Jesús adapta el plan a tu vida real', 'data-act="cqEstilo"', Cuest.estado('estilo') === 'borrador' ? 'Seguir' : 'Rellenar']);
@@ -2292,7 +2313,7 @@ const tipoAlerta = m => (TIPOS_AL.find(t => t[2].test(m || '')) || TIPOS_AL[TIPO
 /* Lo que el alumno ve en su app (Pendiente, Hoy y entreno): el coach puede apagarlo por alumno */
 const AVISOS_ALUMNO = [
   ['registro', 'Días sin registrar (pasos, comidas)', 'Pendiente'], ['checkin', 'Check-in semanal', 'Pendiente'], ['menu', 'Menú de la semana', 'Pendiente'],
-  ['fotos', 'Fotos y reflexión del mes (y sus puntos)', 'Pendiente'], ['incorporacion', 'Cuestionarios y registro de 7 días de la incorporación', 'Pendiente'],
+  ['fotos', 'Fotos y reflexión del mes (y sus puntos)', 'Pendiente'], ['pago', 'Recordatorio de cuota (pagos fraccionados)', 'Pendiente'], ['incorporacion', 'Cuestionarios y registro de 7 días de la incorporación', 'Pendiente'],
   ['peso', 'Pregunta al cambiar el peso de un ejercicio (te avisa a ti)', 'Entreno'], ['control', 'Aviso de su control mensual', 'Hoy'], ['casos', 'Invitación a compartir su caso de éxito', 'Hoy'],
 ];
 const avisoAl = k => (!S.d?.servicio || conSeguimiento(S.d.servicio)) && !((S.d?.servicio?.avisos_alumno || {})[k] === false);
@@ -6878,7 +6899,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v251';
+const APP_VER = 'v252';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -7149,6 +7170,7 @@ document.addEventListener('click', async e => {
     case 'nuevaPres': formPres(); break;
     case 'pausaEditar': formPausa(+b.dataset.i); break;
     case 'histEditar': formHistorial(+b.dataset.i); break;
+    case 'cuotaAviso': { const c = cuotaPend(); const t = c ? c.x.map(p => `${p.concepto || 'cuota'} (${fmtNum(+p.importe, 2).replace(/,00$/, '')} €)`).join(', ') : 'mi cuota'; const u = waJesus(`Hola Jesús, te escribo por ${t}.`); if (u) window.open(u, '_blank', 'noopener'); else toast('Escríbele a Jesús por WhatsApp'); break; }
     case 'alMas': S.alLim = (S.alLim || 50) + 50; aplicarFiltroAl(); break;
     case 'favorito': await favorito(b.dataset.id); break;
     case 'cmIr': cerrarSheet(); await Compromisos.ir(b.dataset.id, !!S.bloque); break;
