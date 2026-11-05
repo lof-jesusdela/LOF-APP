@@ -365,7 +365,7 @@ const Negocio = (() => {
       ${vEcoResumen()}
       <section class="section"><h2>Este mes · ${esc(new Date(ini).toLocaleDateString('es-ES', { month: 'long' }))}</h2><div class="card stack small">
         <div class="row"><span class="grow">Dinero cobrado</span><b class="num" style="color:var(--ok)">${eur(cob)}</b><span class="muted" style="width:96px;text-align:right">ant. ${eur(cobA)}</span></div>
-        <div class="row"><span class="grow">Gastos pagados</span><b class="num">${eur(gas)}</b><span class="muted" style="width:96px;text-align:right">ant. ${eur(gasA)}</span></div>
+        <div class="row"><span class="grow">Gastos pagados</span><b class="num">${(S.c.movs || []).some(m => m.tipo === 'gasto' && m.fecha >= ini && m.fecha <= finMes) ? eur(gas) : '<i class="muted" style="font-weight:400">sin gastos registrados</i>'}</b><span class="muted" style="width:96px;text-align:right">ant. ${eur(gasA)}</span></div>
         <div class="row" style="border-top:1px solid var(--line);padding-top:6px"><span class="grow"><b>Resultado del mes</b> <span class="muted">(cobrado − gastos pagados, antes de impuestos)</span></span><b class="num">${eur(cob - gas)}</b><span class="muted" style="width:96px;text-align:right">ant. ${eur(cobA - gasA)}</span></div>
         <div class="row"><span class="grow">Reservas que corresponden a este mes</span><b class="num">${(S.c.reservas || []).length ? eur(resF) : '<i>sin configurar</i>'}</b></div>
         <div class="row"><span class="grow">Transferencias personales</span><b class="num">${eur(pers)}</b></div>

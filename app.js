@@ -427,14 +427,18 @@ function vLateralAlumno(tabs, actual) {
 }
 function vLateral(actual) {
   if (!S.c?.perfiles) return '';
-  const orden = { bad: 0, warn: 1, ok: 2 };
-  const als = S.c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach').map(a => ({ a, e: estadoAlumno(a) })).sort((x, y) => orden[x.e.nivel] - orden[y.e.nivel] || (x.a.nombre || '').localeCompare(y.a.nombre || ''));
+  const cl = S.c.perfiles.filter(esCliente), byId = id => cl.find(p => p.id === id), q = normaliza(S.alF.q);
   const nav = [['inicio', 'Tu día'], ['alumnos', 'Alumnos'], ['plantillas', 'Plantillas'], ['ejercicios', 'Ejercicios'], ['pagos', 'Economía']];
+  const btn = a => { const e = estadoAlumno(a); return `<button data-act="ficha" data-id="${a.id}" ${S.ficha?.id === a.id ? 'aria-current="page"' : ''}><i class="al-dot ${e.nuevas ? 'nueva' : ''}" data-act="verAlertas" data-id="${a.id}" role="button" aria-label="${e.nivel === 'bad' ? 'Revisar' : e.nivel === 'warn' ? 'Atención' : 'En camino'}: ver pendientes de ${esc(a.nombre)}" style="background:var(--${e.nivel})"></i><span class="grow">${esc(a.nombre)}</span>${e.nuevas ? `<b class="al-n">${e.nuevas}</b>` : ''}</button>`; };
+  const sec = (t, l) => l.length ? `<div class="lat-sec">${t}</div>${l.map(btn).join('')}` : '';
+  const res = q ? cl.filter(a => normaliza(a.nombre).includes(q)).slice(0, 30) : null;
+  const fav = favoritos().map(byId).filter(Boolean), rec = recientes().map(byId).filter(a => a && !fav.includes(a)).slice(0, 6);
+  const at = cl.filter(a => !fav.includes(a) && !rec.includes(a)).map(a => ({ a, e: estadoAlumno(a) })).filter(x => x.e.nivel === 'bad').slice(0, 6).map(x => x.a);
   return `<aside class="lateral" aria-label="Navegación del coach">
-    <nav class="lat-nav">${nav.map(([k, l]) => `<button data-act="ctab" data-t="${k}" ${actual === k && !S.ficha && !S.reporte && !S.editor && !S.obj ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span></button>`).join('')}<button data-act="abrirReporte" ${S.reporte && !S.reporte.alumno ? 'aria-current="page"' : ''}>${svg('checkin')}<span>Reporting semanal</span></button>${futbolistas().length ? `<button data-act="checkin">${svg('checkin')}<span>Control futbolistas</span></button>` : ''}</nav>
-    <div class="eyebrow" style="margin:18px 12px 6px">Alumnos · ${als.length}</div>
-    <input type="search" id="lat-busca" class="lat-busca" placeholder="Buscar alumno…" value="${esc(S.alF.q)}" aria-label="Buscar alumno" autocomplete="off">
-    <div class="lat-al">${als.map(({ a, e }) => `<button data-act="ficha" data-id="${a.id}" data-n="${esc(normaliza(a.nombre))}" ${S.ficha?.id === a.id ? 'aria-current="page"' : ''}${S.alF.q && !normaliza(a.nombre).includes(normaliza(S.alF.q)) ? ' hidden' : ''}><i class="al-dot ${e.nuevas ? 'nueva' : ''}" data-act="verAlertas" data-id="${a.id}" role="button" aria-label="Ver alertas de ${esc(a.nombre)}" style="background:var(--${e.nivel})"></i><span class="grow">${esc(a.nombre)}</span>${e.nuevas ? `<b class="al-n">${e.nuevas}</b>` : ''}${e.control ? '<b class="small" style="color:var(--gold-ink)">●</b>' : ''}</button>`).join('')}</div>
+    <nav class="lat-nav">${nav.map(([k, l]) => `<button data-act="ctab" data-t="${k}" ${actual === k && !S.ficha && !S.reporte && !S.editor && !S.obj ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span></button>`).join('')}<button data-act="abrirReporte" ${S.reporte && !S.reporte.alumno ? 'aria-current="page"' : ''}>${svg('checkin')}<span>Reporting semanal</span></button>${futbolistas().length ? `<button data-act="ctab" data-t="futbol" ${actual === 'futbol' && !S.ficha ? 'aria-current="page"' : ''}>${svg('checkin')}<span>Control futbolistas</span></button>` : ''}</nav>
+    <input type="search" id="lat-busca" class="lat-busca" placeholder="Buscar entre ${cl.length} clientes…" value="${esc(S.alF.q)}" aria-label="Buscar alumno" autocomplete="off" style="margin-top:16px">
+    <div class="lat-al" id="lat-al">${res ? (res.length ? res.map(btn).join('') : '<div class="small muted" style="padding:8px 12px">Sin resultados</div>') : sec('★ Favoritos', fav) + sec('🕘 Recientes', rec) + sec('🔴 Requieren revisión', at) || '<div class="small muted" style="padding:8px 12px">Abre fichas o márcalas con ★ para tenerlas aquí.</div>'}</div>
+    <button class="linkbtn small" data-act="ctab" data-t="alumnos" style="margin:6px 12px">Ver todos (${cl.length}) ›</button>
   </aside>`;
 }
 /* Si una pantalla falla, se muestra el motivo en vez de quedarse bloqueada */
@@ -449,7 +453,7 @@ function render() {
   const tabs = coach ? [['inicio', 'Tu día'], ['alumnos', 'Alumnos'], ['plantillas', 'Plantillas'], ['ejercicios', 'Ejercicios'], ['pagos', 'Economía']] : tabsAlumno();
   const actual = coach ? S.ctab : (cierreAlumno() && !tabs.some(t => t[0] === S.tab) ? 'hoy' : S.tab);
   const esCoach = S.perfil.rol === 'coach';
-  const vistas = { hoy: vHoy, entreno: vEntreno, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, tests: vProgreso, coach: Acomp.vTuCoach, inicio: Negocio.vInicio, habitos: Habitos.vista, alumnos: vAlumnos, pagos: vEconomiaTabs, ejercicios: vEjercicios, plantillas: vPlantillas };
+  const vistas = { futbol: () => `<section class="stack"><span class="eyebrow">Élite Player</span><h1>Futbolistas</h1></section>${vFutbolCoach() || '<div class="card empty">Sin futbolistas activos.</div>'}`, hoy: vHoy, entreno: vEntreno, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, tests: vProgreso, coach: Acomp.vTuCoach, inicio: Negocio.vInicio, habitos: Habitos.vista, alumnos: vAlumnos, pagos: vEconomiaTabs, ejercicios: vEjercicios, plantillas: vPlantillas };
   $('#app').innerHTML = `<header class="top">
       <button type="button" class="badge" data-act="inicio" aria-label="Ir al inicio" style="background:none;border:0;padding:0;cursor:pointer;text-align:left;color:inherit;font:inherit"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : esc(S.perfil.metodologia || 'Tu proceso')}</strong></div></button>
       <div class="row" style="gap:8px">${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
@@ -2418,7 +2422,21 @@ async function cambiarArchivo(id, activo) {
   await cargarCoach(); render();
 }
 /* Buscador y filtros del panel de alumnos (se filtra sin repintar para no perder el foco al escribir) */
-S.alF = S.alF || { q: '', p: '', m: '', k: '' };
+S.alF = S.alF || { q: '', p: '', m: '', k: '', r: '', o: '', s: '', f: '', a: '' };
+/* Dimensiones separadas del nombre comercial del programa (compatibles con perfiles antiguos: se deducen de su servicio) */
+const objetivoAl = id => { const v = srvDe(id); return !v ? 'Sin servicio' : v.modulo_futbol ? 'Fútbol' : v.oposicion ? 'Oposición' : esBono(v) ? 'Sesiones sueltas' : 'Recomposición y salud'; };
+const OBJETIVOS = ['Recomposición y salud', 'Fútbol', 'Oposición', 'Sesiones sueltas', 'Sin servicio'];
+const faseAl = id => { const v = srvDe(id); if (!v) return 'Sin servicio'; const e = Acomp.estado(v).k; if (e === 'pausado') return 'En pausa'; if (e === 'pausaVencida') return 'Pausa vencida'; if (e === 'regreso') return 'Regreso';
+  if (v.inicio && v.inicio > hoyISO()) return 'Empieza pronto'; const af = avisoFin(v); if (af?.terminado) return 'Proceso terminado'; if (af) return 'Termina pronto'; if (v.inicio && v.inicio >= sumaDias(hoyISO(), -28)) return 'Recién empezado'; return 'En proceso'; };
+const FASES_AL = ['Empieza pronto', 'Recién empezado', 'En proceso', 'Termina pronto', 'Proceso terminado', 'En pausa', 'Pausa vencida', 'Regreso', 'Sin servicio'];
+const respAl = id => S.c.perfiles.find(p => p.id === id)?.responsable || S.perfil?.id || '';
+const profesionales = () => S.c.perfiles.filter(p => p.rol === 'coach' || p.rol === 'entrenador' || p.rol === 'profesional');
+const favoritos = () => { try { return JSON.parse(S.c?.fiscal?.favoritos || '[]'); } catch (e) { return []; } };
+async function favorito(id) {
+  const l = favoritos(), n = l.includes(id) ? l.filter(x => x !== id) : [id, ...l].slice(0, 30), v = JSON.stringify(n);
+  S.c.fiscal = { ...(S.c.fiscal || {}), favoritos: v }; render();
+  const { error } = await sb.from('ajustes_privados').upsert({ clave: 'favoritos', valor: v }, { onConflict: 'clave' }); if (error) toast('No se ha podido guardar el favorito');
+}
 const MODALIDADES = ['Online', 'Híbrido', 'Presencial', 'Bono', 'Sin servicio'];
 const normaliza = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 const srvDe = id => (S.c?.servicios || []).find(x => x.alumno_id === id);
@@ -2490,19 +2508,23 @@ function vCierreBono(c) {
 }
 function coincideAl(d) {
   const f = S.alF, q = normaliza(f.q);
-  return (!q || d.n.includes(q)) && (!f.p || d.p === f.p) && (!f.m || d.m === f.m) && (f.k !== 'alerta' || d.al) && (f.k !== 'vencidos' || d.v);
+  return (!q || d.n.includes(q)) && (!f.p || d.p === f.p) && (!f.m || d.m === f.m) && (f.k !== 'alerta' || d.al) && (f.k !== 'vencidos' || d.v)
+    && (!f.r || d.r === f.r) && (!f.o || d.o === f.o) && (!f.s || d.s === f.s) && (!f.f || d.f === f.f) && (!f.a || (f.a === 'ninguna' ? !d.a : (d.a || '').split(',').includes(f.a)));
 }
 function aplicarFiltroAl() {
   let n = 0;
-  document.querySelectorAll('.al-fila').forEach(el => { const ok = coincideAl({ n: el.dataset.n, p: el.dataset.p, m: el.dataset.m, al: el.dataset.al === '1', v: el.dataset.v === '1' }); el.hidden = !ok; if (ok) n++; });
-  const tot = document.querySelectorAll('.al-fila').length, c = $('#al-cuenta'), z = $('#al-nada');
+  const lim = S.alLim || 50;
+  document.querySelectorAll('.al-fila').forEach(el => { const ok = coincideAl({ n: el.dataset.n, p: el.dataset.p, m: el.dataset.m, al: el.dataset.al === '1', v: el.dataset.v === '1', r: el.dataset.r, o: el.dataset.o, s: el.dataset.s, f: el.dataset.f, a: el.dataset.a }); el.hidden = !ok || n >= lim; if (ok) n++; });
+  const tot = document.querySelectorAll('.al-fila').length, c = $('#al-cuenta'), z = $('#al-nada'), mas = $('#al-mas');
   if (c) c.textContent = n === tot ? `${tot}` : `${n} de ${tot}`;
+  if (mas) { mas.hidden = n <= lim; mas.textContent = `Mostrar ${Math.min(50, n - lim)} más (${n - lim} sin mostrar)`; }
   if (z) z.hidden = n > 0 || !tot;
-  const q = normaliza(S.alF.q);
-  document.querySelectorAll('.lat-al button[data-n]').forEach(el => { el.hidden = !!q && !el.dataset.n.includes(q); });
+
 }
 function vAlumnos() {
-  const c = S.c, als = c.perfiles.filter(p => p.activo !== false && !esFamilia(p.id)), fam = c.perfiles.filter(p => p.activo !== false && esFamilia(p.id));
+  const c = S.c, als = c.perfiles.filter(esCliente), fam = c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach' && esFamilia(p.id));
+  const conSrv = als.filter(a => srvDe(a.id)), sinSrv = als.length - conSrv.length, antiguos = c.perfiles.filter(p => p.activo === false && p.rol !== 'coach').length;
+  const lineas = [...new Set(conSrv.map(a => Programas.lineaServicio(srvDe(a.id))))].sort(), pros = profesionales();
   const est = als.map(a => ({ a, e: estadoAlumno(a) })), orden = { bad: 0, warn: 1, ok: 2 };
   const rk = rangoReciente(); est.sort((x, y) => rk(x.a.id) - rk(y.a.id) || orden[x.e.nivel] - orden[y.e.nivel]);
   const lab = { ok: 'En camino', warn: 'Atención', bad: 'Revisar' };
@@ -2510,18 +2532,24 @@ function vAlumnos() {
   const progs = [...new Set(c.servicios.filter(x => als.some(a => a.id === x.alumno_id)).map(x => x.producto).filter(Boolean))].sort();
   const visibleAl = (a, e) => coincideAl({ n: normaliza(a.nombre), p: prodDe(a.id), m: modalidadDe(a.id), al: e.nivel !== 'ok', v: vencIds.has(a.id) });
   return `<section class="stack"><span class="eyebrow">Panel del coach · ${esc(fLarga(hoyISO()))}</span><h1>Tus alumnos</h1><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="programarSes">📅 Programar sesión</button><button class="btn sm ghost" data-act="verAgenda">Agenda</button><button class="btn sm ghost" data-act="miFicha">✎ Mi ficha (mi perfil beta)</button></div></section>
-  <section class="section"><div class="kpis"><button class="kpi kpi-b" data-act="alFiltro" data-k="todos" aria-pressed="${S.alF.k === 'todos'}"><div class="v num">${als.length}</div><div class="l">perfiles activos ›</div></button><button class="kpi kpi-b" data-act="alFiltro" data-k="alerta" aria-pressed="${S.alF.k === 'alerta'}"><div class="v num" style="color:var(--bad)">${est.filter(x => x.e.nivel !== 'ok').length}</div><div class="l">necesitan atención ›</div></button><button class="kpi kpi-b" data-act="alFiltro" data-k="vencidos" aria-pressed="${S.alF.k === 'vencidos'}"><div class="v num" style="color:${venc.length ? 'var(--bad)' : 'var(--ok)'}">${venc.length}</div><div class="l">pagos vencidos ›</div></button></div></section>
+  <section class="section"><div class="kpis"><button class="kpi kpi-b" data-act="alFiltro" data-k="todos" aria-pressed="${S.alF.k === 'todos'}"><div class="v num">${conSrv.length}</div><div class="l">clientes con servicio ›</div></button><button class="kpi kpi-b" data-act="alFiltro" data-k="alerta" aria-pressed="${S.alF.k === 'alerta'}"><div class="v num" style="color:var(--bad)">${est.filter(x => x.e.nivel !== 'ok').length}</div><div class="l">necesitan atención ›</div></button><button class="kpi kpi-b" data-act="alFiltro" data-k="vencidos" aria-pressed="${S.alF.k === 'vencidos'}"><div class="v num" style="color:${venc.length ? 'var(--bad)' : 'var(--ok)'}">${venc.length}</div><div class="l">pagos vencidos ›</div></button></div></section>
   <section class="section"><button class="card reporte-b" data-act="abrirReporte"><div class="ico gold">${svg('checkin')}</div><div class="grow" style="text-align:left"><b>Reporting semanal</b><div class="small muted">Semana del ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -7)))} al ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -1)))} · todos tus alumnos de un vistazo</div></div><span class="small" style="color:var(--blue-text)">Abrir ›</span></button></section>
   ${(() => { const n = Nutricion.colaRevisiones().length; return S.c.servicios.some(x => x.modulo_nutricion) ? `<section class="section"><button class="card reporte-b" data-act="nuCola"><div class="ico ${n ? 'gold' : ''}">🍽</div><div class="grow" style="text-align:left"><b>Revisiones de nutrición</b><div class="small muted">${n ? `${n} alumno${n > 1 ? 's' : ''} con algo que decidir` : 'Nada pendiente'}</div></div><span class="small muted">›</span></button></section>` : ''; })()}
-  ${vFutbolCoach()}
+  ${futbolistas().length ? `<section class="section"><button class="card reporte-b" data-act="ctab" data-t="futbol"><div class="ico">⚽</div><div class="grow" style="text-align:left"><b>Futbolistas · ${futbolistas().length}</b><div class="small muted">Partidos, fatiga, molestias y carga en su vista propia</div></div><span aria-hidden="true">›</span></button></section>` : ''}
+  <p class="small muted" style="margin:6px 0 0">Recuentos: <b>${conSrv.length}</b> clientes con servicio · ${sinSrv} sin servicio · ${fam.length} familia y pruebas · ${antiguos} antiguos. Tu perfil de coach no cuenta.</p>
   ${''/* Hábitos, casos de éxito y gráficas de resumen ocultos del panel a petición de Jesús (demasiada información) */}
   ${vAntiguos()}
   <section class="section" id="al-lista"><div class="section-head"><h2>Alumnos</h2><span class="small muted" id="al-cuenta"></span></div>
     <div class="al-filtros"><input type="search" id="al-busca" placeholder="Buscar por nombre…" value="${esc(S.alF.q)}" aria-label="Buscar alumno por nombre" autocomplete="off">
-      <select id="al-prog" aria-label="Programa"><option value="">Todos los programas</option>${progs.map(x => `<option ${S.alF.p === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
-      <select id="al-mod" aria-label="Modalidad"><option value="">Todas las modalidades</option>${MODALIDADES.map(x => `<option ${S.alF.m === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+      <select data-alf="o" aria-label="Objetivo"><option value="">Todos los objetivos</option>${OBJETIVOS.map(x => `<option ${S.alF.o === x ? 'selected' : ''}>${x}</option>`).join('')}</select>
+      <select data-alf="s" aria-label="Servicio"><option value="">Todos los servicios</option>${lineas.map(x => `<option ${S.alF.s === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
+      <select id="al-mod" aria-label="Modalidad"><option value="">Todas las modalidades</option>${MODALIDADES.map(x => `<option ${S.alF.m === x ? 'selected' : ''}>${x}</option>`).join('')}</select>
+      <select data-alf="f" aria-label="Fase"><option value="">Todas las fases</option>${FASES_AL.map(x => `<option ${S.alF.f === x ? 'selected' : ''}>${x}</option>`).join('')}</select>
+      <select data-alf="a" aria-label="Acción pendiente"><option value="">Cualquier pendiente</option>${Object.entries(Compromisos.T).map(([k, t]) => `<option value="${k}" ${S.alF.a === k ? 'selected' : ''}>${t.n}</option>`).join('')}<option value="ninguna" ${S.alF.a === 'ninguna' ? 'selected' : ''}>Nada pendiente</option></select>
+      ${pros.length > 1 ? `<select data-alf="r" aria-label="Responsable"><option value="">Todos los responsables</option>${pros.map(p => `<option value="${p.id}" ${S.alF.r === p.id ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}</select>` : ''}</div>
     ${S.alF.k ? `<div class="row" style="gap:8px;margin:8px 0"><span class="pill ${S.alF.k === 'todos' ? 'blue' : 'bad'}">Mostrando: ${{ todos: 'todos los perfiles activos', alerta: 'necesitan atención', vencidos: 'con pagos vencidos' }[S.alF.k]}</span><button class="linkbtn small" data-act="alFiltro" data-k="">Quitar filtro</button></div>` : ''}
-    <div class="card">${est.map(({ a, e }) => `<div class="line al-fila" data-act="ficha" data-id="${a.id}" data-n="${esc(normaliza(a.nombre))}" data-p="${esc(prodDe(a.id))}" data-m="${esc(modalidadDe(a.id))}" data-al="${e.nivel !== 'ok' ? 1 : 0}" data-v="${vencIds.has(a.id) ? 1 : 0}" style="cursor:pointer"${visibleAl(a, e) ? '' : ' hidden'}><span style="width:4px;align-self:stretch;border-radius:2px;background:var(--${e.nivel})"></span><i class="al-dot ${e.nuevas ? 'nueva' : ''}" data-act="verAlertas" data-id="${a.id}" role="button" aria-label="Ver alertas de ${esc(a.nombre)}" style="background:var(--${e.nivel})"></i>${avatarDe(a, 40)}<div class="grow stack" style="gap:3px"><div class="row"><h3 class="grow">${esc(a.nombre)}</h3>${e.ctx ? `<span class="pill gold" title="Semana adaptada">${esc(e.ctx.contexto_nombre || 'Contexto')}</span>` : ''}${e.control ? '<span class="pill gold">Revisión mensual</span>' : ''}${e.nuevas ? `<span class="pill bad">${e.nuevas} ${e.nuevas === 1 ? 'nueva' : 'nuevas'}</span>` : ''}<span class="pill ${e.nivel}">${lab[e.nivel]}</span></div><div class="small muted">${esc((c.servicios.find(s => s.alumno_id === a.id) || {}).producto || 'Sin servicio')}${e.ult ? ` · motivación ${e.ult.motivacion}/10` : ''}</div>${e.dpw ? barra('Semana', e.semana, e.dpw) + barra('Últimas 4 semanas', e.mes, e.dpw4 || e.dpw * 4) : ''}${e.motivos.length ? `<div class="small">${esc(agruparAlertas(e.items.filter(x => !x.ok)).map(g => g.m).join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no hay alumnos.</div>'}<div class="empty" id="al-nada" hidden>Ningún alumno coincide con la búsqueda.</div></div>
+    <div class="card">${est.map(({ a, e }) => `<div class="line al-fila" data-act="ficha" data-id="${a.id}" data-n="${esc(normaliza(a.nombre))}" data-p="${esc(prodDe(a.id))}" data-m="${esc(modalidadDe(a.id))}" data-al="${e.nivel !== 'ok' ? 1 : 0}" data-v="${vencIds.has(a.id) ? 1 : 0}" data-r="${esc(respAl(a.id))}" data-o="${esc(objetivoAl(a.id))}" data-s="${esc(srvDe(a.id) ? Programas.lineaServicio(srvDe(a.id)) : '')}" data-f="${esc(faseAl(a.id))}" data-a="${[...new Set(Compromisos.deAlumno(a.id).filter(x => !x.futuro).map(x => x.tipo))].join(',')}" style="cursor:pointer"${visibleAl(a, e) ? '' : ' hidden'}><span style="width:4px;align-self:stretch;border-radius:2px;background:var(--${e.nivel})"></span><i class="al-dot ${e.nuevas ? 'nueva' : ''}" data-act="verAlertas" data-id="${a.id}" role="button" aria-label="Ver alertas de ${esc(a.nombre)}" style="background:var(--${e.nivel})"></i>${avatarDe(a, 40)}<div class="grow stack" style="gap:3px"><div class="row"><h3 class="grow">${esc(a.nombre)}</h3>${e.ctx ? `<span class="pill gold" title="Semana adaptada">${esc(e.ctx.contexto_nombre || 'Contexto')}</span>` : ''}${e.control ? '<span class="pill gold">Revisión mensual</span>' : ''}${e.nuevas ? `<span class="pill bad">${e.nuevas} ${e.nuevas === 1 ? 'nueva' : 'nuevas'}</span>` : ''}<span class="pill ${e.nivel}">${lab[e.nivel]}</span></div><div class="small muted">${esc((c.servicios.find(s => s.alumno_id === a.id) || {}).producto || 'Sin servicio')}${e.ult ? ` · motivación ${e.ult.motivacion}/10` : ''}</div>${e.dpw ? barra('Semana', e.semana, e.dpw) + barra('Últimas 4 semanas', e.mes, e.dpw4 || e.dpw * 4) : ''}${e.motivos.length ? `<div class="small">${esc(agruparAlertas(e.items.filter(x => !x.ok)).map(g => g.m).join(' · '))}</div>` : ''}</div></div>`).join('') || '<div class="empty">Aún no hay alumnos.</div>'}<div class="empty" id="al-nada" hidden>Ningún alumno coincide con la búsqueda.</div></div>
+  <section class="section" style="margin-top:-8px"><button class="btn ghost full" id="al-mas" data-act="alMas" hidden>Mostrar más</button></section>
   ${fam.length ? `<section class="section"><div class="section-head"><h2>Familia y pruebas</h2><span class="small muted">no cuentan en reporting ni economía</span></div><div class="card">${fam.map(a => `<div class="line" data-act="ficha" data-id="${a.id}" style="cursor:pointer"><span class="grow"><b>${esc(a.nombre || '')}</b></span><span class="pill">👪 Familia</span></div>`).join('')}</div></section>` : ''}
   <p class="note">Para dar de alta a un alumno nuevo, créalo en Supabase → Authentication → Users. Su perfil aparecerá aquí solo.</p></section>
   ${Casos.resumenCoach()}`;
@@ -2696,9 +2724,13 @@ function cargaDia(w, f) {
 function cargasSemana(w, f = hoyISO()) {
   const suma = n => [...Array(n)].reduce((t, _, i) => t + cargaDia(w, sumaDias(f, -i)).total, 0);
   const aguda = suma(7), cronica = suma(28) / 4;
-  return { aguda, cronica, acwr: cronica ? aguda / cronica : null };
+  /* Suficiencia: al menos 3 de las 4 semanas con registros y 10 días registrados; si no, no se calcula la proporción */
+  const dias = [...Array(28)].map((_, i) => sumaDias(f, -i)), reg = d => !!(wDe(w, d, 'diario') || wDe(w, d, 'partido'));
+  const semCon = [0, 1, 2, 3].filter(k => dias.slice(k * 7, k * 7 + 7).some(reg)).length, nDias = dias.filter(reg).length, suf = semCon >= 3 && nDias >= 10;
+  return { aguda, cronica, acwr: cronica && suf ? aguda / cronica : null, suf, semCon, nDias };
 }
-const nivelAcwr = r => r == null ? ['', 'sin datos'] : r > 1.5 ? ['bad', 'riesgo alto'] : r > 1.3 ? ['warn', 'atención'] : r < 0.8 ? ['warn', 'carga baja'] : ['ok', 'óptima'];
+/* Cambio relativo de carga (últimos 7 días frente a su media de 4 semanas). No es un diagnóstico ni predice lesiones: se contrasta con molestias, recuperación e historial */
+const nivelAcwr = r => r == null ? ['', 'datos insuficientes'] : r > 1.5 ? ['warn', 'subida fuerte de carga'] : r > 1.3 ? ['warn', 'subida de carga'] : r < 0.8 ? ['', 'bajada de carga'] : ['ok', 'carga parecida a su media'];
 const nivelFat = v => v == null ? '' : v >= 7 ? 'bad' : v >= 5 ? 'warn' : 'ok';
 function ultimaFatiga(w) {
   const l = w.filter(x => x.datos && (x.datos.fatiga != null || x.datos.despues != null)).sort((a, b) => (b.fecha + b.tipo).localeCompare(a.fecha + a.tipo))[0];
@@ -2895,7 +2927,7 @@ function alertasFutbol(aid) {
   const { w } = futDe(aid), out = [], hoy = hoyISO(), dow = (fecha(hoy).getDay() + 6) % 7;
   const uf = ultimaFatiga(w); if (uf && uf.f >= sumaDias(hoy, -1) && uf.v >= 7) out.push(['bad', `Fatiga ${uf.v}/10 (${fCorta(uf.f)})`]);
   molestiasRecientes(w, 3).slice(-1).forEach(m => out.push(['warn', `Molestia: ${m.z.join(', ')}`]));
-  const C = cargasSemana(w); if (C.acwr != null && C.acwr > 1.5) out.push(['bad', `Pico de carga (ACWR ${fmtNum(C.acwr)})`]);
+  const C = cargasSemana(w); if (C.acwr != null && C.acwr > 1.5) out.push(['warn', `Subida fuerte de carga (${fmtNum(C.acwr)} veces su media de 4 semanas): mírala junto a molestias y recuperación`]);
   if (dow <= 1 && !wDe(w, sumaDias(hoy, -dow), 'lunes')) out.push(['warn', 'Sin cuestionario del lunes']);
   if (dow <= 1 && !wDe(w, sumaDias(hoy, -dow - 1), 'semana')) out.push(['warn', 'Sin planificación del equipo']);
   return out;
@@ -3019,7 +3051,7 @@ function vFutbolCoach() {
   return `<section class="section"><div class="section-head"><h2>Futbolistas · hoy</h2><button class="btn sm" data-act="checkin">Control semanal</button></div><div class="card tbl" style="overflow-x:auto"><table class="fut-t"><thead><tr><th>Jugador</th><th>Partido</th><th>Fatiga</th><th>Carga 7 d</th><th>ACWR</th><th>Hoy</th></tr></thead><tbody>
     ${fut.map(a => { const { w, p } = futDe(a.id), M = mdDe(p), uf = ultimaFatiga(w), C = cargasSemana(w), [na, ta] = nivelAcwr(C.acwr), hecho = wDe(w, hoy, 'diario') || wDe(w, hoy, 'partido'), mol = molestiasRecientes(w, 3).length;
       return `<tr data-act="ficha" data-id="${a.id}" style="cursor:pointer"><td><b>${esc(a.nombre)}</b>${mol ? ' <span class="pill warn">molestia</span>' : ''}</td><td class="small">${M.md ? `<span class="md-chip sm">${esc(M.md)}</span> ` : ''}${esc(M.prox?.rival || '')}</td><td>${uf ? `<span class="pill ${nivelFat(uf.v)}">${uf.v}/10</span>` : '—'}</td><td class="num">${fmtNum(C.aguda, 0)}</td><td>${C.acwr != null ? `<span class="pill ${na}" title="${ta}">${fmtNum(C.acwr)}</span>` : '—'}</td><td>${hecho ? '<span style="color:var(--ok)">✓</span>' : '<span class="muted">pendiente</span>'}</td></tr>`; }).join('')}
-  </tbody></table><p class="note">Carga = minutos × esfuerzo (1-10) del equipo, de tu sesión y del partido. ACWR = carga de los últimos 7 días frente a la media de las últimas 4 semanas: entre 0,8 y 1,3 es la zona óptima; por encima de 1,5, riesgo de lesión.</p></div></section>`;
+  </tbody></table><p class="note">Carga = minutos × esfuerzo (1-10) del equipo, de tu sesión y del partido. Proporción de carga = últimos 7 días frente a su media semanal de las últimas 4 semanas. Indica un cambio relativo de carga, no un diagnóstico ni un riesgo de lesión individual: contrástalo con molestias, recuperación, historial y la calidad de los registros. Solo se calcula con al menos 3 de 4 semanas registradas.</p></div></section>`;
 }
 function graficaCarga(w) {
   const dias = [...Array(14)].map((_, i) => sumaDias(hoyISO(), i - 13)), cs = dias.map(f => cargaDia(w, f)), max = Math.max(400, ...cs.map(c => c.total));
@@ -3836,7 +3868,7 @@ function vFicha() {
     const perfil = `<aside class="fx-perfil card">
       <button class="fx-volver" data-act="cerrarFicha">← Alumnos</button>
       <div class="fx-av">${avatarDe(a, 96)}</div>
-      <h2 class="fx-nom">${esc(a.nombre)}</h2>
+      <h2 class="fx-nom">${esc(a.nombre)} <button class="fx-fav" data-act="favorito" data-id="${a.id}" aria-pressed="${favoritos().includes(a.id)}" aria-label="${favoritos().includes(a.id) ? 'Quitar de favoritos' : 'Añadir a favoritos'}" title="Favorito">${favoritos().includes(a.id) ? '★' : '☆'}</button></h2>
       <div class="fx-est"><span class="fx-dot ${e.nivel}"></span>${nivTxt}${pend.length ? ` · ${pend.length} aviso${pend.length > 1 ? 's' : ''}` : ''}</div>
       <div class="fx-acc fx-acc-mov"><button class="btn sm" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar</button><button class="btn sm ghost" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como</button><button class="btn sm ghost" data-act="abrirReporte" data-id="${a.id}">📋 Reporting</button></div>
       <div class="fx-datos">${filaP('Plan', esc(srv?.producto || 'Sin plan'))}${srv ? filaP('Tipo', esc(modalidadDe(a.id)) + (conSeguimiento(srv) ? '' : ' · sin seguimiento')) : ''}${filaP('Bloque', P && !P.antes && !P.fuera ? esc(nomCiclo(P.cc)) : '')}${filaP('Semana', P && !P.antes && !P.fuera ? `${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : P?.antes ? 'Empieza ' + esc(fCorta(srv.inicio)) : '')}${filaP('Programa', f.prog ? esc(f.prog.nombre) : '')}${filaP('Alta', esc(fF(a.fecha_alta || srv?.inicio || hoy)))}${filaP('Email', esc(a.email || ''))}<button class="fx-dato fx-pago" data-act="fTab" data-t="pagos"><span>Pagos</span><b style="${pagV.length ? 'color:var(--bad)' : ''}">${pagV.length ? `${pagV.length} vencida${pagV.length === 1 ? '' : 's'}` : pagP.length ? `Próxima ${esc(fCorta(pagP.slice().sort((x, y) => x.vence.localeCompare(y.vence))[0].vence))}` : pagos.length ? 'Al día' : 'Sin cuotas'} ›</b></button></div>
@@ -3907,7 +3939,7 @@ function vFicha() {
         const { w, p } = futDe(a.id), M = mdDe(p), C = cargasSemana(w), [na, ta] = nivelAcwr(C.acwr), uf = ultimaFatiga(w), mol = molestiasRecientes(w, 7);
         const kF = [kpi('Próximo partido', M.md ? `${esc(M.md)}` : '—', M.prox ? `${esc(M.prox.rival ? 'vs ' + M.prox.rival : 'Partido')} · ${esc(fCorta(M.prox.fecha))}` : esc(M.txt), null, 'checkins'),
           kpi('Fatiga', uf ? `<span style="color:var(--${nivelFat(uf.v) || 'fg'})">${uf.v}</span><small>/10</small>` : '—', uf ? `Último registro ${esc(fCorta(uf.f))}` : 'Sin registros', null, 'checkins'),
-          kpi('Carga · 7 días', fmtNum(C.aguda, 0), C.acwr != null ? `ACWR ${fmtNum(C.acwr, 2)} · ${ta}` : 'ACWR sin datos', null, 'checkins'), kEnt].join('');
+          kpi('Carga · 7 días', fmtNum(C.aguda, 0), C.acwr != null ? `${fmtNum(C.acwr, 2)}× su media · ${ta}` : `Proporción: datos insuficientes (${C.semCon} de 4 semanas)`, null, 'checkins'), kEnt].join('');
         const lCtx = f.contextos || contextosDe(a.id), semF = [[lunes, 'Esta semana'], [sumaDias(lunes, 7), 'La que viene']].map(([l, t]) => { const c = ctxEnSemana(lCtx, l); return `<div class="fx-prox"><span class="grow"><b>${t}</b> <span class="muted small">· ${esc(fCorta(l))}</span><br><span class="small ${c ? '' : 'muted'}">${c ? '✓ Ajustada' : 'Semana patrón'}</span></span><button class="btn sm ghost" data-act="avisarSemana" data-al="${a.id}" data-l="${l}">🔔 Avisar</button></div>`; }).join('');
         const cSem = `<div class="card fx-c"><div class="fx-ct">Semana de entreno</div><div class="fx-lista">${semF}</div><button class="linkbtn small" data-act="fTab" data-t="checkins" style="align-self:flex-start">Ajustar o ver su calendario ›</button></div>`;
         const cMol = `<div class="card fx-c"><div class="fx-ct">Molestias · 7 días</div>${mol.length ? `<div class="fx-lista">${mol.slice(0, 4).map(x => `<div class="fx-prox"><span class="fx-ic">🩹</span><span class="grow">${esc([].concat(x.z).join(', '))}${x.t ? ` · <span class="muted">${esc(x.t.slice(0, 80))}</span>` : ''}</span><b>${esc(fCorta(x.f))}</b></div>`).join('')}</div>` : '<div class="fx-vacio">Sin molestias</div>'}</div>`;
@@ -4129,12 +4161,14 @@ function formDatosAlumno(id) {
     <label class="f">NIF / NIE<input type="text" data-k="nif" value="${esc(a.nif || '')}"></label>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><label class="f">Sexo<select data-k="sexo"><option value="">—</option><option value="mujer" ${a.sexo === 'mujer' ? 'selected' : ''}>Mujer</option><option value="hombre" ${a.sexo === 'hombre' ? 'selected' : ''}>Hombre</option></select></label>
     <label class="f">Estatura (cm)<input type="text" inputmode="decimal" data-k="estatura_cm" value="${a.estatura_cm || ''}"></label><label class="f">Nacimiento<input type="date" data-k="fecha_nacimiento" value="${a.fecha_nacimiento || ''}"></label></div>
+    ${profesionales().length > 1 ? `<label class="f">Profesional responsable<select id="da-resp">${profesionales().map(p => `<option value="${p.id}" ${respAl(a.id) === p.id ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}</select><span class="small muted">Solo ordena y filtra tu trabajo: no da acceso a nadie.</span></label>` : ''}
     <p class="small muted">Email de acceso: ${esc(a.email || '')}</p>
     <button class="btn full" type="submit">Guardar</button></form>`);
   $('#f-da').addEventListener('submit', async e => {
     e.preventDefault();
     const upd = {}; document.querySelectorAll('#f-da [data-k]').forEach(i => { const k = i.dataset.k; upd[k] = k === 'estatura_cm' ? numero(i.value) : (i.value.trim() || null); });
     if (!upd.nombre) return toast('El nombre no puede quedar vacío');
+    if ($('#da-resp')) { const r = $('#da-resp').value; const x = await sb.from('perfiles').update({ responsable: r === S.perfil.id ? null : r }).eq('id', id); if (x.error) toast(/responsable/.test(x.error.message || '') ? 'Para el responsable falta ejecutar el Bloque 91' : 'No se ha podido guardar el responsable'); else a.responsable = r === S.perfil.id ? null : r; }
     let { error } = await sb.from('perfiles').update(upd).eq('id', id);
     if (error && /column/.test(error.message || '')) { ({ error } = await sb.from('perfiles').update({ nombre: upd.nombre }).eq('id', id)); if (!error) toast('Nombre guardado. Para el resto de datos ejecuta los Bloques 11 y 13'); }
     if (error) return fallo(error);
@@ -6844,7 +6878,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v250';
+const APP_VER = 'v251';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -7115,6 +7149,8 @@ document.addEventListener('click', async e => {
     case 'nuevaPres': formPres(); break;
     case 'pausaEditar': formPausa(+b.dataset.i); break;
     case 'histEditar': formHistorial(+b.dataset.i); break;
+    case 'alMas': S.alLim = (S.alLim || 50) + 50; aplicarFiltroAl(); break;
+    case 'favorito': await favorito(b.dataset.id); break;
     case 'cmIr': cerrarSheet(); await Compromisos.ir(b.dataset.id, !!S.bloque); break;
     case 'cmHoy': await Compromisos.elegirHoy([b.dataset.id], true); toast('Elegido para hoy'); break;
     case 'cmProg': Compromisos.formReprogramar(b.dataset.id); break;
@@ -7325,7 +7361,8 @@ document.addEventListener('click', async e => {
   }
 });
 document.addEventListener('change', async e => {
-  if (e.target.id === 'al-prog' || e.target.id === 'al-mod') { S.alF[e.target.id === 'al-prog' ? 'p' : 'm'] = e.target.value; aplicarFiltroAl(); return; }
+  if (e.target.id === 'al-prog' || e.target.id === 'al-mod') { S.alF[e.target.id === 'al-prog' ? 'p' : 'm'] = e.target.value; S.alLim = 50; aplicarFiltroAl(); return; }
+  if (e.target.dataset?.alf) { S.alF[e.target.dataset.alf] = e.target.value; S.alLim = 50; aplicarFiltroAl(); return; }
   if (e.target.dataset?.graf === 'comp') { S.grafComp = e.target.value; render(); return; }
   if (e.target.dataset?.tanda && S.sesion) return Tandas.corregir(e.target);
   const m = (e.target.id || '').match(/^(kg|rp|ri)-(\d+)-(\d+)(?:-(\d+))?$/); if (!m || !S.sesion) return;
@@ -7340,7 +7377,8 @@ document.addEventListener('change', async e => {
 });
 document.addEventListener('input', e => {
   if (e.target.dataset?.tanda && S.sesion && !S.sesion.valores[e.target.id.slice(3)]) { (S.sesion.borr ||= {})[e.target.id] = e.target.value; return; }
-  if (e.target.id === 'al-busca' || e.target.id === 'lat-busca') { S.alF.q = e.target.value; const o = e.target.id === 'al-busca' ? $('#lat-busca') : $('#al-busca'); if (o) o.value = e.target.value; aplicarFiltroAl(); return; }
+  if (e.target.id === 'al-busca' || e.target.id === 'lat-busca') { S.alF.q = e.target.value; S.alLim = 50; const o = e.target.id === 'al-busca' ? $('#lat-busca') : $('#al-busca'); if (o) o.value = e.target.value; aplicarFiltroAl();
+    if ($('#lat-al')) { const tmp = document.createElement('div'); tmp.innerHTML = vLateral(S.ctab); const n = tmp.querySelector('#lat-al'); if (n) $('#lat-al').replaceWith(n); } return; }
   if (e.target.id === 'ej-buscar') { S.filtroEj = e.target.value; const pos = e.target.selectionStart; render(); const i = $('#ej-buscar'); i.focus(); try { i.setSelectionRange(pos, pos); } catch (er) { } }
   if (e.target.id === 'k-mot') $('#k-mot-v').textContent = e.target.value + '/10';
   if (e.target.id === 'k-nut') $('#k-nut-v').textContent = e.target.value + ' %';
