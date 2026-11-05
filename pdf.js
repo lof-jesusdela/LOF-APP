@@ -159,17 +159,26 @@ const PDF = (() => {
     }
     /* Resto de pruebas */
     (val.pruebas || []).filter(p => p.tipo !== 'fc').forEach(p => {
-      const ds = (p.datos || []).filter(x => x.nombre && (x.valor || x.d || x.i));
+      const ds = (p.datos || []).filter(x => x.nombre && (x.valor || x.d || x.i || x.obs || x.foto || x.fd || x.fi));
+      const fimg = (r, l) => c.imgs?.[r] ? `<figure class="pd-fig"><img src="${c.imgs[r]}" alt=""><figcaption>${esc(l)}</figcaption></figure>` : '';
       const im = c.imgs?.[p.imagen_url];
       if (!ds.length && !p.valoracion && !p.foco && !im) return;
       let cuerpo = '';
-      if (p.tipo === 'descompensacion' && ds.length) {
+      if (p.tipo === 'carrera' && ds.some(x => x.g)) {
+        const D = datosPisada(ds);
+        cuerpo = PISADA.map(([g, gt]) => { const vs = D.filter(x => x.g === g && !x.vg && (x.obs || x.fd || x.fi)), vg = D.find(x => x.g === g && x.vg); if (!vs.length && !vg?.valor) return '';
+          return `<div class="pd-card pd-keep"><h4>${esc(gt)}</h4>${vs.map(x => `<div class="pd-keep" style="padding:6px 0;border-top:1px solid #EEF2F7"><b>${esc(x.nombre.split(' · ').pop())}</b>${x.fd || x.fi ? `<div class="pd-figs">${fimg(x.fd, 'Derecho')}${fimg(x.fi, 'Izquierdo')}</div>` : ''}${x.obs ? `<p class="pd-mini" style="margin:4px 0 0">${esc(x.obs)}</p>` : ''}</div>`).join('')}</div>
+            ${vg?.valor ? `<div class="pd-keep pd-val"><h4>${esc(vg.nombre)}</h4><p>${esc(vg.valor)}</p></div>` : ''}`; }).join('');
+      } else if (p.tipo === 'movilidad' && ds.length) {
+        cuerpo = `<div class="pd-card"><table class="pd-tab"><tr><th>Prueba</th><th>Resultado</th></tr>${ds.map(x => `<tr><td>${esc(x.nombre)}</td><td style="font-weight:700;color:${x.valor === 'Favorable' ? '#1E9A5E' : x.valor === 'Desfavorable' ? '#B9740A' : '#5D6574'}">${n1(x.valor)}</td></tr>`).join('')}</table></div>`
+          + (ds.some(x => x.foto && c.imgs?.[x.foto]) ? `<div class="pd-card pd-keep"><div class="pd-figs pd-figs3">${ds.filter(x => x.foto).map(x => fimg(x.foto, `${x.nombre}${x.valor ? ' · ' + x.valor : ''}`)).join('')}</div></div>` : '');
+      } else if (p.tipo === 'descompensacion' && ds.length) {
         const pcs = ds.map(x => difPct(x.d, x.i)), mxp = Math.max(-1, ...pcs.map(v => v ?? -1));
-        cuerpo = `<div class="pd-card"><table class="pd-tab pd-di"><tr><th>Prueba</th><th>Dcha.</th><th>Izda.</th><th>Diferencia / lado más débil</th></tr>${ds.map((x, k) => { const pc = pcs[k], a = numDe(x.d), b = numDe(x.i); return `<tr><td>${esc(x.nombre)}</td><td class="pd-d">${n1(x.d)}</td><td class="pd-i">${n1(x.i)}</td><td><b>${pc != null ? pc + ' %' : '—'}</b> ${pc ? (a < b ? 'Derecho' : 'Izquierdo') : ''}</td></tr>`; }).join('')}</table></div>`
+        cuerpo = `<div class="pd-card"><table class="pd-tab pd-di"><tr><th>Prueba</th><th>Dcha.</th><th>Izda.</th><th>Diferencia / lado más débil</th></tr>${ds.map((x, k) => { const pc = pcs[k], a = numDe(x.d), b = numDe(x.i); return `<tr><td>${esc(x.nombre)}${x.obs ? `<small style="display:block;color:#5D6574">⚙ ${esc(x.obs)}</small>` : ''}</td><td class="pd-d">${n1(x.d)}</td><td class="pd-i">${n1(x.i)}</td><td><b>${pc != null ? pc + ' %' : '—'}</b> ${pc ? (a < b ? 'Derecho' : 'Izquierdo') : ''}</td></tr>`; }).join('')}</table></div>`
           + `<p class="pd-mini">${mxp >= 0 ? `<b>Mayor diferencia: ${mxp} %</b><br>` : ''}Diferencia por encima del 15 %: desequilibrio a trabajar. Entre 8 y 15 %: a vigilar.</p>`;
       } else if (ds.length) {
         const nums = ds.map(x => numDe(x.valor)), top = Math.max(1, ...nums.filter(v => v != null)), barras = p.tipo === '1rm';
-        cuerpo = `<div class="pd-card">${ds.map((x, k) => barras ? `<div class="pd-fila"><span>${esc(x.nombre)}</span>${nums[k] != null ? `<i><u style="width:${nums[k] / top * 100}%"></u></i>` : '<em></em>'}<b>${n1(x.valor)}</b></div>` : `<div style="display:flex;gap:14px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #EEF2F7"><span style="flex:0 0 38%;font-weight:700">${k + 1}. ${esc(x.nombre)}</span><span style="flex:1;min-width:0;font-weight:500;line-height:1.4">${n1(x.valor)}</span></div>`).join('')}</div>`;
+        cuerpo = `<div class="pd-card">${ds.map((x, k) => barras ? `<div class="pd-fila"><span>${esc(x.nombre)}${x.obs ? `<small style="display:block;font-weight:400;color:#5D6574">⚙ ${esc(x.obs)}</small>` : ''}</span>${nums[k] != null ? `<i><u style="width:${nums[k] / top * 100}%"></u></i>` : '<em></em>'}<b>${n1(x.valor)}</b></div>` : `<div style="display:flex;gap:14px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #EEF2F7"><span style="flex:0 0 38%;font-weight:700">${k + 1}. ${esc(x.nombre)}</span><span style="flex:1;min-width:0;font-weight:500;line-height:1.4">${n1(x.valor)}</span></div>`).join('')}</div>`;
       }
       h += seccion(++n, p.tipo === 'descompensacion' ? 'Test de lateralidad (descompensaciones)' : p.titulo) + (im ? `<div class="pd-card pd-keep" style="padding:8px;text-align:center"><img src="${im}" alt="" style="display:block;max-width:100%;max-height:430px;margin:0 auto;object-fit:contain;border-radius:8px"></div>` : '') + cuerpo + textoCoach(p);
     });
@@ -177,7 +186,7 @@ const PDF = (() => {
   }
   /* Imágenes resumen de las pruebas: se firman, se descargan y se incrustan para que el PDF no dependa de la red */
   async function imagenesPruebas(val) {
-    const out = {}, rutas = [...new Set((val.pruebas || []).map(p => p.imagen_url).filter(Boolean))];
+    const out = {}, rutas = [...new Set((val.pruebas || []).flatMap(p => [p.imagen_url, ...(p.datos || []).flatMap(x => [x.foto, x.fd, x.fi])]).filter(Boolean))];
     await Promise.all(rutas.map(async r => {
       try {
         const f = await sb.storage.from('planificacion').createSignedUrls([r], 600), u = f.data?.[0]?.signedUrl; if (!u) return;

@@ -5819,7 +5819,7 @@ const PLANTILLAS = {
   movilidad: { titulo: 'Movilidad articular', cols: 'valor', datos: ['Cadena lateral', 'Cadena posterior e isquiotibiales', 'Hombros', 'Rotación de cadera', 'Tobillos', 'Cadena anterior'], protocolo: '' },
   ritmos: { titulo: 'Test de carrera de 5 minutos · ritmos', cols: 'valor', datos: ['Distancia en 5 minutos', 'Ritmo medio (min/km)', 'Velocidad aeróbica máxima (VAM)'],
     protocolo: 'Calentamiento: en pista o zona con distancia conocida, 10 minutos a ritmo bajo y 5 minutos subiendo el ritmo de forma progresiva. Después, unos 200 m de cambios de ritmo casi máximos (20-30 m) con 20-30 m de recuperación.\n\nParte principal: 5 minutos recorriendo la mayor distancia posible.' },
-  carrera: { titulo: 'Análisis de carrera', cols: 'valor', datos: ['Caminata a 6 km/h', 'Carrera a 12 km/h'], protocolo: 'Grabamos de lado, de espaldas y de frente caminando y corriendo en cinta.' },
+  carrera: { titulo: 'Análisis de pisada y biomecánica en cinta', cols: 'pisada', datos: [], protocolo: 'Grabamos en cinta caminando a 6 km/h y corriendo a 12 km/h, de frente, de lado y de espaldas, con foto del lado derecho e izquierdo en cada vista.' },
   policia: { titulo: 'Pruebas físicas · Policía Nacional', cols: 'valor', datos: ['Carrera 1000 m', 'Circuito de agilidad', 'Barra'], protocolo: 'Carrera de 1000 m (min:seg), circuito de agilidad (segundos) y barra: suspensión en segundos (mujeres) o dominadas (hombres). Cada prueba puntúa de 0 a 10 según el baremo oficial; hace falta media de 5 y un 0 elimina.' },
   otra: { titulo: 'Otra prueba', cols: 'valor', datos: [], protocolo: '' }
 };
@@ -5855,27 +5855,38 @@ const resumenPrueba = p => {
   const ds = p.datos || [];
   if (p.tipo === 'descompensacion') { const m = Math.max(-1, ...ds.map(x => difPct(x.d, x.i) ?? -1)); return m >= 0 ? `Mayor diferencia: ${m} %` : ''; }
   if (p.tipo === 'fc') return ds[0]?.valor ? `FC máx ${ds[0].valor}` : '';
+  if (p.tipo === 'carrera' && ds.some(x => x.g)) { const f = ds.reduce((t, x) => t + (x.fd ? 1 : 0) + (x.fi ? 1 : 0), 0); return f ? `${f} foto${f === 1 ? '' : 's'}` : ''; }
+  if (p.tipo === 'movilidad') { const d = ds.filter(x => x.valor === 'Desfavorable').length, fv = ds.filter(x => x.valor === 'Favorable').length; return d + fv ? `${fv} favorable${fv === 1 ? '' : 's'} · ${d} desfavorable${d === 1 ? '' : 's'}` : ''; }
   const con = ds.filter(x => x.valor); return con.length ? `${con.length} ${con.length === 1 ? 'resultado' : 'resultados'}` : '';
 };
 function anteriorDe(lista, val, p) {
   return lista.filter(v => v.fecha < val.fecha).map(v => (v.pruebas || []).find(x => x.tipo === p.tipo && x.titulo === p.titulo)).find(Boolean);
 }
+const fotoMini = (r, alt) => { pedirImgPrueba(r); const u = IMG_PRUEBA[r]; return u ? `<button class="img fmini" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver foto: ${esc(alt)}"><img src="${esc(u)}" alt="${esc(alt)}" loading="lazy"></button>` : '<span class="fmini vacio"></span>'; };
 function vResultados(p, ant) {
   const ds = (p.datos || []).filter(x => x.nombre);
   if (!ds.length) return '';
+  if (p.tipo === 'carrera' && ds.some(x => x.g)) {
+    const D = datosPisada(ds);
+    return `<div class="stack" style="gap:14px">${PISADA.map(([g, gt]) => { const vs = D.filter(x => x.g === g && !x.vg && (x.obs || x.fd || x.fi)), vg = D.find(x => x.g === g && x.vg);
+      if (!vs.length && !vg?.valor) return ''; return `<div class="stack" style="gap:8px"><span class="eyebrow">${gt}</span>${vs.map(x => `<div class="stack" style="gap:4px"><b class="small">${esc(x.nombre.split(' · ').pop())}</b>
+        ${x.fd || x.fi ? `<div class="fminis">${x.fd ? `<figure>${fotoMini(x.fd, x.nombre + ' derecho')}<figcaption>Derecho</figcaption></figure>` : ''}${x.fi ? `<figure>${fotoMini(x.fi, x.nombre + ' izquierdo')}<figcaption>Izquierdo</figcaption></figure>` : ''}</div>` : ''}${x.obs ? `<div class="small pre">${esc(x.obs)}</div>` : ''}</div>`).join('')}
+        ${vg?.valor ? `<div class="aprox stack" style="gap:4px"><span class="eyebrow">${esc(vg.nombre)}</span><div class="small pre">${esc(vg.valor)}</div></div>` : ''}</div>`; }).join('')}</div>`;
+  }
+  if (p.tipo === 'movilidad') return `<div class="stack" style="gap:8px">${ds.map(x => `<div class="row small" style="gap:10px;align-items:center">${x.foto ? fotoMini(x.foto, x.nombre) : ''}<span class="grow">${esc(x.nombre)}</span>${x.valor ? `<span class="pill ${x.valor === 'Favorable' ? 'ok' : x.valor === 'Desfavorable' ? 'warn' : ''}">${x.valor === 'Favorable' ? '✓ ' : x.valor === 'Desfavorable' ? '! ' : ''}${esc(x.valor)}</span>` : '<span class="muted">—</span>'}</div>`).join('')}</div>`;
   if (p.tipo === 'descompensacion') {
     return `<div class="stack" style="gap:12px">${ds.map(x => {
       const a = numDe(x.d), b = numDe(x.i), mx = Math.max(a || 0, b || 0) || 1, pc = difPct(x.d, x.i);
       const debil = pc ? (a < b ? 'derecho' : 'izquierdo') : null, col = pc == null ? 'var(--muted)' : pc >= 15 ? 'var(--bad)' : pc >= 8 ? 'var(--warn)' : 'var(--ok)';
       return `<div class="stack" style="gap:5px"><div class="row small"><b class="grow">${esc(x.nombre)}</b>${pc != null ? `<span class="pill" style="color:${col}">${pc} %${debil ? ' · más débil el lado ' + debil : ''}</span>` : ''}</div>
         <div class="lado"><span class="small muted">Dcha.</span><div class="track"><i style="width:${(a || 0) / mx * 100}%;background:var(--blue)"></i></div><b class="small num">${esc(x.d || '—')}</b></div>
-        <div class="lado"><span class="small muted">Izda.</span><div class="track"><i style="width:${(b || 0) / mx * 100}%;background:var(--gold)"></i></div><b class="small num">${esc(x.i || '—')}</b></div>${(() => { const y = ant && (ant.datos || []).find(z => z.nombre === x.nombre); if (!y || (!y.d && !y.i)) return ''; const dd = numDe(x.d) - numDe(y.d), di = numDe(x.i) - numDe(y.i), a0 = difPct(y.d, y.i); const f = n => isNaN(n) || !n ? '' : `<b style="color:var(--${n > 0 ? 'ok' : 'bad'})">${n > 0 ? '+' : ''}${fmtNum(n)}</b>`; return `<div class="small muted">Antes: dcha. ${esc(y.d || '—')} ${f(dd)} · izda. ${esc(y.i || '—')} ${f(di)}${a0 != null ? ' · diferencia ' + a0 + ' % → ' + (pc ?? '—') + ' %' : ''}</div>`; })()}</div>`;
+        <div class="lado"><span class="small muted">Izda.</span><div class="track"><i style="width:${(b || 0) / mx * 100}%;background:var(--gold)"></i></div><b class="small num">${esc(x.i || '—')}</b></div>${x.obs ? `<span class="small muted">⚙ ${esc(x.obs)}</span>` : ''}${(() => { const y = ant && (ant.datos || []).find(z => z.nombre === x.nombre); if (!y || (!y.d && !y.i)) return ''; const dd = numDe(x.d) - numDe(y.d), di = numDe(x.i) - numDe(y.i), a0 = difPct(y.d, y.i); const f = n => isNaN(n) || !n ? '' : `<b style="color:var(--${n > 0 ? 'ok' : 'bad'})">${n > 0 ? '+' : ''}${fmtNum(n)}</b>`; return `<div class="small muted">Antes: dcha. ${esc(y.d || '—')} ${f(dd)} · izda. ${esc(y.i || '—')} ${f(di)}${a0 != null ? ' · diferencia ' + a0 + ' % → ' + (pc ?? '—') + ' %' : ''}</div>`; })()}</div>`;
     }).join('')}<p class="note">Diferencia por encima del 15 %: desequilibrio a trabajar. Entre 8 y 15 %: a vigilar.</p></div>`;
   }
   const nums = ds.map(x => numDe(x.valor)), mx = Math.max(1, ...nums.filter(n => n != null)), barras = p.tipo === '1rm';
   return `<div class="stack" style="gap:8px">${ds.map((x, k) => {
     const prev = ant && (ant.datos || []).find(y => y.nombre === x.nombre), dv = prev && nums[k] != null && numDe(prev.valor) != null ? nums[k] - numDe(prev.valor) : null;
-    return `<div class="stack" style="gap:4px"><div class="row small"><span class="grow">${esc(x.nombre)}</span><b class="num">${esc(x.valor || '—')}</b>${dv ? `<span class="pill ${dv > 0 ? 'ok' : 'bad'} num">${dv > 0 ? '+' : ''}${fmtNum(dv)}</span>` : ''}</div>${barras && nums[k] != null ? `<div class="track"><i style="width:${nums[k] / mx * 100}%;background:var(--blue)"></i></div>` : ''}</div>`;
+    return `<div class="stack" style="gap:4px"><div class="row small"><span class="grow">${esc(x.nombre)}</span><b class="num">${esc(x.valor || '—')}</b>${dv ? `<span class="pill ${dv > 0 ? 'ok' : 'bad'} num">${dv > 0 ? '+' : ''}${fmtNum(dv)}</span>` : ''}</div>${barras && nums[k] != null ? `<div class="track"><i style="width:${nums[k] / mx * 100}%;background:var(--blue)"></i></div>` : ''}${x.obs ? `<span class="small muted">⚙ ${esc(x.obs)}</span>` : ''}</div>`;
   }).join('')}</div>`;
 }
 /* Resultados que el alumno ha ido añadiendo de esta prueba después de este informe (más reciente primero) */
@@ -6077,7 +6088,21 @@ function formValoracion(id) {
   });
   $('#v-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para borrar el test y sus pruebas'; return; } const { error } = await sb.from('valoraciones').delete().eq('id', v.id); if (error) return fallo(error); cerrarSheet(); S.valEd = null; toast('Test eliminado'); await cargarValoraciones(); });
 }
-const nuevaPruebaRow = (tipo, valId, orden) => { const t = PLANTILLAS[tipo] || PLANTILLAS.otra; return { valoracion_id: valId, alumno_id: S.ficha.id, orden, tipo, titulo: t.titulo, protocolo: t.protocolo || null, datos: t.datos.map(n => t.cols === 'di' ? { nombre: n, d: '', i: '' } : { nombre: n, valor: '' }) }; };
+const nuevaPruebaRow = (tipo, valId, orden) => { const t = PLANTILLAS[tipo] || PLANTILLAS.otra; return { valoracion_id: valId, alumno_id: S.ficha.id, orden, tipo, titulo: t.titulo, protocolo: t.protocolo || null, datos: t.cols === 'pisada' ? datosPisada([]) : t.datos.map(n => t.cols === 'di' ? { nombre: n, d: '', i: '' } : { nombre: n, valor: '' }) }; };
+/* Pisada y biomecánica en cinta: caminata 6 km/h y carrera 12 km/h × (frente, lateral, espaldas), con observación y foto derecha/izquierda,
+   más una valoración del coach para todo el caminar y otra para todo el correr. Convierte el formato antiguo (dos resultados) sin perder nada */
+const PISADA = [['caminata', 'Caminata · 6 km/h', /camin/i], ['carrera', 'Carrera · 12 km/h', /carrera|corr/i]], VISTAS = [['frente', 'De frente'], ['lateral', 'De lateral'], ['espaldas', 'De espaldas']];
+function datosPisada(ds) {
+  const out = [];
+  PISADA.forEach(([g, gt, re]) => {
+    VISTAS.forEach(([v, vt]) => { const x = (ds || []).find(y => y.g === g && y.vista === v) || {}; out.push({ nombre: `${gt} · ${vt}`, g, vista: v, obs: x.obs || '', fd: x.fd || null, fi: x.fi || null }); });
+    const vg = (ds || []).find(y => y.g === g && y.vg) || {}, viejo = !vg.valor && (ds || []).find(y => !y.g && re.test(y.nombre || '') && y.valor);
+    out.push({ nombre: `Valoración del coach · ${gt.split(' ·')[0].toLowerCase()}`, g, vg: true, valor: vg.valor || viejo?.valor || '' });
+  });
+  return out;
+}
+const fotosDato = x => ['foto', 'fd', 'fi'].map(k => x[k]).filter(Boolean);
+const OPC_MOV = ['Favorable', 'Desfavorable'];
 async function cargarValoraciones() {
   const { data, error } = await sb.from('valoraciones').select('*,pruebas(*)').eq('alumno_id', S.ficha.id).order('fecha', { ascending: false });
   S.ficha.val = ordenarValoraciones(data || []); S.ficha.valError = !!error;
@@ -6093,20 +6118,39 @@ async function crearPrueba(tipo, valId) {
   if (error) return fallo(error);
   cerrarSheet(); await cargarValoraciones(); formPrueba(data.id);
 }
-function filaDato(x, di) {
-  return `<div class="dato" data-dato style="display:grid;grid-template-columns:${di ? '1.4fr 1fr 1fr' : '1.4fr 1fr'} 32px;gap:6px;align-items:end">
+/* Hueco de foto dentro de una prueba: guarda la ruta actual y, si eliges otra, el archivo se sube al guardar */
+function slotFoto(campo, ruta, txt) {
+  if (ruta) pedirImgPrueba(ruta); const u = ruta && IMG_PRUEBA[ruta];
+  return `<div class="fslot" data-foto="${campo}" data-ruta="${esc(ruta || '')}"><div class="fslot-img">${u ? `<img src="${esc(u)}" alt="">` : ruta ? '<span class="small muted">Cargando…</span>' : '<span aria-hidden="true">📷</span>'}</div>
+    <span class="small">${esc(txt)}</span><label class="btn sm ghost"><input type="file" accept="image/*" hidden data-fsel>${ruta ? 'Cambiar' : 'Añadir foto'}</label>${ruta ? '<button type="button" class="linkbtn small" data-fdel>Quitar</button>' : ''}</div>`;
+}
+function filaDato(x, di, tipo) {
+  const obs = tipo === '1rm' || tipo === 'descompensacion' || di, mov = tipo === 'movilidad';
+  const opc = mov ? [...OPC_MOV, ...(x.valor && !OPC_MOV.includes(x.valor) ? [x.valor] : [])] : [];
+  return `<div class="dato" data-dato><div style="display:grid;grid-template-columns:${di ? '1.4fr 1fr 1fr' : '1.4fr 1fr'} 32px;gap:6px;align-items:end">
     <label class="f">Prueba<input type="text" data-k="nombre" value="${esc(x.nombre || '')}"></label>
-    ${di ? `<label class="f">Dcha.<input type="text" data-k="d" value="${esc(x.d || '')}" placeholder="kg"></label><label class="f">Izda.<input type="text" data-k="i" value="${esc(x.i || '')}" placeholder="kg"></label>` : `<label class="f">Resultado<input type="text" data-k="valor" value="${esc(x.valor || '')}"></label>`}
-    <button type="button" class="btn sm ghost" data-quitar aria-label="Quitar" style="padding:8px 0">✕</button></div>`;
+    ${di ? `<label class="f">Dcha.<input type="text" data-k="d" value="${esc(x.d || '')}" placeholder="kg"></label><label class="f">Izda.<input type="text" data-k="i" value="${esc(x.i || '')}" placeholder="kg"></label>`
+      : mov ? `<label class="f">Resultado<select data-k="valor"><option value="">—</option>${opc.map(o => `<option ${o === x.valor ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></label>`
+      : `<label class="f">Resultado<input type="text" data-k="valor" value="${esc(x.valor || '')}"></label>`}
+    <button type="button" class="btn sm ghost" data-quitar aria-label="Quitar" style="padding:8px 0">✕</button></div>
+    ${obs ? `<label class="f" style="margin-top:6px">Ajustes de máquina u observaciones<input type="text" data-k="obs" value="${esc(x.obs || '')}" placeholder="Ej. asiento 4, respaldo 2 · compensa con la espalda"></label>` : ''}
+    ${mov ? `<div class="fslots" style="margin-top:6px">${slotFoto('foto', x.foto, 'Foto de la prueba')}</div>` : ''}</div>`;
+}
+function filasPisada(ds) {
+  return PISADA.map(([g, gt]) => `<div class="card stack" style="padding:12px;gap:10px"><b>${gt}</b>
+    ${ds.filter(x => x.g === g && !x.vg).map(x => `<div class="dato stack" data-dato data-g="${g}" data-vista="${x.vista}" data-nombre="${esc(x.nombre)}" style="gap:6px;padding-top:8px;border-top:1px solid var(--line)"><span class="small"><b>${esc(x.nombre.split(' · ').pop())}</b></span>
+      <div class="fslots">${slotFoto('fd', x.fd, 'Derecho')}${slotFoto('fi', x.fi, 'Izquierdo')}</div>
+      <label class="f">Observaciones<textarea data-k="obs" rows="2" placeholder="Apoyo, rodillas, cadera, braceo…">${esc(x.obs || '')}</textarea></label></div>`).join('')}
+    ${ds.filter(x => x.g === g && x.vg).map(x => `<div data-dato data-g="${g}" data-vg="1" data-nombre="${esc(x.nombre)}"><label class="f">${esc(x.nombre)}<textarea data-k="valor" rows="3">${esc(x.valor || '')}</textarea></label></div>`).join('')}</div>`).join('');
 }
 function formPrueba(id) {
   const p = S.ficha.val.flatMap(v => v.pruebas || []).find(x => x.id === id); if (!p) return;
-  const di = p.tipo === 'descompensacion';
+  const di = p.tipo === 'descompensacion', pis = p.tipo === 'carrera', dsP = pis ? datosPisada(p.datos) : null;
   abrirSheet(`<form class="stack" id="f-pr"><h2>Editar prueba</h2>
     <label class="f">Título<input type="text" id="p-t" value="${esc(p.titulo)}"></label>
     ${p.tipo === 'fc' ? `<div class="row" style="gap:8px;align-items:end"><label class="f grow">Edad<input type="number" id="p-edad" min="10" max="90" placeholder="Ej. 38"></label><button type="button" class="btn sm" id="p-calc">Calcular zonas</button></div>` : ''}
-    <div class="stack" id="p-datos" style="gap:8px">${(p.datos || []).map(x => filaDato(x, di)).join('')}</div>
-    <button type="button" class="btn sm ghost" id="p-add" style="align-self:flex-start">＋ Añadir resultado</button>
+    <div class="stack" id="p-datos" style="gap:8px">${pis ? filasPisada(dsP) : (p.datos || []).map(x => filaDato(x, di, p.tipo)).join('')}</div>
+    ${pis ? '' : '<button type="button" class="btn sm ghost" id="p-add" style="align-self:flex-start">＋ Añadir resultado</button>'}
     <label class="f">Valoración del coach<textarea id="p-v" rows="5">${esc(p.valoracion || '')}</textarea></label>
     <label class="f">Foco de trabajo<textarea id="p-f" rows="4">${esc(p.foco || '')}</textarea></label>
     <label class="f">Cómo se hace la prueba<textarea id="p-pr" rows="5">${esc(p.protocolo || '')}</textarea></label>
@@ -6118,7 +6162,11 @@ function formPrueba(id) {
     <p class="err" id="p-err"></p><button class="btn full" type="submit" id="p-b">Guardar</button><button class="btn ghost full" type="button" id="p-del" style="color:var(--bad)">Eliminar prueba</button></form>`);
   const cont = $('#p-datos');
   cont.addEventListener('click', ev => { const q = ev.target.closest('[data-quitar]'); if (q) q.closest('[data-dato]').remove(); });
-  $('#p-add').addEventListener('click', () => cont.insertAdjacentHTML('beforeend', filaDato({}, di)));
+  $('#p-add')?.addEventListener('click', () => cont.insertAdjacentHTML('beforeend', filaDato({}, di, p.tipo)));
+  /* Fotos por prueba: vista previa al elegirla; se sube al guardar */
+  cont.addEventListener('change', ev => { const i = ev.target.closest('[data-fsel]'); if (!i || !i.files[0]) return; const sl = i.closest('[data-foto]'); sl._file = i.files[0]; sl.dataset.del = '';
+    sl.querySelector('.fslot-img').innerHTML = `<img src="${esc(URL.createObjectURL(i.files[0]))}" alt="">`; });
+  cont.addEventListener('click', ev => { const d = ev.target.closest('[data-fdel]'); if (!d) return; const sl = d.closest('[data-foto]'); sl.dataset.del = '1'; sl._file = null; sl.querySelector('.fslot-img').innerHTML = '<span aria-hidden="true">📷</span>'; d.remove(); });
   $('#p-imgf').addEventListener('change', ev => { const f = ev.target.files[0]; if (!f) return; $('#p-img').innerHTML = `<div class="prueba-img"><img src="${esc(URL.createObjectURL(f))}" alt=""><span>Se guarda al pulsar Guardar</span></div>`; $('#p-imgl').textContent = '📷 Cambiar la imagen'; if ($('#p-imgq')) $('#p-imgq').checked = false; });
   if (p.tipo === 'ritmos') ritmosEnVivo(cont, () => [...cont.querySelectorAll('[data-dato]')].map(r => ({ nombre: r.querySelector('[data-k="nombre"]')?.value || '', input: r.querySelector('[data-k="valor"]') })).filter(x => x.input));
   $('#p-calc')?.addEventListener('click', () => {
@@ -6128,9 +6176,26 @@ function formPrueba(id) {
   });
   $('#f-pr').addEventListener('submit', async ev => {
     ev.preventDefault();
-    const datos = completarRitmos(p.tipo, [...cont.querySelectorAll('[data-dato]')].map(r => Object.fromEntries([...r.querySelectorAll('[data-k]')].map(i => [i.dataset.k, i.value.trim()]))).filter(x => x.nombre));
     const v = k => $(k).value.trim() || null, btn = $('#p-b'), mal = t => { btn.disabled = false; btn.textContent = 'Guardar'; $('#p-err').textContent = t; };
     btn.disabled = true; btn.textContent = 'Guardando…';
+    const filasF = [...cont.querySelectorAll('[data-dato]')], quitar = [];
+    let datos;
+    try {
+      datos = [];
+      for (const [k, r] of filasF.entries()) {
+        const x = Object.fromEntries([...r.querySelectorAll('[data-k]')].map(i => [i.dataset.k, i.value.trim()]));
+        if (r.dataset.g) Object.assign(x, { nombre: r.dataset.nombre, g: r.dataset.g }, r.dataset.vista ? { vista: r.dataset.vista } : {}, r.dataset.vg ? { vg: true } : {});
+        for (const sl of r.querySelectorAll('[data-foto]')) {
+          const campo = sl.dataset.foto, viejo = sl.dataset.ruta || null;
+          if (sl._file) { const blob = await reducirImagen(sl._file, 1400), ruta = `${p.alumno_id || S.ficha.id}/prueba-${p.id}-${k}-${campo}-${Date.now().toString(36)}.jpg`;
+            const up = await sb.storage.from('planificacion').upload(ruta, blob, { contentType: 'image/jpeg' }); if (up.error) throw up.error; x[campo] = ruta; if (viejo) quitar.push(viejo); }
+          else if (sl.dataset.del === '1') { x[campo] = null; if (viejo) quitar.push(viejo); }
+          else x[campo] = viejo;
+        }
+        if (x.nombre) datos.push(x);
+      }
+    } catch (err) { console.error(err); return mal('No se ha podido subir una foto. ' + (/bucket|row-level|security/i.test(err.message || '') ? 'Revisa los permisos de Supabase (Bloque 17 y 40).' : 'Prueba con otra foto o revisa la conexión.')); }
+    datos = completarRitmos(p.tipo, datos);
     const cambios = { titulo: v('#p-t') || p.titulo, datos, valoracion: v('#p-v'), foco: v('#p-f'), protocolo: v('#p-pr'), video_url: v('#p-vi') };
     const fi = $('#p-imgf').files[0];
     if (fi) {
@@ -6143,6 +6208,7 @@ function formPrueba(id) {
     const { error } = await sb.from('pruebas').update(cambios).eq('id', p.id);
     if (error) { console.error(error); return mal(/imagen_url/.test(error.message || '') ? 'Falta ejecutar el Bloque 40 en Supabase para guardar la imagen resumen.' : 'No se ha podido guardar. Revisa la conexión.'); }
     if (p.imagen_url && (fi || $('#p-imgq')?.checked)) sb.storage.from('planificacion').remove([p.imagen_url]);
+    if (quitar.length) sb.storage.from('planificacion').remove(quitar);
     cerrarSheet(); toast('Prueba guardada'); await cargarValoraciones();
   });
   $('#p-del').addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para borrarla'; return; } const { error } = await sb.from('pruebas').delete().eq('id', p.id); if (error) return fallo(error); cerrarSheet(); toast('Prueba eliminada'); await cargarValoraciones(); });
@@ -6899,7 +6965,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v252';
+const APP_VER = 'v253';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
