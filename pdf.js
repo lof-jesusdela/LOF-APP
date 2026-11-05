@@ -212,11 +212,55 @@ const PDF = (() => {
     return generar(html, limpio(`${nombre || 'Alumno'} - contextos`), { btn });
   }
 
+  /* ---------- Resumen de cierre del bono: sesiones, progreso de cargas, composición y cómo seguir ---------- */
+  async function cierreBono(aid, btn) {
+    const coach = S.modo === 'coach' && !S.vista && aid;
+    const id = coach ? aid : S.d?.uid, perfil = coach ? S.c.perfiles.find(p => p.id === aid) || {} : S.perfil || {};
+    const srv = coach ? (S.ficha?.id === aid ? S.ficha.srv : null) || srvDe(aid) : S.d?.servicio;
+    const lista = coach ? (S.c.presenciales || []).filter(p => p.alumno_id === aid) : S.d?.presenciales || [];
+    const meds = (coach ? (S.ficha?.id === aid ? S.ficha.med : null) : S.d?.mediciones) || [];
+    if (!srv) return toast('No encuentro su bono');
+    const d = datosPres(srv, lista), fechas = d.hechas.map(p => p.fecha).filter(Boolean).sort();
+    const ini = srv.inicio && (!fechas[0] || srv.inicio < fechas[0]) ? srv.inicio : fechas[0] || srv.inicio, fin = fechas[fechas.length - 1] || hoyISO();
+    const txt0 = btn?.textContent; if (btn) { btn.disabled = true; btn.textContent = 'Preparando…'; }
+    let filas = [];
+    try {
+      let r = await sb.from('registros_series').select('kg,repeticiones,creado_at,ejercicio_nombre,ejercicios_sesion(nombre,ejercicios(nombre))').eq('alumno_id', id).gte('creado_at', sumaDias(ini || fin, -1)).lte('creado_at', sumaDias(fin, 2)).limit(5000);
+      for (const sel of ['kg,repeticiones,creado_at,ejercicio_nombre,ejercicios_sesion(ejercicios(nombre))', 'kg,repeticiones,creado_at,ejercicios_sesion(ejercicios(nombre))']) if (r.error) r = await sb.from('registros_series').select(sel).eq('alumno_id', id).gte('creado_at', sumaDias(ini || fin, -1)).lte('creado_at', sumaDias(fin, 2)).limit(5000);
+      filas = r.data || [];
+    } catch (e) { console.warn('Series del resumen', e); }
+    if (btn) { btn.disabled = false; btn.textContent = txt0; }
+    /* Progreso por ejercicio: mejor serie del primer día frente a la mejor de todo el bono */
+    const por = {};
+    filas.forEach(x => { const n = x.ejercicio_nombre || x.ejercicios_sesion?.ejercicios?.nombre || x.ejercicios_sesion?.nombre; const kg = +x.kg || 0, rep = +x.repeticiones || 0; if (!n || !rep) return;
+      const f = String(x.creado_at || '').slice(0, 10); (por[n] ||= []).push({ f, kg, rep }); });
+    const mejor = l => l.reduce((a, b) => b.kg > a.kg || (b.kg === a.kg && b.rep > a.rep) ? b : a);
+    const ejs = Object.entries(por).map(([n, l]) => { const dias = [...new Set(l.map(x => x.f))].sort(), pr = mejor(l.filter(x => x.f === dias[0])), top = mejor(l);
+      return { n, dias: dias.length, pr, top, vol: l.reduce((a, x) => a + x.kg * x.rep, 0), reps: l.reduce((a, x) => a + x.rep, 0) }; })
+      .sort((a, b) => b.dias - a.dias || b.vol - a.vol);
+    const marca = x => x.kg ? `${fmtNum(x.kg)} kg × ${x.rep}` : `${x.rep} reps`;
+    const cambio = e => { if (e.dias < 2) return '—'; if (e.pr.kg && e.top.kg > e.pr.kg) return `<b style="color:#1E9A5E">+${fmtNum(e.top.kg - e.pr.kg)} kg (+${Math.round((e.top.kg / e.pr.kg - 1) * 100)} %)</b>`; if (!e.pr.kg && !e.top.kg && e.top.rep > e.pr.rep) return `<b style="color:#1E9A5E">+${e.top.rep - e.pr.rep} reps</b>`; if (e.top.kg === e.pr.kg && e.top.rep > e.pr.rep) return `<b style="color:#1E9A5E">+${e.top.rep - e.pr.rep} reps</b>`; return 'mantenido'; };
+    const volTot = ejs.reduce((a, e) => a + e.vol, 0), mejoran = ejs.filter(e => /\+/.test(cambio(e))).length;
+    /* Composición corporal en el periodo del bono */
+    const mm = meds.filter(m => !m.es_objetivo && m.fecha >= sumaDias(ini || fin, -21) && m.fecha <= sumaDias(fin, 21)).sort((a, b) => a.fecha.localeCompare(b.fecha)), m0 = mm[0], m1 = mm[mm.length - 1];
+    const fil = (l, k, u) => m0?.[k] != null ? `<tr><td>${l}</td><td>${n1(m0[k], u)}</td>${mm.length > 1 ? `<td>${n1(m1[k], u)}</td><td>${m1[k] != null ? `${+m1[k] - +m0[k] > 0 ? '+' : ''}${fmtNum(+m1[k] - +m0[k])}${u}` : '—'}</td>` : ''}</tr>` : '';
+    let n = 0, h = cabecera('Resumen de tu bono', perfil.nombre || '', [srv.producto, ini && `${fCorta(ini)} ${fecha(ini).getFullYear()} – ${fCorta(fin)} ${fecha(fin).getFullYear()}`].filter(Boolean).join('  |  '));
+    h += `<div class="pd-keep pd-val pd-res"><h4>¡Bono completado!</h4><p>Has completado tus ${d.total} sesiones de entrenamiento personal. Este es el resumen de tu trabajo: lo que has entrenado, cómo has progresado y cómo puedes seguir avanzando.</p></div>`;
+    h += seccion(++n, 'Tus sesiones') + `<div class="pd-grid3"><div class="pd-card pd-kpi"><span>Sesiones</span><b>${d.hechas.length}</b></div><div class="pd-card pd-kpi"><span>Ejercicios distintos</span><b>${ejs.length || '—'}</b></div><div class="pd-card pd-kpi"><span>Kilos movidos</span><b>${volTot ? fmtNum(Math.round(volTot), 0) + ' kg' : '—'}</b></div></div>`
+      + (fechas.length ? `<div class="pd-card"><h4>Fechas</h4><p style="margin:0;line-height:1.7">${fechas.map(f => fCorta(f)).join(' · ')}</p></div>` : '');
+    if (ejs.length) h += seccion(++n, 'Tu progreso en fuerza') + `<div class="pd-card"><table class="pd-tab"><tr><th>Ejercicio</th><th>Primer día</th><th>Tu mejor marca</th><th>Cambio</th></tr>${ejs.slice(0, 16).map(e => `<tr><td>${esc(e.n)}</td><td>${marca(e.pr)}</td><td><b>${marca(e.top)}</b></td><td>${cambio(e)}</td></tr>`).join('')}</table>${mejoran ? `<p class="pd-mini" style="margin-top:8px"><b>Has mejorado en ${mejoran} ejercicio${mejoran === 1 ? '' : 's'}.</b></p>` : ''}</div>`;
+    if (m0) h += seccion(++n, mm.length > 1 ? 'Composición corporal · evolución' : 'Composición corporal') + `<div class="pd-card"><table class="pd-tab"><tr><th>Medida</th><th>${fCorta(m0.fecha)}</th>${mm.length > 1 ? `<th>${fCorta(m1.fecha)}</th><th>Cambio</th>` : ''}</tr>${fil('Peso', 'peso', ' kg')}${fil('% grasa', 'grasa_pct', ' %')}${fil('Cintura', 'cintura', ' cm')}${fil('Cadera', 'cadera', ' cm')}</table></div>`;
+    h += seccion(++n, 'Para que no se pierda lo conseguido') + `<div class="pd-card"><p style="margin:0 0 8px">Lo que has ganado en estas sesiones se mantiene si sigues entrenando con constancia: <b>2 o 3 días por semana</b>, con los ejercicios que ya dominas y subiendo poco a poco el peso o las repeticiones cuando la última serie te resulte cómoda.</p><p style="margin:0">Si paras más de 3 o 4 semanas, al volver empieza con algo menos de peso que tus mejores marcas.</p></div>`;
+    h += seccion(++n, '¿Cómo seguimos?') + `<div class="pd-grid3"><div class="pd-card"><h4>Ruta Integral</h4><p class="pd-mini">Entrenamiento, alimentación y seguimiento mensual conmigo, con entrenamientos personales incluidos.</p></div><div class="pd-card"><h4>Entrenamiento online</h4><p class="pd-mini">Tu programa en la app, ajustado a ti, para entrenar por tu cuenta con mi supervisión.</p></div><div class="pd-card"><h4>Renovar el bono</h4><p class="pd-mini">Más sesiones de entrenamiento personal conmigo.</p></div></div>`
+      + `<div class="pd-keep pd-foco"><p style="margin:0">Escríbeme y vemos juntos qué opción encaja contigo. <b>Jesús de la Obra · La Obra Fitness</b></p></div>`;
+    return generar(`<div class="pd-doc">${h}</div>`, limpio(`${perfil.nombre || 'Alumno'} - resumen bono`), { btn });
+  }
+
   /* ---------- Factura: se exporta el documento tal cual se ve ---------- */
   function factura(f, btn) {
     const el = document.querySelector('.factura-doc'); if (!el) return toast('Abre la factura para descargarla');
     return generar(el, limpio(`Factura ${f?.numero || ''} ${f?.cliente_nombre || ''}`), { pie: false, btn });
   }
 
-  return { generar, valoracion, temperamento, factura, contextos, htmlValoracion, ctxValoracion };
+  return { generar, valoracion, temperamento, factura, contextos, cierreBono, htmlValoracion, ctxValoracion };
 })();

@@ -386,7 +386,8 @@ async function cargarAlumno(uid) {
 
 /* ---------- Render principal ---------- */
 function tabsAlumno() {
-  const s = S.d.servicio || {};
+  const s = S.d.servicio || {}, ci = cierreAlumno();
+  if (ci) return ci.cerrado ? [['hoy', 'Inicio']] : [['hoy', 'Inicio'], ['progreso', 'Progreso'], ['coach', 'Tu coach']];
   return [['hoy', 'Hoy'], (s.modulo_entreno ?? true) && ['entreno', 'Entreno'], s.modulo_nutricion && ['nutri', 'Nutrición'], s.modulo_habitos && ['habitos', 'Hábitos'], ['progreso', 'Progreso'], ['coach', 'Tu coach']].filter(Boolean);
 }
 
@@ -433,7 +434,7 @@ function render() {
   if (S.tab === 'tests') S.tab = 'progreso';   // los tests viven ahora dentro de Progreso
   if (S.tab === 'checkin') S.tab = 'hoy';       // el check-in vive ahora al final de Hoy
   const tabs = coach ? [['inicio', 'Tu día'], ['alumnos', 'Alumnos'], ['plantillas', 'Plantillas'], ['ejercicios', 'Ejercicios'], ['pagos', 'Economía']] : tabsAlumno();
-  const actual = coach ? S.ctab : S.tab;
+  const actual = coach ? S.ctab : (cierreAlumno() && !tabs.some(t => t[0] === S.tab) ? 'hoy' : S.tab);
   const esCoach = S.perfil.rol === 'coach';
   const vistas = { hoy: vHoy, entreno: vEntreno, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, tests: vProgreso, coach: Acomp.vTuCoach, inicio: Negocio.vInicio, habitos: Habitos.vista, alumnos: vAlumnos, pagos: vEconomiaTabs, ejercicios: vEjercicios, plantillas: vPlantillas };
   $('#app').innerHTML = `<header class="top">
@@ -949,6 +950,7 @@ function esWeekCard() {
   return `<section class="section"><h2>Esta semana</h2><div class="card stack" style="gap:8px"><div class="small muted">Tu semana con tu equipo · del ${esc(fCorta(sumaDias(sw.fecha, 1)))} al ${esc(fCorta(sumaDias(sw.fecha, 7)))}</div>${sw.datos.texto ? `<div class="pre small">${esc(sw.datos.texto)}</div>` : ''}${rs.map(r => /\.pdf$/i.test(r) ? `<button class="pill blue" data-act="verGps" data-r="${esc(r)}">📎 Ver planificación (PDF)</button>` : SEMIMG[r] ? `<img src="${esc(SEMIMG[r])}" alt="Semana con tu equipo" style="width:100%;border-radius:12px" data-act="verGps" data-r="${esc(r)}">` : '<div class="small muted">Cargando…</div>').join('')}</div></section>`;
 }
 function vHoy() {
+  { const ci = cierreAlumno(); if (ci) return vCierreBono(ci); }
   const s = S.d.servicio || {}, p = S.d.programa, hoy = hoyISO();
   const d = diaDeHoy(), prox = proximoDia();
   const r = S.d.diario.find(x => x.fecha === hoy) || {};
@@ -2100,7 +2102,7 @@ async function cargarCoach() {
   { const t = await sb.from('tareas_coach').select('*').is('hecha_at', null); S.c.tareas = t.error ? null : (t.data || []); }
   S.c.facturas = fa.data || []; S.c.facturasError = !!fa.error; S.c.fiscal = Object.fromEntries((ap.data || []).map(x => [x.clave, x.valor]));
   Tarifas.cargar(S.c.fiscal.tarifas || {});  /* precios y servicios que has cambiado en Economía → Programas */
-  calAuto(20);
+  calAuto(20); setTimeout(() => archivarBonosCerrados().catch(e => console.warn(e)), 1500);
 }
 /* ---------- Agenda de sesiones presenciales (la app manda; Google Calendar las recibe) ---------- */
 const durSesion = () => Math.max(15, Math.min(240, parseInt(S.c?.fiscal?.agenda_min) || 60));
@@ -2291,7 +2293,7 @@ function estadoAlumno(a) {
   const mes = new Set(ses.filter(s => s.fecha >= sumaDias(hoy, -27)).map(s => s.fecha + s.dia_id)).size;
   const seg = conSeguimiento(srv);
   const control = !seg ? null : revisionPendiente(srv, (c.revisiones || []).filter(r => r.alumno_id === a.id), c.revisionesErr) || (c.revisionesErr ? controlEnSemana(srv, lunes) : null);
-  { const bn = bonoDe(a.id, srv); if (bn && bn.total) { const usadas = bn.hechas.length; if (usadas >= bn.total && !bn.prox.length) { sube('warn'); motivos.push(`Bono agotado: ha usado las ${bn.total} sesiones`); } else if (bn.quedan <= 2 && usadas > 0) { sube('warn'); motivos.push(`Le ${bn.quedan === 1 ? 'queda 1 sesión' : `quedan ${bn.quedan} sesiones`} del bono (de ${bn.total})`); } } }
+  { const bn = bonoDe(a.id, srv); if (bn && bn.total) { const usadas = bn.hechas.length; if (usadas >= bn.total && !bn.prox.length) { sube('warn'); const ci = cierreBono(srv, S.c.presenciales.filter(p => p.alumno_id === a.id)); motivos.push(`Bono agotado: ha usado las ${bn.total} sesiones${ci ? ` · tiene su resumen y la oferta en la app; se archiva el ${fCorta(ci.limite)}` : ''}`); } else if (bn.quedan <= 2 && usadas > 0) { sube('warn'); motivos.push(`Le ${bn.quedan === 1 ? 'queda 1 sesión' : `quedan ${bn.quedan} sesiones`} del bono (de ${bn.total})`); } } }
   if (control?.atrasada && !pausa) { sube('warn'); motivos.push(`Revisión mensual ${control.n} pendiente desde el ${fCorta(control.fecha)}`); }
   const st = Alertas.de(a.id), items = esFamilia(a.id) ? [] : motivos.map((m, i) => ({ m, n: niveles[i], k: Alertas.clave(m), t: tipoAlerta(m) })).filter(x => (seg || ['pago', 'bono'].includes(x.t)) && Alertas.activa(a.id, x.m)).map(x => ({ ...x, ok: st.resueltas.includes(x.k), nueva: !st.vistas.includes(x.k) }));
   const pend = items.filter(x => !x.ok);
@@ -2336,7 +2338,9 @@ function vAntiguos() {
 }
 async function cambiarArchivo(id, activo) {
   if (!activo && !confirm('¿Pasar a antiguos alumnos? Dejará de aparecer en tus avisos y listados. Sus datos se conservan y podrá seguir usando la app.')) return;
-  const { error } = await sb.from('perfiles').update({ activo }).eq('id', id); if (error) return fallo(error);
+  let { error } = await sb.from('perfiles').update(activo ? { activo, acceso_pausado: false } : { activo }).eq('id', id);
+  if (error && activo && /acceso_pausado/.test(error.message || '')) ({ error } = await sb.from('perfiles').update({ activo }).eq('id', id));
+  if (error) return fallo(error);
   toast(activo ? 'Alumno reactivado' : 'Pasado a antiguos alumnos');
   await cargarCoach(); render();
 }
@@ -2372,6 +2376,44 @@ function modalidadDe(id) {
 function bonoDe(aid, srv) {
   if (!srv?.sesiones_incluidas || !S.c?.presenciales) return null;
   return datosPres(srv, S.c.presenciales.filter(p => p.alumno_id === aid));
+}
+/* Cierre del bono: un bono sin seguimiento ni alimentación que ya ha usado todas sus sesiones.
+   La app del alumno pasa a modo cierre (resumen en PDF + cómo seguir) durante DIAS_CIERRE días; después se archiva solo */
+const DIAS_CIERRE = 30;
+function cierreBono(srv, lista) {
+  if (!srv || !esBono(srv) || conSeguimiento(srv) || srv.modulo_nutricion || srv.tarifa === 'familia') return null;
+  const d = datosPres(srv, lista || []); if (!d.total || d.hechas.length < d.total || d.prox.length) return null;
+  const fin = d.hechas.map(p => p.fecha).filter(Boolean).sort().pop() || srv.inicio || hoyISO();
+  const dias = Math.max(0, Math.round((fecha(hoyISO()) - fecha(fin)) / 864e5)), limite = sumaDias(fin, DIAS_CIERRE);
+  return { fin, dias, limite, quedan: Math.max(0, DIAS_CIERRE - dias), cerrado: dias > DIAS_CIERRE, total: d.total, hechas: d.hechas.length };
+}
+const cierreAlumno = () => S.modo !== 'coach' || S.vista ? cierreBono(S.d?.servicio, S.d?.presenciales) : null;
+const cierreDe = aid => cierreBono(srvDe(aid), (S.c?.presenciales || []).filter(p => p.alumno_id === aid));
+/* Al abrir el panel: los bonos cerrados hace más de DIAS_CIERRE días pasan a antiguos alumnos y se les retira el acceso */
+async function archivarBonosCerrados() {
+  if (S._archBonos) return; S._archBonos = true;
+  const ids = S.c.perfiles.filter(p => esCliente(p) && cierreDe(p.id)?.cerrado).map(p => p.id); if (!ids.length) return;
+  let { error } = await sb.from('perfiles').update({ activo: false, acceso_pausado: true }).in('id', ids);
+  if (error && /acceso_pausado/.test(error.message || '')) ({ error } = await sb.from('perfiles').update({ activo: false }).in('id', ids));
+  if (error) return console.warn('Archivado de bonos', error);
+  S.c.perfiles.forEach(p => { if (ids.includes(p.id)) { p.activo = false; p.acceso_pausado = true; } });
+  toast(`${ids.length} alumno${ids.length === 1 ? '' : 's'} de bono terminado${ids.length === 1 ? '' : 's'} pasa${ids.length === 1 ? '' : 'n'} a antiguos alumnos`); render();
+}
+/* Lo que ve el alumno al terminar el bono: su resumen y cómo seguir */
+function vCierreBono(c) {
+  const nom = (S.perfil.nombre || '').split(' ')[0], wa = t => esc(waJesus(`Hola Jesús, soy ${nom}. He terminado mi bono y ${t}`));
+  const op = (ico, t, d, txt) => `<a class="line" href="${wa(txt)}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit"><div class="ico gold">${ico}</div><div class="grow"><h3>${t}</h3><div class="small muted">${d}</div></div><span class="small" style="color:var(--blue-text)">Me interesa ›</span></a>`;
+  return `<section class="card hero stack">
+    <span class="eyebrow">Bono completado</span><h1 style="margin:0">¡Enhorabuena, ${esc(nom)}! 🎉</h1>
+    <p class="frase-hoy">Has completado tus ${c.total} sesiones. Aquí tienes tu resumen: lo que has entrenado y cómo has progresado.</p>
+    <button class="btn gold full" data-act="pdfCierre">📄 Descargar mi resumen (PDF)</button>
+  </section>
+  <section class="section"><h2>¿Cómo seguimos?</h2><div class="card">
+    ${op('🧭', 'Ruta Integral', 'Entrenamiento, alimentación y seguimiento conmigo cada mes, con entrenamientos personales incluidos.', 'me interesa la Ruta Integral.')}
+    ${op('📱', 'Entrenamiento online', 'Tu programa en la app, ajustado a ti, para entrenar por tu cuenta con mi supervisión.', 'me interesa el entrenamiento online.')}
+    ${op('🏋️', 'Renovar el bono', 'Más sesiones de entrenamiento personal conmigo.', 'quiero renovar el bono.')}
+  </div></section>
+  <section class="section"><div class="aprox small"><span>${c.cerrado ? `Tu acceso a la app terminó el ${esc(fCorta(c.limite))}. Guarda tu resumen y escríbeme cuando quieras volver.` : `Tu app sigue disponible hasta el <b>${esc(fCorta(c.limite))}</b>. Descarga antes tu resumen para tenerlo siempre.`}</span></div></section>`;
 }
 function coincideAl(d) {
   const f = S.alF, q = normaliza(f.q);
@@ -3625,6 +3667,7 @@ function vFicha() {
     ${P ? `<div class="track gordo"><i style="width:${P.pctTotal}%"></i></div><div class="row small muted"><span class="grow">${P.antes ? 'Empieza' : 'Inicio'} ${esc(fF(srv.inicio))}${!P.antes && !P.fuera ? ` · semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''}</span>${P.sinFin ? '' : `<span>Final ${esc(fF(P.ciclos[P.ciclos.length - 1].fin))}</span>`}</div>` : '<p class="small muted">Pon la fecha de inicio y la duración en "Editar".</p>'}
     ${extensionesDe(srv).length ? `<div class="small row" style="flex-wrap:wrap;gap:6px">${extensionesDe(srv).map((x, i) => `<button class="pill gold" data-act="extEditar" data-i="${i}" title="Editar ampliación">${esc(x.nombre || 'Extensión')} · ${x.tipo === 'bono' ? `${x.sesiones} sesiones · ${esc(fCorta(x.fecha))}` : `${x.semanas} sem${x.sesiones ? ` · ${x.sesiones} personales` : ''} · desde ${esc(fCorta(x.desde))}`} ✎</button>`).join('')}</div>` : ''}
     ${srv?.inicio ? `<div class="small row" style="flex-wrap:wrap;gap:6px;align-items:center">${pausasDe(srv).map((p, i) => `<button class="pill blue" ${p.enCurso ? 'data-act="estadoAl"' : `data-act="pausaEditar" data-i="${(srv.pausas || []).findIndex(q => q.desde === p.desde)}"`} title="${p.enCurso ? 'Pausa en curso' : 'Editar pausa'}">⏸ ${esc(fCorta(p.desde))} – ${esc(fCorta(p.hasta))} · ${Math.round(diasPausa(p) / 7 * 10) / 10} sem ✎</button>`).join('')}<button class="linkbtn small" data-act="pausaEditar" data-i="-1">＋ Pausa pasada</button>${pausasDe(srv).length ? `<span class="muted">Las pausas alargan su proceso: termina el ${esc(fCorta(finProceso(proceso(srv)) || ''))}.</span>` : ''}</div>` : ''}
+    ${(() => { const ci = srv && cierreDe(a.id); return ci ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>Bono terminado el ${esc(fCorta(ci.fin))}.</b> Su app muestra su resumen y cómo seguir; ${a.activo === false ? 'ya está archivado.' : `pasa a antiguos alumnos y pierde el acceso el ${esc(fCorta(ci.limite))}. Si renueva o cambia de programa, se reactiva solo al guardar su servicio.`}</div><button class="btn sm" data-act="pdfCierre" data-id="${a.id}">📄 Resumen PDF</button></div>` : ''; })()}
     ${srv ? (() => { const h = Array.isArray(srv.historial) ? srv.historial : []; return `<div class="small row" style="flex-wrap:wrap;gap:6px;align-items:center">${h.map((x, i) => `<button class="pill" data-act="histEditar" data-i="${i}" title="Editar programa anterior">Antes: ${esc(x.producto || x.linea || 'Programa')} · ${esc(fCorta(x.desde))}–${esc(fCorta(x.hasta))} ✎</button>`).join('')}<button class="linkbtn small" data-act="histEditar" data-i="-1">＋ Programa anterior</button></div>`; })() : ''}
     ${(() => { const af = avisoFin(srv); return af ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>${af.terminado ? `Su proceso terminó el ${esc(fCorta(af.fin))}` : `Le quedan ${af.dias} días de proceso`}</b> (final ${esc(fF(af.fin))}). Si sigue contigo, añádele una extensión: continúa con sus bloques y su historial.</div><button class="btn sm gold" data-act="extension">＋ Añadir extensión</button></div>` : srv?.inicio ? '<button class="linkbtn small" data-act="extension" style="align-self:flex-start">＋ Añadir extensión del proceso</button>' : ''; })()}
     ${e.control ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>Toca su revisión mensual ${e.control.n}</b> (${esc(fCorta(e.control.fecha))}): llamada o videollamada de 10-15 minutos para ver cómo se siente, sus objetivos y su composición corporal.</div><button class="btn sm gold" data-act="revision" data-n="${e.control.n}">Registrar revisión</button></div>` : ''}
@@ -4349,7 +4392,8 @@ function formServicio() {
     if (error && /tarifa|forma_pago|sesiones_previas/.test(error.message || '')) { Object.keys(extra88).forEach(k => delete row[k]); ({ error } = await guardar(row)); if (!error) toast('Guardado sin tarifa ni sesiones previas: falta ejecutar el Bloque 88 en Supabase'); }
     if (error && vals && /valoracion_/.test(error.message || '')) { Object.keys(vals).forEach(k => delete row[k]); ({ error } = await guardar(row)); if (!error) toast('Guardado sin las valoraciones: falta ejecutar el Bloque 87 en Supabase'); }
     if (error && tipo && /modalidad|meses|pt_frecuencia|seguimiento/.test(error.message || '')) { Object.keys(tipo).forEach(k => delete row[k]); ({ error } = await guardar(row)); if (!error) toast('Guardado sin el tipo de programa: falta ejecutar el Bloque 86 en Supabase'); }
-    if (!error && !s.id) await sb.from('perfiles').update({ activo: true }).eq('id', S.ficha.id);
+    if (!error) { const pf = S.c.perfiles.find(p => p.id === S.ficha.id) || {};
+      if (!s.id || pf.activo === false || pf.acceso_pausado) { const r = await sb.from('perfiles').update(pf.acceso_pausado ? { activo: true, acceso_pausado: false } : { activo: true }).eq('id', S.ficha.id); if (!r.error && s.id && (pf.activo === false || pf.acceso_pausado)) toast('Alumno reactivado y con acceso a la app'); } }
     if (error && /modulo_habitos/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 66 en Supabase.');
     if (error && /modulo_futbol/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 21 en Supabase.');
     if (error && /oposicion/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 78 en Supabase.');
@@ -6635,7 +6679,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v240';
+const APP_VER = 'v241';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -6862,6 +6906,7 @@ document.addEventListener('click', async e => {
     case 'nuevaPres': formPres(); break;
     case 'pausaEditar': formPausa(+b.dataset.i); break;
     case 'histEditar': formHistorial(+b.dataset.i); break;
+    case 'pdfCierre': PDF.cierreBono(b.dataset.id || null, b); break;
     case 'ecoTab': S.ecoTab = b.dataset.t; try { localStorage.setItem('lof-eco-tab', S.ecoTab); } catch (e) { } render(); window.scrollTo(0, 0); break;
     case 'extEditar': formExtEditar(+b.dataset.i); break;
     case 'programarSes': formProgramar(S.ficha?.id || null, b.dataset.f || null); break;
