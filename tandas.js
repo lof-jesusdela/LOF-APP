@@ -21,6 +21,7 @@ const Tandas = {
     'Forzadas': { tipo: 'simple', forz: true, info: 'Forzadas: llega a las repeticiones objetivo aunque no te salgan seguidas. Cuando no puedas más, para 5 segundos y sigue sumando hasta llegar.' },
     'Topset': { tipo: 'top', info: 'Top set: la 1ª serie es la más pesada. Las siguientes van con un 15 % menos de peso.' },
     'Series parciales': { tipo: 'simple', parcial: true, info: 'Series parciales: la misma serie, con el mismo ejercicio, pero cambiando el rango de movimiento (o el ajuste de la máquina) en cada tramo o en cada serie. Fíjate en el rango indicado antes de empezar cada una.' },
+    'Series mixtas': { tipo: 'seriesmix', info: 'Series mixtas: cada serie (o grupo de series) con su propio método. Por ejemplo, la 1ª serie en isométrico y la 2ª y 3ª en dinámico. Fíjate en el método de cada serie antes de empezarla.' },
     'Mixto': { tipo: 'mixto', info: 'Mixto: dentro de la misma serie se encadenan tramos con métodos distintos. Cada tramo indica su método; haz uno detrás de otro, con la pausa que se indique.' },
     'Isométrico': { tipo: 'simple', iso: true, info: 'Isométrico: sostén la carga, sin moverte, en la posición indicada durante el tiempo marcado. Aquí no cuentas repeticiones, sino segundos.' }
   },
@@ -54,10 +55,11 @@ const Tandas = {
   usa(e) { return !!this.met(e) || this.porSeries(e); },
   /* Método distinto según las series: cada fila «Nuevas series» puede llevar su método (p. ej. 1 serie isométrico + 2 normales).
      «Normal» = dinámico, sin método. En «Mixto» el método de cada fila es el de cada tramo, no el de las series */
-  porSeries(e) { if (this.met(e)?.tipo === 'mixto') return false; return gruposDe(e?.pauta).some(g => g.tramos[0]?.op?.mt); },
+  porSeries(e) { const t = this.met(e)?.tipo; if (t === 'mixto') return false; return t === 'seriesmix' || gruposDe(e?.pauta).some(g => g.tramos[0]?.op?.mt); },
+  baseSeries(e) { return this.met(e)?.tipo === 'seriesmix' ? 'Normal' : e.metodos?.nombre || 'Normal'; },
   metodosSeries(e) {
     if (!this.porSeries(e)) return [];
-    const base = e.metodos?.nombre || 'Normal', G = gruposDe(e.pauta); let n = 0;
+    const base = this.baseSeries(e), G = gruposDe(e.pauta); let n = 0;
     return G.map(g => { const ini = n + 1; n += g.s || 1; return { mt: g.tramos[0].op?.mt || base, de: ini, a: n }; });
   },
   ejercicio(es) { return S.dia?.bloques_sesion.flatMap(b => b.ejercicios_sesion).find(x => x.id === +es); },
@@ -70,9 +72,9 @@ const Tandas = {
   /* ---------- Estructura de la serie según el método: series → tandas → partes ---------- */
   estructura(e) {
     if (!e._parte && this.porSeries(e)) {
-      const base = e.metodos?.nombre || 'Normal', G = gruposDe(e.pauta), varios = new Set(G.map(g => g.tramos[0].op?.mt || base)).size > 1;
+      const base = this.baseSeries(e), G = gruposDe(e.pauta), varios = new Set(G.map(g => g.tramos[0].op?.mt || base)).size > 1;
       return G.flatMap(g => {
-        const mn = g.tramos[0].op?.mt || base, nm = mn === 'Normal' ? '' : mn, Mg = this.MET[nm];
+        const mn = g.tramos[0].op?.mt || base, nm = mn === 'Normal' || this.MET[mn]?.tipo === 'seriesmix' ? '' : mn, Mg = this.MET[nm];
         const pauta = g.tramos.map(t => { const x = { ...t, op: t.op ? { ...t.op } : undefined }; if (x.op) { delete x.op.mt; if (!Object.keys(x.op).length) delete x.op; }
           if (Mg?.iso && /^\s*\d+\s*$/.test(String(x.r || ''))) x.r = `${String(x.r).trim()}´´ isométrico`; return x; });
         return this.estructura({ ...e, _parte: true, metodos: nm ? { nombre: nm } : null, pauta }).map(s => ({ ...s, M: Mg || {}, mt: nm || 'Normal', etq: s.etq || (varios ? (nm || 'Dinámico') : undefined) }));
@@ -447,6 +449,12 @@ Tandas.ed = {
       const it = g[0]?.tramos || [];
       v.items = it.map(t => { const iso = Tandas.esIso(t); return { m: t.op?.mt || '', r: iso ? String(Tandas.segDe(t) || 30) : Tandas.limpiaR(t.r || ''), kg: numero(kgDe(t)) ?? '', rg: t.op?.rg || '' }; }); v.n = Math.max(2, it.length);
     }
+    if (tipo === 'seriesmix') {
+      v.items = g.map(gr => { const t = gr.tramos[0], mt = t.op?.mt && t.op.mt !== 'Normal' ? t.op.mt : '', iso = Tandas.MET[mt]?.iso || Tandas.esIso(t);
+        return { m: mt, s: gr.s || 1, r: iso ? String(Tandas.segDe(t) || Tandas.limpiaR(t.r || '') || 30) : Tandas.limpiaR(t.r || ''), kg: numero(kgDe(t)) ?? '', rir: t.rir ?? '', d: gr.tramos[gr.tramos.length - 1].d ?? 90 }; });
+      if (v.items.length < 2) v.items = [{ m: 'Isométrico', s: 1, r: '30', kg: v.kg, d: 60 }, { m: '', s: 2, r: '10', kg: v.kg, rir: 2, d: 90 }];
+      v.n = v.items.length;
+    }
     if (tipo === 'doble') { v.rir2 = g[0]?.tramos[1]?.rir ?? 0; }
     if (tipo === 'contraste' || tipo === 'ucontraste') {
       const t1 = g[0]?.tramos[1] || {};
@@ -470,7 +478,11 @@ Tandas.ed = {
   sel: (id, lbl, val, ops) => `<label>${lbl}<select data-a="${id}">${ops.map(([k, l]) => `<option value="${k}" ${String(val) === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`,
   contador: (id, lbl, val, min, max) => `<div class="as-cont"><span class="small">${lbl}</span><div class="row" style="gap:6px;align-items:center"><button type="button" class="mini" data-menos="${id}" aria-label="Quitar">−</button><b data-a-v="${id}">${val}</b><button type="button" class="mini" data-mas="${id}" data-max="${max}" data-min="${min}" aria-label="Añadir">＋</button></div></div>`,
   filaRango(k, o, o0) { return `<div class="as-grid" style="grid-template-columns:2fr 1fr">${this.txt('g' + k, `Rango o ajuste ${k + 1}`, o.rg, k ? 'Ej.: mitad superior' : 'Ej.: rango completo')}${this.txt('r' + k, 'Reps', o.r || o0.r || '10')}</div>`; },
-  METS_MIXTO: () => Object.keys(Tandas.MET).filter(n => !['Mixto', 'Series parciales', 'Topset'].includes(n)),
+  METS_MIXTO: () => Object.keys(Tandas.MET).filter(n => !['Mixto', 'Series mixtas', 'Series parciales', 'Topset'].includes(n)),
+  filaSerieMix(k, o) {
+    const ops = [['', 'Normal (dinámico)'], ...this.METS_MIXTO().map(n => [n, n])], iso = Tandas.MET[o.m]?.iso;
+    return `<div class="as-grid" style="padding:8px;border:1px solid var(--line);border-radius:10px">${this.sel('m' + k, `Método · bloque ${k + 1}`, o.m || '', ops)}${this.num('s' + k, 'Nº series', o.s || 1)}${this.txt('r' + k, iso ? 'Segundos' : 'Reps', o.r || (iso ? '30' : '10'))}${this.num('k' + k, 'Peso (kg)', o.kg ?? '')}${this.txt('i' + k, 'RIR', o.rir ?? '')}${this.num('d' + k, 'Descanso (s)', o.d ?? 90)}</div>`;
+  },
   filaMixto(k, o) {
     const ops = [['', 'Serie normal'], ...this.METS_MIXTO().map(n => [n, n])];
     return `<div class="as-grid" style="padding:8px;border:1px solid var(--line);border-radius:10px">${this.sel('m' + k, `Método del tramo ${k + 1}`, o.m || '', ops)}${this.txt('r' + k, 'Reps (o segundos)', o.r || '8')}${this.num('k' + k, 'Peso (kg, opcional)', o.kg)}${this.txt('g' + k, 'Rango o ajuste', o.rg, 'Opcional')}</div>`;
@@ -507,6 +519,9 @@ Tandas.ed = {
       campos = [this.sel('modo', 'Cómo cambia el rango', v.modo || 'misma', [['misma', 'Dentro de la misma serie, sin parar'], ['series', 'En series distintas (un rango por serie)']]), this.num('s', (v.modo === 'series' ? 'Series por rango' : 'Series'), v.s), this.num('kg', 'Peso (kg)', v.kg), this.txt('rir', 'RIR', v.rir),
         ...(v.modo === 'series' ? [] : [this.num('pausa', 'Pausa entre tramos (s)', v.pausa ?? 0)]), this.num('d', 'Descanso entre series (s)', v.d)].join('');
       extra = this.contador('n', 'Rangos', N, 2, 5) + `<div class="stack" style="gap:6px" data-rangos>${[...Array(N)].map((_, k) => this.filaRango(k, it[k] || {}, it[0] || {})).join('')}</div><span class="small muted">Escribe el rango o el ajuste: «mitad inferior», «último tercio», «respaldo 3 → 6», «silla 2»… El alumno lo verá en cada tramo.</span>`;
+    } else if (M.tipo === 'seriesmix') {
+      const N = Math.min(Math.max(v.n, 2), 5), it = v.items || [];
+      extra = this.contador('n', 'Bloques de series', N, 2, 5) + `<div class="stack" style="gap:8px" data-rangos>${[...Array(N)].map((_, k) => this.filaSerieMix(k, it[k] || {})).join('')}</div><span class="small muted">Cada bloque son una o varias series seguidas con el mismo método. Ej.: bloque 1 = 1 serie Isométrico (30 s); bloque 2 = 2 series Normal (10 reps).</span>`;
     } else if (M.tipo === 'mixto') {
       const N = Math.min(Math.max(v.n, 2), 5), it = v.items || [];
       campos = [this.num('s', 'Series', v.s), this.num('kg', 'Peso (kg) por defecto', v.kg), this.txt('rir', 'RIR', v.rir), this.num('d', 'Descanso entre series (s)', v.d)].join('');
@@ -564,6 +579,9 @@ Tandas.ed = {
         const r1 = t1 === 'iso' ? `${a('r1') || 30}´´ isométrico` : (a('r1') || '7') + x + (eti[t1] || ''), r2 = t2 === 'iso' ? `${a('r2') || 30}´´ isométrico` : (a('r2') || '10') + x + (eti[t2] || '');
         const kg2 = n('kg2') ?? (t1 === 'pesado' && t2 === 'explosivo' && kg ? kg * 0.5 : kg);   // pesado→explosivo: 50 %; el resto (p. ej. superlento→explosivo) con el mismo peso
         return [T({ s, r: r1, rir, kg: this.kg(kg), d: 0, tp: t1, op: M.tipo === 'ucontraste' ? { orden: a('orden') || 'lado' } : undefined }), T({ r: r2, rir: R(a('rir2') || '0') ?? 0, kg: this.kg(kg2), d, tp: t2 })]; }
+      case 'seriesmix': { const N = cnt('n');
+        return [...Array(N)].map((_, k) => { const mn = a('m' + k), m = Tandas.MET[mn] || {}, rv = a('r' + k) || (m.iso ? '30' : '10'), uni = m.tipo === 'uni' || m.tipo === 'doble' || m.tipo === 'ucontraste';
+          return T({ s: Math.max(1, n('s' + k) || 1), r: m.iso ? `${rv}´´ isométrico` : uni ? `${rv} x lado` : rv, rir: R(a('i' + k)), kg: this.kg(n('k' + k)), d: n('d' + k) ?? 90, tp: m.iso ? 'iso' : undefined, op: { mt: mn || 'Normal' } }); }); }
       case 'mixto': { const N = cnt('n');
         return [...Array(N)].map((_, k) => {
           const mn = a('m' + k), m = Tandas.MET[mn] || {}, rv = a('r' + k) || '8', kk = n('k' + k) ?? kg, op = { ...(mn ? { mt: mn } : {}), ...(a('g' + k) ? { rg: a('g' + k) } : {}) };
@@ -599,7 +617,7 @@ Tandas.ed = {
       if (ev.target.dataset.a === 'rm') { const k = panel.querySelector('[data-a="kg"]'); const rm = numero(ev.target.value); if (k && rm) k.value = fmtNum(this.red(rm * 0.9), 2); }
       volcar();
     });
-    cont.addEventListener('change', ev => { const da = ev.target.dataset.a || ''; if (da === 'ps' || da === 'modo' || (da === 's' && cont.querySelector('[data-a="ps"]'))) { volcar(); pintar(false); return; } if (/^t[12](\.\d+)?$/.test(da)) { const l = ev.target.closest('.as-grid').querySelector(`[data-a="r${da[1]}${da.slice(2)}"]`)?.closest('label'); if (l) l.firstChild.textContent = ev.target.value === 'iso' ? 'Segundos' : 'Reps'; volcar(); } if (ev.target.dataset.a === 'var') { const c = cont.querySelector('[data-a-v="bn"]'); if (c) c.textContent = ev.target.value === 'rp' ? 3 : 2; volcar(); } });
+    cont.addEventListener('change', ev => { const da = ev.target.dataset.a || ''; if (da === 'ps' || da === 'modo' || (da === 's' && cont.querySelector('[data-a="ps"]')) || (/^m\d$/.test(da) && cont.querySelector('.as-panel')?.dataset.tipo === 'seriesmix')) { volcar(); pintar(false); return; } if (/^t[12](\.\d+)?$/.test(da)) { const l = ev.target.closest('.as-grid').querySelector(`[data-a="r${da[1]}${da.slice(2)}"]`)?.closest('label'); if (l) l.firstChild.textContent = ev.target.value === 'iso' ? 'Segundos' : 'Reps'; volcar(); } if (ev.target.dataset.a === 'var') { const c = cont.querySelector('[data-a-v="bn"]'); if (c) c.textContent = ev.target.value === 'rp' ? 3 : 2; volcar(); } });
     cont.addEventListener('click', ev => {
       const b = ev.target.closest('[data-mas],[data-menos]'); if (!b) return; ev.preventDefault();
       const id = b.dataset.mas || b.dataset.menos, el = cont.querySelector(`[data-a-v="${id}"]`), mx = cont.querySelector(`[data-mas="${id}"]`), v = +el.textContent + (b.dataset.mas ? 1 : -1);
@@ -607,6 +625,8 @@ Tandas.ed = {
       const rg = cont.querySelector('[data-rangos]');
       if (rg && id === 'n') {
         const mix = cont.querySelector('.as-panel')?.dataset.tipo === 'mixto', gr = [...rg.children].map(c => ({ m: c.querySelector('[data-a^="m"]')?.value || '', r: c.querySelector('[data-a^="r"]')?.value || '', kg: c.querySelector('[data-a^="k"]')?.value || '', rg: c.querySelector('[data-a^="g"]')?.value || '' }));
+        if (cont.querySelector('.as-panel')?.dataset.tipo === 'seriesmix') { const lee = c => Object.fromEntries(['m', 's', 'r', 'k', 'i', 'd'].map(p => [p, c.querySelector(`[data-a^="${p}"]`)?.value ?? ''])), gs = [...rg.children].map(lee);
+          rg.innerHTML = [...Array(v)].map((_, k) => { const o = gs[k] || { ...(gs[gs.length - 1] || {}), m: '' }; return this.filaSerieMix(k, { m: o.m, s: o.s, r: o.r, kg: o.k, rir: o.i, d: o.d }); }).join(''); volcar(); return; }
         rg.innerHTML = [...Array(v)].map((_, k) => { const o = gr[k] || {}, o0 = gr[gr.length - 1] || {}; return mix ? this.filaMixto(k, k < gr.length ? o : { r: o0.r }) : this.filaRango(k, k < gr.length ? { rg: o.rg, r: o.r } : {}, { r: o0.r }); }).join('');
       }
       const reps = cont.querySelector('[data-reps]');
