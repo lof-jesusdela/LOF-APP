@@ -3896,15 +3896,10 @@ function vFicha() {
       <div class="fx-acc"><button class="btn sm" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm ghost" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como ${esc(nom)}</button><button class="btn sm ghost" data-act="abrirReporte" data-id="${a.id}">📋 Reporting</button></div>
       <details class="fx-mas"><summary>Más acciones</summary><div class="stack" style="gap:6px;margin-top:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}<button class="btn sm ghost" data-act="pausarAcceso" data-id="${a.id}" data-on="${a.acceso_pausado ? 0 : 1}">${a.acceso_pausado ? '🔓 Devolver el acceso' : '🔒 Quitar el acceso'}</button></div></details>
       ${a.activo === false ? '<p class="small muted" style="margin:0">Antiguo alumno: no genera avisos.</p>' : ''}</aside>`;
-    /* 12 secciones en 3 principales (Resumen, Seguimiento, Plan) y el resto en «Más» */
-    const GR = [['inicio', 'Resumen', ['inicio']], ['seg', 'Seguimiento', ['resumen', 'checkins', 'calendario']], ['plan', 'Plan', ['plan', 'oposicion']],
-      ['entreno', 'Entreno', ['entreno']], ['nutri', 'Nutrición', ['nutri']], ['habitos', 'Hábitos', ['habitos']], ['evol', 'Evolución', ['progreso', 'tests', 'medidas']], ['gest', 'Gestión', ['pagos']]]
-      .map(([k, n, ids]) => [k, n, ids.filter(id => id === 'inicio' || SECS.some(x => x[0] === id))]).filter(g => g[2].length);
-    const grAct = GR.find(g => g[2].includes(act)) || GR[0], prin = GR.slice(0, 3), mas = GR.slice(3), enMas = mas.includes(grAct);
-    const dotDe = ids => ids.some(id => { const x = SECS.find(z => z[0] === id); return x && (typeof x[1] === 'number' && x[1] > 1 ? dot(x[1]) : id === 'resumen' ? dot(1) : ''); }) ? '<i class="fx-tdot"></i>' : '';
-    const nav = `<nav class="fx-tabs" role="tablist" aria-label="Secciones de la ficha">${prin.map(g => `<button role="tab" data-act="fTab" data-t="${g[2][0]}" aria-selected="${g === grAct}">${esc(g[1])}${dotDe(g[2])}</button>`).join('')}
-      <details class="fx-mas-t"><summary role="tab" aria-selected="${enMas}">${enMas ? esc(grAct[1]) : 'Más'} ▾</summary><div class="fx-mas-m">${mas.map(g => `<button data-act="fTab" data-t="${g[2][0]}" aria-current="${g === grAct}">${esc(g[1])}${dotDe(g[2])}</button>`).join('')}</div></details></nav>
-      ${grAct[2].length > 1 ? `<div class="fx-sub" role="tablist">${grAct[2].map(id => { const x = SECS.find(z => z[0] === id); return x ? `<button class="pill ${id === act ? 'blue' : ''}" data-act="fTab" data-t="${id}">${esc(id === 'resumen' ? 'Pendientes y notas' : x[6])}</button>` : ''; }).join('')}</div>` : ''}`;
+    /* Todas las secciones en la barra horizontal (se desliza en el móvil), en orden de uso: resumen y seguimiento primero */
+    const ORD = ['resumen', 'checkins', 'calendario', 'plan', 'oposicion', 'entreno', 'nutri', 'habitos', 'progreso', 'tests', 'medidas', 'pagos'];
+    const NOMT = { resumen: 'Pendientes y notas', calendario: 'Revisiones', pagos: 'Pagos' };
+    const nav = `<nav class="fx-tabs" role="tablist" aria-label="Secciones de la ficha"><button role="tab" data-act="fTab" data-t="inicio" aria-selected="${act === 'inicio'}">Resumen</button>${ORD.map(id => SECS.find(z => z[0] === id)).filter(Boolean).map(([id, n, , , , , corto]) => { const d = typeof n === 'number' && n > 1 ? dot(n) : id === 'resumen' ? dot(1) : ''; return `<button role="tab" data-act="fTab" data-t="${id}" aria-selected="${act === id}">${esc(NOMT[id] || corto)}${d ? '<i class="fx-tdot"></i>' : ''}</button>`; }).join('')}</nav>`;
     let cuerpo;
     if (act !== 'inicio') { const x = SECS.find(z => z[0] === act); cuerpo = `<div class="fx-cab"><h2>${esc(x[3])}</h2>${x[4] ? `<span class="small muted">${x[4]}</span>` : ''}</div><div class="ft-cuerpo">${x[5]}</div>`; }
     else {
@@ -6965,7 +6960,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v253';
+const APP_VER = 'v254';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
