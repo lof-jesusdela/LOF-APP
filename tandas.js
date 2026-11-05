@@ -51,7 +51,15 @@ const Tandas = {
     if (k % 2 === 0) return [c.L[0].id, n, k + 1];
     return this.estructura(c.L[0])[n] ? [c.L[0].id, n + 1, 0] : null;
   },
-  usa(e) { return !!this.met(e); },
+  usa(e) { return !!this.met(e) || this.porSeries(e); },
+  /* Método distinto según las series: cada fila «Nuevas series» puede llevar su método (p. ej. 1 serie isométrico + 2 normales).
+     «Normal» = dinámico, sin método. En «Mixto» el método de cada fila es el de cada tramo, no el de las series */
+  porSeries(e) { if (this.met(e)?.tipo === 'mixto') return false; return gruposDe(e?.pauta).some(g => g.tramos[0]?.op?.mt); },
+  metodosSeries(e) {
+    if (!this.porSeries(e)) return [];
+    const base = e.metodos?.nombre || 'Normal', G = gruposDe(e.pauta); let n = 0;
+    return G.map(g => { const ini = n + 1; n += g.s || 1; return { mt: g.tramos[0].op?.mt || base, de: ini, a: n }; });
+  },
   ejercicio(es) { return S.dia?.bloques_sesion.flatMap(b => b.ejercicios_sesion).find(x => x.id === +es); },
   limpiaR: r => String(r ?? '').replace(/\s*\(2 veces\)/i, '').replace(/\s*(x|por|cada)\s*(lado|brazo|pierna|mano)\b/gi, '').replace(/^por lado:?\s*/i, '').trim(),
   red: v => Math.round(v * 2) / 2,
@@ -61,6 +69,15 @@ const Tandas = {
 
   /* ---------- Estructura de la serie según el método: series → tandas → partes ---------- */
   estructura(e) {
+    if (!e._parte && this.porSeries(e)) {
+      const base = e.metodos?.nombre || 'Normal', G = gruposDe(e.pauta), varios = new Set(G.map(g => g.tramos[0].op?.mt || base)).size > 1;
+      return G.flatMap(g => {
+        const mn = g.tramos[0].op?.mt || base, nm = mn === 'Normal' ? '' : mn, Mg = this.MET[nm];
+        const pauta = g.tramos.map(t => { const x = { ...t, op: t.op ? { ...t.op } : undefined }; if (x.op) { delete x.op.mt; if (!Object.keys(x.op).length) delete x.op; }
+          if (Mg?.iso && /^\s*\d+\s*$/.test(String(x.r || ''))) x.r = `${String(x.r).trim()}´´ isométrico`; return x; });
+        return this.estructura({ ...e, _parte: true, metodos: nm ? { nombre: nm } : null, pauta }).map(s => ({ ...s, M: Mg || {}, mt: nm || 'Normal', etq: s.etq || (varios ? (nm || 'Dinámico') : undefined) }));
+      });
+    }
     const M = this.met(e) || { tipo: 'pausa' }, G = gruposDe(e.pauta), kg0 = e.peso_ref;
     const exp = gs => gs.flatMap(g => [...Array(g.s || 1)].map(() => g.tramos));
     const P = (t, x = {}) => ({ r: t.r, kg: t.kg, rir: t.rir, ...(t.op?.ritmo ? { ritmo: t.op.ritmo } : {}), ...(t.op?.rg ? { rg: t.op.rg } : {}), ...x });
@@ -183,14 +200,14 @@ const Tandas = {
 
   /* ---------- Pintado ---------- */
   vista(e, ej, sp) {
-    const z = S.sesion, M = this.met(e), SER = this.estructura(e), N = SER.length, abiertas = (z.abiertas ||= {});
+    const z = S.sesion, M = this.met(e) || {}, SER = this.estructura(e), N = SER.length, abiertas = (z.abiertas ||= {});
     const partes = SER.flatMap(s => s.tandas.flatMap(t => t.partes)), rirs = partes.map(x => x.rir == null || x.rir === '' ? null : String(x.rir));
     const rirUnico = undefined;   // con método el RIR se ve junto a cada tanda (sin repetirlo arriba)
     const entreT = SER.flatMap(s => s.tandas.slice(0, -1).map(t => t.d ?? 0)), entreS = SER.slice(0, -1).map(s => s.tandas[s.tandas.length - 1].d ?? 60);
     const primera = SER.findIndex((s, i) => this.estadoSerie(z, s, `${e.id}-${i + 1}`).est !== 'on');
     if (!(e.id in abiertas)) abiertas[e.id] = primera < 0 ? -1 : primera + 1;
-    const html = SER.map((s, si) => {
-      const n = si + 1, fila = `${e.id}-${n}`, ultS = n === N, nT = s.tandas.length;
+    const M0 = M, html = SER.map((s, si) => {
+      const n = si + 1, fila = `${e.id}-${n}`, ultS = n === N, nT = s.tandas.length, M = s.M || M0;
       const tandas = s.tandas.map((t, k) => {
         const ult = k === nT - 1, sig = s.tandas[k + 1], d = ult && ultS ? 0 : t.d;
         const lbl = t.ss ? `${this.hechoTxt(t)} · ${d > 0 ? 'descansa ' + this.dur(d) + ' y ' : ''}${t.ss}` : !ult ? (d > 0 ? `${this.hechoTxt(t)} · descansar ${this.dur(d)}` : `${this.hechoTxt(t)} · ${this.sigTxt(M, t, sig)}`) : ultS ? 'Terminar ejercicio' : (d > 0 ? `Terminar serie · descansar ${this.dur(d)}` : 'Terminar serie · sin descanso');
