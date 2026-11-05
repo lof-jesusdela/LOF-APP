@@ -2552,7 +2552,7 @@ function vAlumnos() {
   const venc = c.pagos.filter(p => !p.pagado_at && p.vence < hoyISO()), vencIds = new Set(venc.map(p => p.alumno_id));
   const progs = [...new Set(c.servicios.filter(x => als.some(a => a.id === x.alumno_id)).map(x => x.producto).filter(Boolean))].sort();
   const visibleAl = (a, e) => coincideAl({ n: normaliza(a.nombre), p: prodDe(a.id), m: modalidadDe(a.id), al: e.nivel !== 'ok', v: vencIds.has(a.id) });
-  return `<section class="stack"><span class="eyebrow">Panel del coach · ${esc(fLarga(hoyISO()))}</span><h1>Tus alumnos</h1><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="programarSes">📅 Programar sesión</button><button class="btn sm ghost" data-act="verAgenda">Agenda</button><button class="btn sm ghost" data-act="miFicha">✎ Mi ficha (mi perfil beta)</button></div></section>
+  return `<section class="stack"><span class="eyebrow">Panel del coach · ${esc(fLarga(hoyISO()))}</span><h1>Tus alumnos</h1><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="nuevoAlumno">＋ Nuevo alumno</button><button class="btn sm ghost" data-act="programarSes">📅 Programar sesión</button><button class="btn sm ghost" data-act="verAgenda">Agenda</button><button class="btn sm ghost" data-act="miFicha">✎ Mi ficha (mi perfil beta)</button></div></section>
   <section class="section"><div class="kpis"><button class="kpi kpi-b" data-act="alFiltro" data-k="todos" aria-pressed="${S.alF.k === 'todos'}"><div class="v num">${conSrv.length}</div><div class="l">clientes con servicio ›</div></button><button class="kpi kpi-b" data-act="alFiltro" data-k="alerta" aria-pressed="${S.alF.k === 'alerta'}"><div class="v num" style="color:var(--bad)">${est.filter(x => x.e.nivel !== 'ok').length}</div><div class="l">necesitan atención ›</div></button><button class="kpi kpi-b" data-act="alFiltro" data-k="vencidos" aria-pressed="${S.alF.k === 'vencidos'}"><div class="v num" style="color:${venc.length ? 'var(--bad)' : 'var(--ok)'}">${venc.length}</div><div class="l">pagos vencidos ›</div></button></div></section>
   <section class="section"><button class="card reporte-b" data-act="abrirReporte"><div class="ico gold">${svg('checkin')}</div><div class="grow" style="text-align:left"><b>Reporting semanal</b><div class="small muted">Semana del ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -7)))} al ${esc(fCorta(sumaDias(lunesDe(hoyISO()), -1)))} · todos tus alumnos de un vistazo</div></div><span class="small" style="color:var(--blue-text)">Abrir ›</span></button></section>
   ${(() => { const n = Nutricion.colaRevisiones().length; return S.c.servicios.some(x => x.modulo_nutricion) ? `<section class="section"><button class="card reporte-b" data-act="nuCola"><div class="ico ${n ? 'gold' : ''}">🍽</div><div class="grow" style="text-align:left"><b>Revisiones de nutrición</b><div class="small muted">${n ? `${n} alumno${n > 1 ? 's' : ''} con algo que decidir` : 'Nada pendiente'}</div></div><span class="small muted">›</span></button></section>` : ''; })()}
@@ -3875,7 +3875,7 @@ function vFicha() {
       <div class="row" style="gap:6px;flex-wrap:wrap"><span class="pill ${e.nivel}">${nivTxt}</span>${srv?.producto ? `<span class="pill blue">${esc(srv.producto)}</span>` : ''}${P && !P.antes && !P.fuera ? `<span class="pill">Semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}</span>` : ''}${a.acceso_pausado ? '<span class="pill bad">Acceso pausado</span>' : ''}</div></div></div>
     <div class="fh-kpis"><div><b class="num">${dpw ? `${cur.entrenos}/${dpw}` : cur.entrenos}</b><small>entrenos semana</small></div><div><b class="num">${pasos7 != null ? fmtNum(pasos7, 0) : '—'}</b><small>pasos · 7 días</small></div><div><b class="num">${!srv?.modulo_nutricion ? '—' : !midoCoach(a.id) ? '—' : ing7.pct != null ? ing7.pct + ' %' : ing7.dias ? ing7.dias + '/7 d' : '—'}</b><small>${!srv?.modulo_nutricion ? 'sin nutrición' : !midoCoach(a.id) ? esc((Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || '').toLowerCase()) : ing7.pct != null ? 'alimentación · 7 días' : 'días registrados'}</small></div><div><b class="num">${ultM?.peso != null ? fmtNum(ultM.peso, 1) : '—'}</b><small>kg · ${ultM ? esc(fCorta(ultM.fecha)) : 'sin medir'}</small></div></div>
     <div class="row fh-acc" style="flex-wrap:wrap;gap:8px"><button class="btn sm gold" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como ${esc(nom)}</button><button class="btn sm" data-act="abrirReporte" data-id="${a.id}">📋 Reporting</button></div>
-    <details class="fh-mas"><summary class="small">Más acciones · ${esc(a.email || '')} · alta ${esc(fCorta(a.fecha_alta))}</summary><div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}<button class="btn sm ghost" data-act="pausarAcceso" data-id="${a.id}" data-on="${a.acceso_pausado ? 0 : 1}">${a.acceso_pausado ? '🔓 Devolver el acceso' : '🔒 Quitar el acceso (conserva el perfil)'}</button></div></details>
+    <details class="fh-mas"><summary class="small">Más acciones · ${esc(a.email || '')} · alta ${esc(fCorta(a.fecha_alta))}</summary><div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button><button class="btn sm ghost" data-act="accesoAl" data-id="${a.id}">🔑 Acceso y contraseña</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}<button class="btn sm ghost" data-act="pausarAcceso" data-id="${a.id}" data-on="${a.acceso_pausado ? 0 : 1}">${a.acceso_pausado ? '🔓 Devolver el acceso' : '🔒 Quitar el acceso (conserva el perfil)'}</button></div></details>
     ${a.activo === false ? '<div class="aprox small">Antiguo alumno: no le llegan avisos de seguimiento al coach. Sus datos siguen guardados y puede seguir usando la app. Reactívalo si vuelve a empezar un proceso.</div>' : ''}</section>`}
   ${(() => {
     /* Las mismas secciones se ven como acordeón en el móvil y como pestañas con un panel de inicio en el ordenador */
@@ -3905,7 +3905,7 @@ function vFicha() {
       <div class="fx-acc fx-acc-mov"><button class="btn sm" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar</button><button class="btn sm ghost" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como</button><button class="btn sm ghost" data-act="abrirReporte" data-id="${a.id}">📋 Reporting</button></div>
       <div class="fx-datos">${filaP('Plan', esc(srv?.producto || 'Sin plan'))}${srv ? filaP('Tipo', esc(modalidadDe(a.id)) + (conSeguimiento(srv) ? '' : ' · sin seguimiento')) : ''}${filaP('Bloque', P && !P.antes && !P.fuera ? esc(nomCiclo(P.cc)) : '')}${filaP('Semana', P && !P.antes && !P.fuera ? `${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : P?.antes ? 'Empieza ' + esc(fCorta(srv.inicio)) : '')}${filaP('Programa', f.prog ? esc(f.prog.nombre) : '')}${filaP('Alta', esc(fF(a.fecha_alta || srv?.inicio || hoy)))}${filaP('Email', esc(a.email || ''))}<button class="fx-dato fx-pago" data-act="fTab" data-t="pagos"><span>Pagos</span><b style="${pagV.length ? 'color:var(--bad)' : ''}">${pagV.length ? `${pagV.length} vencida${pagV.length === 1 ? '' : 's'}` : pagP.length ? `Próxima ${esc(fCorta(pagP.slice().sort((x, y) => x.vence.localeCompare(y.vence))[0].vence))}` : pagos.length ? 'Al día' : 'Sin cuotas'} ›</b></button></div>
       <div class="fx-acc"><button class="btn sm" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm ghost" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como ${esc(nom)}</button><button class="btn sm ghost" data-act="abrirReporte" data-id="${a.id}">📋 Reporting</button></div>
-      <details class="fx-mas"><summary>Más acciones</summary><div class="stack" style="gap:6px;margin-top:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}<button class="btn sm ghost" data-act="pausarAcceso" data-id="${a.id}" data-on="${a.acceso_pausado ? 0 : 1}">${a.acceso_pausado ? '🔓 Devolver el acceso' : '🔒 Quitar el acceso'}</button></div></details>
+      <details class="fx-mas"><summary>Más acciones</summary><div class="stack" style="gap:6px;margin-top:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button><button class="btn sm ghost" data-act="accesoAl" data-id="${a.id}">🔑 Acceso y contraseña</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}<button class="btn sm ghost" data-act="pausarAcceso" data-id="${a.id}" data-on="${a.acceso_pausado ? 0 : 1}">${a.acceso_pausado ? '🔓 Devolver el acceso' : '🔒 Quitar el acceso'}</button></div></details>
       ${a.activo === false ? '<p class="small muted" style="margin:0">Antiguo alumno: no genera avisos.</p>' : ''}</aside>`;
     /* Todas las secciones en la barra horizontal (se desliza en el móvil), en orden de uso: resumen y seguimiento primero */
     const ORD = ['resumen', 'checkins', 'calendario', 'plan', 'oposicion', 'entreno', 'nutri', 'habitos', 'progreso', 'tests', 'medidas', 'pagos'];
@@ -4178,6 +4178,55 @@ function formMedicion(editId) {
   });
 }
 /* Datos del alumno: nombre visible, nombre completo para facturas, NIF y datos físicos */
+/* ---------- Acceso a la app sin entrar en Supabase (función «gestion-acceso») ---------- */
+const claveNueva = () => { const a = 'abcdefghjkmnpqrstuvwxyz', A = 'ABCDEFGHJKLMNPQRSTUVWXYZ', n = '23456789', r = l => l[crypto.getRandomValues(new Uint32Array(1))[0] % l.length]; return `${r(A)}${r(a)}${r(a)}${r(a)}${r(a)}${r(n)}${r(n)}${r(n)}`; };
+async function acceso(body) {
+  try { const { data, error } = await sb.functions.invoke('gestion-acceso', { body });
+    if (error) { let m = error.message || ''; try { m = (await error.context?.json())?.error || m; } catch (e) { } return { error: /not found|404|Failed to send/i.test(m) ? 'Falta desplegar la función «gestion-acceso» en Supabase.' : m }; }
+    return data || {}; } catch (e) { return { error: 'No se ha podido conectar: ' + (e.message || e) }; }
+}
+const msgAcceso = (nombre, email, clave) => `Hola ${String(nombre || '').split(' ')[0]}, ya tienes tu acceso a la app de La Obra Fitness:\n\n${location.origin + location.pathname}\n\nEmail: ${email}\nContraseña: ${clave}\n\nÁbrela en el móvil y añádela a la pantalla de inicio. Puedes cambiar la contraseña desde Mi cuenta.`;
+function vEnviarAcceso(nombre, email, clave) {
+  const t = msgAcceso(nombre, email, clave);
+  return `<div class="aprox stack" style="gap:8px"><span class="small"><b>Envíale sus datos de acceso:</b></span><pre class="small" style="white-space:pre-wrap;margin:0;font-family:inherit">${esc(t)}</pre>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><a class="btn sm" href="https://wa.me/?text=${encodeURIComponent(t)}" target="_blank" rel="noopener">Enviar por WhatsApp</a><button type="button" class="btn sm ghost" data-copiar="${esc(t)}">Copiar</button></div></div>`;
+}
+document.addEventListener('click', e => { const b = e.target.closest('[data-copiar]'); if (!b) return; navigator.clipboard?.writeText(b.dataset.copiar).then(() => toast('Copiado')).catch(() => toast('No se ha podido copiar')); });
+async function pintaAcceso(id) {
+  const el = $('#da-acc'); if (!el) return; const a = S.c.perfiles.find(p => p.id === id) || {};
+  const r = await acceso({ accion: 'estado', alumno_id: id });
+  if (!$('#da-acc')) return;
+  if (r.error) { el.innerHTML = `<span class="small muted">${esc(r.error)}</span>`; return; }
+  el.innerHTML = `<div class="small">${esc(r.email || '')} · ${r.confirmada ? '<span class="pill ok">✓ Cuenta confirmada</span>' : '<span class="pill warn">Sin confirmar: no puede entrar</span>'}${r.bloqueada ? ' <span class="pill bad">Bloqueada</span>' : ''}<br><span class="muted">${r.ultimo_acceso ? `Último acceso: ${esc(new Date(r.ultimo_acceso).toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))}` : 'Aún no ha entrado nunca'}</span></div>
+    ${r.confirmada ? '' : '<button type="button" class="btn sm" id="da-conf" style="align-self:flex-start">Confirmar su cuenta</button>'}
+    <label class="f">Nueva contraseña${campoClave('da-pw', 'new-password', 'minlength="8"').replace(' required', '')}</label>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><button type="button" class="btn sm ghost" id="da-gen">🎲 Generar</button><button type="button" class="btn sm" id="da-pwok">Guardar contraseña</button></div><div id="da-pwr"></div>`;
+  $('#da-conf')?.addEventListener('click', async ev => { ev.target.disabled = true; const x = await acceso({ accion: 'confirmar', alumno_id: id }); if (x.error) { ev.target.disabled = false; return toast(x.error); } toast('Cuenta confirmada: ya puede entrar'); pintaAcceso(id); });
+  $('#da-gen').addEventListener('click', () => { $('#da-pw').value = claveNueva(); $('#da-pw').type = 'text'; });
+  $('#da-pwok').addEventListener('click', async ev => { const pw = $('#da-pw').value; if (pw.length < 8) return toast('Mínimo 8 caracteres'); ev.target.disabled = true;
+    const x = await acceso({ accion: 'clave', alumno_id: id, password: pw }); ev.target.disabled = false; if (x.error) return toast(x.error);
+    toast('Contraseña cambiada'); $('#da-pwr').innerHTML = vEnviarAcceso(a.nombre, r.email, pw); });
+}
+function formNuevoAlumno() {
+  const pw = claveNueva();
+  abrirSheet(`<form class="stack" id="f-na"><h2>Nuevo alumno</h2><p class="small muted" style="margin-top:-6px">Se crea su cuenta ya confirmada: podrá entrar en cuanto le mandes sus datos.</p>
+    <label class="f">Nombre y primer apellido<input type="text" id="na-n" required placeholder="Ej. Laura Gómez" autocomplete="off"></label>
+    <label class="f">Email<input type="email" id="na-e" required autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="off"></label>
+    <label class="f">Contraseña${campoClave('na-p', 'new-password', `minlength="8" value="${pw}"`)}</label><button type="button" class="btn sm ghost" id="na-gen" style="align-self:flex-start">🎲 Generar otra</button>
+    <p class="err" id="na-err"></p><div id="na-ok"></div><button class="btn full" type="submit" id="na-b">Crear cuenta</button></form>`);
+  $('#na-p').type = 'text';
+  $('#na-gen').addEventListener('click', () => { $('#na-p').value = claveNueva(); });
+  $('#f-na').addEventListener('submit', async e => {
+    e.preventDefault(); const b = $('#na-b'), nombre = $('#na-n').value.trim(), email = $('#na-e').value.trim().toLowerCase(), password = $('#na-p').value;
+    b.disabled = true; b.textContent = 'Creando…'; $('#na-err').textContent = '';
+    const r = await acceso({ accion: 'crear', nombre, email, password });
+    if (r.error) { b.disabled = false; b.textContent = 'Crear cuenta'; return $('#na-err').textContent = r.error; }
+    if (r.aviso) toast(r.aviso);
+    $('#na-ok').innerHTML = vEnviarAcceso(nombre, email, password) + `<button type="button" class="btn full" id="na-ficha" style="margin-top:8px">Abrir su ficha y elegir su programa ›</button>`;
+    b.hidden = true; await cargarCoach();
+    $('#na-ficha').addEventListener('click', async () => { cerrarSheet(); await abrirFicha(r.id); formServicio && setTimeout(() => S.ficha?.id === r.id && formServicio(), 300); });
+  });
+}
 function formDatosAlumno(id) {
   const a = S.c.perfiles.find(p => p.id === id); if (!a) return;
   abrirSheet(`<form class="stack" id="f-da"><h2>Datos del alumno</h2>
@@ -4189,8 +4238,9 @@ function formDatosAlumno(id) {
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><label class="f">Sexo<select data-k="sexo"><option value="">—</option><option value="mujer" ${a.sexo === 'mujer' ? 'selected' : ''}>Mujer</option><option value="hombre" ${a.sexo === 'hombre' ? 'selected' : ''}>Hombre</option></select></label>
     <label class="f">Estatura (cm)<input type="text" inputmode="decimal" data-k="estatura_cm" value="${a.estatura_cm || ''}"></label><label class="f">Nacimiento<input type="date" data-k="fecha_nacimiento" value="${a.fecha_nacimiento || ''}"></label></div>
     ${profesionales().length > 1 ? `<label class="f">Profesional responsable<select id="da-resp">${profesionales().map(p => `<option value="${p.id}" ${respAl(a.id) === p.id ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}</select><span class="small muted">Solo ordena y filtra tu trabajo: no da acceso a nadie.</span></label>` : ''}
-    <p class="small muted">Email de acceso: ${esc(a.email || '')}</p>
+    <div class="card stack" style="padding:12px;gap:8px"><b class="small">🔑 Acceso a la app</b><div id="da-acc" class="stack" style="gap:8px"><span class="small muted">Comprobando su cuenta…</span></div></div>
     <button class="btn full" type="submit">Guardar</button></form>`);
+  pintaAcceso(id);
   $('#f-da').addEventListener('submit', async e => {
     e.preventDefault();
     const upd = {}; document.querySelectorAll('#f-da [data-k]').forEach(i => { const k = i.dataset.k; upd[k] = k === 'estatura_cm' ? numero(i.value) : (i.value.trim() || null); });
@@ -7004,7 +7054,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v257';
+const APP_VER = 'v258';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -7275,6 +7325,8 @@ document.addEventListener('click', async e => {
     case 'nuevaPres': formPres(); break;
     case 'pausaEditar': formPausa(+b.dataset.i); break;
     case 'histEditar': formHistorial(+b.dataset.i); break;
+    case 'nuevoAlumno': formNuevoAlumno(); break;
+    case 'accesoAl': formDatosAlumno(b.dataset.id); setTimeout(() => $('#da-acc')?.scrollIntoView({ block: 'center' }), 300); break;
     case 'cuotaAviso': { const c = cuotaPend(); const t = c ? c.x.map(p => `${p.concepto || 'cuota'} (${fmtNum(+p.importe, 2).replace(/,00$/, '')} €)`).join(', ') : 'mi cuota'; const u = waJesus(`Hola Jesús, te escribo por ${t}.`); if (u) window.open(u, '_blank', 'noopener'); else toast('Escríbele a Jesús por WhatsApp'); break; }
     case 'alMas': S.alLim = (S.alLim || 50) + 50; aplicarFiltroAl(); break;
     case 'favorito': await favorito(b.dataset.id); break;
