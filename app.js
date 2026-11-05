@@ -3851,11 +3851,12 @@ function vFicha() {
     <button class="plan-b" data-act="fichaSub" data-s="plan"><div class="grow"><h3>${esc(srv?.producto || 'Sin plan asignado')} <span style="color:var(--blue-text)">›</span></h3><div class="small" style="color:var(--blue-text)">Ver toda su planificación${(() => { const m = [(srv?.modulo_entreno ?? true) && 'entrenamiento', srv?.modulo_nutricion && 'alimentación', srv?.modulo_habitos && 'hábitos'].filter(Boolean); return m.length ? ': ' + m.join(', ').replace(/, ([^,]*)$/, ' y $1') : ''; })()}</div></div></button>
     <div class="row"><div class="grow"><div class="small muted">${[f.prog && `${esc(f.prog.nombre)}${dpw ? ` · ${dpw} días por semana` : ''}`, srv?.modulo_nutricion && 'con nutrición', (srv?.modulo_presencial || srv?.sesiones_incluidas) && `${srv.sesiones_incluidas || ''} presenciales`.trim()].filter(Boolean).join(' · ') || 'Sin programa'}</div></div>${P && !P.sinFin ? `<b class="num" style="font-family:var(--display);font-size:24px">${P.pctTotal} %</b>` : ''}</div>
     ${P ? `<div class="track gordo"><i style="width:${P.pctTotal}%"></i></div><div class="row small muted"><span class="grow">${P.antes ? 'Empieza' : 'Inicio'} ${esc(fF(srv.inicio))}${!P.antes && !P.fuera ? ` · semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''}</span>${P.sinFin ? '' : `<span>Final ${esc(fF(P.ciclos[P.ciclos.length - 1].fin))}</span>`}</div>` : '<p class="small muted">Pon la fecha de inicio y la duración en "Editar".</p>'}
+    ${srv?.duracion_semanas && (srv._bloques || []).length && Math.max(...srv._bloques.map(b => b.semana_fin)) !== srv.duracion_semanas ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><span class="grow">Su servicio dice <b>${srv.duracion_semanas} semanas</b>, pero sus bloques terminan en la semana <b>${Math.max(...srv._bloques.map(b => b.semana_fin))}</b> y la fecha de fin sale con los bloques.</span><button class="btn sm" data-act="ajBloques">Ajustar a ${srv.duracion_semanas} semanas</button></div>` : ''}
     ${extensionesDe(srv).length ? `<div class="small row" style="flex-wrap:wrap;gap:6px">${extensionesDe(srv).map((x, i) => `<button class="pill gold" data-act="extEditar" data-i="${i}" title="Editar ampliación">${esc(x.nombre || 'Extensión')} · ${x.tipo === 'bono' ? `${x.sesiones} sesiones · ${esc(fCorta(x.fecha))}` : `${x.semanas} sem${x.sesiones ? ` · ${x.sesiones} personales` : ''} · desde ${esc(fCorta(x.desde))}`} ✎</button>`).join('')}</div>` : ''}
     ${srv?.inicio ? `<div class="small row" style="flex-wrap:wrap;gap:6px;align-items:center">${pausasDe(srv).map((p, i) => `<button class="pill blue" ${p.enCurso ? 'data-act="estadoAl"' : `data-act="pausaEditar" data-i="${(srv.pausas || []).findIndex(q => q.desde === p.desde)}"`} title="${p.enCurso ? 'Pausa en curso' : 'Editar pausa'}">⏸ ${esc(fCorta(p.desde))} – ${esc(fCorta(p.hasta))} · ${Math.round(diasPausa(p) / 7 * 10) / 10} sem ✎</button>`).join('')}<button class="linkbtn small" data-act="pausaEditar" data-i="-1">＋ Pausa pasada</button>${pausasDe(srv).length ? `<span class="muted">Las pausas alargan su proceso: termina el ${esc(fCorta(finProceso(proceso(srv)) || ''))}.</span>` : ''}</div>` : ''}
     ${(() => { const ci = srv && cierreDe(a.id); return ci ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>Bono terminado el ${esc(fCorta(ci.fin))}.</b> Su app muestra su resumen y cómo seguir; ${a.activo === false ? 'ya está archivado.' : `pasa a antiguos alumnos y pierde el acceso el ${esc(fCorta(ci.limite))}. Si renueva o cambia de programa, se reactiva solo al guardar su servicio.`}</div><button class="btn sm" data-act="pdfCierre" data-id="${a.id}">📄 Resumen PDF</button></div>` : ''; })()}
     ${srv ? (() => { const h = Array.isArray(srv.historial) ? srv.historial : []; return `<div class="small row" style="flex-wrap:wrap;gap:6px;align-items:center">${h.map((x, i) => `<button class="pill" data-act="histEditar" data-i="${i}" title="Editar programa anterior">Antes: ${esc(x.producto || x.linea || 'Programa')} · ${esc(fCorta(x.desde))}–${esc(fCorta(x.hasta))} ✎</button>`).join('')}<button class="linkbtn small" data-act="histEditar" data-i="-1">＋ Programa anterior</button></div>`; })() : ''}
-    ${(() => { const af = avisoFin(srv); return af ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>${af.terminado ? `Su proceso terminó el ${esc(fCorta(af.fin))}` : `Le quedan ${af.dias} días de proceso`}</b> (final ${esc(fF(af.fin))}). Si sigue contigo, añádele una extensión: continúa con sus bloques y su historial.</div><button class="btn sm gold" data-act="extension">＋ Añadir extensión</button></div>` : srv?.inicio ? '<button class="linkbtn small" data-act="extension" style="align-self:flex-start">＋ Añadir extensión del proceso</button>' : ''; })()}
+    ${(() => { const af = avisoFin(srv); return af ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>${af.terminado ? `Su proceso terminó el ${esc(fCorta(af.fin))}` : `Le quedan ${af.dias} días de proceso`}</b> (final ${esc(fF(af.fin))}). Si sigue contigo, añádele una extensión: continúa con sus bloques y su historial.</div><button class="btn sm gold" data-act="extension">＋ Añadir extensión</button><button class="btn sm ghost" data-act="entExtra">＋ Entrenamientos sueltos</button></div>` : srv?.inicio ? '<span class="row" style="gap:12px;flex-wrap:wrap"><button class="linkbtn small" data-act="extension">＋ Añadir extensión del proceso</button><button class="linkbtn small" data-act="entExtra">＋ Entrenamientos sueltos</button></span>' : ''; })()}
     ${e.control ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>Toca su revisión mensual ${e.control.n}</b> (${esc(fCorta(e.control.fecha))}): llamada o videollamada de 10-15 minutos para ver cómo se siente, sus objetivos y su composición corporal.</div><button class="btn sm gold" data-act="revision" data-n="${e.control.n}">Registrar revisión</button></div>` : ''}
   </div></section>`;
   const fb4 = `${srv?.modulo_futbol ? vSemanaEnCurso(f, a) + `<details class="card" style="margin:0 0 14px"><summary><b>Semana patrón</b> <span class="small muted">· su programa base</span></summary>${vBloqueActual(f, a)}</details>` : vBloqueActual(f, a)}<div style="padding:0 2px"><button class="btn ghost full" data-act="fichaSub" data-s="entreno">Programas, contextos y zonas de FC ›</button></div>${IA.vFicha(f, a)}`;
@@ -5283,6 +5284,37 @@ function formPausa(i) {
   $('#pa-del')?.addEventListener('click', () => { l.splice(i, 1); guarda(l); });
 }
 /* Editar o quitar una ampliación ya puesta (nombre, semanas, sesiones). Ajusta la duración y el bono */
+/* Los bloques de la hoja de ruta mandan en la fecha de fin: si la duración del servicio cambia (p. ej. una ampliación de 13 a 18 semanas),
+   el último bloque se alarga o se recorta para terminar en la nueva semana, y los que sobran se quitan */
+async function ajustarBloquesFin(aid, semanas) {
+  const { data: ruta } = await sb.from('hoja_ruta').select('*').eq('alumno_id', aid); const bl = bloquesDe(ruta || []).slice().sort((a, b) => a.semana_inicio - b.semana_inicio);
+  if (!bl.length || !(semanas > 0)) return 0; const ult = bl[bl.length - 1].semana_fin; if (ult === semanas) return 0;
+  if (semanas > ult) { const { error } = await sb.from('hoja_ruta').update({ semana_fin: semanas }).eq('id', bl[bl.length - 1].id); if (error) throw error; return semanas - ult; }
+  const sobran = bl.filter(b => b.semana_inicio > semanas), queda = bl.filter(b => b.semana_inicio <= semanas).pop();
+  if (sobran.length) { const { error } = await sb.from('hoja_ruta').delete().in('id', sobran.map(b => b.id)); if (error) throw error; }
+  if (queda && queda.semana_fin !== semanas) { const { error } = await sb.from('hoja_ruta').update({ semana_fin: semanas }).eq('id', queda.id); if (error) throw error; }
+  return semanas - ult;
+}
+/* Añadir entrenamientos personales a mano (regalo o comprados aparte) en cualquier momento, con o sin cuota */
+function formEntExtra() {
+  const f = S.ficha, srv = f?.srv; if (!srv?.id) return toast('Primero pon su servicio');
+  abrirSheet(`<form class="stack" id="f-ee"><h2>Añadir entrenamientos</h2><p class="small muted" style="margin-top:-6px">Ahora tiene ${srv.sesiones_incluidas || 0} entrenamientos personales en su proceso.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Cuántos<input type="number" id="ee-n" min="1" max="200" value="1" required></label><label class="f">Motivo<select id="ee-m"><option>Regalo</option><option>Comprados aparte</option><option>Compensación</option><option>Otro</option></select></label></div>
+    <label class="f" id="ee-pw" hidden>Importe que paga (€)<input type="text" inputmode="decimal" id="ee-p" placeholder="Ej. 60"><span class="small muted">Se crea su cuota en Pagos.</span></label>
+    <label class="f">Nota (opcional)<input type="text" id="ee-t" placeholder="Ej. por traer a un amigo"></label>
+    <p class="small" id="ee-r"></p><button class="btn full" type="submit">Añadir</button></form>`);
+  const pinta = () => { const n = Math.max(0, +$('#ee-n').value || 0); $('#ee-pw').hidden = $('#ee-m').value !== 'Comprados aparte'; $('#ee-r').innerHTML = `Pasa a <b>${(srv.sesiones_incluidas || 0) + n} entrenamientos</b>.`; };
+  $('#f-ee').addEventListener('input', pinta); $('#ee-m').addEventListener('change', pinta); pinta();
+  $('#f-ee').addEventListener('submit', async e => {
+    e.preventDefault(); const bt = e.target.querySelector('[type=submit]'); bt.disabled = true;
+    const n = Math.max(1, +$('#ee-n').value || 1), mot = $('#ee-m').value, nota = $('#ee-t').value.trim(), imp = mot === 'Comprados aparte' ? numero($('#ee-p').value) : null;
+    const ext = [...extensionesDe(srv), { nombre: `${n} entrenamiento${n === 1 ? '' : 's'} · ${mot.toLowerCase()}`, tipo: 'bono', sesiones: n, fecha: hoyISO(), motivo: mot, ...(nota ? { nota } : {}) }];
+    const { error } = await sb.from('servicios').update({ sesiones_incluidas: (srv.sesiones_incluidas || 0) + n, modulo_presencial: true, extensiones: ext }).eq('id', srv.id);
+    if (error) { bt.disabled = false; return fallo(error, /extensiones/.test(error.message || '') ? 'Falta ejecutar el Bloque 50 en Supabase.' : undefined); }
+    if (imp) { const r = await sb.from('pagos').insert({ alumno_id: f.id, concepto: `${n} entrenamiento${n === 1 ? '' : 's'} personal${n === 1 ? '' : 'es'} sueltos`, importe: imp, vence: hoyISO() }); if (r.error) toast('Entrenamientos añadidos, pero la cuota no se ha creado'); }
+    cerrarSheet(); toast(`+${n} entrenamiento${n === 1 ? '' : 's'} añadido${n === 1 ? '' : 's'}`); const sub = S.fichaSub; await cargarCoach(); await abrirFicha(f.id); if (sub) await abrirSub(sub);
+  });
+}
 function formExtEditar(i) {
   const srv = S.ficha?.srv, l = extensionesDe(srv).slice(), x = l[i]; if (!x) return;
   const bono = x.tipo === 'bono';
@@ -5296,6 +5328,7 @@ function formExtEditar(i) {
   const guarda = async (nuevaL, dSem, dSes) => {
     const up = { extensiones: nuevaL }; if (dSem) up.duracion_semanas = Math.max(1, (srv.duracion_semanas || 0) + dSem); if (dSes) up.sesiones_incluidas = Math.max(0, (srv.sesiones_incluidas || 0) + dSes);
     const { error } = await sb.from('servicios').update(up).eq('id', srv.id); if (error) return $('#xe-err').textContent = error.message || 'No se ha podido guardar';
+    try { await ajustarBloquesFin(srv.alumno_id || S.ficha.id, up.duracion_semanas ?? srv.duracion_semanas); } catch (err) { console.error(err); toast('Ampliación guardada, pero no se han podido ajustar sus bloques'); }
     cerrarSheet(); toast('Ampliación actualizada'); const sub = S.fichaSub; await cargarCoach(); await abrirFicha(S.ficha.id); if (sub) await abrirSub(sub);
   };
   $('#f-exe').addEventListener('submit', e => { e.preventDefault();
@@ -5321,6 +5354,7 @@ function formExtension() {
     <div id="ex-sem-w" class="stack" style="gap:10px"><p class="small muted" style="margin:0">Su proceso actual tiene ${total} semanas y termina el ${esc(fLarga(sumaDias(desde, -1)))}. La extensión empieza justo después y se añade como nuevos bloques al final, así que conserva todo su historial.</p>
     <label class="f">Nombre<input type="text" id="ex-n" value="Extensión${n > 1 ? ' ' + n : ''}" required></label>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Semanas<input type="number" id="ex-s" min="1" max="104" value="12" required></label><label class="f">Bloques de<input type="number" id="ex-b" min="1" max="52" value="${SEM_CICLO}"><span class="small muted">semanas cada uno</span></label></div>
+    <label class="f">Entrenamientos personales extra <span class="muted">(regalo o comprados aparte, además de los de la frecuencia)</span><input type="number" id="ex-xtra" min="0" max="200" value="0"></label>
     <label class="f">Objetivo de la extensión (opcional)<textarea id="ex-o" rows="2"></textarea></label></div>
     <p class="small" id="ex-res"></p>
     <div class="card stack" id="ex-pago" style="padding:12px;gap:8px" hidden><b class="small">Pago</b><div class="chips" id="ex-forma"></div><span class="small muted" id="ex-bon"></span>
@@ -5340,7 +5374,7 @@ function formExtension() {
   const res = () => {
     pintaPagoX();
     if (ex.tipo === 'bono') { const n = Math.max(1, +$('#ex-ses').value || 1); $('#ex-res').innerHTML = `Su bono pasa de ${srv.sesiones_incluidas || 0} a <b>${(srv.sesiones_incluidas || 0) + n} sesiones</b>.${$('#ex-fin').checked ? ' Sin revisiones ni avisos de seguimiento.' : ''}`; return; }
-    const s2 = Math.max(1, +$('#ex-s').value || 1), ses = ex.tipo === 'pt' && ex.op ? sesionesDe(ex.op, 3) + (ex.forma === 'unico' ? tarAmp()?.bonusUnico || 0 : 0) : 0;
+    const s2 = Math.max(1, +$('#ex-s').value || 1), ses = (ex.tipo === 'pt' && ex.op ? sesionesDe(ex.op, 3) + (ex.forma === 'unico' ? tarAmp()?.bonusUnico || 0 : 0) : 0) + Math.max(0, +$('#ex-xtra').value || 0);
     $('#ex-res').innerHTML = `Desde el <b>${esc(fCorta(desde))}</b> hasta el <b>${esc(fCorta(sumaDias(desde, s2 * 7 - 1)))}</b> · proceso total ${total + s2} semanas.${ses ? ` Suma <b>${ses} entrenamientos personales</b> a su bono (${(srv.sesiones_incluidas || 0) + ses} en total).` : ''}`;
   };
   const pinta = () => {
@@ -5354,7 +5388,7 @@ function formExtension() {
     $('#ex-n').value = { pt: 'Ampliación trimestral', online: 'Ampliación online', ali: 'Ampliación de alimentación', bono: 'Bono de sesiones', libre: 'Extensión' }[t] + (n > 1 && t !== 'bono' ? ' ' + n : ''); pinta(); };
   $('#ex-tipo').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (b) ponTipo(b.dataset.v); });
   $('#ex-op').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; ex.op = ex.tipo === 'online' ? +b.dataset.v : b.dataset.v; if (ex.tipo === 'online') $('#ex-s').value = semanasDeMeses(ex.op); pinta(); });
-  ['#ex-s', '#ex-ses', '#ex-fin', '#ex-desc', '#ex-p0', '#ex-n'].forEach(q => $(q).addEventListener('input', res)); $('#ex-fin').addEventListener('change', res); $('#ex-desct').addEventListener('change', res);
+  ['#ex-s', '#ex-ses', '#ex-fin', '#ex-desc', '#ex-p0', '#ex-n', '#ex-xtra'].forEach(q => $(q).addEventListener('input', res)); $('#ex-fin').addEventListener('change', res); $('#ex-desct').addEventListener('change', res);
   $('#ex-forma').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; ex.forma = b.dataset.v; res(); });
   ponTipo(def);
   $('#f-ext').addEventListener('submit', async e => {
@@ -5371,10 +5405,10 @@ function formExtension() {
       cerrarSheet(); toast(`Bono de ${nS} sesiones añadido`); const sub = S.fichaSub; await cargarCoach(); await abrirFicha(f.id); if (sub) await abrirSub(sub); return;
     }
     const tX = tarAmp(), cuotasX = tX && $('#ex-genp').checked ? Tarifas.plan(tX, opPagoX()) : [];
-    const sesPT = ex.tipo === 'pt' && ex.op ? sesionesDe(ex.op, 3) + (ex.forma === 'unico' ? tX?.bonusUnico || 0 : 0) : 0;
+    const xtra = Math.max(0, +$('#ex-xtra').value || 0), sesPT = (ex.tipo === 'pt' && ex.op ? sesionesDe(ex.op, 3) + (ex.forma === 'unico' ? tX?.bonusUnico || 0 : 0) : 0) + xtra;
     if (cuotasX.length) { let { error: ep } = await sb.from('pagos').insert(cuotasX.map(c => ({ ...c, alumno_id: f.id, tarifa: tX.id })));
       if (ep && /tarifa/.test(ep.message || '')) ({ error: ep } = await sb.from('pagos').insert(cuotasX.map(c => ({ ...c, alumno_id: f.id })))); if (ep) toast('Las cuotas no se han podido crear: ' + (ep.message || '')); }
-    const ext = [...extensionesDe(srv), { nombre, semanas: sem, desde, tipo: ex.tipo, ...(ex.tipo === 'pt' ? { frecuencia: ex.op, sesiones: sesPT } : {}), ...(ex.tipo === 'online' ? { meses: ex.op } : {}) }];
+    const ext = [...extensionesDe(srv), { nombre, semanas: sem, desde, tipo: ex.tipo, ...(sesPT ? { sesiones: sesPT } : {}), ...(xtra ? { extra: xtra } : {}), ...(ex.tipo === 'pt' ? { frecuencia: ex.op, sesiones: sesPT } : {}), ...(ex.tipo === 'online' ? { meses: ex.op } : {}) }];
     const upd = { duracion_semanas: total + sem, extensiones: ext }; if (sesPT) Object.assign(upd, { sesiones_incluidas: (srv.sesiones_incluidas || 0) + sesPT, modulo_presencial: true });
     let { error } = await sb.from('servicios').update(upd).eq('id', srv.id);
     if (error) return fallar(error, /extensiones/.test(error.message || '') ? 'Falta ejecutar el Bloque 50 en Supabase.' : undefined);
@@ -6970,7 +7004,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v256';
+const APP_VER = 'v257';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -7258,6 +7292,8 @@ document.addEventListener('click', async e => {
     case 'pdfCierre': PDF.cierreBono(b.dataset.id || null, b); break;
     case 'ecoTab': S.ecoTab = b.dataset.t; try { localStorage.setItem('lof-eco-tab', S.ecoTab); } catch (e) { } render(); window.scrollTo(0, 0); break;
     case 'extEditar': formExtEditar(+b.dataset.i); break;
+    case 'ajBloques': { const srv = S.ficha?.srv; if (!srv) break; b.disabled = true; try { await ajustarBloquesFin(S.ficha.id, srv.duracion_semanas); toast('Bloques ajustados: ya termina en su fecha'); await cargarCoach(); await abrirFicha(S.ficha.id); } catch (err) { b.disabled = false; fallo(err); } break; }
+    case 'entExtra': formEntExtra(); break;
     case 'programarSes': formProgramar(S.ficha?.id || null, b.dataset.f || null); break;
     case 'verAgenda': verAgenda(); break;
     case 'agendaMover': verAgenda(+b.dataset.d); break;
