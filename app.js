@@ -1128,7 +1128,8 @@ function vEjercicio(e, i, ro) {
         if (plan) return nc + `<span class="cas">${sp ? '—' : esc(kgP || '—')}</span><span class="cas">${esc(rpP || '—')}</span>` + (ult ? '<span></span>' : pausa);
         return nc
           + (sp ? `<span class="small muted" data-row="${r}" style="text-align:center">—</span>` : `<span class="kg-w"><input id="kg-${id}" data-row="${r}" type="text" inputmode="decimal" placeholder="${esc(kgP)}" aria-label="Kg serie ${n}${T > 1 ? ' tramo ' + (k + 1) : ''}"></span>`)
-          + `<input id="rp-${id}" data-row="${r}" type="text" inputmode="numeric" placeholder="${esc(rpP)}" aria-label="Repeticiones serie ${n}${T > 1 ? ' tramo ' + (k + 1) : ''}">`
+          + (Tandas.esIso(t) ? `<span class="iso-w"><input id="rp-${id}" data-row="${r}" type="text" inputmode="numeric" placeholder="${esc(String(Tandas.segDe(t) || rpP))}" aria-label="Segundos serie ${n}${T > 1 ? ' tramo ' + (k + 1) : ''}"><button type="button" class="iso-go" data-act="isoCrono" data-in="rp-${id}" data-obj="${Tandas.segDe(t) || ''}" data-lbl="${esc(ej.nombre + ' · serie ' + n)}" data-pos="${esc(t.op?.pos || '')}" aria-label="Cronometrar">⏱</button></span>`
+            : `<input id="rp-${id}" data-row="${r}" type="text" inputmode="numeric" placeholder="${esc(rpP)}" aria-label="Repeticiones serie ${n}${T > 1 ? ' tramo ' + (k + 1) : ''}">`)
           + (ult ? `<button class="chk" id="ck-${r}" data-act="serie" data-es="${e.id}" data-n="${n}" data-t="${T}" data-sp="${sp ? 1 : 0}" data-d="${descanso}" data-lbl="${esc(ej.nombre)} · serie ${n}" aria-label="Serie ${n} hecha">${CHK}</button>` : pausa);
       }).join('');
     }).join('');
@@ -6697,7 +6698,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v244';
+const APP_VER = 'v245';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -6826,6 +6827,50 @@ document.addEventListener('visibilitychange', () => {
 /* Cualquier toque reactiva el audio si el navegador lo había parado (para que el fin del descanso suene) */
 document.addEventListener('touchend', () => { try { if (T.ctx && T.ctx.state !== 'running') T.ctx.resume(); } catch (e) { } }, { passive: true });
 
+/* ---------- Temporizador de isométricos: cuenta atrás hasta el objetivo, sigue contando si aguanta más y apunta los segundos ---------- */
+const ISO = { iv: null };
+function pip(f = 880, d = .12, vol = .5) { try { const c = T.ctx; if (!c) return; if (c.state !== 'running') c.resume(); const o = c.createOscillator(), g = c.createGain(), t0 = c.currentTime + .02; o.frequency.value = f; g.gain.setValueAtTime(.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + .01); g.gain.exponentialRampToValueAtTime(.0001, t0 + d); o.connect(g).connect(c.destination); o.start(t0); o.stop(t0 + d + .05); } catch (e) { } }
+const vib = p => { try { navigator.vibrate && navigator.vibrate(p); } catch (e) { } };
+function isoCrono(b) {
+  audio(); if (!$('#timer').hidden) stopTimer();
+  const obj = +b.dataset.obj || 0, PREP = 5;
+  Object.assign(ISO, { in: b.dataset.in, obj, fase: 'prep', t0: Date.now() + PREP * 1000, ult: null, fin: false });
+  let ov = $('#isocrono'); if (!ov) { ov = document.createElement('div'); ov.id = 'isocrono'; ov.className = 'isocrono'; document.body.appendChild(ov); }
+  ov.innerHTML = `<div class="ic-in"><span class="eyebrow">Isométrico</span><b class="ic-lbl">${esc(b.dataset.lbl || '')}</b>
+    ${b.dataset.pos ? `<span class="small ic-pos">📐 ${esc(b.dataset.pos)}</span>` : ''}
+    <div class="ic-ring"><svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="54" class="ic-bg"/><circle cx="60" cy="60" r="54" class="ic-fg" id="ic-arc" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/></svg>
+      <div class="ic-c"><span class="ic-f" id="ic-f">Colócate</span><span class="ic-n num" id="ic-n">${PREP}</span><span class="ic-s" id="ic-s">${obj ? `Objetivo ${obj} s` : 'Cronómetro'}</span></div></div>
+    <button class="btn full ic-stop" id="ic-stop" data-act="isoParar">■ Parar y apuntar</button>
+    <button class="btn ghost full" data-act="isoCerrar">Cancelar</button></div>`;
+  ov.hidden = false; document.body.classList.add('ic-on');
+  try { navigator.wakeLock?.request('screen').then(l => { ISO.lock = l; }).catch(() => { }); } catch (e) { }
+  clearInterval(ISO.iv); ISO.iv = setInterval(isoTick, 100); isoTick();
+}
+function isoTick() {
+  const ahora = Date.now(), n = $('#ic-n'); if (!n) return clearInterval(ISO.iv);
+  if (ISO.fase === 'prep') {
+    const q = Math.ceil((ISO.t0 - ahora) / 1000);
+    if (q > 0) { if (ISO.ult !== q) { ISO.ult = q; n.textContent = q; if (q <= 3) pip(660, .1, .35); } return; }
+    ISO.fase = 'va'; ISO.ult = null; pip(1320, .35, .6); vib(200); $('#ic-f').textContent = '¡Aguanta!'; $('#isocrono').classList.add('va');
+  }
+  const el = (ahora - ISO.t0) / 1000, s = Math.floor(el), o = ISO.obj;
+  if (o) {
+    const queda = Math.ceil(o - el);
+    if (queda > 0) { n.textContent = queda; $('#ic-arc').setAttribute('stroke-dashoffset', String(100 - Math.min(100, el / o * 100))); if (ISO.ult !== queda) { ISO.ult = queda; if (queda <= 3) pip(880, .1, .4); } }
+    else { if (!ISO.fin) { ISO.fin = true; sonarFin(); vib([300, 150, 300]); $('#isocrono').classList.add('ok'); $('#ic-f').textContent = '¡Objetivo cumplido!'; $('#ic-arc').setAttribute('stroke-dashoffset', '0'); }
+      n.textContent = `+${s - o}`; $('#ic-s').textContent = `${s} s en total · si aguantas más, sigue`; }
+  } else { n.textContent = s; $('#ic-s').textContent = 'segundos'; }
+}
+function isoCerrar(apuntar) {
+  clearInterval(ISO.iv); ISO.iv = null; try { ISO.lock?.release(); } catch (e) { } ISO.lock = null; callar();
+  const s = ISO.fase === 'va' ? Math.floor((Date.now() - ISO.t0) / 1000) : 0, ov = $('#isocrono');
+  if (ov) { ov.hidden = true; ov.className = 'isocrono'; } document.body.classList.remove('ic-on');
+  if (!apuntar) return;
+  if (!s) return toast('No ha llegado a empezar: no se apunta nada');
+  const i = document.getElementById(ISO.in); if (i) { i.value = s; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); i.closest('.rp-serie, .ex-card')?.scrollIntoView({ block: 'nearest' }); }
+  toast(`${s} s apuntados${ISO.obj && s < ISO.obj ? ` (objetivo ${ISO.obj} s)` : ''}. Marca la serie como hecha ✓`);
+}
+
 /* ---------- Eventos ---------- */
 document.addEventListener('click', async e => {
   if (e.target.closest('[data-silenciar]')) { const b = e.target.closest('[data-silenciar]'); callar(); b.setAttribute('aria-pressed', 'true'); b.textContent = 'Silenciada'; return; }
@@ -6924,6 +6969,9 @@ document.addEventListener('click', async e => {
     case 'nuevaPres': formPres(); break;
     case 'pausaEditar': formPausa(+b.dataset.i); break;
     case 'histEditar': formHistorial(+b.dataset.i); break;
+    case 'isoCrono': isoCrono(b); break;
+    case 'isoParar': isoCerrar(true); break;
+    case 'isoCerrar': isoCerrar(false); break;
     case 'pdfCierre': PDF.cierreBono(b.dataset.id || null, b); break;
     case 'ecoTab': S.ecoTab = b.dataset.t; try { localStorage.setItem('lof-eco-tab', S.ecoTab); } catch (e) { } render(); window.scrollTo(0, 0); break;
     case 'extEditar': formExtEditar(+b.dataset.i); break;
