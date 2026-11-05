@@ -2133,14 +2133,14 @@ function gcalLink(p, nombre) {
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`${nombre} · ${p.tipo || 'Entrenamiento'}`)}&dates=${dates}&ctz=Europe/Madrid&details=${encodeURIComponent('Programada en la app de La Obra Fitness')}`;
 }
 /* Programar una sesión sin entrar en la ficha: alumno, día, hora y tipo; dice lo que le queda del bono */
-function formProgramar(aid, fechaIni) {
+function formProgramar(aid, fechaIni, horaIni) {
   const als = S.c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach').sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
   const conBono = id => { const v = srvDe(id); return !!(v && (v.modulo_presencial || v.sesiones_incluidas || modalidadSrv(v) !== 'online')); };
   const orden = [...als.filter(a => conBono(a.id)), ...als.filter(a => !conBono(a.id))];
   abrirSheet(`<form class="stack" id="f-prog"><h2>Programar sesión</h2>
     <label class="f">Alumno<select id="pg-a" required><option value="">Elige alumno…</option>${orden.map((a, i) => `${i === als.filter(x => conBono(x.id)).length && i ? '<option disabled>── Sin sesiones presenciales ──</option>' : ''}<option value="${a.id}" ${a.id === aid ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('')}</select></label>
     <p class="small" id="pg-bono" style="margin:-4px 0 0"></p>
-    <div style="display:grid;grid-template-columns:1fr 120px;gap:8px"><label class="f">Día<input type="date" id="pg-f" value="${fechaIni || hoyISO()}" required></label><label class="f">Hora<input type="time" id="pg-h" step="900"></label></div>
+    <div style="display:grid;grid-template-columns:1fr 120px;gap:8px"><label class="f">Día<input type="date" id="pg-f" value="${fechaIni || hoyISO()}" required></label><label class="f">Hora<input type="time" id="pg-h" step="900" value="${esc(horaIni || '')}"></label></div>
     <div class="chips" id="pg-t">${['Entrenamiento', 'Valoración inicial', 'Valoración final'].map((t, i) => `<button type="button" class="pill ${i ? '' : 'blue'}" data-t="${t}">${t}</button>`).join('')}</div>
     <label class="f">Nota para el alumno (opcional)<input type="text" id="pg-n" placeholder="Ej. Trae zapatillas de correr"></label>
     <label class="row small" style="gap:8px"><input type="checkbox" id="pg-g" style="width:20px;height:20px"> Abrir también Google Calendar para añadirla al momento</label>
@@ -2167,18 +2167,56 @@ function formProgramar(aid, fechaIni) {
   });
 }
 /* Agenda: todas las sesiones presenciales de tus alumnos, por días (de la semana pasada a 3 semanas vista) */
+/* Agenda tipo Google Calendar: semana (7 días), 3 días o lista. Toca un hueco para programar ahí; toca una sesión para abrirla */
+const AG_VISTAS = [['semana', 'Semana'], ['3dias', '3 días'], ['lista', 'Lista']];
 function verAgenda(desplaza = 0) {
-  S.agIni = desplaza ? sumaDias(S.agIni || lunesDe(hoyISO()), desplaza) : (S.agIni || lunesDe(hoyISO()));
-  const ini = S.agIni, fin = sumaDias(ini, 13), hoy = hoyISO(), nom = id => S.c.perfiles.find(p => p.id === id)?.nombre || 'Alumno';
+  let vista = 'semana'; try { vista = localStorage.getItem('lof-ag-vista') || 'semana'; } catch (e) { }
+  const hoy = hoyISO(), nDias = vista === 'semana' ? 7 : vista === '3dias' ? 3 : 14;
+  if (!S.agIni) S.agIni = vista === '3dias' ? hoy : lunesDe(hoy);
+  if (desplaza) S.agIni = sumaDias(S.agIni, desplaza * nDias); else if (vista === 'semana' && S.agIni !== lunesDe(S.agIni)) S.agIni = lunesDe(S.agIni);
+  const ini = S.agIni, fin = sumaDias(ini, nDias - 1), nom = id => S.c.perfiles.find(p => p.id === id)?.nombre || 'Alumno';
   const l = (S.c.presenciales || []).filter(p => p.fecha && p.fecha >= ini && p.fecha <= fin && p.estado !== 'cancelada').sort(ordPres);
-  const dias = [...Array(14)].map((_, i) => sumaDias(ini, i));
+  const dias = [...Array(nDias)].map((_, i) => sumaDias(ini, i));
   const EST = { programada: ['blue', 'Reservada'], dada: ['ok', 'Hecha'], tarde: ['warn', 'Aviso < 24 h'], falta: ['bad', 'No vino'] };
-  abrirSheet(`<div class="stack"><div class="row"><h2 class="grow">Agenda de sesiones</h2><button class="btn sm" data-act="programarSes">＋ Programar</button></div>
-    <div class="row" style="gap:6px"><button class="btn sm ghost" data-act="agendaMover" data-d="-14">‹</button><b class="small grow" style="text-align:center">${esc(fCorta(ini))} – ${esc(fCorta(fin))}</b><button class="btn sm ghost" data-act="agendaMover" data-d="14">›</button></div>
+  const rango = ini.slice(0, 7) === fin.slice(0, 7) ? `${+ini.slice(8)}–${fCorta(fin)}` : `${fCorta(ini)} – ${fCorta(fin)}`;
+  const cuerpo = vista === 'lista' ? `
     ${dias.map(d => { const xs = l.filter(p => p.fecha === d); if (!xs.length && d !== hoy) return '';
       return `<div class="stack" style="gap:4px"><span class="small ${d === hoy ? '' : 'muted'}" style="${d === hoy ? 'font-weight:700' : ''}">${esc(fLarga(d))}${d === hoy ? ' · hoy' : ''}</span>${xs.length ? xs.map(p => { const e = p.estado === 'programada' && p.fecha < hoy ? ['ok', 'Hecha'] : EST[p.estado] || ['', p.estado];
-        return `<div class="line" style="gap:10px"><b class="num small" style="width:44px;flex:none">${hhmm(p.hora) || '—'}</b><div class="grow" data-act="agendaIr" data-id="${p.alumno_id}" data-p="${p.id || ''}" style="cursor:pointer"><b class="small">${esc(nom(p.alumno_id))}</b><div class="small muted">${esc(p.tipo || 'Entrenamiento')}</div></div><span class="pill ${e[0]}">${e[1]}</span>${p.estado === 'programada' && p.fecha >= hoy ? `<a class="btn sm ghost" href="${esc(gcalLink(p, nom(p.alumno_id)))}" target="_blank" rel="noopener" title="Añadir a Google Calendar">📅</a>` : ''}</div>`; }).join('') : `<div class="small muted" style="padding:4px 0">Nada programado. <button class="linkbtn small" data-act="programarSes" data-f="${d}">Programar</button></div>`}</div>`; }).join('') || '<div class="card small muted">Sin sesiones en estas dos semanas.</div>'}
+        return `<div class="line" style="gap:10px"><b class="num small" style="width:44px;flex:none">${hhmm(p.hora) || '—'}</b><div class="grow" data-act="agendaIr" data-id="${p.alumno_id}" data-p="${p.id || ''}" style="cursor:pointer"><b class="small">${esc(nom(p.alumno_id))}</b><div class="small muted">${esc(p.tipo || 'Entrenamiento')}</div></div><span class="pill ${e[0]}">${e[1]}</span>${p.estado === 'programada' && p.fecha >= hoy ? `<a class="btn sm ghost" href="${esc(gcalLink(p, nom(p.alumno_id)))}" target="_blank" rel="noopener" title="Añadir a Google Calendar">📅</a>` : ''}</div>`; }).join('') : `<div class="small muted" style="padding:4px 0">Nada programado. <button class="linkbtn small" data-act="programarSes" data-f="${d}">Programar</button></div>`}</div>`; }).join('') || '<div class="card small muted">Sin sesiones en estas dos semanas.</div>'}` : agendaRejilla(dias, l, hoy, nom, EST);
+  abrirSheet(`<div class="stack"><div class="row"><h2 class="grow">Agenda</h2><button class="btn sm" data-act="programarSes">＋ Programar</button></div>
+    <div class="seg ag-vistas">${AG_VISTAS.map(([k, t]) => `<button class="${k === vista ? 'on' : ''}" data-act="agendaVista" data-v="${k}">${t}</button>`).join('')}</div>
+    <div class="row" style="gap:6px"><button class="btn sm ghost" data-act="agendaMover" data-d="-1" aria-label="Anterior">‹</button><b class="small grow" style="text-align:center">${esc(rango)}</b>${ini <= hoy && hoy <= fin ? '' : '<button class="btn sm ghost" data-act="agendaHoy">Hoy</button>'}<button class="btn sm ghost" data-act="agendaMover" data-d="1" aria-label="Siguiente">›</button></div>
+    ${cuerpo}
     <div class="card stack" style="gap:6px"><b class="small">📲 Tus sesiones en Google Calendar</b><span class="small muted">${S.c.fiscal?.agenda_token ? 'Ya tienes tu enlace de suscripción.' : 'Suscríbete una vez y te llegan solas todas las sesiones (las tuyas y las de Calendly).'}</span><button class="btn sm ghost" data-act="agendaSuscribir" style="align-self:flex-start">${S.c.fiscal?.agenda_token ? 'Ver enlace y pasos' : 'Configurar'}</button></div></div>`);
+  const g = $('#ag-grid'); if (!g) return;
+  const H = +g.dataset.h, h0 = +g.dataset.h0, hs = l.filter(p => p.hora).map(p => parseInt(p.hora));
+  g.scrollTop = Math.max(0, ((hs.length ? Math.min(...hs) : 8) - h0 - 0.5) * H);
+  g.addEventListener('click', ev => {
+    if (ev.target.closest('[data-act]')) return; const col = ev.target.closest('.ag-col'); if (!col) return;
+    const y = ev.clientY - col.getBoundingClientRect().top, m = Math.max(0, Math.floor(y / H * 2) * 30), hh = h0 + Math.floor(m / 60);
+    formProgramar(null, col.dataset.f, `${String(hh).padStart(2, '0')}:${m % 60 ? '30' : '00'}`);
+  });
+}
+function agendaRejilla(dias, l, hoy, nom, EST) {
+  const H = 52, dur = durSesion(), min = h => { const [a, b] = String(h || '').split(':'); return +a * 60 + (+b || 0); };
+  const conH = l.filter(p => p.hora), sinH = l.filter(p => !p.hora);
+  const h0 = Math.min(7, ...conH.map(p => Math.floor(min(p.hora) / 60))), h1 = Math.max(22, ...conH.map(p => Math.ceil((min(p.hora) + dur) / 60)));
+  const horas = [...Array(h1 - h0)].map((_, i) => h0 + i), DS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+  const corto = n => { const p = String(n).trim().split(/\s+/); return p.length > 1 ? `${p[0]} ${p[1][0]}.` : p[0]; };
+  const ev = p => { const e = p.estado === 'programada' && p.fecha < hoy ? ['ok', 'Hecha'] : EST[p.estado] || ['', p.estado], val = /valora/i.test(p.tipo || '') ? ' val' : '';
+    return { cls: e[0] + val, lbl: e[1] }; };
+  /* Sesiones que se pisan: se reparten el ancho de la columna */
+  const carriles = xs => { const out = [], fin = []; xs.forEach(p => { const a = min(p.hora), b = a + dur; let c = fin.findIndex(f => f <= a); if (c < 0) { c = fin.length; fin.push(b); } else fin[c] = b; out.push({ p, a, c }); });
+    return out.map(o => ({ ...o, n: Math.max(...out.filter(x => x.a < o.a + dur && o.a < x.a + dur).map(x => x.c)) + 1 })); };
+  const ahora = new Date(), mAhora = ahora.getHours() * 60 + ahora.getMinutes();
+  const cab = dias.map(d => { const f = fecha(d); return `<div class="ag-dh${d === hoy ? ' hoy' : ''}"><span>${DS[(f.getDay() + 6) % 7]}</span><b>${f.getDate()}</b></div>`; }).join('');
+  const todo = sinH.length ? `<div class="ag-fila ag-todo"><div class="ag-hcol small muted">—</div>${dias.map(d => `<div class="ag-tc">${sinH.filter(p => p.fecha === d).map(p => { const e = ev(p); return `<button class="ag-ev ag-mini ${e.cls}" data-act="agendaIr" data-id="${p.alumno_id}" data-p="${p.id || ''}" title="${esc(nom(p.alumno_id))} · ${esc(e.lbl)}">${esc(corto(nom(p.alumno_id)))}</button>`; }).join('')}</div>`).join('')}</div>` : '';
+  const cols = dias.map(d => `<div class="ag-col${d === hoy ? ' hoy' : ''}" data-f="${d}">${carriles(conH.filter(p => p.fecha === d)).map(({ p, a, c, n }) => { const e = ev(p);
+      return `<button class="ag-ev ${e.cls}" data-act="agendaIr" data-id="${p.alumno_id}" data-p="${p.id || ''}" style="top:${(a - h0 * 60) / 60 * H}px;height:${Math.max(22, dur / 60 * H - 2)}px;left:calc(${c * 100 / n}% + 1px);width:calc(${100 / n}% - 2px)" title="${esc(hhmm(p.hora))} ${esc(nom(p.alumno_id))} · ${esc(p.tipo || 'Entrenamiento')} · ${esc(e.lbl)}"><b>${esc(corto(nom(p.alumno_id)))}</b><span>${esc(hhmm(p.hora))}${dias.length < 7 ? ' · ' + esc(p.tipo || 'Entrenamiento') : ''}</span></button>`; }).join('')}
+      ${d === hoy && mAhora >= h0 * 60 && mAhora <= h1 * 60 ? `<i class="ag-ahora" style="top:${(mAhora - h0 * 60) / 60 * H}px"></i>` : ''}</div>`).join('');
+  return `<div class="ag-cal" style="--n:${dias.length}"><div class="ag-fila ag-cab"><div class="ag-hcol"></div>${cab}</div>${todo}
+    <div class="ag-grid" id="ag-grid" data-h="${H}" data-h0="${h0}"><div class="ag-fila" style="height:${horas.length * H}px"><div class="ag-hcol">${horas.map(h => `<span style="top:${(h - h0) * H}px">${h}:00</span>`).join('')}</div>${cols}</div></div>
+    <div class="small muted ag-ley"><span><i class="ag-dot blue"></i>Reservada</span><span><i class="ag-dot ok"></i>Hecha</span><span><i class="ag-dot warn"></i>Aviso &lt; 24 h</span><span><i class="ag-dot val"></i>Valoración</span><span>Toca un hueco para programar</span></div></div>`;
 }
 /* Suscripción: un enlace privado (con código secreto) que Google Calendar consulta solo */
 async function agendaSuscribir() {
@@ -6698,7 +6736,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v246';
+const APP_VER = 'v247';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -6978,6 +7016,8 @@ document.addEventListener('click', async e => {
     case 'programarSes': formProgramar(S.ficha?.id || null, b.dataset.f || null); break;
     case 'verAgenda': verAgenda(); break;
     case 'agendaMover': verAgenda(+b.dataset.d); break;
+    case 'agendaVista': { const v = b.dataset.v; try { localStorage.setItem('lof-ag-vista', v); } catch (e) { } S.agIni = v === '3dias' ? hoyISO() : lunesDe(S.agIni || hoyISO()); verAgenda(); break; }
+    case 'agendaHoy': S.agIni = null; verAgenda(); break;
     case 'agendaSuscribir': await agendaSuscribir(); break;
     case 'agendaIr': { const id = b.dataset.id, pid = +b.dataset.p; await irA(id, { tab: 'calendario', fn: pid ? () => { if ((S.ficha.pres || []).some(x => x.id === pid)) formPres(pid); } : null }); break; }
     case 'nuevaPresVal': S.presVal = b.dataset.t; formPres(); break;
