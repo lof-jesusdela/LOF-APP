@@ -2248,6 +2248,18 @@ function calAuto(min) {
   setTimeout(() => sincronizarCalendly(false), 1500);
 }
 /* Datos de una semana (lunes a domingo) de un alumno */
+/* Entrenos de verdad: no cuentan los días marcados como no hechos ni los marcadores de sesiones antiguas,
+   y una sesión empezada y retomada (otro registro del mismo día de programa en 2 días) cuenta una sola vez. Los extra reales sí cuentan */
+function contarEntrenos(ses) {
+  const v = (ses || []).filter(x => x.estado !== 'omitida' && !x.previa).sort((a, b) => a.fecha.localeCompare(b.fecha) || (a.id || 0) - (b.id || 0));
+  const vistos = new Map(); let ret = 0;
+  v.forEach(x => { const k = x.fecha + '|' + x.dia_id; if (vistos.has(k)) return;
+    const prev = [...vistos.values()].find(p => p.dia_id === x.dia_id && p.estado === 'parcial' && p.fecha < x.fecha && p.fecha >= sumaDias(x.fecha, -2) && !p._ret);
+    if (prev) { prev._ret = true; prev.estado = x.estado; ret++; vistos.set(k, { ...x, _dup: true }); return; }
+    vistos.set(k, { ...x }); });
+  const l = [...vistos.values()].filter(x => !x._dup);
+  return { n: l.length, completas: l.filter(x => x.estado !== 'parcial').length, parciales: l.filter(x => x.estado === 'parcial').length, retomadas: ret, omitidas: (ses || []).filter(x => x.estado === 'omitida').length };
+}
 function semanaDatos(aid, lunes, src) {
   const fin = sumaDias(lunes, 6), dentro = f => f >= lunes && f <= fin;
   const ses = (src.sesiones || []).filter(x => x.alumno_id === aid && dentro(x.fecha)).sort((a, b) => a.fecha.localeCompare(b.fecha));
@@ -2256,7 +2268,8 @@ function semanaDatos(aid, lunes, src) {
   const chk = (src.checkins || []).find(k => k.alumno_id === aid && k.semana_inicio === lunes);
   const media = k => { const v = ses.filter(x => x[k]).map(x => x[k]); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
   const ing = ingestasSemana(reg, lunes, (S.c?.servicios || []).find(x => x.alumno_id === aid));
-  return { lunes, fin, ses, entrenos: new Set(ses.map(x => x.fecha + x.dia_id)).size, reg, pasosMedia: pasos.length ? Math.round(pasos.reduce((a, b) => a + b, 0) / pasos.length) : null, diasPasos: pasos.length, chk, ing, nutri: ing.pct ?? chk?.nutricion_pct ?? null, cansancio: media('cansancio'), poderio: media('poderio') };
+  const ce = contarEntrenos(ses);
+  return { lunes, fin, ses, entrenos: ce.n, ent: ce, reg, pasosMedia: pasos.length ? Math.round(pasos.reduce((a, b) => a + b, 0) / pasos.length) : null, diasPasos: pasos.length, chk, ing, nutri: ing.pct ?? chk?.nutricion_pct ?? null, cansancio: media('cansancio'), poderio: media('poderio') };
 }
 /* Estado de las alertas del coach: vistas (quita la notificación) y solventadas (pasa a verde).
    Se guarda en la tabla alertas_coach (Bloque 51); si no existe, en este dispositivo. */
@@ -3766,7 +3779,7 @@ function vFicha() {
   const fb2 = `${srv?.modulo_futbol ? vFutbolFicha(a) : ''}
   <section class="section"><h2>Cumplimiento</h2><div class="kpis">
     ${(srv?.modulo_entreno ?? true) ? tile('entreno', 'Entrenamiento', dpw ? `${cur.entrenos}/${dpw}` : cur.entrenos, 'esta semana', dpw ? `semana pasada ${pre.entrenos}/${dpw}` : '', nivelE) : ''}
-    ${srv?.modulo_nutricion && !midoCoach(a.id) ? tile('alimentacion', 'Alimentación', '—', esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || ''), 'aún no se mide', '') : srv?.modulo_nutricion ? tile('alimentacion', 'Alimentación', ing7.pct != null ? ing7.pct + ' %' : '—', ing7.dias ? `${ing7.hechas}/${ing7.total} ingestas` : 'sin registros', Nutricion.nuevasDe(a.id) ? `🍽 ${Nutricion.nuevasDe(a.id)} creación${Nutricion.nuevasDe(a.id) > 1 ? 'es' : ''} nueva${Nutricion.nuevasDe(a.id) > 1 ? 's' : ''}` : evN ? evN[1] + ' · 7 días' : '', evN?.[0] || '') : ''}
+    ${srv?.modulo_nutricion && !midoCoach(a.id) ? tile('alimentacion', 'Alimentación', '—', esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || ''), 'aún no se mide', '') : srv?.modulo_nutricion ? tile('alimentacion', 'Alimentación declarada', ing7.pct != null ? ing7.pct + ' %' : '—', ing7.dias ? `${ing7.hechas} de ${ing7.posibles} ingestas registradas · ${ing7.dias}/7 días${ing7.pct == null ? ' (pocos datos)' : ''}` : 'sin registros', Nutricion.nuevasDe(a.id) ? `🍽 ${Nutricion.nuevasDe(a.id)} creación${Nutricion.nuevasDe(a.id) > 1 ? 'es' : ''} nueva${Nutricion.nuevasDe(a.id) > 1 ? 's' : ''}` : evN ? evN[1] + ' · 7 días' : '', evN?.[0] || '') : ''}
     ${conPasos(srv) || srv?.modulo_habitos ? tile('habitos', srv?.modulo_habitos ? 'Hábitos y pasos' : 'Pasos', pasos7 != null ? fmtNum(pasos7, 0) : '—', `pasos de media · 7 días`, `objetivo ${fmtNum(obj, 0)}`, pasos7 == null ? '' : pasos7 >= obj ? 'ok' : pasos7 >= obj * .7 ? 'warn' : 'bad') : ''}
   </div></section>
   ${Acomp.vCheckinsFicha(f, chks)}`;
@@ -3843,18 +3856,20 @@ function vFicha() {
     if (act !== 'inicio') { const x = SECS.find(z => z[0] === act); cuerpo = `<div class="fx-cab"><h2>${esc(x[3])}</h2>${x[4] ? `<span class="small muted">${x[4]}</span>` : ''}</div><div class="ft-cuerpo">${x[5]}</div>`; }
     else {
       /* Cumplimiento de las últimas 4 semanas completas: media de lo que se mide en su plan (cada parte se ve aparte) */
-      const sem = [1, 2, 3, 4].map(k => sumaDias(lunes, -7 * k)), partes = [];
-      if (srv?.modulo_entreno ?? true) { const pre = sem.map(l => [semanaDatos(a.id, l, src).entrenos, dpwEn(a.id, l, f.prog?.dias_semana || 0)]), tot = pre.reduce((t, [, d]) => t + d, 0); if (tot) partes.push(['Entrenamiento', Math.min(100, Math.round(pre.reduce((t, [h, d]) => t + Math.min(h, d), 0) / tot * 100)), `${pre.reduce((t, [h]) => t + h, 0)} de ${tot} entrenos`]); }
-      if (srv?.modulo_nutricion && midoCoach(a.id)) { const l = sem.map(x => ingestasSemana(S.c.diario.filter(r => r.alumno_id === a.id), x, srv)).filter(x => x.pct != null); if (l.length) partes.push(['Alimentación', Math.round(l.reduce((t, x) => t + x.pct, 0) / l.length), `${l.length} semana${l.length > 1 ? 's' : ''} con datos`]); }
-      if (conPasos(srv)) { const r = S.c.diario.filter(x => x.alumno_id === a.id && x.fecha >= sem[3] && x.fecha < lunes && x.pasos != null); if (r.length) { const m = r.reduce((t, x) => t + x.pasos, 0) / r.length; partes.push(['Pasos', Math.min(100, Math.round(m / obj * 100)), `${fmtNum(m, 0)} de media · objetivo ${fmtNum(obj, 0)}`]); } }
-      if (!srv?.modulo_futbol) { const n = sem.filter(l => S.c.checkins.some(k => k.alumno_id === a.id && k.semana_inicio === l)).length; partes.push(['Check-ins', Math.round(n / 4 * 100), `${n} de 4 enviados`]); }
-      const score = partes.length ? Math.round(partes.reduce((t, x) => t + x[1], 0) / partes.length) : null, colS = score == null ? 'var(--line)' : score >= 85 ? 'var(--ok)' : score >= 60 ? 'var(--gold)' : 'var(--bad)';
-      const anillo = score == null ? '<div class="fx-ring vacio"><b>—</b></div>' : `<div class="fx-ring" style="--p:${score};--c:${colS}"><b>${score}</b><small>de 100</small></div>`;
+      const pausasF = pausasDe(srv), enPausa = l => pausasF.some(p => p.desde <= sumaDias(l, 6) && (!p.hasta || p.hasta >= l));
+      const sem = [1, 2, 3, 4].map(k => sumaDias(lunes, -7 * k)).filter(l => (!srv?.inicio || sumaDias(l, 6) >= srv.inicio) && !enPausa(l)), partes = [], nS = sem.length;
+      const per = nS ? `${nS} semana${nS === 1 ? '' : 's'} completa${nS === 1 ? '' : 's'} (desde el ${fCorta(sem[sem.length - 1])})` : '';
+      if ((srv?.modulo_entreno ?? true) && nS) { const pre = sem.map(l => [semanaDatos(a.id, l, src).entrenos, dpwEn(a.id, l, f.prog?.dias_semana || 0)]), tot = pre.reduce((t, [, d]) => t + d, 0), h = pre.reduce((t, [x]) => t + x, 0), hc = pre.reduce((t, [x, d]) => t + Math.min(x, d), 0); if (tot) partes.push(['Entrenamiento', Math.min(100, Math.round(hc / tot * 100)), `${hc} de ${tot} previstos${h > hc ? ` · +${h - hc} extra` : ''}`, 'Entrenos registrados (una sesión retomada cuenta una vez; los días marcados como no hechos no cuentan) frente a los días de su plan.']); }
+      if (srv?.modulo_nutricion && midoCoach(a.id) && nS) { const l = sem.map(x => ingestasSemana(S.c.diario.filter(r => r.alumno_id === a.id), x, srv)), ok = l.filter(x => x.pct != null); if (ok.length) partes.push(['Alimentación declarada', Math.round(ok.reduce((t, x) => t + x.hechas, 0) / ok.reduce((t, x) => t + x.posibles, 0) * 100), `${ok.reduce((t, x) => t + x.hechas, 0)} de ${ok.reduce((t, x) => t + x.posibles, 0)} ingestas · ${ok.length} de ${nS} semanas con datos suficientes`, `Lo que el alumno marca como hecho sobre las ingestas que registra. Los días sin registro no cuentan como incumplimiento. Es autodeclarado: no está verificado.`]); }
+      if (conPasos(srv) && nS) { const r = S.c.diario.filter(x => x.alumno_id === a.id && sem.some(l => x.fecha >= l && x.fecha <= sumaDias(l, 6)) && x.pasos != null); if (r.length) { const m = r.reduce((t, x) => t + x.pasos, 0) / r.length; partes.push(['Pasos', Math.min(100, Math.round(m / obj * 100)), `${fmtNum(m, 0)} de media en ${r.length} de ${nS * 7} días · objetivo ${fmtNum(obj, 0)}`, 'Media de los días con pasos registrados frente a su objetivo.']); } }
+      if (!srv?.modulo_futbol && nS && conSeguimiento(srv)) { const n = sem.filter(l => S.c.checkins.some(k => k.alumno_id === a.id && k.semana_inicio === l)).length; partes.push(['Check-ins', Math.round(n / nS * 100), `${n} de ${nS} enviados`, 'Check-ins semanales enviados en las semanas completas del periodo.']); }
+      const score = null, anillo = '';
       const medO = f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), m0 = medO[0], m1 = medO[medO.length - 1];
       const dl = (k, u) => m0 && m1 && m0 !== m1 && m0[k] != null && m1[k] != null ? (() => { const d = Math.round((m1[k] - m0[k]) * 10) / 10; return `${d > 0 ? '+' : ''}${fmtNum(d)}${u}`; })() : '';
       const kpi = (l, v, sub, pct, t) => `<button class="fx-kpi card" data-act="fTab" data-t="${t}"><span class="fx-l">${l}</span><b>${v}</b><span class="fx-s">${sub}</span>${pct != null ? `<span class="fx-bar"><i style="width:${Math.max(0, Math.min(100, pct))}%"></i></span>` : ''}</button>`;
-      const kpis = [(srv?.modulo_entreno ?? true) && kpi('Entrenos esta semana', dpw ? `${cur.entrenos}<small>/${dpw}</small>` : cur.entrenos, `Semana pasada ${pre.entrenos}${dpwPre ? '/' + dpwPre : ''}`, dpw ? cur.entrenos / dpw * 100 : null, 'checkins'),
-        srv?.modulo_nutricion && kpi('Alimentación · 7 días', !midoCoach(a.id) ? '—' : ing7.pct != null ? `${ing7.pct}<small>%</small>` : '—', !midoCoach(a.id) ? 'Aún no se mide' : ing7.dias ? `${ing7.dias} de 7 días registrados` : 'Sin registros', midoCoach(a.id) ? ing7.pct : null, 'nutri'),
+      const entTxt = (h, d) => d ? `${Math.min(h, d)}<small>/${d}${h > d ? ` +${h - d} extra` : ''}</small>` : h;
+      const kpis = [(srv?.modulo_entreno ?? true) && kpi('Entrenos · semana en curso', entTxt(cur.entrenos, dpw), `Semana pasada ${Math.min(pre.entrenos, dpwPre || pre.entrenos)}${dpwPre ? '/' + dpwPre : ''}${dpwPre && pre.entrenos > dpwPre ? ` +${pre.entrenos - dpwPre} extra` : ''}`, dpw ? Math.min(100, cur.entrenos / dpw * 100) : null, 'checkins'),
+        srv?.modulo_nutricion && kpi('Alimentación declarada · 7 días', !midoCoach(a.id) ? '—' : ing7.pct != null ? `${ing7.pct}<small>%</small>` : '—', !midoCoach(a.id) ? 'Aún no se mide' : ing7.dias ? `${ing7.hechas} de ${ing7.posibles} ingestas en ${ing7.dias} de 7 días registrados${ing7.pct == null ? ' (pocos datos)' : ''}` : 'Sin registros', midoCoach(a.id) ? ing7.pct : null, 'nutri'),
         conPasos(srv) && kpi('Pasos · 7 días', pasos7 != null ? fmtNum(pasos7, 0) : '—', `Objetivo ${fmtNum(obj, 0)}`, pasos7 != null ? pasos7 / obj * 100 : null, 'habitos'),
         kpi('Peso', m1?.peso != null ? `${fmtNum(m1.peso)}<small> kg</small>` : '—', m1 ? `${dl('peso', ' kg') ? dl('peso', ' kg') + ' desde el inicio' : 'Medido el ' + esc(fCorta(m1.fecha))}` : 'Sin mediciones', null, 'progreso')].filter(Boolean).join('');
       const presP = (f.pres || []).filter(x => x.fecha >= hoy && x.estado !== 'cancelada').sort((x, y) => x.fecha.localeCompare(y.fecha))[0];
@@ -3868,7 +3883,7 @@ function vFicha() {
         if (P && !P.sinFin && !P.fuera) add('🏁', 'Fin del proceso', P.ciclos[P.ciclos.length - 1].fin);
         return l.sort((x, y) => x[3].localeCompare(y[3])).slice(0, 5); })();
       const k0 = chks[0], dev = (f.devoluciones || [])[0];
-      const cCumpl = `<div class="card fx-c fx-cumpl"><div class="fx-ct">Cumplimiento <span class="muted">· últimas 4 semanas</span></div><div class="fx-cumpl-in">${anillo}<div class="fx-partes">${partes.map(([l, v, sub]) => `<div class="fx-parte"><div class="row"><span class="grow">${l}</span><b>${v} %</b></div><span class="fx-bar"><i style="width:${v}%;background:${v >= 85 ? 'var(--ok)' : v >= 60 ? 'var(--gold)' : 'var(--bad)'}"></i></span><small>${esc(sub)}</small></div>`).join('') || '<p class="small muted">Aún no hay semanas completas con datos.</p>'}</div></div><p class="fx-nota">Media de lo que se mide en su plan. Cada parte cuenta igual.</p></div>`;
+      const cCumpl = `<div class="card fx-c fx-cumpl"><div class="fx-ct">Cómo va <span class="muted">· ${esc(per || 'sin semanas completas')}</span></div><div class="fx-cumpl-in"><div class="fx-partes" style="width:100%">${partes.map(([l, v, sub]) => `<div class="fx-parte"><div class="row"><span class="grow">${l}</span><b>${v} %</b></div><span class="fx-bar"><i style="width:${v}%;background:${v >= 85 ? 'var(--ok)' : v >= 60 ? 'var(--gold)' : 'var(--line-strong,#9aa3b2)'}"></i></span><small>${esc(sub)}</small></div>`).join('') || `<p class="small muted">${nS ? 'Sin datos suficientes en este periodo.' : 'Aún no hay semanas completas (las semanas antes del alta o en pausa no cuentan).'}</p>`}</div></div>${partes.length ? `<details class="small"><summary>Qué significa cada dato</summary>${partes.map(x => `<p style="margin:6px 0 0"><b>${esc(x[0])}:</b> ${esc(x[3])}</p>`).join('')}<p style="margin:6px 0 0" class="muted">Cada dimensión se mira por separado: no hay nota global del proceso.</p></details>` : ''}</div>`;
       const cmA = Compromisos.deAlumno(a.id), cmN = cmA.filter(x => !(x.futuro && x.estado === 'pendiente')).length, avP = pend.filter(x => !x.comp);
       const cPend = `<div class="card fx-c"><div class="fx-ct">Pendiente de ti ${cmN ? `<span class="fx-num">${cmN}</span>` : ''}</div>${Compromisos.vFicha(a.id, true)}
         <div class="row small" style="gap:10px;margin-top:8px;flex-wrap:wrap">${avP.length ? `<button class="linkbtn small" data-act="fTab" data-t="resumen">🔔 ${avP.length} aviso${avP.length === 1 ? '' : 's'} ›</button>` : `<span class="muted">${Alertas.silenciado(a.id) ? '🔕 Avisos silenciados' : 'Sin avisos'}</span>`}<button class="linkbtn small" data-act="alConfig" data-id="${a.id}">Ajustes de avisos</button></div></div>`;
@@ -3886,7 +3901,7 @@ function vFicha() {
           <div><span class="fx-l">➡️ Próximo paso</span><p>${sig ? `${Compromisos.T[sig.tipo].ico} ${esc(Compromisos.T[sig.tipo].uno)}: ${esc(sig.titulo)} <span class="muted small">· ${Compromisos.venceTxt(sig)}</span>` : '<span class="muted">Nada pendiente.</span>'}</p></div></div>
           ${rv ? `<button class="btn sm" data-act="revisionGuiada" data-n="${rv.n}" style="align-self:flex-start">🗓 Empezar revisión mensual ${rv.n}</button>` : ''}</div>`; })();
       const cProx = l => `<div class="card fx-c"><div class="fx-ct">Próximo</div>${l.length ? `<div class="fx-lista">${l.map(([ic, t, d]) => `<div class="fx-prox"><span class="fx-ic">${ic}</span><span class="grow">${esc(t)}</span><b>${esc(d)}</b></div>`).join('')}</div>` : '<div class="fx-vacio">Nada programado</div>'}</div>`;
-      const kEnt = (srv?.modulo_entreno ?? true) ? kpi('Entrenos esta semana', dpw ? `${cur.entrenos}<small>/${dpw}</small>` : cur.entrenos, `Semana pasada ${pre.entrenos}${dpwPre ? '/' + dpwPre : ''}`, dpw ? cur.entrenos / dpw * 100 : null, 'checkins') : '';
+      const kEnt = (srv?.modulo_entreno ?? true) ? kpi('Entrenos · semana en curso', entTxt(cur.entrenos, dpw), `Semana pasada ${Math.min(pre.entrenos, dpwPre || pre.entrenos)}${dpwPre ? '/' + dpwPre : ''}`, dpw ? Math.min(100, cur.entrenos / dpw * 100) : null, 'checkins') : '';
       if (srv?.modulo_futbol) {
         /* Futbolista: partido, fatiga, carga y su semana de entreno (lo que se mira cada lunes) */
         const { w, p } = futDe(a.id), M = mdDe(p), C = cargasSemana(w), [na, ta] = nivelAcwr(C.acwr), uf = ultimaFatiga(w), mol = molestiasRecientes(w, 7);
@@ -5079,7 +5094,7 @@ async function abrirReporte(alumno = null, lunes = null) {
 function datosReporte(a, R) {
   const srv = S.c.servicios.find(x => x.alumno_id === a.id), dpw = dpwEn(a.id, R.lunes, (S.c.programas.find(p => p.alumno_id === a.id) || {}).dias_semana || 0), obj = objPasos(srv);
   const w = semanaDatos(a.id, R.lunes, R.src), P = proceso(srv, R.fin || sumaDias(R.lunes, 6));
-  const pctE = dpw ? Math.round(w.entrenos / dpw * 100) : null, pctP = conPasos(srv) && w.pasosMedia != null ? Math.round(w.pasosMedia / obj * 100) : null;
+  const pctE = dpw ? Math.min(100, Math.round(w.entrenos / dpw * 100)) : null, pctP = conPasos(srv) && w.pasosMedia != null ? Math.round(w.pasosMedia / obj * 100) : null;
   const nivel = x => x == null ? '' : x >= 90 ? 'ok' : x >= 60 ? 'warn' : 'bad';
   const coment = [];
   w.ses.forEach(x => {
@@ -5104,7 +5119,7 @@ function vReporteAlumno(a, R, detalle) {
   const semTxt = d.P && !d.P.antes ? `Semana ${d.P.semana} del proceso · ${esc(nomCiclo(d.P.cc))}, semana ${d.P.semCiclo} de ${d.P.cc.sem}` : 'Sin fecha de inicio';
   const com = detalle ? d.coment : d.coment.slice(0, 4);
   return `<div class="card stack"><div class="row"><div class="grow"><h3>${esc(a.nombre)}</h3><div class="small muted">${semTxt}</div></div>${detalle ? '' : `<button class="btn sm ghost" data-act="abrirReporte" data-id="${a.id}">Ver</button>`}</div>
-    <div class="kpis">${caja('Entrenos', d.dpw ? `${w.entrenos}/${d.dpw}` : w.entrenos, d.pctE != null ? d.pctE + ' %' : 'sin plan', d.nivel(d.pctE))}
+    <div class="kpis">${caja('Entrenos', d.dpw ? `${Math.min(w.entrenos, d.dpw)}/${d.dpw}` : w.entrenos, d.pctE != null ? `${d.pctE} %${w.entrenos > d.dpw ? ` · +${w.entrenos - d.dpw} extra` : ''}${w.ent?.retomadas ? ` · ${w.ent.retomadas} retomada${w.ent.retomadas === 1 ? '' : 's'} (cuenta una vez)` : ''}` : 'sin plan', d.nivel(d.pctE))}
       ${d.srv?.modulo_nutricion && midoCoach(a.id) && Nutricion.acuerdoDe(planNutriDe(a.id)).nivel === 'ligero' ? caja('Alimentación', w.chk?.aplicacion_plan ? { aplicado: '✓', parte: '½', ayuda: '?' }[w.chk.aplicacion_plan] : '—', w.chk?.aplicacion_plan ? esc(aplTxt(w.chk.aplicacion_plan)) + ' · seguimiento ligero' : 'seguimiento ligero · sin check-in', w.chk?.aplicacion_plan === 'aplicado' ? 'ok' : w.chk?.aplicacion_plan ? 'warn' : '') : d.srv?.modulo_nutricion && !midoCoach(a.id) ? caja('Alimentación', '—', esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || '') + ' · no se mide', '') : d.srv?.modulo_nutricion ? caja('Alimentación', w.nutri != null ? w.nutri + ' %' : '—', w.ing.dias ? `${w.ing.hechas}/${w.ing.posibles} ingestas de ${w.ing.dias} día${w.ing.dias > 1 ? 's' : ''} registrado${w.ing.dias > 1 ? 's' : ''} · ${w.nutri != null ? evalNutri(w.nutri)[1] : `pocos datos para valorar (mín. ${MIN_DIAS_NUTRI} días)`}` : w.chk?.nutricion_pct != null ? 'según su check-in' : 'sin días registrados', evalNutri(w.nutri)?.[0] || '') : ''}
       ${!conPasos(d.srv) ? '' : caja('Pasos', w.pasosMedia != null ? fmtNum(w.pasosMedia, 0) : '—', `obj. ${fmtNum(d.obj, 0)} · ${w.diasPasos}/7 días`, d.nivel(d.pctP))}</div>
     ${d.srv?.modulo_nutricion && midoCoach(a.id) && (w.chk?.aplicacion_plan || w.ing.dias < 7) ? `<div class="small muted">${w.chk?.aplicacion_plan ? `Aplicación declarada: <b>${esc(aplTxt(w.chk.aplicacion_plan))}</b>` : 'Aplicación declarada: sin respuesta'}${Nutricion.acuerdoDe(planNutriDe(a.id)).nivel === 'habitual' ? ` · comidas marcadas en ${w.ing.dias} de 7 días · ${7 - w.ing.dias} sin información` : ''}</div>` : ''}
@@ -6829,7 +6844,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v249';
+const APP_VER = 'v250';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
