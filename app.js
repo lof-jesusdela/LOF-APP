@@ -152,14 +152,27 @@ async function cargarPerfil() {
   else if ($('#sheet').hidden) Casos.avisoNovedad();
 }
 
+/* Campo de contraseña con botón para verla mientras se escribe */
+const campoClave = (id, ac, extra = '') => `<span class="clave"><input id="${id}" type="password" autocomplete="${ac}" autocapitalize="none" autocorrect="off" spellcheck="false" ${extra} required><button type="button" class="clave-ver" data-ver="${id}" aria-label="Ver contraseña">👁</button></span>`;
+document.addEventListener('click', e => { const b = e.target.closest('[data-ver]'); if (!b) return; e.preventDefault(); const i = document.getElementById(b.dataset.ver); if (!i) return; const v = i.type === 'password'; i.type = v ? 'text' : 'password'; b.textContent = v ? '🙈' : '👁'; b.setAttribute('aria-label', v ? 'Ocultar contraseña' : 'Ver contraseña'); i.focus(); });
+/* El motivo real cuando no deja entrar (antes todo salía como «revisa tu conexión») */
+function errorAcceso(error, que) {
+  const m = (error?.message || '') + ' ' + (error?.code || ''), st = error?.status;
+  if (/not confirmed|email_not_confirmed/i.test(m)) return 'Tu cuenta aún no está confirmada. Avisa a Jesús para que la active.';
+  if (/invalid login|invalid_credentials|invalid/i.test(m)) return 'Email o contraseña incorrectos. Pulsa 👁 para ver lo que escribes y revisa mayúsculas y espacios.';
+  if (st === 429 || /rate limit|too many|seconds|over_email_send_rate_limit/i.test(m)) return que === 'email' ? 'Se han pedido demasiados emails seguidos. Espera una hora o pide a Jesús que te cambie la contraseña.' : 'Demasiados intentos seguidos. Espera unos minutos y vuelve a probar.';
+  if (/banned|user_banned/i.test(m)) return 'Tu acceso está bloqueado. Escribe a Jesús.';
+  if (/fetch|network|Failed/i.test(m)) return 'Sin conexión. Revisa tu internet y vuelve a probar.';
+  return (que === 'email' ? 'No se ha podido enviar el email: ' : 'No se ha podido entrar: ') + (error?.message || 'error desconocido');
+}
 function vistaLogin(msg = '') {
   $('#tabs').hidden = true;
   $('#app').innerHTML = `<form class="login" id="f-login" novalidate>
     <img src="icons/logo-96.jpg" alt="La Obra Fitness">
     <div class="stack" style="text-align:center;gap:6px"><span class="eyebrow">La Obra Fitness</span><h1>Tu proceso</h1><p class="muted">Entra con el email y la contraseña que te ha dado Jesús.</p></div>
     <div class="card stack">
-      <label class="f">Email<input id="l-email" type="email" autocomplete="email" inputmode="email" required></label>
-      <label class="f">Contraseña<input id="l-pass" type="password" autocomplete="current-password" required></label>
+      <label class="f">Email<input id="l-email" type="email" autocomplete="email" inputmode="email" autocapitalize="none" autocorrect="off" spellcheck="false" required></label>
+      <label class="f">Contraseña${campoClave('l-pass', 'current-password')}</label>
       <p class="err" id="l-err">${esc(msg)}</p>
       <button class="btn full" type="submit">Entrar</button>
       <button class="btn ghost sm" type="button" id="l-olvido" style="align-self:center">He olvidado mi contraseña</button>
@@ -167,16 +180,16 @@ function vistaLogin(msg = '') {
   $('#f-login').addEventListener('submit', async e => {
     e.preventDefault();
     const btn = $('#f-login button[type=submit]'); btn.disabled = true;
-    const { data, error } = await sb.auth.signInWithPassword({ email: $('#l-email').value.trim(), password: $('#l-pass').value });
+    const { data, error } = await sb.auth.signInWithPassword({ email: $('#l-email').value.trim().toLowerCase(), password: $('#l-pass').value });
     btn.disabled = false;
-    if (error) { $('#l-err').textContent = error.message.includes('Invalid') ? 'Email o contraseña incorrectos.' : 'No se ha podido entrar. Revisa tu conexión.'; return; }
+    if (error) { $('#l-err').textContent = errorAcceso(error, 'entrar'); return; }
     S.user = data.user; await cargarPerfil();
   });
   $('#l-olvido').addEventListener('click', async () => {
     const email = $('#l-email').value.trim();
     if (!email) { $('#l-err').textContent = 'Escribe tu email y vuelve a pulsar.'; return; }
-    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
-    $('#l-err').textContent = error ? 'No se ha podido enviar el email. Inténtalo en unos minutos.' : '';
+    const { error } = await sb.auth.resetPasswordForEmail(email.toLowerCase(), { redirectTo: location.origin + location.pathname });
+    $('#l-err').textContent = error ? errorAcceso(error, 'email') : '';
     if (!error) toast('Te hemos enviado un email para cambiar la contraseña');
   });
 }
@@ -185,7 +198,7 @@ function vistaNuevaClave() {
   $('#tabs').hidden = true;
   $('#app').innerHTML = `<form class="login" id="f-clave"><img src="icons/logo-96.jpg" alt="LOF">
     <div class="card stack"><h2>Nueva contraseña</h2>
-    <label class="f">Contraseña nueva (mínimo 8 caracteres)<input id="n-pass" type="password" autocomplete="new-password" minlength="8"></label>
+    <label class="f">Contraseña nueva (mínimo 8 caracteres)${campoClave('n-pass', 'new-password', 'minlength="8"')}</label>
     <p class="err" id="n-err"></p><button class="btn full" type="submit">Guardar</button></div></form>`;
   $('#f-clave').addEventListener('submit', async e => {
     e.preventDefault();
@@ -6684,7 +6697,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v243';
+const APP_VER = 'v244';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
