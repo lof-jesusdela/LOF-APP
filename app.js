@@ -4052,7 +4052,7 @@ function vFichaSub(f, a) {
     const campos = [['peso', 'Peso (kg)'], ['grasa_pct', '% grasa'], ['grasa_kg', 'Grasa (kg)'], ['cuello', 'Cuello'], ['pectoral', 'Pectoral'], ['hombros', 'Hombros'], ['cintura', 'Cintura'], ['abd_bajo', 'Abdomen bajo'], ['cadera', 'Cadera'], ['brazo_d', 'Brazo dcho.'], ['brazo_i', 'Brazo izdo.'], ['muslo_d', 'Muslo dcho.'], ['muslo_i', 'Muslo izdo.'], ['gemelo_d', 'Gemelo dcho.'], ['gemelo_i', 'Gemelo izdo.']].filter(([k]) => med.some(m => m[k] != null));
     return cab('Composición corporal') + `
     <section class="section">${vGraficaComp(med, a, f.medObj) || '<div class="card empty">Sin mediciones todavía.</div>'}${vObjetivoComp(f.medObj, med, true)}<div class="row" style="gap:8px"><button class="btn grow" data-act="nuevaMedicion">＋ Añadir medición</button><button class="btn ghost" data-act="calcGrasa">Calculadora</button></div></section>
-    ${med.length ? `<section class="section"><h2>Todas las medidas</h2><div class="card tbl" style="overflow-x:auto"><table><thead><tr><th>Medida</th>${med.map(m => `<th class="num"><button class="linkbtn small" data-act="editarMedicion" data-id="${m.id}" title="Editar esta medición">${esc(fCorta(m.fecha))} ${String(fecha(m.fecha).getFullYear()).slice(2)} ✎</button></th>`).join('')}<th>Cambio</th></tr></thead><tbody>${campos.map(([k, l]) => { const v = med.filter(m => m[k] != null), dl = v.length > 1 ? v[v.length - 1][k] - v[0][k] : null; return `<tr><td>${l}</td>${med.map(m => `<td class="num">${m[k] == null ? '—' : fmtNum(m[k])}</td>`).join('')}<td class="num"><b>${dl == null ? '—' : (dl > 0 ? '+' : '') + fmtNum(dl)}</b></td></tr>`; }).join('')}</tbody></table></div><p class="small muted">Perímetros en cm. Toca una fecha (✎) para corregir esa medición.</p></section>` : ''}
+    ${med.length ? `<section class="section"><h2>Todas las medidas</h2><div class="card tbl" style="overflow-x:auto"><table><thead><tr><th>Medida</th>${med.map(m => `<th class="num"><button class="linkbtn small" data-act="editarMedicion" data-id="${m.id}" title="Editar esta medición">${esc(fCorta(m.fecha))} ${String(fecha(m.fecha).getFullYear()).slice(2)} ✎</button></th>`).join('')}<th>Cambio</th></tr></thead><tbody>${campos.map(([k, l]) => { const v = med.filter(m => m[k] != null), dl = v.length > 1 ? v[v.length - 1][k] - v[0][k] : null; return `<tr><td>${l}</td>${med.map(m => { const pa = v.filter(z => z.fecha < m.fecha).pop(), x = m[k] != null && pa ? cambioMed(k, Number(pa[k]), Number(m[k]), f.medObj) : null; return `<td class="num">${m[k] == null ? '—' : fmtNum(m[k])}${x && Math.abs(x.d) >= 0.05 ? `<br><small style="color:var(--${x.col});font-weight:600">${x.txt}</small>` : ''}</td>`; }).join('')}<td class="num">${(() => { const x = dl == null ? null : cambioMed(k, Number(v[0][k]), Number(v[v.length - 1][k]), f.medObj); return x ? `<b style="color:var(--${x.col})">${x.txt}</b>` : '—'; })()}</td></tr>`; }).join('')}</tbody></table></div><p class="small muted">Debajo de cada dato, el cambio frente a la medición anterior; «Cambio», desde la primera. Verde = mejora hacia su objetivo (o menos grasa, cintura, abdomen y cadera); naranja = empeora; gris = sin calificar. Toca una fecha (✎) para corregir esa medición.</p></section>` : ''}
     ${Casos.vFicha(f, a)}
     ${vTestsFicha(f)}`;
   }
@@ -4145,14 +4145,28 @@ function formMisMedidas() {
     cerrarSheet(); toast(conFotos ? 'Medidas y fotos guardadas. ¡Gracias!' : 'Medidas guardadas. ¡Gracias!'); await cargarAlumno(S.user.id); render();
   });
 }
+/* Cambio de una medida frente a la medición anterior, en su unidad (cm, kg o puntos de % de grasa).
+   Mejora = hacia su objetivo de composición si lo tiene; si no, menos grasa/cintura/abdomen/cadera y más masa magra.
+   El resto (peso sin objetivo, brazos, piernas, hombros…) se muestra sin calificar porque depende del objetivo. */
+const DIR_MED = { grasa_pct: -1, grasa_kg: -1, magra: 1, cintura: -1, abd_bajo: -1, cadera: -1 };
+const uMed = k => k === 'peso' || k === 'grasa_kg' || k === 'magra' ? ' kg' : k === 'grasa_pct' ? ' %' : ' cm';
+function cambioMed(k, ant, nue, obj) {
+  if (ant == null || nue == null || isNaN(ant) || isNaN(nue)) return null;
+  const d = Math.round((nue - ant) * 10) / 10, o = obj?.[k] != null ? Number(obj[k]) : null;
+  const dir = o != null && Math.abs(o - ant) >= 0.05 ? Math.sign(o - ant) : DIR_MED[k] || 0;
+  const juicio = !dir || Math.abs(d) < 0.05 ? 'neutro' : d * dir > 0 ? 'mejor' : 'peor';
+  return { d, juicio, txt: (d > 0 ? '+' : d < 0 ? '−' : '') + fmtNum(Math.abs(d)) + uMed(k), col: juicio === 'mejor' ? 'ok' : juicio === 'peor' ? 'warn' : 'muted' };
+}
+const medAnterior = (lista, f, sinId) => (lista || []).filter(m => m.fecha < f && m.id !== sinId).sort((a, b) => a.fecha.localeCompare(b.fecha)).pop() || null;
 function formMedicion(editId) {
   const per = S.c.perfiles.find(p => p.id === S.ficha.id) || {}, primera = !editId && !(S.ficha.med || []).length, ed = editId ? (S.ficha.med || []).find(m => m.id === +editId || m.id === editId) : null;
   const c = [['peso', 'Peso (kg)'], ['cuello', 'Cuello'], ['cintura', 'Cintura'], ['cadera', 'Cadera'], ['abd_bajo', 'Abdomen bajo'], ['pectoral', 'Pectoral'], ['hombros', 'Hombros'], ['brazo_d', 'Brazo contraído dcho.'], ['brazo_i', 'Brazo contraído izdo.'], ['muslo_d', 'Muslo dcho.'], ['muslo_i', 'Muslo izdo.'], ['gemelo_d', 'Gemelo dcho.'], ['gemelo_i', 'Gemelo izdo.']];
   abrirSheet(`<form class="stack" id="f-med"><h2>${ed ? 'Editar medición' : 'Nueva medición'}</h2><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Fecha<input type="date" id="m-fecha" value="${hoyISO()}"></label><label class="f">Método<select id="m-met">${METODOS_MED.map(x => `<option>${x}</option>`).join('')}</select></label></div>
     ${camposPerfil(per)}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${c.map(([k, l]) => `<label class="f">${l}<input type="text" inputmode="decimal" id="m-${k}" data-campo="${k}"></label>`).join('')}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${c.map(([k, l]) => `<label class="f">${l}<input type="text" inputmode="decimal" id="m-${k}" data-campo="${k}"><small class="m-cmp" data-cmp="${k}"></small></label>`).join('')}</div>
     <div class="calc-grasa card" style="padding:12px"></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">% de grasa<input type="text" inputmode="decimal" id="m-grasa_pct" data-campo="grasa_pct" placeholder="se calcula solo"></label><label class="f">Grasa (kg)<input type="text" inputmode="decimal" id="m-grasa_kg" data-campo="grasa_kg" placeholder="se calcula solo"></label></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">% de grasa<input type="text" inputmode="decimal" id="m-grasa_pct" data-campo="grasa_pct" placeholder="se calcula solo"><small class="m-cmp" data-cmp="grasa_pct"></small></label><label class="f">Grasa (kg)<input type="text" inputmode="decimal" id="m-grasa_kg" data-campo="grasa_kg" placeholder="se calcula solo"><small class="m-cmp" data-cmp="grasa_kg"></small></label></div>
+    <div class="card small stack" id="m-resumen" style="padding:12px;gap:4px" hidden></div>
     <p class="small muted">Perímetros en cm. Deja vacío lo que no midas. Si usas báscula de bioimpedancia, puedes escribir su % de grasa encima del calculado.</p><button class="btn full" type="submit">Guardar ${ed ? 'cambios' : 'medición'}</button>${ed ? '<button class="btn ghost full" type="button" id="m-del" style="color:var(--bad)">Eliminar esta medición</button>' : ''}</form>`);
   const fm = $('#f-med'); let manual = false;
   if (ed) {
@@ -4161,7 +4175,22 @@ function formMedicion(editId) {
     $('#m-del').addEventListener('click', async () => { if (!confirm('¿Eliminar esta medición? No se puede deshacer.')) return; const { error } = await sb.from('mediciones').delete().eq('id', ed.id); if (error) return fallo(error); cerrarSheet(); toast('Medición eliminada'); await abrirFicha(S.ficha.id); abrirSub('composicion'); });
   }
   fm.querySelector('#m-grasa_pct').addEventListener('input', () => { manual = true; });
-  enganchaCalcGrasa(fm, per, (pct, peso) => { if (manual) return; fm.querySelector('#m-grasa_pct').value = pct != null ? String(pct).replace('.', ',') : ''; fm.querySelector('#m-grasa_kg').value = pct != null && peso ? String(Math.round(peso * pct) / 100).replace('.', ',') : ''; });
+  /* Comparación en directo con la medición anterior (a la fecha elegida) */
+  const NOM = Object.fromEntries([...c, ['grasa_pct', '% de grasa'], ['grasa_kg', 'Grasa (kg)']].map(([k, l]) => [k, l.replace(/ \(kg\)$/, '')]));
+  const compara = () => {
+    const ant = medAnterior(S.ficha.med, $('#m-fecha').value || hoyISO(), ed?.id), mej = [], peo = [], neu = [];
+    fm.querySelectorAll('[data-cmp]').forEach(el => {
+      const k = el.dataset.cmp, v = numero(fm.querySelector(`[data-campo="${k}"]`)?.value), x = ant ? cambioMed(k, ant[k] == null ? null : Number(ant[k]), v, S.ficha.medObj) : null;
+      el.innerHTML = !ant || ant[k] == null ? '' : x ? `<span class="muted">antes ${fmtNum(Number(ant[k]))} · </span><b style="color:var(--${x.col})">${x.txt}${x.juicio === 'mejor' ? ' ✓' : ''}</b>` : `<span class="muted">antes ${fmtNum(Number(ant[k]))}${uMed(k)}</span>`;
+      if (x && Math.abs(x.d) >= 0.05) (x.juicio === 'mejor' ? mej : x.juicio === 'peor' ? peo : neu).push(`${NOM[k] || k} ${x.txt}`);
+    });
+    const r = $('#m-resumen'); r.hidden = !ant || !(mej.length + peo.length + neu.length);
+    if (ant) r.innerHTML = `<b>Frente a la medición del ${esc(fCorta(ant.fecha))} ${fecha(ant.fecha).getFullYear()}</b>${mej.length ? `<div style="color:var(--ok)">✅ Mejoras: ${esc(mej.join(' · '))}</div>` : ''}${peo.length ? `<div style="color:var(--warn)">⚠️ A vigilar: ${esc(peo.join(' · '))}</div>` : ''}${neu.length ? `<div class="muted">➖ Sin calificar: ${esc(neu.join(' · '))}</div>` : ''}`;
+    return { mej, peo };
+  };
+  fm.addEventListener('input', compara); $('#m-fecha').addEventListener('change', compara);
+  enganchaCalcGrasa(fm, per, (pct, peso) => { if (manual) return compara(); fm.querySelector('#m-grasa_pct').value = pct != null ? String(pct).replace('.', ',') : ''; fm.querySelector('#m-grasa_kg').value = pct != null && peso ? String(Math.round(peso * pct) / 100).replace('.', ',') : ''; compara(); });
+  compara();
   fm.addEventListener('submit', async e => {
     e.preventDefault();
     const bt = fm.querySelector('[type=submit]'); if (bt.disabled) return; bt.disabled = true;
@@ -4173,7 +4202,7 @@ function formMedicion(editId) {
     let { error } = ed ? await sb.from('mediciones').update(row).eq('id', ed.id) : await guardarMedicion(row);
     if (ed && error && /metodo/.test(error.message || '')) { delete row.metodo; ({ error } = await sb.from('mediciones').update(row).eq('id', ed.id)); }
     if (error) { bt.disabled = false; return fallo(error, 'No se ha podido guardar la medición: ' + (error.message || 'revisa la conexión')); }
-    cerrarSheet(); toast(ed ? 'Medición actualizada' : 'Medición guardada'); await abrirFicha(S.ficha.id); abrirSub('composicion');
+    const cmp = compara(); cerrarSheet(); toast(`${ed ? 'Medición actualizada' : 'Medición guardada'}${cmp.mej.length ? ` · ✅ ${cmp.mej.length} ${cmp.mej.length === 1 ? 'mejora' : 'mejoras'}` : ''}`); await abrirFicha(S.ficha.id); abrirSub('composicion');
     if (primera && !S.ficha.medObj) { toast('Valoración inicial guardada: ahora fija su objetivo'); formObjetivoComp(); }
   });
 }
@@ -7064,7 +7093,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v259';
+const APP_VER = 'v260';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
