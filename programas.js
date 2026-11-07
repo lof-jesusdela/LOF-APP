@@ -58,14 +58,38 @@ const Programas = (() => {
     if (esBono(v)) { const D = S.c.presenciales ? datosPres(v, S.c.presenciales.filter(p => p.alumno_id === v.alumno_id)) : null; return !D || !D.total || D.quedan > 0 || D.prox.length > 0; }
     const fin = finProceso(proceso(v)); return !fin || fin >= hoy;
   }
+  /* Histórico importado (Economía → Importar histórico): cuenta como cobros, y en sus meses no se suman las cuotas de la app */
+  const rangoHist = () => { const [a, b] = String(S.c.fiscal?.historico_rango || '').split('|'); return a && b ? [a, b] : null; };
+  const enHist = f => { const r = rangoHist(); return !!(r && f && f.slice(0, 7) >= r[0] && f.slice(0, 7) <= r[1]); };
+  function lineaHist(m) {
+    const c = nrm(m.programa || m.concepto);
+    if (/ruta/.test(c)) return 'Ruta Integral';
+    if (/membres/.test(c)) return 'Membresía';
+    if (/zero|futbol|elite/.test(c)) return 'Élite Player';
+    if (/opos|policia|camino/.test(c)) return 'Camino Opositor';
+    if (/presencial/.test(c)) return 'Programa presencial';
+    if (/bono|suelto|sesion/.test(c)) return 'Bonos de sesiones';
+    if (/online|aliment|nutric/.test(c)) return m.alimentacion && m.entreno !== false ? 'Plan Integral online' : m.alimentacion ? 'Alimentación online' : 'Entrenamiento online';
+    if (/pti|basic|asesoria inicial/.test(c)) return 'PTIs y Basic Fit';
+    return 'Otros ingresos';
+  }
   function datos(anio) {
     const hoy = hoyISO(), ini = `${anio}-01-01`, fin = `${anio}-12-31`, hasta = hoy < fin ? hoy : fin;
     const L = {}, get = n => (L[n] ||= { n, cob: Array(12).fill(0), altas: Array(12).fill(0), pend: 0, venc: 0, alumnosPago: new Set(), activos: [], unico: 0, fracc: 0, conAmp: 0, terminados: 0, ultAlta: null, tarifas: new Set() });
     const mesDe = f => +f.slice(5, 7) - 1;
     let cobAnt = 0; const iniAnt = `${anio - 1}-01-01`, hastaAnt = `${anio - 1}${hasta.slice(4)}`;
     const fam = id => (S.c.servicios || []).some(v => v.alumno_id === id && v.activo !== false && v.tarifa === 'familia');
+    for (const m of S.c.movs || []) {
+      if (m.tipo !== 'ingreso' || !m.ref) continue;
+      const imp = +m.importe || 0;
+      if (m.pagado && m.fecha >= iniAnt && m.fecha <= hastaAnt) cobAnt += imp;
+      if (m.fecha < ini || m.fecha > fin) continue;
+      const x = get(lineaHist(m));
+      if (m.pagado) { x.cob[mesDe(m.fecha)] += imp; x.alumnosPago.add('h:' + nrm(m.alumno_nombre || m.concepto)); } else x.pend += imp;
+    }
     for (const p of S.c.pagos || []) {
       if (fam(p.alumno_id) && !p.tarifa) continue;
+      if (p.pagado_at && enHist(p.pagado_at)) continue;
       const imp = +p.importe || 0;
       if (p.pagado_at && p.pagado_at >= iniAnt && p.pagado_at <= hastaAnt) cobAnt += imp;
       const enAnio = p.pagado_at ? p.pagado_at >= ini && p.pagado_at <= fin : p.vence >= ini && p.vence <= fin;
@@ -113,7 +137,7 @@ const Programas = (() => {
       if (x.impago >= 10 && x.venc > 0) x.flags.push(['warn', `Impagos ${x.impago} % (cuotas vencidas sin cobrar sobre lo facturado en ${anio})`]);
       if (x.renov != null && x.conAmp + x.terminados >= 3 && x.renov < 30 && !/bono|ampliaci|renovaci/i.test(x.n)) x.flags.push(['warn', `Renuevan poco: ${x.conAmp} de ${x.conAmp + x.terminados} que terminaron (${x.renov} %)`]);
     });
-    const sinPrograma = (S.c.pagos || []).filter(p => !pagoSeguro(p) && !fam(p.alumno_id) && (p.pagado_at || p.vence) >= `${anio - 1}-01-01`);
+    const sinPrograma = (S.c.pagos || []).filter(p => !pagoSeguro(p) && !fam(p.alumno_id) && !(p.pagado_at && enHist(p.pagado_at)) && (p.pagado_at || p.vence) >= `${anio - 1}-01-01`);
     return { anio, hoy, lineas, tot, conv, sinPrograma, sinTarifa: (S.c.servicios || []).filter(v => v.activo && !v.tarifa), incompletos: incompletos() };
   }
 
@@ -126,9 +150,10 @@ const Programas = (() => {
       return `<div class="pg-col ${i > mesAct ? 'fut' : ''}" title="${m}: ${e0(d.tot.mes[i])}"><span class="pg-v">${d.tot.mes[i] ? Math.round(d.tot.mes[i] / 100) / 10 + 'k' : ''}</span><div class="pg-bar">${otros > 0 ? `<i style="height:${otros / max * 100}%;background:#94a3b8"></i>` : ''}${segs}</div><span class="pg-m">${m}</span><span class="pg-a">${d.tot.altasMes[i] || ''}</span></div>`;
     }).join('')}</div>
     <div class="row small" style="gap:6px 12px;flex-wrap:wrap">${top.map(x => `<span><i class="ley" style="background:${x.color}"></i>${esc(x.n)}</span>`).join('')}${d.lineas.length > 7 ? '<span><i class="ley" style="background:#94a3b8"></i>Otros</span>' : ''}</div>
-    <p class="note" style="margin:0">Barras: cobrado cada mes. Número de abajo: altas de ese mes.</p>`;
+    <p class="note" style="margin:0">Barras: cobrado cada mes. Número de abajo: altas de ese mes.${rangoHist() ? ` De ${rangoHist()[0]} a ${rangoHist()[1]} cuenta el histórico importado (facturas + efectivo) en lugar de las cuotas de la app.` : ''}</p>`;
   }
   function vista() {
+    if (!S.c.movs && typeof Negocio !== 'undefined' && !S.c._movsPedidos) { S.c._movsPedidos = true; Negocio.cargar().then(render); }
     if (!S.c.srvTodos) { cargar().then(render); return `<section class="section"><div class="card small muted">Cargando programas…</div></section>`; }
     const anio = S.pgAnio || +hoyISO().slice(0, 4), d = datos(anio), t = d.tot, mejores = d.lineas.filter(x => x.cobT > 0).slice(0, 3);
     const varAnt = t.cobAnt ? Math.round((t.cob - t.cobAnt) / t.cobAnt * 100) : null, alertas = d.lineas.filter(x => x.flags.length);
