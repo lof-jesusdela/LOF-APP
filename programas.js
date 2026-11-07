@@ -114,7 +114,7 @@ const Programas = (() => {
       if (x.renov != null && x.conAmp + x.terminados >= 3 && x.renov < 30 && !/bono|ampliaci|renovaci/i.test(x.n)) x.flags.push(['warn', `Renuevan poco: ${x.conAmp} de ${x.conAmp + x.terminados} que terminaron (${x.renov} %)`]);
     });
     const sinPrograma = (S.c.pagos || []).filter(p => !pagoSeguro(p) && !fam(p.alumno_id) && (p.pagado_at || p.vence) >= `${anio - 1}-01-01`);
-    return { anio, hoy, lineas, tot, conv, sinPrograma, sinTarifa: (S.c.servicios || []).filter(v => v.activo && !v.tarifa) };
+    return { anio, hoy, lineas, tot, conv, sinPrograma, sinTarifa: (S.c.servicios || []).filter(v => v.activo && !v.tarifa), incompletos: incompletos() };
   }
 
   /* ---------- Vista ---------- */
@@ -135,7 +135,7 @@ const Programas = (() => {
     const kpi = (v, l, sub) => `<div class="kpi"><div class="v num" style="font-size:20px">${v}</div><div class="l">${l}</div>${sub ? `<div class="small muted">${sub}</div>` : ''}</div>`;
     return `<section class="stack"><div class="row" style="gap:8px;flex-wrap:wrap"><h2 class="grow" style="margin:0">Programas</h2>${[anio - 1, anio, anio + 1].filter(y => y <= +hoyISO().slice(0, 4)).map(y => `<button class="pill ${y === anio ? 'blue' : ''}" data-act="pgAnio" data-y="${y}">${y}</button>`).join('')}</div></section>
     <section class="section"><div class="kpis">${kpi(e0(t.cob), `cobrado en ${anio}`, varAnt != null ? `${varAnt >= 0 ? '▲' : '▼'} ${Math.abs(varAnt)} % vs ${anio - 1} a esta fecha` : '')}${kpi(e0(t.pend), 'previsto hasta diciembre', t.venc ? `<span style="color:var(--bad)">${e0(t.venc)} vencido</span>` : 'cuotas pendientes')}${kpi(t.activos, 'con servicio activo', `${t.altas} altas en ${anio}`)}${kpi(e0(t.medioMes), 'media al mes', t.mejorMes ? `mejor: ${MESES[t.mejorMes[1]]} (${e0(t.mejorMes[0])})` : '')}</div></section>
-    ${d.sinTarifa.length ? `<section class="section"><div class="aprox small row" style="gap:8px;flex-wrap:wrap"><span class="grow"><b>${d.sinTarifa.length} alumno${d.sinTarifa.length === 1 ? '' : 's'} sin tarifa asignada.</b> La app deduce su programa por el nombre del servicio; asignarla hace las métricas exactas.</span><button class="btn sm" data-act="pgSinTarifa">Asignar tarifas</button></div></section>` : ''}
+    ${d.incompletos.length ? `<section class="section"><div class="aprox small row" style="gap:8px;flex-wrap:wrap"><span class="grow"><b>${d.incompletos.length} alumno${d.incompletos.length === 1 ? '' : 's'} con el plan sin completar</b> (sin tarifa, sin tipo de programa o sin servicio activo). La app deduce su programa por el nombre del servicio; completarlo hace las métricas exactas.</span><button class="btn sm" data-act="pgSinTarifa">Completar planes</button></div></section>` : ''}
     ${d.sinPrograma.length ? `<section class="section"><div class="aprox small row" style="gap:8px;flex-wrap:wrap"><span class="grow"><b>${d.sinPrograma.length} cuota${d.sinPrograma.length === 1 ? '' : 's'} sin programa confirmado.</b> Se asignan por el programa que tenía el alumno en esa fecha; confírmalas para que los números no bailen.</span><button class="btn sm" data-act="pgCuotas">Revisar cuotas</button></div></section>` : ''}
     <section class="section"><div class="card stack"><b>Ingresos por mes · ${anio}</b>${grafica(d)}</div></section>
     ${d.conv.length ? `<section class="section"><div class="card stack" style="gap:6px"><b>🔁 Cambios de programa en ${anio}</b><span class="small muted">Alumnos que pasaron de un programa a otro (por ejemplo, de sesiones sueltas a Ruta Integral).</span>
@@ -270,17 +270,34 @@ const Programas = (() => {
     });
   }
   /* Asignar tarifa a los alumnos activos que no la tienen (solo para las métricas: no crea pagos) */
+  /* Alumnos con el plan a medias: servicio activo sin tarifa o sin tipo de programa, o cliente activo sin servicio */
+  function incompletos() {
+    const fam = id => typeof esFamilia === 'function' && esFamilia(id), r = [];
+    (S.c.servicios || []).filter(v => v.activo && !fam(v.alumno_id) && (!v.tarifa || !v.modalidad)).forEach(v => r.push({ v, aid: v.alumno_id, faltan: [!v.modalidad && 'tipo de programa', !v.tarifa && 'tarifa'].filter(Boolean) }));
+    (S.c.perfiles || []).filter(p => typeof esCliente === 'function' && esCliente(p) && !(S.c.servicios || []).some(v => v.alumno_id === p.id && v.activo)).forEach(p => r.push({ v: null, aid: p.id, faltan: ['servicio activo'] }));
+    return r;
+  }
   function formSinTarifa() {
-    const l = (S.c.servicios || []).filter(v => v.activo && !v.tarifa), nom = id => S.c.perfiles.find(p => p.id === id)?.nombre || '—';
+    const inc = incompletos(), l = inc.filter(x => x.v).map(x => x.v), sinSrv = inc.filter(x => !x.v), nom = id => S.c.perfiles.find(p => p.id === id)?.nombre || '—', falta = v => inc.find(x => x.v === v)?.faltan || [];
     const sug = v => { const ln = lineaServicio(v), m = v.meses || (v.duracion_semanas ? [3, 6, 9, 10, 12].find(x => Math.abs(Tarifas.mesesSem[x] - v.duracion_semanas) <= 2) : null);
       const c = Tarifas.T.filter(t => t.linea === ln && !t.oculta); return (c.find(t => t.srv?.meses === m && (!t.srv?.frec || t.srv.frec === v.pt_frecuencia)) || c.find(t => t.srv?.meses === m) || (esBono(v) && c.find(t => t.srv?.sesiones === v.sesiones_incluidas)) || {}).id || ''; };
-    abrirSheet(`<form class="stack" id="f-st"><h2>Asignar tarifas</h2><p class="small muted">Solo sirve para que las métricas sepan a qué programa pertenece cada alumno. No crea ni cambia pagos. Te propongo una según su servicio; cámbiala si no es.</p>
-      ${l.map(v => `<div class="stack" style="gap:2px;border-top:1px solid var(--line);padding-top:8px"><b class="small">${esc(nom(v.alumno_id))}</b><span class="small muted">${esc(v.producto || '—')}${v.inicio ? ' · desde ' + esc(fCorta(v.inicio)) : ''}</span><select data-st="${v.id}"><option value="">Sin tarifa</option>${Tarifas.opciones([...Tarifas.T, ...Tarifas.AMP], sug(v))}</select></div>`).join('')}
+    abrirSheet(`<form class="stack" id="f-st"><h2>Completar planes</h2><p class="small muted">Elige el programa de cada alumno: se guarda su tarifa y, si le falta, el tipo (presencial, online o híbrido), los meses y si lleva entreno y alimentación. No crea ni cambia pagos. Te propongo uno según su servicio; cámbialo si no es.</p>
+      ${l.map(v => `<div class="stack" style="gap:2px;border-top:1px solid var(--line);padding-top:8px"><div class="row small" style="gap:6px"><b class="grow">${esc(nom(v.alumno_id))}</b>${falta(v).map(f => `<span class="pill warn">sin ${esc(f)}</span>`).join('')}</div><span class="small muted">${esc(v.producto || '—')}${v.inicio ? ' · desde ' + esc(fCorta(v.inicio)) : ''}</span><select data-st="${v.id}"><option value="">${v.tarifa ? 'Dejar su tarifa' : 'Sin tarifa'}</option>${Tarifas.opciones([...Tarifas.T, ...Tarifas.AMP], v.tarifa || sug(v))}</select></div>`).join('')}
+      ${sinSrv.length ? `<div class="stack" style="gap:4px;border-top:1px solid var(--line);padding-top:8px"><b class="small">Sin servicio activo (${sinSrv.length})</b><span class="small muted">Ábrelos para darles de alta su programa, o archívalos si ya no son alumnos.</span>${sinSrv.map(x => `<div class="row small" style="gap:8px"><span class="grow">${esc(nom(x.aid))}</span><button type="button" class="btn sm ghost" data-act="ficha" data-id="${esc(x.aid)}">Abrir ficha</button></div>`).join('')}</div>` : ''}
       <p class="err" id="st-err"></p><button class="btn full" type="submit">Guardar</button></form>`);
     $('#f-st').addEventListener('submit', async e => {
       e.preventDefault(); const bt = e.target.querySelector('[type=submit]'); bt.disabled = true;
-      for (const s of document.querySelectorAll('[data-st]')) { if (!s.value) continue; const { error } = await sb.from('servicios').update({ tarifa: s.value }).eq('id', +s.dataset.st); if (error) { bt.disabled = false; return $('#st-err').textContent = /tarifa/.test(error.message || '') ? 'Falta ejecutar el Bloque 88 en Supabase.' : error.message; } }
-      cerrarSheet(); toast('Tarifas asignadas'); await cargarCoach(); await cargar(true); render();
+      for (const s of document.querySelectorAll('[data-st]')) {
+        const v = l.find(x => x.id === +s.dataset.st), t = s.value && Tarifas.de(s.value); if (!v || (!s.value && v.modalidad)) continue;
+        const up = s.value ? { tarifa: s.value } : {}, ts = t?.srv || {};
+        if (!v.modalidad && ts.modalidad) Object.assign(up, { modalidad: ts.modalidad, modulo_entreno: ts.ent !== false, modulo_nutricion: !!ts.ali, ...(ts.seg != null ? { seguimiento: !!ts.seg } : {}) });
+        if (!v.meses && ts.meses) up.meses = ts.meses;
+        if (!Object.keys(up).length) continue;
+        let { error } = await sb.from('servicios').update(up).eq('id', v.id);
+        if (error && /modalidad|meses|seguimiento/.test(error.message || '')) ({ error } = await sb.from('servicios').update({ tarifa: s.value }).eq('id', v.id));
+        if (error) { bt.disabled = false; return $('#st-err').textContent = /tarifa/.test(error.message || '') ? 'Falta ejecutar el Bloque 88 en Supabase.' : error.message; }
+      }
+      cerrarSheet(); toast('Planes guardados'); await cargarCoach(); await cargar(true); render();
     });
   }
   document.addEventListener('click', async ev => {

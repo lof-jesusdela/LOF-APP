@@ -356,13 +356,15 @@ const Negocio = (() => {
       <details class="small"><summary>Cómo se calcula</summary><p class="muted" style="margin:6px 0 0">Saldo real que apuntaste + cuotas pendientes que vencen en 30 días + otros ingresos pendientes − gastos pendientes y recurrentes de esos 30 días − reservas configuradas. Los cobros vencidos no se cuentan como seguros. No es beneficio: es una previsión de caja.</p></details></div></section>`;
   }
   /* ---------- Histórico de ingresos: importación desde CSV y vista mes a mes ---------- */
-  const GRUPOS = ['Ruta Integral', 'Bonos y entrenos sueltos', 'Programa presencial', 'Zero to Fit · futbolistas', 'Online', 'Membresía', 'Basic Fit y PTIs', 'Camino Opositor', 'Otros ingresos'];
-  const EMISORES = ['SL', 'Autónomo', 'Efectivo', 'Sin indicar'];
+  const GRUPOS = ['Ruta Integral', 'Bonos y entrenos sueltos', 'Programa presencial', 'Élite Player · futbolistas', 'Online', 'Membresía', 'Basic Fit y PTIs', 'Camino Opositor', 'Otros ingresos'];
+  const EMISORES = ['SL', 'Autónomo', 'Efectivo', 'Sin indicar'], MODALIDADES_I = ['Híbrido', 'Presencial', 'Online', 'Sin indicar'];
+  const modDeGrupo = g => g === 'Ruta Integral' ? 'Híbrido' : ['Programa presencial', 'Bonos y entrenos sueltos', 'Membresía', 'Basic Fit y PTIs'].includes(g) ? 'Presencial' : ['Online', 'Élite Player · futbolistas', 'Camino Opositor'].includes(g) ? 'Online' : 'Sin indicar';
+  const normMod = t => { const c = String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); return /hibrid/.test(c) ? 'Híbrido' : /presencial/.test(c) ? 'Presencial' : /online/.test(c) ? 'Online' : null; };
   function grupoProg(t) {
     const c = String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
     if (/ruta/.test(c)) return 'Ruta Integral';
     if (/membres/.test(c)) return 'Membresía';
-    if (/zero|futbol|elite/.test(c)) return 'Zero to Fit · futbolistas';
+    if (/zero|futbol|elite/.test(c)) return 'Élite Player · futbolistas';
     if (/opos|policia|camino/.test(c)) return 'Camino Opositor';
     if (/presencial/.test(c)) return 'Programa presencial';
     if (/bono|suelto|sesion/.test(c)) return 'Bonos y entrenos sueltos';
@@ -373,14 +375,14 @@ const Negocio = (() => {
   const normEmisor = e => { const c = String(e || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); return /^sl|sociedad|s\.l/.test(c) ? 'SL' : /autonomo/.test(c) ? 'Autónomo' : /efectivo/.test(c) ? 'Efectivo' : 'Sin indicar'; };
   /* Todos los ingresos cobrados con su mes, programa y emisor: movimientos de ingreso + cuotas de la app (fuera de los meses del histórico) */
   function ingresos() {
-    const l = (S.c.movs || []).filter(m => m.tipo === 'ingreso' && m.pagado).map(m => ({ f: m.fecha, imp: +m.importe, g: grupoProg(m.programa || m.categoria || m.concepto), e: m.emisor ? normEmisor(m.emisor) : 'Sin indicar' }));
-    S.c.pagos.filter(p => p.pagado_at && !enHist(p.pagado_at) && !(typeof esFamilia === 'function' && esFamilia(p.alumno_id))).forEach(p => l.push({ f: p.pagado_at.slice(0, 10), imp: +p.importe, g: grupoProg(typeof Programas !== 'undefined' ? Programas.lineaPago(p) : p.concepto), e: 'Autónomo' }));
+    const l = (S.c.movs || []).filter(m => m.tipo === 'ingreso' && m.pagado).map(m => { const g = grupoProg(m.programa || m.categoria || m.concepto); return { f: m.fecha, imp: +m.importe, g, e: m.emisor ? normEmisor(m.emisor) : 'Sin indicar', mo: normMod(m.modalidad) || modDeGrupo(g) }; });
+    S.c.pagos.filter(p => p.pagado_at && !enHist(p.pagado_at) && !(typeof esFamilia === 'function' && esFamilia(p.alumno_id))).forEach(p => { const g = grupoProg(typeof Programas !== 'undefined' ? Programas.lineaPago(p) : p.concepto), v = typeof srvDe === 'function' ? srvDe(p.alumno_id) : null, mo = v && typeof modalidadSrv === 'function' ? normMod(modalidadSrv(v)) : null; l.push({ f: p.pagado_at.slice(0, 10), imp: +p.importe, g, e: 'Autónomo', mo: mo || modDeGrupo(g) }); });
     return l;
   }
   function vIngresosMes() {
     const l = ingresos(); if (!l.length) return '';
-    const anos = [...new Set(l.map(x => x.f.slice(0, 4)))].sort(), ano = anos.includes(S.ecoAno) ? S.ecoAno : anos[anos.length - 1], vista = S.ecoVista === 'emisor' ? 'emisor' : 'programa';
-    const la = l.filter(x => x.f.startsWith(ano)), key = vista === 'emisor' ? 'e' : 'g', orden = vista === 'emisor' ? EMISORES : GRUPOS;
+    const anos = [...new Set(l.map(x => x.f.slice(0, 4)))].sort(), ano = anos.includes(S.ecoAno) ? S.ecoAno : anos[anos.length - 1], vista = ['emisor', 'modalidad'].includes(S.ecoVista) ? S.ecoVista : 'programa';
+    const la = l.filter(x => x.f.startsWith(ano)), key = { emisor: 'e', modalidad: 'mo', programa: 'g' }[vista], orden = { emisor: EMISORES, modalidad: MODALIDADES_I, programa: GRUPOS }[vista];
     const tot = la.reduce((t, x) => t + x.imp, 0), porG = {}; la.forEach(x => porG[x[key]] = (porG[x[key]] || 0) + x.imp);
     const gs = orden.filter(g => porG[g]).sort((a, b) => porG[b] - porG[a]);
     const ultMes = ano === hoyISO().slice(0, 4) ? +hoyISO().slice(5, 7) : 12, meses = Array.from({ length: ultMes }, (_, i) => `${ano}-${String(i + 1).padStart(2, '0')}`);
@@ -393,7 +395,7 @@ const Negocio = (() => {
       <div class="card stack">
         <div class="row" style="align-items:baseline;gap:10px;flex-wrap:wrap"><b class="num" style="font-family:var(--display);font-size:26px">${eur(tot)}</b><span class="small muted">cobrado en ${ano}${conDatos.length ? ` · media ${eur(tot / conDatos.length)} al mes (${conDatos.length} ${conDatos.length === 1 ? 'mes' : 'meses'} con ingresos)` : ''}${ant ? ` · ${ano - 1}: ${eur(ant)}` : ''}</span></div>
         ${pend ? `<div class="small" style="color:var(--warn)">Por cobrar (no sumado): ${eur(pend)}</div>` : ''}
-        <div class="chips" style="gap:6px"><button class="pill ${vista === 'programa' ? 'blue' : ''}" data-act="ecoVista" data-v="programa">Por programa</button><button class="pill ${vista === 'emisor' ? 'blue' : ''}" data-act="ecoVista" data-v="emisor">Por emisor</button></div>
+        <div class="chips" style="gap:6px"><button class="pill ${vista === 'programa' ? 'blue' : ''}" data-act="ecoVista" data-v="programa">Por programa</button><button class="pill ${vista === 'modalidad' ? 'blue' : ''}" data-act="ecoVista" data-v="modalidad">Por modalidad</button><button class="pill ${vista === 'emisor' ? 'blue' : ''}" data-act="ecoVista" data-v="emisor">Por emisor</button></div>
         <div class="stack" style="gap:6px">${gs.map(g => `<div class="stack" style="gap:2px"><div class="row small"><span class="grow">${esc(g)}</span><b class="num">${eur(porG[g])}</b><span class="muted num" style="width:44px;text-align:right">${Math.round(porG[g] / tot * 100)} %</span></div><div class="track"><i style="width:${porG[g] / tot * 100}%;background:var(--blue)"></i></div></div>`).join('')}</div>
       </div>
       <div class="card" style="margin-top:10px">${porMes.map(x => `<details class="line" style="display:block"><summary class="row small" style="gap:8px;cursor:pointer"><span class="muted" style="width:34px;flex:none;text-transform:capitalize">${nomMes(x.m)}</span><span class="grow"><span class="track" style="display:block"><i style="width:${x.t / max * 100}%;background:var(--ok)"></i></span></span><b class="num" style="width:96px;text-align:right">${x.t ? eur(x.t) : '—'}</b></summary>${x.t ? `<div class="stack small" style="gap:2px;padding:6px 0 4px 42px">${orden.filter(g => x.d[g]).sort((a, b) => x.d[b] - x.d[a]).map(g => `<div class="row"><span class="grow muted">${esc(g)}</span><span class="num">${eur(x.d[g])}</span></div>`).join('')}</div>` : ''}</details>`).join('')}
@@ -420,9 +422,11 @@ const Negocio = (() => {
       const f0 = r.fecha || r.mes || '', fecha = /^\d{4}-\d{2}-\d{2}$/.test(f0) ? f0 : /^\d{4}-\d{2}$/.test(f0) ? f0 + '-01' : null, imp = num2(r.importe_total || r.importe || r.total);
       if (!fecha || imp == null) return null;
       const alumno = r.alumno || r.cliente || '', prog = r.tipo || r.programa_tipo || r.programa || '', det = r.programa && r.tipo ? r.programa : '', fp = r.forma_pago || '', em = normEmisor(r.emisor || (/efectivo/i.test(fp) ? 'Efectivo' : ''));
-      const base = `${fecha}|${alumno}|${imp}|${fp}|${prog}|${det}`, n = vistos[base] = (vistos[base] || 0) + 1;
+      /* La huella solo usa fecha, alumno, importe y forma de pago: si luego corriges el programa o la modalidad, al reimportar se actualiza en vez de duplicarse */
+      const base = `${fecha}|${normT(alumno)}|${imp}|${normT(fp)}`, n = vistos[base] = (vistos[base] || 0) + 1, sino = v => /^s[ií]$/i.test(v || '') ? true : /^no$/i.test(v || '') ? false : null;
       return { fecha, tipo: 'ingreso', categoria: `Histórico · ${em}`, concepto: [alumno, det || prog].filter(Boolean).join(' · ') || 'Ingreso', importe: Math.round(imp * 100) / 100, pagado: !/pendiente/i.test(fp), recurrente: false,
-        ref: 'csv:' + huella(base) + ':' + n, emisor: em, programa: prog || null, alumno_nombre: alumno || null, forma_pago: fp || null, base: num2(r.base), iva: num2(r.iva), nota: [r.nota, r.gimnasio, r.marca].filter(Boolean).join(' · ') || null };
+        ref: 'csv:' + huella(base) + ':' + n, emisor: em, programa: prog || null, alumno_nombre: alumno || null, forma_pago: fp || null, base: num2(r.base), iva: num2(r.iva), nota: [r.nota, r.marca].filter(Boolean).join(' · ') || null,
+        ...(r.modalidad !== undefined ? { modalidad: normMod(r.modalidad), entreno: sino(r.entreno), alimentacion: sino(r.alimentacion), meses: +r.meses || null, gimnasio: r.gimnasio || null } : {}) };
     }).filter(Boolean);
   }
   function formImportar() {
@@ -433,9 +437,11 @@ const Negocio = (() => {
       const file = e.target.files?.[0]; if (!file) return; const res = $('#imp-res'); res.innerHTML = '<p class="small muted">Leyendo…</p>';
       let movs; try { movs = filasMovs(leerCSV(await file.text())); } catch (err) { res.innerHTML = `<p class="small" style="color:var(--bad)">No se ha podido leer el archivo.</p>`; return; }
       if (!movs.length) { res.innerHTML = '<p class="small" style="color:var(--bad)">No hay filas con fecha e importe. Revisa las columnas.</p>'; return; }
-      const { data: ya, error } = await sb.from('movimientos').select('ref').like('ref', 'csv:%');
+      const { data: ya, error } = await sb.from('movimientos').select('*').like('ref', 'csv:%');
       if (error) { res.innerHTML = `<p class="small" style="color:var(--bad)">${/ref/.test(error.message || '') ? 'Antes de importar, ejecuta el <b>Bloque 95</b> en Supabase.' : esc(error.message)}</p>`; return; }
-      const refs = new Set((ya || []).map(x => x.ref)), nuevos = movs.filter(m => !refs.has(m.ref)), sum = l => l.reduce((t, m) => t + m.importe, 0);
+      const porRef = Object.fromEntries((ya || []).map(x => [x.ref, x])), nuevos = movs.filter(m => !porRef[m.ref]), sum = l => l.reduce((t, m) => t + m.importe, 0);
+      const CMP = ['concepto', 'categoria', 'programa', 'emisor', 'alumno_nombre', 'nota', 'pagado', 'base', 'iva', 'modalidad', 'entreno', 'alimentacion', 'meses', 'gimnasio'];
+      const cambian = movs.filter(m => porRef[m.ref] && CMP.some(k => k in m && String(m[k] ?? '') !== String(porRef[m.ref][k] ?? ''))).map(m => ({ id: porRef[m.ref].id, up: Object.fromEntries(CMP.filter(k => k in m).map(k => [k, m[k]])) }));
       const cob = nuevos.filter(m => m.pagado), pen = nuevos.filter(m => !m.pagado), meses = [...new Set(movs.map(m => m.fecha.slice(0, 7)))].sort();
       const cuenta = {}; movs.forEach(m => cuenta[m.fecha.slice(0, 7)] = (cuenta[m.fecha.slice(0, 7)] || 0) + 1);
       const def = [...meses].reverse().find(m => cuenta[m] >= 3) || meses[meses.length - 1], r0 = rangoHist();
@@ -446,15 +452,15 @@ const Negocio = (() => {
         $('#imp-av').innerHTML = (dup.length ? `<div class="aprox small">En la app hay <b>${dup.length} cuotas cobradas</b> entre ${esc(desde)} y ${esc(hasta)} (${eur(sum(dup.map(p => ({ importe: +p.importe }))))}). <b>No se sumarán</b>: en esos meses manda el histórico.</div>` : '')
           + (man.length ? `<div class="aprox small" style="border-color:var(--warn)">⚠️ También hay <b>${man.length} ingresos apuntados a mano</b> en esos meses (${eur(sum(man.map(m => ({ importe: +m.importe }))))}). Esos sí se suman: si ya están en el CSV, bórralos en Movimientos.</div>` : '');
       };
-      res.innerHTML = `<div class="card stack small" style="gap:6px"><b>${movs.length} filas leídas · ${nuevos.length} nuevas${movs.length - nuevos.length ? ` · ${movs.length - nuevos.length} ya importadas (se saltan)` : ''}</b>
+      res.innerHTML = `<div class="card stack small" style="gap:6px"><b>${movs.length} filas leídas · ${nuevos.length} nuevas${movs.length - nuevos.length ? ` · ${movs.length - nuevos.length} ya importadas${cambian.length ? ` (${cambian.length} con datos corregidos: se actualizan)` : ' (sin cambios)'}` : ''}</b>
         <div class="row"><span class="grow">Cobrado (nuevas)</span><b class="num" style="color:var(--ok)">${eur(sum(cob))}</b></div>
         ${Object.entries(porE).map(([k, v]) => `<div class="row"><span class="grow muted">· ${esc(k)}</span><span class="num">${eur(v)}</span></div>`).join('')}
         ${pen.length ? `<div class="row"><span class="grow">Pendiente de cobro (entra «por cobrar»)</span><b class="num" style="color:var(--warn)">${eur(sum(pen))}</b></div>` : ''}
         <details><summary>Por mes</summary>${Object.keys(porMes).sort().map(k => `<div class="row"><span class="grow muted">${esc(k)}</span><span class="num">${eur(porMes[k])}</span></div>`).join('')}</details></div>
         <label class="f">Este histórico está completo hasta<select id="imp-h">${meses.map(m => `<option value="${m}" ${m === def ? 'selected' : ''}>${m}</option>`).join('')}</select><small class="muted">Hasta ese mes solo cuenta el histórico (las cuotas de la app no se suman). Después, lo que registras en la app.</small></label>
         <div id="imp-av" class="stack" style="gap:6px"></div>
-        <button class="btn full" id="imp-ok" ${nuevos.length ? '' : 'disabled'}>${nuevos.length ? `Importar ${nuevos.length} ${nuevos.length === 1 ? 'fila' : 'filas'}` : 'Nada nuevo que importar'}</button>
-        ${!nuevos.length ? '<button class="btn ghost full" id="imp-solo">Guardar solo el mes de corte</button>' : ''}`;
+        <button class="btn full" id="imp-ok" ${nuevos.length || cambian.length ? '' : 'disabled'}>${nuevos.length || cambian.length ? [nuevos.length && `Importar ${nuevos.length} ${nuevos.length === 1 ? 'fila' : 'filas'}`, cambian.length && `actualizar ${cambian.length}`].filter(Boolean).join(' y ').replace(/^a/, 'A') : 'Nada nuevo que importar'}</button>
+        ${!nuevos.length && !cambian.length ? '<button class="btn ghost full" id="imp-solo">Guardar solo el mes de corte</button>' : ''}`;
       pinta(); $('#imp-h').addEventListener('change', pinta);
       const guardaRango = async () => { const h = $('#imp-h').value, d = r0 && r0[0] < meses[0] ? r0[0] : meses[0]; await guardarAjuste('historico_rango', `${d}|${r0 && r0[1] > h ? r0[1] : h}`); };
       $('#imp-solo')?.addEventListener('click', async () => { await guardaRango(); cerrarSheet(); toast('Guardado'); render(); });
@@ -463,9 +469,14 @@ const Negocio = (() => {
         for (let i = 0; i < nuevos.length; i += 100) {
           bt.textContent = `Importando… ${Math.min(i + 100, nuevos.length)} de ${nuevos.length}`;
           const { error: e2 } = await sb.from('movimientos').insert(nuevos.slice(i, i + 100));
-          if (e2) { bt.disabled = false; bt.textContent = 'Reintentar (lo ya importado no se duplica)'; return fallo(e2, /column|ref|emisor/.test(e2.message || '') ? 'Falta ejecutar el Bloque 95 en Supabase.' : undefined); }
+          if (e2) { bt.disabled = false; bt.textContent = 'Reintentar (lo ya importado no se duplica)'; return fallo(e2, /column|ref|emisor|modalidad/.test(e2.message || '') ? 'Falta ejecutar el Bloque 95 (completo) en Supabase.' : undefined); }
         }
-        await guardaRango(); cerrarSheet(); toast(`Histórico importado: ${nuevos.length} filas`); await cargar(); render();
+        for (const [i, c] of cambian.entries()) {
+          bt.textContent = `Actualizando… ${i + 1} de ${cambian.length}`;
+          const { error: e3 } = await sb.from('movimientos').update(c.up).eq('id', c.id);
+          if (e3) { bt.disabled = false; bt.textContent = 'Reintentar'; return fallo(e3, /column|modalidad/.test(e3.message || '') ? 'Falta ejecutar el Bloque 95 (completo) en Supabase.' : undefined); }
+        }
+        await guardaRango(); cerrarSheet(); toast([nuevos.length && `${nuevos.length} filas importadas`, cambian.length && `${cambian.length} actualizadas`].filter(Boolean).join(' · ') || 'Hecho'); await cargar(); render();
       });
     });
   }

@@ -13,3 +13,10 @@ alter table movimientos add column if not exists iva numeric(12,2);
 alter table movimientos add column if not exists nota text;
 
 create unique index if not exists movimientos_ref_unico on movimientos (ref) where ref is not null;
+
+-- Detalle del programa de cada cobro (para ver ingresos por modalidad y qué incluía)
+alter table movimientos add column if not exists modalidad text;       -- Presencial · Online · Híbrido
+alter table movimientos add column if not exists entreno boolean;
+alter table movimientos add column if not exists alimentacion boolean;
+alter table movimientos add column if not exists meses int;
+alter table movimientos add column if not exists gimnasio text;        -- Torrejón · Alcalá
