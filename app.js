@@ -6035,16 +6035,21 @@ function medDeValoracion(med, f) {
 /* Comparativa de composición entre dos valoraciones. Solo se juzga lo que tiene una dirección clara (menos grasa, más masa magra,
    menos cintura/abdomen/cadera); el peso y el resto de perímetros se muestran sin calificar porque dependen del objetivo */
 const CAMPOS_COMP = [['Peso', 'peso', ' kg', 0], ['% de grasa', 'grasa_pct', ' %', -1], ['Kilos de grasa', 'grasa_kg', ' kg', -1], ['Masa magra', 'magra', ' kg', 1], ['Cuello', 'cuello', ' cm', 0], ['Pectoral', 'pectoral', ' cm', 0], ['Hombros', 'hombros', ' cm', 0], ['Cintura', 'cintura', ' cm', -1], ['Abdomen bajo', 'abd_bajo', ' cm', -1], ['Cadera', 'cadera', ' cm', -1], ['Brazo derecho', 'brazo_d', ' cm', 0], ['Brazo izquierdo', 'brazo_i', ' cm', 0], ['Muslo derecho', 'muslo_d', ' cm', 0], ['Muslo izquierdo', 'muslo_i', ' cm', 0], ['Gemelo derecho', 'gemelo_d', ' cm', 0], ['Gemelo izquierdo', 'gemelo_i', ' cm', 0]];
+/* Cambio en % respecto al valor de partida (la medida de referencia para las mejoras) */
+const pctCambio = (a0, a1) => a0 == null || a1 == null || !a0 ? null : Math.round((a1 - a0) / Math.abs(a0) * 1000) / 10;
+const fPct = p => p == null ? '' : (p > 0 ? '+' : p < 0 ? '−' : '') + fmtNum(Math.abs(p) >= 10 ? Math.round(Math.abs(p)) : Math.abs(p)) + ' %';
+const fDif = (d, u) => (d > 0 ? '+' : d < 0 ? '−' : '') + fmtNum(Math.abs(d)) + (u === ' %' ? ' pts' : u);
 function compComposicion(val, prev, med) {
   const a = medDeValoracion(med, prev.fecha), b = medDeValoracion(med, val.fecha); if (!a || !b || a.fecha === b.fecha) return null;
   const v = (m, k) => k === 'magra' ? (m.peso != null && m.grasa_kg != null ? Math.round((m.peso - m.grasa_kg) * 10) / 10 : null) : m[k] == null || m[k] === '' ? null : Number(m[k]);
-  const filas = CAMPOS_COMP.map(([l, k, u, dir]) => { const x = v(a, k), y = v(b, k); if (x == null || y == null) return null; const d = Math.round((y - x) * 10) / 10; return { l, k, u, a: x, b: y, d, juicio: !dir || Math.abs(d) < 0.05 ? 'neutro' : d * dir > 0 ? 'mejor' : 'peor' }; }).filter(Boolean);
+  const filas = CAMPOS_COMP.map(([l, k, u, dir]) => { const x = v(a, k), y = v(b, k); if (x == null || y == null) return null; const d = Math.round((y - x) * 10) / 10; return { l, k, u, a: x, b: y, d, p: pctCambio(x, y), juicio: !dir || Math.abs(d) < 0.05 ? 'neutro' : d * dir > 0 ? 'mejor' : 'peor' }; }).filter(Boolean);
   return filas.length ? { a, b, filas } : null;
 }
 function evolucion(val, lista, med) {
   if (val.origen === 'alumno') return null;
   med = med || (S.modo === 'coach' && S.ficha ? S.ficha.med : S.d?.mediciones) || [];
-  const prev = (lista || []).filter(v => v.origen !== 'alumno' && v.id !== val.id && v.fecha < val.fecha).sort((a, b) => b.fecha.localeCompare(a.fecha))[0]; if (!prev) return null;
+  const antes = (lista || []).filter(v => v.origen !== 'alumno' && v.id !== val.id && v.fecha < val.fecha).sort((a, b) => a.fecha.localeCompare(b.fecha)); if (!antes.length) return null;
+  const ini = antes[0], ant = antes[antes.length - 1], prev = S.evoAnt?.[val.id] ? ant : ini;
   const mej = [], baj = [], igual = [], asim = [];
   const pc = (a, b) => b ? Math.round((a - b) / Math.abs(b) * 100) : null, sg = n => (n > 0 ? '+' : '') + fmtNum(n);
   (val.pruebas || []).forEach(p => {
@@ -6054,31 +6059,35 @@ function evolucion(val, lista, med) {
       if (p.tipo === 'descompensacion') {
         const dd = numV(x.d) - numV(y.d), di = numV(x.i) - numV(y.i), a0 = difPct(y.d, y.i), a1 = difPct(x.d, x.i);
         if ([dd, di].some(n => isNaN(n))) return;
-        const txt = `${x.nombre}: dcho. ${y.d || '—'} → ${x.d || '—'} (${sg(dd)}) · izdo. ${y.i || '—'} → ${x.i || '—'} (${sg(di)})`;
+        const lado = (o, n, d) => { const q = pctCambio(numV(o), numV(n)); return q != null ? `${fPct(q)} (${o || '—'} → ${n || '—'})` : `${o || '—'} → ${n || '—'} (${sg(d)})`; };
+        const txt = `${x.nombre}: dcho. ${lado(y.d, x.d, dd)} · izdo. ${lado(y.i, x.i, di)}`;
         if (a1 != null && a0 != null) {
           const deb = numV(x.d) < numV(x.i) ? 'derecho' : 'izquierdo', t2 = `${txt} · diferencia entre lados ${a0} % → ${a1} %`;
-          if (a1 <= a0 - 2) mej.push({ p: p.titulo, t: t2 }); else if (a1 >= a0 + 2) baj.push({ p: p.titulo, t: t2 + ` (más débil el ${deb})` }); else igual.push({ p: p.titulo, t: t2 });
+          /* Primero manda la fuerza (los dos lados suben o bajan ≥ 2 %); si no, el equilibrio entre lados */
+          const qd = pctCambio(numV(y.d), numV(x.d)), qi = pctCambio(numV(y.i), numV(x.i));
+          if (qd >= 2 && qi >= 2) mej.push({ p: p.titulo, t: t2 }); else if (qd <= -2 && qi <= -2) baj.push({ p: p.titulo, t: t2 });
+          else if (a1 <= a0 - 2) mej.push({ p: p.titulo, t: t2 }); else if (a1 >= a0 + 2) baj.push({ p: p.titulo, t: t2 + ` (más débil el ${deb})` }); else igual.push({ p: p.titulo, t: t2 });
           if (a1 >= 8) asim.push({ p: p.titulo, t: `${x.nombre}: ${a1} % de diferencia, más débil el lado ${deb}`, grave: a1 >= 15 });
         } else (dd > 0 && di > 0 ? mej : dd < 0 && di < 0 ? baj : igual).push({ p: p.titulo, t: txt });
         return;
       }
       const a = numV(x.valor), b = numV(y.valor); if (a == null || b == null) return;
-      const d = a - b, mejor = menorMejor(x.nombre) ? d < 0 : d > 0, t = `${x.nombre}: ${y.valor} → ${x.valor} (${sg(d)}${pc(a, b) != null && !String(x.valor).includes(':') ? ', ' + sg(pc(a, b)) + ' %' : ''})`;
+      const q = pctCambio(b, a), d = a - b, mejor = menorMejor(x.nombre) ? d < 0 : d > 0, t = q != null ? `${x.nombre}: ${fPct(q)} (${y.valor} → ${x.valor})` : `${x.nombre}: ${y.valor} → ${x.valor} (${sg(d)})`;
       (d === 0 ? igual : mejor ? mej : baj).push({ p: p.titulo, t });
     });
   });
   const comp = compComposicion(val, prev, med);
   (comp?.filas || []).filter(x => x.juicio !== 'neutro' || ['grasa_pct', 'grasa_kg', 'magra', 'cintura', 'abd_bajo', 'cadera'].includes(x.k)).forEach(x => {
     if (CAMPOS_COMP.find(c => c[1] === x.k)[3] === 0) return;
-    const t = `${x.l}: ${fmtNum(x.a)} → ${fmtNum(x.b)}${x.u} (${x.d > 0 ? '+' : ''}${fmtNum(x.d)}${x.u})`;
+    const t = `${x.l}: ${x.p != null ? fPct(x.p) + ' · ' : ''}${fmtNum(x.a)} → ${fmtNum(x.b)}${x.u} (${fDif(x.d, x.u)})`;
     (x.juicio === 'mejor' ? mej : x.juicio === 'peor' ? baj : igual).push({ p: 'Composición corporal', t });
   });
-  return { prev, mej, baj, igual, asim, comp };
+  return { prev, ini, ant, mej, baj, igual, asim, comp };
 }
 function textoEvolucion(val, ev) {
-  const L = [`EVOLUCIÓN · ${fCorta(ev.prev.fecha)} → ${fCorta(val.fecha)}`, ''];
+  const L = [`EVOLUCIÓN · ${fCorta(ev.prev.fecha)} → ${fCorta(val.fecha)}${ev.prev === ev.ini ? ' (frente a la valoración inicial)' : ''}`, 'Los % son el cambio sobre el valor de partida.', ''];
   const sec = (tit, l) => { if (l.length) { L.push(tit); l.forEach(x => L.push(`• ${x.t}`)); L.push(''); } };
-  if (ev.comp) { L.push(`📏 COMPOSICIÓN CORPORAL (${fCorta(ev.comp.a.fecha)} → ${fCorta(ev.comp.b.fecha)})`); ev.comp.filas.forEach(x => L.push(`• ${x.l}: ${fmtNum(x.a)} → ${fmtNum(x.b)}${x.u} (${x.d > 0 ? '+' : ''}${fmtNum(x.d)}${x.u})`)); L.push(''); }
+  if (ev.comp) { L.push(`📏 COMPOSICIÓN CORPORAL (${fCorta(ev.comp.a.fecha)} → ${fCorta(ev.comp.b.fecha)})`); ev.comp.filas.forEach(x => L.push(`• ${x.l}: ${x.p != null ? fPct(x.p) + ' · ' : ''}${fmtNum(x.a)} → ${fmtNum(x.b)}${x.u} (${fDif(x.d, x.u)})`)); L.push(''); }
   sec('✅ MEJORAS', ev.mej.filter(x => x.p !== 'Composición corporal')); sec('⚠️ A MEJORAR', ev.baj.filter(x => x.p !== 'Composición corporal')); sec('⚖️ DESEQUILIBRIOS ENTRE LADOS (≥ 8 %)', ev.asim); sec('➖ SIN CAMBIOS', ev.igual);
   return L.join('\n').trim();
 }
@@ -6086,8 +6095,9 @@ function vEvolucion(val, lista, coach) {
   const ev = evolucion(val, lista); if (!ev) return '';
   const bloque = (tit, col, l) => l.length ? `<div class="stack" style="gap:4px"><b class="small" style="color:var(--${col})">${tit} (${l.length})</b>${l.map(x => `<div class="small"><span class="muted">${esc(x.p)} · </span>${esc(x.t)}</div>`).join('')}</div>` : '';
   const vacio = !ev.mej.length && !ev.baj.length && !ev.igual.length && !ev.asim.length;
-  const C = ev.comp, tabla = C ? `<div class="stack" style="gap:4px"><b class="small">📏 Composición corporal · ${esc(fCorta(C.a.fecha))} ${fecha(C.a.fecha).getFullYear()} → ${esc(fCorta(C.b.fecha))} ${fecha(C.b.fecha).getFullYear()}</b><div class="tbl" style="overflow-x:auto"><table class="nu-tab"><thead><tr><th>Medida</th><th class="num">${esc(fCorta(C.a.fecha))}</th><th class="num">${esc(fCorta(C.b.fecha))}</th><th class="num">Diferencia</th></tr></thead><tbody>${C.filas.map(x => `<tr><td>${esc(x.l)}</td><td class="num">${fmtNum(x.a)}${x.u}</td><td class="num"><b>${fmtNum(x.b)}${x.u}</b></td><td class="num" style="color:var(--${x.juicio === 'mejor' ? 'ok' : x.juicio === 'peor' ? 'warn' : 'muted'})">${x.d > 0 ? '+' : ''}${fmtNum(x.d)}${x.u}</td></tr>`).join('')}</tbody></table></div><p class="small muted" style="margin:0">Mediciones del día de cada test${C.a.fecha !== ev.prev.fecha || C.b.fecha !== val.fecha ? ' (o la más cercana)' : ''}. El peso y los perímetros de brazos, piernas, hombros y pecho se muestran sin calificar: dependen del objetivo.</p></div>` : '';
-  return `<div class="card stack"><span class="eyebrow">Evolución frente al test del ${esc(fCorta(ev.prev.fecha))} ${fecha(ev.prev.fecha).getFullYear()}</span>${tabla}
+  const C = ev.comp, tabla = C ? `<div class="stack" style="gap:4px"><b class="small">📏 Composición corporal · ${esc(fCorta(C.a.fecha))} ${fecha(C.a.fecha).getFullYear()} → ${esc(fCorta(C.b.fecha))} ${fecha(C.b.fecha).getFullYear()}</b><div class="tbl" style="overflow-x:auto"><table class="nu-tab"><thead><tr><th>Medida</th><th class="num">${esc(fCorta(C.a.fecha))}</th><th class="num">${esc(fCorta(C.b.fecha))}</th><th class="num">Cambio</th></tr></thead><tbody>${C.filas.map(x => `<tr><td>${esc(x.l)}</td><td class="num">${fmtNum(x.a)}${x.u}</td><td class="num"><b>${fmtNum(x.b)}${x.u}</b></td><td class="num" style="color:var(--${x.juicio === 'mejor' ? 'ok' : x.juicio === 'peor' ? 'warn' : 'muted'})"><b>${x.p != null ? fPct(x.p) : '—'}</b><br><span class="small">${fDif(x.d, x.u)}</span></td></tr>`).join('')}</tbody></table></div><p class="small muted" style="margin:0">Mediciones del día de cada test${C.a.fecha !== ev.prev.fecha || C.b.fecha !== val.fecha ? ' (o la más cercana)' : ''}. El peso y los perímetros de brazos, piernas, hombros y pecho se muestran sin calificar: dependen del objetivo.</p></div>` : '';
+  const base = `${esc(fCorta(ev.prev.fecha))} ${fecha(ev.prev.fecha).getFullYear()}`, otra = ev.ini !== ev.ant ? `<button class="linkbtn small" data-act="evoBase" data-id="${val.id}" style="align-self:flex-start">${ev.prev === ev.ini ? `Comparar con el test anterior (${esc(fCorta(ev.ant.fecha))})` : 'Comparar con la valoración inicial'}</button>` : '';
+  return `<div class="card stack"><span class="eyebrow">Evolución frente ${ev.prev === ev.ini ? 'a la valoración inicial' : 'al test'} del ${base}</span><span class="small muted">Mejoras en % sobre el valor de partida (entre paréntesis, el dato real).</span>${otra}${tabla}
     ${vacio ? '<p class="small muted" style="margin:0">Todavía no hay pruebas con datos comparables entre los dos tests.</p>' : `${bloque('✅ Mejoras', 'ok', ev.mej)}${bloque('⚠️ Puntos a mejorar', 'warn', ev.baj)}${bloque('⚖️ Desequilibrios entre lados', 'bad', ev.asim)}${bloque('➖ Sin cambios', 'muted', ev.igual)}`}
     ${coach && !vacio ? `<div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="evoCopiar" data-id="${val.id}">Copiar informe</button><button class="btn sm ghost" data-act="evoAnadir" data-id="${val.id}">Añadirlo al informe del test</button></div>` : ''}</div>`;
 }
@@ -7054,7 +7064,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v258';
+const APP_VER = 'v259';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -7267,6 +7277,7 @@ document.addEventListener('click', async e => {
     case 'abrirValoracion': S.valEd = +b.dataset.id; render(); window.scrollTo(0, 0); break;
     case 'cerrarValoracion': S.valEd = null; render(); window.scrollTo(0, 0); break;
     case 'editarValoracion': formValoracion(+b.dataset.id); break;
+    case 'evoBase': { S.evoAnt = S.evoAnt || {}; S.evoAnt[b.dataset.id] = !S.evoAnt[b.dataset.id]; render(); break; }
     case 'evoCopiar': case 'evoAnadir': { const lista = S.ficha?.val || S.d?.valoraciones || [], val = lista.find(v => v.id === +b.dataset.id), ev = val && evolucion(val, lista); if (!ev) break; const t = textoEvolucion(val, ev);
       if (a === 'evoCopiar') { try { await navigator.clipboard.writeText(t); toast('Informe copiado'); } catch (e) { abrirSheet(`<div class="stack"><h2>Informe de evolución</h2><textarea rows="14" readonly>${esc(t)}</textarea></div>`); } break; }
       const nuevo = [val.resumen, t].filter(Boolean).join('\n\n'), { error } = await sb.from('valoraciones').update({ resumen: nuevo }).eq('id', val.id); if (error) { fallo(error); break; } toast('Añadido al informe del test'); await cargarValoraciones(); break; }
