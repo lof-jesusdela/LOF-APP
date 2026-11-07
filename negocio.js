@@ -19,7 +19,7 @@ const Negocio = (() => {
       sb.from('cierres').select('*').gte('fecha', desde).order('fecha', { ascending: false }),
       sb.from('mejoras').select('*').order('created_at'),
       sb.from('saldos').select('*').order('fecha', { ascending: false }).limit(20),
-      sb.from('movimientos').select('*').gte('fecha', sumaDias(hoyISO(), -400)).order('fecha', { ascending: false }),
+      sb.from('movimientos').select('*').gte('fecha', `${new Date().getFullYear() - 1}-01-01`).order('fecha', { ascending: false }),
       sb.from('reservas').select('*').order('concepto'),
       sb.from('recordatorios').select('*').order('orden').order('id')
     ]);
@@ -316,7 +316,10 @@ const Negocio = (() => {
   async function estadoMejora(id, v) { if (v === 'abierta' && (S.c.mejoras || []).filter(x => x.estado === 'abierta').length >= 3) return toast('Ya tienes 3 en marcha'); await sb.from('mejoras').update({ estado: v }).eq('id', id); await cargar(); render(); }
 
   /* ---------- Economía ---------- */
-  const cobradoEn = (ini, fin) => S.c.pagos.filter(p => p.pagado_at && p.pagado_at >= ini && p.pagado_at <= fin).reduce((t, p) => t + +p.importe, 0) + (S.c.movs || []).filter(m => m.tipo === 'ingreso' && m.pagado && m.fecha >= ini && m.fecha <= fin).reduce((t, m) => t + +m.importe, 0);
+  /* Meses que cubre el histórico importado (facturas + efectivo): ahí solo cuenta el histórico, para no sumar dos veces las cuotas de la app */
+  const rangoHist = () => { const [a, b] = String(F().historico_rango || '').split('|'); return a && b ? [a, b] : null; };
+  const enHist = f => { const r = rangoHist(); return !!(r && f && f.slice(0, 7) >= r[0] && f.slice(0, 7) <= r[1]); };
+  const cobradoEn = (ini, fin) => S.c.pagos.filter(p => p.pagado_at && p.pagado_at >= ini && p.pagado_at <= fin && !enHist(p.pagado_at)).reduce((t, p) => t + +p.importe, 0) + (S.c.movs || []).filter(m => m.tipo === 'ingreso' && m.pagado && m.fecha >= ini && m.fecha <= fin).reduce((t, m) => t + +m.importe, 0);
   const gastadoEn = (ini, fin) => (S.c.movs || []).filter(m => m.tipo === 'gasto' && m.pagado && m.fecha >= ini && m.fecha <= fin).reduce((t, m) => t + +m.importe, 0);
   /* Reservas en un periodo: importes fijos según su periodicidad y próxima fecha; % sobre lo cobrado (estimación) */
   function reservasEn(ini, fin, cobros) {
@@ -352,6 +355,120 @@ const Negocio = (() => {
       ${k.caja != null ? `<div class="row" style="border-top:1px solid var(--line);padding-top:8px"><span class="grow small"><b>Caja estimada a ${esc(fCorta(k.fin))}</b> <span class="pill">Estimación</span></span><b class="num" style="font-size:18px">${eur(k.caja)}</b></div>` : ''}
       <details class="small"><summary>Cómo se calcula</summary><p class="muted" style="margin:6px 0 0">Saldo real que apuntaste + cuotas pendientes que vencen en 30 días + otros ingresos pendientes − gastos pendientes y recurrentes de esos 30 días − reservas configuradas. Los cobros vencidos no se cuentan como seguros. No es beneficio: es una previsión de caja.</p></details></div></section>`;
   }
+  /* ---------- Histórico de ingresos: importación desde CSV y vista mes a mes ---------- */
+  const GRUPOS = ['Ruta Integral', 'Bonos y entrenos sueltos', 'Programa presencial', 'Zero to Fit · futbolistas', 'Online', 'Membresía', 'Basic Fit y PTIs', 'Camino Opositor', 'Otros ingresos'];
+  const EMISORES = ['SL', 'Autónomo', 'Efectivo', 'Sin indicar'];
+  function grupoProg(t) {
+    const c = String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    if (/ruta/.test(c)) return 'Ruta Integral';
+    if (/membres/.test(c)) return 'Membresía';
+    if (/zero|futbol|elite/.test(c)) return 'Zero to Fit · futbolistas';
+    if (/opos|policia|camino/.test(c)) return 'Camino Opositor';
+    if (/presencial/.test(c)) return 'Programa presencial';
+    if (/bono|suelto|sesion/.test(c)) return 'Bonos y entrenos sueltos';
+    if (/online|aliment|nutric|plan integral/.test(c)) return 'Online';
+    if (/pti|basic|asesoria inicial/.test(c)) return 'Basic Fit y PTIs';
+    return 'Otros ingresos';
+  }
+  const normEmisor = e => { const c = String(e || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); return /^sl|sociedad|s\.l/.test(c) ? 'SL' : /autonomo/.test(c) ? 'Autónomo' : /efectivo/.test(c) ? 'Efectivo' : 'Sin indicar'; };
+  /* Todos los ingresos cobrados con su mes, programa y emisor: movimientos de ingreso + cuotas de la app (fuera de los meses del histórico) */
+  function ingresos() {
+    const l = (S.c.movs || []).filter(m => m.tipo === 'ingreso' && m.pagado).map(m => ({ f: m.fecha, imp: +m.importe, g: grupoProg(m.programa || m.categoria || m.concepto), e: m.emisor ? normEmisor(m.emisor) : 'Sin indicar' }));
+    S.c.pagos.filter(p => p.pagado_at && !enHist(p.pagado_at) && !(typeof esFamilia === 'function' && esFamilia(p.alumno_id))).forEach(p => l.push({ f: p.pagado_at.slice(0, 10), imp: +p.importe, g: grupoProg(typeof Programas !== 'undefined' ? Programas.lineaPago(p) : p.concepto), e: 'Autónomo' }));
+    return l;
+  }
+  function vIngresosMes() {
+    const l = ingresos(); if (!l.length) return '';
+    const anos = [...new Set(l.map(x => x.f.slice(0, 4)))].sort(), ano = anos.includes(S.ecoAno) ? S.ecoAno : anos[anos.length - 1], vista = S.ecoVista === 'emisor' ? 'emisor' : 'programa';
+    const la = l.filter(x => x.f.startsWith(ano)), key = vista === 'emisor' ? 'e' : 'g', orden = vista === 'emisor' ? EMISORES : GRUPOS;
+    const tot = la.reduce((t, x) => t + x.imp, 0), porG = {}; la.forEach(x => porG[x[key]] = (porG[x[key]] || 0) + x.imp);
+    const gs = orden.filter(g => porG[g]).sort((a, b) => porG[b] - porG[a]);
+    const ultMes = ano === hoyISO().slice(0, 4) ? +hoyISO().slice(5, 7) : 12, meses = Array.from({ length: ultMes }, (_, i) => `${ano}-${String(i + 1).padStart(2, '0')}`);
+    const porMes = meses.map(m => { const xs = la.filter(x => x.f.startsWith(m)), t = xs.reduce((s, x) => s + x.imp, 0), d = {}; xs.forEach(x => d[x[key]] = (d[x[key]] || 0) + x.imp); return { m, t, d }; });
+    const conDatos = porMes.filter(x => x.t > 0), max = Math.max(1, ...porMes.map(x => x.t)), ant = l.filter(x => x.f.startsWith(String(+ano - 1))).reduce((t, x) => t + x.imp, 0);
+    const pend = (S.c.movs || []).filter(m => m.tipo === 'ingreso' && !m.pagado && m.fecha.startsWith(ano)).reduce((t, m) => t + +m.importe, 0);
+    const nomMes = m => new Date(m + '-01T12:00').toLocaleDateString('es-ES', { month: 'short' }).replace('.', '');
+    const r = rangoHist();
+    return `<section class="section"><div class="section-head"><h2>Ingresos por mes</h2><div class="chips" style="gap:6px">${anos.map(a => `<button class="pill ${a === ano ? 'blue' : ''}" data-act="ecoAno" data-v="${a}">${a}</button>`).join('')}</div></div>
+      <div class="card stack">
+        <div class="row" style="align-items:baseline;gap:10px;flex-wrap:wrap"><b class="num" style="font-family:var(--display);font-size:26px">${eur(tot)}</b><span class="small muted">cobrado en ${ano}${conDatos.length ? ` · media ${eur(tot / conDatos.length)} al mes (${conDatos.length} ${conDatos.length === 1 ? 'mes' : 'meses'} con ingresos)` : ''}${ant ? ` · ${ano - 1}: ${eur(ant)}` : ''}</span></div>
+        ${pend ? `<div class="small" style="color:var(--warn)">Por cobrar (no sumado): ${eur(pend)}</div>` : ''}
+        <div class="chips" style="gap:6px"><button class="pill ${vista === 'programa' ? 'blue' : ''}" data-act="ecoVista" data-v="programa">Por programa</button><button class="pill ${vista === 'emisor' ? 'blue' : ''}" data-act="ecoVista" data-v="emisor">Por emisor</button></div>
+        <div class="stack" style="gap:6px">${gs.map(g => `<div class="stack" style="gap:2px"><div class="row small"><span class="grow">${esc(g)}</span><b class="num">${eur(porG[g])}</b><span class="muted num" style="width:44px;text-align:right">${Math.round(porG[g] / tot * 100)} %</span></div><div class="track"><i style="width:${porG[g] / tot * 100}%;background:var(--blue)"></i></div></div>`).join('')}</div>
+      </div>
+      <div class="card" style="margin-top:10px">${porMes.map(x => `<details class="line" style="display:block"><summary class="row small" style="gap:8px;cursor:pointer"><span class="muted" style="width:34px;flex:none;text-transform:capitalize">${nomMes(x.m)}</span><span class="grow"><span class="track" style="display:block"><i style="width:${x.t / max * 100}%;background:var(--ok)"></i></span></span><b class="num" style="width:96px;text-align:right">${x.t ? eur(x.t) : '—'}</b></summary>${x.t ? `<div class="stack small" style="gap:2px;padding:6px 0 4px 42px">${orden.filter(g => x.d[g]).sort((a, b) => x.d[b] - x.d[a]).map(g => `<div class="row"><span class="grow muted">${esc(g)}</span><span class="num">${eur(x.d[g])}</span></div>`).join('')}</div>` : ''}</details>`).join('')}
+        <p class="small muted" style="margin:8px 0 0">Toca un mes para ver el desglose.${r ? ` De ${esc(nomMes(r[0]))} ${r[0].slice(0, 4)} a ${esc(nomMes(r[1]))} ${r[1].slice(0, 4)} cuenta el histórico importado (facturas + efectivo); fuera de esos meses, las cuotas de la app y los ingresos que apuntes.` : ''} Las cuotas de la app cuentan como Autónomo.</p></div></section>`;
+  }
+  /* CSV con comillas («"Miguel ""Tito"" Leyva"») */
+  function leerCSV(txt) {
+    const l0 = txt.split(/\r?\n/)[0] || '', sep = (l0.match(/;/g) || []).length > (l0.match(/,/g) || []).length ? ';' : ',';   /* separador según la cabecera */
+    const filas = []; let f = [], c = '', q = false;
+    for (let i = 0; i < txt.length; i++) {
+      const ch = txt[i];
+      if (q) { if (ch === '"') { if (txt[i + 1] === '"') { c += '"'; i++; } else q = false; } else c += ch; }
+      else if (ch === '"') q = true; else if (ch === sep) { f.push(c); c = ''; } else if (ch === '\n' || ch === '\r') { if (ch === '\r' && txt[i + 1] === '\n') i++; f.push(c); c = ''; if (f.some(x => x !== '')) filas.push(f); f = []; } else c += ch;
+    }
+    f.push(c); if (f.some(x => x !== '')) filas.push(f);
+    const cab = (filas.shift() || []).map(h => h.trim().toLowerCase().replace(/^﻿/, ''));
+    return filas.map(r => Object.fromEntries(cab.map((h, i) => [h, (r[i] || '').trim()])));
+  }
+  const huella = t => { let h = 5381; for (let i = 0; i < t.length; i++) h = (h * 33 ^ t.charCodeAt(i)) >>> 0; return h.toString(36); };
+  const num2 = v => { const t = String(v || '').trim(); if (!t) return null; const n = +(/,\d{1,2}$/.test(t) ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '')); return isNaN(n) ? null : n; };
+  function filasMovs(rows) {
+    const vistos = {};
+    return rows.map(r => {
+      const f0 = r.fecha || r.mes || '', fecha = /^\d{4}-\d{2}-\d{2}$/.test(f0) ? f0 : /^\d{4}-\d{2}$/.test(f0) ? f0 + '-01' : null, imp = num2(r.importe_total || r.importe || r.total);
+      if (!fecha || imp == null) return null;
+      const alumno = r.alumno || r.cliente || '', prog = r.tipo || r.programa_tipo || r.programa || '', det = r.programa && r.tipo ? r.programa : '', fp = r.forma_pago || '', em = normEmisor(r.emisor || (/efectivo/i.test(fp) ? 'Efectivo' : ''));
+      const base = `${fecha}|${alumno}|${imp}|${fp}|${prog}|${det}`, n = vistos[base] = (vistos[base] || 0) + 1;
+      return { fecha, tipo: 'ingreso', categoria: `Histórico · ${em}`, concepto: [alumno, det || prog].filter(Boolean).join(' · ') || 'Ingreso', importe: Math.round(imp * 100) / 100, pagado: !/pendiente/i.test(fp), recurrente: false,
+        ref: 'csv:' + huella(base) + ':' + n, emisor: em, programa: prog || null, alumno_nombre: alumno || null, forma_pago: fp || null, base: num2(r.base), iva: num2(r.iva), nota: [r.nota, r.gimnasio, r.marca].filter(Boolean).join(' · ') || null };
+    }).filter(Boolean);
+  }
+  function formImportar() {
+    abrirSheet(`<div class="stack" id="f-imp"><h2>Importar histórico de ingresos</h2>
+      <p class="small">Sube el CSV con tus facturas y cobros en efectivo (columnas: <i>fecha</i> o <i>mes</i>, <i>alumno</i>, <i>importe_total</i>, <i>emisor</i>, <i>forma_pago</i>, <i>tipo</i>; opcionales <i>base</i>, <i>iva</i>, <i>programa</i>, <i>nota</i>). Antes de guardar verás un resumen.</p>
+      <label class="btn ghost full"><input type="file" id="imp-f" accept=".csv,text/csv" hidden>📄 Elegir archivo CSV</label><div id="imp-res"></div></div>`);
+    $('#imp-f').addEventListener('change', async e => {
+      const file = e.target.files?.[0]; if (!file) return; const res = $('#imp-res'); res.innerHTML = '<p class="small muted">Leyendo…</p>';
+      let movs; try { movs = filasMovs(leerCSV(await file.text())); } catch (err) { res.innerHTML = `<p class="small" style="color:var(--bad)">No se ha podido leer el archivo.</p>`; return; }
+      if (!movs.length) { res.innerHTML = '<p class="small" style="color:var(--bad)">No hay filas con fecha e importe. Revisa las columnas.</p>'; return; }
+      const { data: ya, error } = await sb.from('movimientos').select('ref').like('ref', 'csv:%');
+      if (error) { res.innerHTML = `<p class="small" style="color:var(--bad)">${/ref/.test(error.message || '') ? 'Antes de importar, ejecuta el <b>Bloque 95</b> en Supabase.' : esc(error.message)}</p>`; return; }
+      const refs = new Set((ya || []).map(x => x.ref)), nuevos = movs.filter(m => !refs.has(m.ref)), sum = l => l.reduce((t, m) => t + m.importe, 0);
+      const cob = nuevos.filter(m => m.pagado), pen = nuevos.filter(m => !m.pagado), meses = [...new Set(movs.map(m => m.fecha.slice(0, 7)))].sort();
+      const cuenta = {}; movs.forEach(m => cuenta[m.fecha.slice(0, 7)] = (cuenta[m.fecha.slice(0, 7)] || 0) + 1);
+      const def = [...meses].reverse().find(m => cuenta[m] >= 3) || meses[meses.length - 1], r0 = rangoHist();
+      const porMes = {}, porE = {}; cob.forEach(m => { porMes[m.fecha.slice(0, 7)] = (porMes[m.fecha.slice(0, 7)] || 0) + m.importe; porE[m.emisor] = (porE[m.emisor] || 0) + m.importe; });
+      const pinta = () => {
+        const hasta = $('#imp-h')?.value || def, desde = meses[0];
+        const dup = S.c.pagos.filter(p => p.pagado_at && p.pagado_at.slice(0, 7) >= desde && p.pagado_at.slice(0, 7) <= hasta), man = (S.c.movs || []).filter(m => m.tipo === 'ingreso' && !m.ref && m.fecha.slice(0, 7) >= desde && m.fecha.slice(0, 7) <= hasta);
+        $('#imp-av').innerHTML = (dup.length ? `<div class="aprox small">En la app hay <b>${dup.length} cuotas cobradas</b> entre ${esc(desde)} y ${esc(hasta)} (${eur(sum(dup.map(p => ({ importe: +p.importe }))))}). <b>No se sumarán</b>: en esos meses manda el histórico.</div>` : '')
+          + (man.length ? `<div class="aprox small" style="border-color:var(--warn)">⚠️ También hay <b>${man.length} ingresos apuntados a mano</b> en esos meses (${eur(sum(man.map(m => ({ importe: +m.importe }))))}). Esos sí se suman: si ya están en el CSV, bórralos en Movimientos.</div>` : '');
+      };
+      res.innerHTML = `<div class="card stack small" style="gap:6px"><b>${movs.length} filas leídas · ${nuevos.length} nuevas${movs.length - nuevos.length ? ` · ${movs.length - nuevos.length} ya importadas (se saltan)` : ''}</b>
+        <div class="row"><span class="grow">Cobrado (nuevas)</span><b class="num" style="color:var(--ok)">${eur(sum(cob))}</b></div>
+        ${Object.entries(porE).map(([k, v]) => `<div class="row"><span class="grow muted">· ${esc(k)}</span><span class="num">${eur(v)}</span></div>`).join('')}
+        ${pen.length ? `<div class="row"><span class="grow">Pendiente de cobro (entra «por cobrar»)</span><b class="num" style="color:var(--warn)">${eur(sum(pen))}</b></div>` : ''}
+        <details><summary>Por mes</summary>${Object.keys(porMes).sort().map(k => `<div class="row"><span class="grow muted">${esc(k)}</span><span class="num">${eur(porMes[k])}</span></div>`).join('')}</details></div>
+        <label class="f">Este histórico está completo hasta<select id="imp-h">${meses.map(m => `<option value="${m}" ${m === def ? 'selected' : ''}>${m}</option>`).join('')}</select><small class="muted">Hasta ese mes solo cuenta el histórico (las cuotas de la app no se suman). Después, lo que registras en la app.</small></label>
+        <div id="imp-av" class="stack" style="gap:6px"></div>
+        <button class="btn full" id="imp-ok" ${nuevos.length ? '' : 'disabled'}>${nuevos.length ? `Importar ${nuevos.length} ${nuevos.length === 1 ? 'fila' : 'filas'}` : 'Nada nuevo que importar'}</button>
+        ${!nuevos.length ? '<button class="btn ghost full" id="imp-solo">Guardar solo el mes de corte</button>' : ''}`;
+      pinta(); $('#imp-h').addEventListener('change', pinta);
+      const guardaRango = async () => { const h = $('#imp-h').value, d = r0 && r0[0] < meses[0] ? r0[0] : meses[0]; await guardarAjuste('historico_rango', `${d}|${r0 && r0[1] > h ? r0[1] : h}`); };
+      $('#imp-solo')?.addEventListener('click', async () => { await guardaRango(); cerrarSheet(); toast('Guardado'); render(); });
+      $('#imp-ok').addEventListener('click', async ev => {
+        const bt = ev.currentTarget; if (bt.disabled) return; bt.disabled = true;
+        for (let i = 0; i < nuevos.length; i += 100) {
+          bt.textContent = `Importando… ${Math.min(i + 100, nuevos.length)} de ${nuevos.length}`;
+          const { error: e2 } = await sb.from('movimientos').insert(nuevos.slice(i, i + 100));
+          if (e2) { bt.disabled = false; bt.textContent = 'Reintentar (lo ya importado no se duplica)'; return fallo(e2, /column|ref|emisor/.test(e2.message || '') ? 'Falta ejecutar el Bloque 95 en Supabase.' : undefined); }
+        }
+        await guardaRango(); cerrarSheet(); toast(`Histórico importado: ${nuevos.length} filas`); await cargar(); render();
+      });
+    });
+  }
   function vEconomia() {
     const k = calc(), hoy = hoyISO(), mes = hoy.slice(0, 7), ini = mes + '-01', finMes = sumaDias(sumaMeses(ini, 1), -1), iniAnt = sumaMeses(ini, -1), finAnt = sumaDias(ini, -1);
     const cob = cobradoEn(ini, finMes), gas = gastadoEn(ini, finMes), cobA = cobradoEn(iniAnt, finAnt), gasA = gastadoEn(iniAnt, finAnt);
@@ -359,7 +476,7 @@ const Negocio = (() => {
     const resF = reservasEn(ini, finMes, cob).reduce((t, x) => t + x.imp, 0);
     const pendEntregar = pendienteEntregar(), rev = F().eco_revision;
     const cats = {}; (S.c.movs || []).filter(m => m.tipo === 'gasto' && m.fecha >= ini).forEach(m => { cats[m.categoria || 'Sin categoría'] = (cats[m.categoria || 'Sin categoría'] || 0) + +m.importe; });
-    return `<section class="stack"><span class="eyebrow">Tu negocio</span><h1>Economía</h1><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="ecoSaldo">Actualizar saldo</button><button class="btn sm ghost" data-act="ecoMov" data-t="gasto">＋ Gasto</button><button class="btn sm ghost" data-act="ecoMov" data-t="ingreso">＋ Ingreso</button><button class="btn sm ghost" data-act="ecoMov" data-t="personal">＋ Transferencia personal</button></div></section>
+    return `<section class="stack"><span class="eyebrow">Tu negocio</span><h1>Economía</h1><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="ecoSaldo">Actualizar saldo</button><button class="btn sm ghost" data-act="ecoMov" data-t="gasto">＋ Gasto</button><button class="btn sm ghost" data-act="ecoMov" data-t="ingreso">＋ Ingreso</button><button class="btn sm ghost" data-act="ecoMov" data-t="personal">＋ Transferencia personal</button><button class="btn sm ghost" data-act="ecoImportar">⬆ Importar histórico (CSV)</button></div></section>
       ${S.c.negErr ? `<section class="section"><div class="card small muted">${AVISO}</div></section>` : ''}
       <section class="section"><div class="card stack"><div class="row"><b class="grow">Revisión semanal</b><span class="small muted">${rev ? 'última: ' + esc(fCorta(rev)) : 'aún sin hacer'}</span></div><ol class="small" style="margin:0;padding-left:18px"><li>Apunta el saldo real del banco.</li><li>Añade los gastos de la semana y marca los pagados.</li><li>Revisa cobros vencidos.</li></ol><button class="btn sm" data-act="ecoRevision" style="align-self:flex-start">Revisión hecha</button><span class="small muted">Duración prevista: unos 5-10 minutos. Lo comprobaremos con el uso real.</span></div></section>
       ${vEcoResumen()}
@@ -371,9 +488,10 @@ const Negocio = (() => {
         <div class="row"><span class="grow">Transferencias personales</span><b class="num">${eur(pers)}</b></div>
         <div class="row"><span class="grow">Servicio cobrado pendiente de entregar <span class="pill">Estimación</span></span><b class="num">${eur(pendEntregar)}</b></div>
         <p class="muted" style="margin:4px 0 0">El saldo del banco no es beneficio. Lo que podrías retirar depende de tus reservas y del servicio que aún debes entregar: confírmalo con tu gestor.</p></div></section>
+      ${vIngresosMes()}
       ${Object.keys(cats).length ? `<section class="section"><h2>Gastos por categoría</h2><div class="card">${Object.entries(cats).sort((a, b) => b[1] - a[1]).map(([c, v]) => `<div class="line small"><span class="grow">${esc(c)}</span><b class="num">${eur(v)}</b></div>`).join('')}</div></section>` : ''}
       <section class="section"><div class="section-head"><h2>Reservas</h2><button class="btn sm ghost" data-act="ecoReserva">＋ Reserva</button></div><div class="card">${(S.c.reservas || []).map(r => `<div class="line small" data-act="ecoReserva" data-id="${r.id}" style="cursor:pointer"><span class="grow"><b>${esc(r.concepto)}</b> · ${r.modo === 'porcentaje' ? fmtNum(r.valor) + ' % de lo cobrado' : eur(r.valor) + ' ' + r.periodicidad}${r.proxima ? ' · próxima ' + esc(fCorta(r.proxima)) : ''}</span><span class="muted">›</span></div>`).join('') || '<div class="empty">Sin reservas. Añade las que te indique tu gestor (IVA, IRPF, cuota de autónomo…): la app no inventa porcentajes.</div>'}</div></section>
-      <section class="section"><h2>Movimientos</h2><div class="card">${(S.c.movs || []).slice(0, 40).map(m => `<div class="line small" data-act="ecoMov" data-id="${m.id}" style="cursor:pointer"><span class="muted num" style="width:56px;flex:none">${esc(fCorta(m.fecha))}</span><span class="grow">${esc(m.concepto)}${m.categoria ? ` <span class="muted">· ${esc(m.categoria)}</span>` : ''}${m.recurrente ? ' <span class="pill">mensual</span>' : ''}${!m.pagado ? ` <span class="pill warn">${m.tipo === 'ingreso' ? 'por cobrar' : 'pendiente'}</span>` : ''}</span><b class="num" style="color:${m.tipo === 'ingreso' ? 'var(--ok)' : 'inherit'}">${m.tipo === 'ingreso' ? '+' : '−'}${eur(m.importe)}</b></div>`).join('') || '<div class="empty">Sin movimientos. Las cuotas de tus alumnos ya cuentan solas: aquí van otros ingresos, gastos y transferencias personales.</div>'}</div></section>
+      <section class="section"><h2>Movimientos</h2><div class="card">${(() => { const n = (S.c.movs || []).filter(m => m.ref).length; return n ? `<p class="small muted" style="margin:0 0 6px">${n} movimientos del histórico importado: los ves en «Ingresos por mes».</p>` : ''; })()}${(S.c.movs || []).filter(m => !m.ref || !m.pagado).slice(0, 40).map(m => `<div class="line small" data-act="ecoMov" data-id="${m.id}" style="cursor:pointer"><span class="muted num" style="width:56px;flex:none">${esc(fCorta(m.fecha))}</span><span class="grow">${esc(m.concepto)}${m.categoria ? ` <span class="muted">· ${esc(m.categoria)}</span>` : ''}${m.recurrente ? ' <span class="pill">mensual</span>' : ''}${!m.pagado ? ` <span class="pill warn">${m.tipo === 'ingreso' ? 'por cobrar' : 'pendiente'}</span>` : ''}</span><b class="num" style="color:${m.tipo === 'ingreso' ? 'var(--ok)' : 'inherit'}">${m.tipo === 'ingreso' ? '+' : '−'}${eur(m.importe)}</b></div>`).join('') || '<div class="empty">Sin movimientos. Las cuotas de tus alumnos ya cuentan solas: aquí van otros ingresos, gastos y transferencias personales.</div>'}</div></section>
       <section class="section"><h2>Saldos apuntados</h2><div class="card">${(S.c.saldos || []).slice(0, 8).map(x => `<div class="line small"><span class="grow">${esc(fLarga(x.fecha))}${x.nota ? ' · ' + esc(x.nota) : ''}</span><b class="num">${eur(x.importe)}</b></div>`).join('') || '<div class="empty">Aún no has apuntado tu saldo.</div>'}</div></section>`;
   }
   /* Servicio cobrado por adelantado y aún no entregado (estimación por semanas restantes) */
@@ -431,5 +549,5 @@ const Negocio = (() => {
   }
   async function revisionHecha() { await guardarAjuste('eco_revision', hoyISO()); toast('Revisión semanal anotada'); render(); }
 
-  return { verImportantes, formElegir, siguiente, capacidad, criticos, vRecordatorios, formRec, moverRec, hechoRec, cargar, vInicio, vEconomia, vEcoResumen, semana, propuestas, delDia, formCapacidad, formItem, formTarea, hecha, estrella, decidirAnterior, formCierre, nuevaMejora, estadoMejora, formSaldo, formMov, formReserva, revisionHecha, calc };
+  return { verImportantes, formElegir, siguiente, capacidad, criticos, vRecordatorios, formRec, moverRec, hechoRec, cargar, vInicio, vEconomia, vEcoResumen, semana, propuestas, delDia, formCapacidad, formItem, formTarea, hecha, estrella, decidirAnterior, formCierre, nuevaMejora, estadoMejora, formSaldo, formMov, formReserva, revisionHecha, calc, formImportar, grupoProg };
 })();

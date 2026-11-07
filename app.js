@@ -3455,7 +3455,7 @@ function formAsignarPlantilla(alumnoId, plantillaId) {
     ${alumnoId ? `<p class="small">Para <b>${esc((S.c.perfiles.find(p => p.id === alumnoId) || {}).nombre || '')}</b></p>` : `<label class="f">Alumno<select id="as-al" required><option value="">Elige alumno…</option>${als.map(a => `<option value="${a.id}">${esc(a.nombre)}</option>`).join('')}</select></label>`}
     <label class="f">Plantilla<select id="as-p" required>${optsPlantillas(plantillaId)}</select></label>
     <label class="f">Nombre del programa para el alumno<input type="text" id="as-n" placeholder="Ej. Ciclo 1"></label>
-    ${P?.ciclos?.length ? `<label class="f">Bloque del proceso<select id="as-c">${P.ciclos.map(c => `<option value="${c.n}" ${c.n === P.ciclo ? 'selected' : ''}>${esc(nomCiclo(c))} · ${esc(fCorta(c.ini))} – ${esc(fCorta(c.fin))}</option>`).join('')}</select></label>` : ''}
+    ${P?.ciclos?.length ? `<label class="f">Bloque del proceso<select id="as-c">${P.ciclos.filter(c => !c.sinPlan).map(c => `<option value="${c.n}" ${c.n === P.ciclo ? 'selected' : ''}>${esc(nomCiclo(c))} · ${esc(fCorta(c.ini))} – ${esc(fCorta(c.fin))}</option>`).join('')}</select></label>` : ''}
     <label class="row small" style="gap:8px"><input type="checkbox" id="as-val" checked style="width:auto"> Crear también su test inicial, si la plantilla lo tiene (los resultados los rellenas tú)</label>
     <label class="row small" style="gap:8px"><input type="checkbox" id="as-ctx" ${(S.c.plantillas.find(p => p.id === plantillaId) || {}).categoria === CAT_CTX ? 'checked' : ''} style="width:auto"> Guardarlo como contexto del alumno (no cambia su programa activo; lo aplicas cuando quieras)</label>
     <label class="row small" style="gap:8px"><input type="checkbox" id="as-act" checked style="width:auto"> Pasa a ser su programa activo (el anterior queda guardado con su historial)</label>
@@ -3851,7 +3851,8 @@ function vFicha() {
     <button class="plan-b" data-act="fichaSub" data-s="plan"><div class="grow"><h3>${esc(srv?.producto || 'Sin plan asignado')} <span style="color:var(--blue-text)">›</span></h3><div class="small" style="color:var(--blue-text)">Ver toda su planificación${(() => { const m = [(srv?.modulo_entreno ?? true) && 'entrenamiento', srv?.modulo_nutricion && 'alimentación', srv?.modulo_habitos && 'hábitos'].filter(Boolean); return m.length ? ': ' + m.join(', ').replace(/, ([^,]*)$/, ' y $1') : ''; })()}</div></div></button>
     <div class="row"><div class="grow"><div class="small muted">${[f.prog && `${esc(f.prog.nombre)}${dpw ? ` · ${dpw} días por semana` : ''}`, srv?.modulo_nutricion && 'con nutrición', (srv?.modulo_presencial || srv?.sesiones_incluidas) && `${srv.sesiones_incluidas || ''} presenciales`.trim()].filter(Boolean).join(' · ') || 'Sin programa'}</div></div>${P && !P.sinFin ? `<b class="num" style="font-family:var(--display);font-size:24px">${P.pctTotal} %</b>` : ''}</div>
     ${P ? `<div class="track gordo"><i style="width:${P.pctTotal}%"></i></div><div class="row small muted"><span class="grow">${P.antes ? 'Empieza' : 'Inicio'} ${esc(fF(srv.inicio))}${!P.antes && !P.fuera ? ` · semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''}</span>${P.sinFin ? '' : `<span>Final ${esc(fF(P.ciclos[P.ciclos.length - 1].fin))}</span>`}</div>` : '<p class="small muted">Pon la fecha de inicio y la duración en "Editar".</p>'}
-    ${srv?.duracion_semanas && (srv._bloques || []).length && Math.max(...srv._bloques.map(b => b.semana_fin)) !== srv.duracion_semanas ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><span class="grow">Su servicio dice <b>${srv.duracion_semanas} semanas</b>, pero sus bloques terminan en la semana <b>${Math.max(...srv._bloques.map(b => b.semana_fin))}</b> y la fecha de fin sale con los bloques.</span><button class="btn sm" data-act="ajBloques">Ajustar a ${srv.duracion_semanas} semanas</button></div>` : ''}
+    ${(() => { const dur = durContratada(srv), bl = srv?._bloques || [], fb = bl.length ? Math.max(...bl.map(b => b.semana_fin)) : 0; if (!dur || !bl.length || fb === dur) return '';
+      return `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><span class="grow">Su servicio dice <b>${dur} semanas</b>${srv.duracion_semanas ? '' : ` (${srv.meses} meses)`}, pero sus bloques terminan en la semana <b>${fb}</b>. ${fb < dur ? 'La fecha de fin sale con la duración contratada; las semanas que faltan quedan «sin planificar».' : 'La fecha de fin sale con los bloques.'}</span><button class="btn sm" data-act="ajBloques">Ajustar bloques a ${dur} semanas</button></div>`; })()}
     ${extensionesDe(srv).length ? `<div class="small row" style="flex-wrap:wrap;gap:6px">${extensionesDe(srv).map((x, i) => `<button class="pill gold" data-act="extEditar" data-i="${i}" title="Editar ampliación">${esc(x.nombre || 'Extensión')} · ${x.tipo === 'bono' ? `${x.sesiones} sesiones · ${esc(fCorta(x.fecha))}` : `${x.semanas} sem${x.sesiones ? ` · ${x.sesiones} personales` : ''} · desde ${esc(fCorta(x.desde))}`} ✎</button>`).join('')}</div>` : ''}
     ${srv?.inicio ? `<div class="small row" style="flex-wrap:wrap;gap:6px;align-items:center">${pausasDe(srv).map((p, i) => `<button class="pill blue" ${p.enCurso ? 'data-act="estadoAl"' : `data-act="pausaEditar" data-i="${(srv.pausas || []).findIndex(q => q.desde === p.desde)}"`} title="${p.enCurso ? 'Pausa en curso' : 'Editar pausa'}">⏸ ${esc(fCorta(p.desde))} – ${esc(fCorta(p.hasta))} · ${Math.round(diasPausa(p) / 7 * 10) / 10} sem ✎</button>`).join('')}<button class="linkbtn small" data-act="pausaEditar" data-i="-1">＋ Pausa pasada</button>${pausasDe(srv).length ? `<span class="muted">Las pausas alargan su proceso: termina el ${esc(fCorta(finProceso(proceso(srv)) || ''))}.</span>` : ''}</div>` : ''}
     ${(() => { const ci = srv && cierreDe(a.id); return ci ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>Bono terminado el ${esc(fCorta(ci.fin))}.</b> Su app muestra su resumen y cómo seguir; ${a.activo === false ? 'ya está archivado.' : `pasa a antiguos alumnos y pierde el acceso el ${esc(fCorta(ci.limite))}. Si renueva o cambia de programa, se reactiva solo al guardar su servicio.`}</div><button class="btn sm" data-act="pdfCierre" data-id="${a.id}">📄 Resumen PDF</button></div>` : ''; })()}
@@ -4375,6 +4376,8 @@ function diasEfectivos(srv, f) {
   for (const p of pausasDe(srv)) { const a = p.desde > srv.inicio ? p.desde : srv.inicio, b = p.hasta < f ? p.hasta : sumaDias(f, -1); if (b >= a) d -= Math.round((fecha(b) - fecha(a)) / 864e5) + 1; }
   return d;
 }
+/* Duración contratada en semanas: la del servicio o, si falta, la de sus meses */
+const durContratada = srv => srv?.duracion_semanas || (srv?.meses ? semanasDeMeses(srv.meses) : null);
 function proceso(srv, f = hoyISO()) {
   if (!srv?.inicio) return null;
   const dias = diasEfectivos(srv, f), semana = Math.floor(dias / 7) + 1;
@@ -4382,9 +4385,11 @@ function proceso(srv, f = hoyISO()) {
   let total;
   if (bl.length) {
     bl.forEach((b, i) => { const sem = Math.max(1, b.semana_fin - b.semana_inicio + 1), n0 = sumaDias(srv.inicio, (b.semana_inicio - 1) * 7), ini = realDe(srv, n0); ciclos.push({ n: i + 1, sem, ini, fin: realDe(srv, sumaDias(n0, sem * 7 - 1)), s0: b.semana_inicio, nombre: b.nombre, objetivo: (b.objetivos || []).join(' · ') }); });
-    total = bl[bl.length - 1].semana_fin;
+    /* El fin es el mayor entre el último bloque y la duración contratada: si los bloques se quedan cortos, el resto queda «sin planificar» */
+    const finBl = Math.max(...bl.map(b => b.semana_fin)), dur = durContratada(srv) || 0; total = Math.max(finBl, dur);
+    if (total > finBl) { const n0 = sumaDias(srv.inicio, finBl * 7), sem = total - finBl; ciclos.push({ n: ciclos.length + 1, sem, ini: realDe(srv, n0), fin: realDe(srv, sumaDias(n0, sem * 7 - 1)), s0: finBl + 1, nombre: 'Sin planificar', objetivo: '', sinPlan: true }); }
   } else {
-    total = srv.duracion_semanas || Math.max(1, Math.ceil(Math.max(semana, 1) / SEM_CICLO)) * SEM_CICLO;
+    total = durContratada(srv) || Math.max(1, Math.ceil(Math.max(semana, 1) / SEM_CICLO)) * SEM_CICLO;
     const n = Math.ceil(total / SEM_CICLO);
     for (let c = 1; c <= n; c++) {
       const sem = Math.min(SEM_CICLO, total - (c - 1) * SEM_CICLO), n0 = sumaDias(srv.inicio, (c - 1) * SEM_CICLO * 7);
@@ -4397,7 +4402,7 @@ function proceso(srv, f = hoyISO()) {
   const semCiclo = antes ? 0 : Math.max(1, Math.min(cc.sem, semana - cc.s0 + 1));
   const pctCiclo = antes ? 0 : Math.min(100, Math.round((dias - (cc.s0 - 1) * 7 + 1) / (cc.sem * 7) * 100));
   const pctTotal = antes ? 0 : Math.min(100, Math.round((dias + 1) / (total * 7) * 100));
-  return { semana, total, ciclos, ciclo, semCiclo, cc, pctCiclo, pctTotal, antes, fuera, sinFin: !srv.duracion_semanas && !bl.length };
+  return { semana, total, ciclos, ciclo, semCiclo, cc, pctCiclo, pctTotal, antes, fuera, sinFin: !durContratada(srv) && !bl.length };
 }
 /* Fin del proceso, extensiones y aviso cuando queda un mes */
 const finProceso = P => P && !P.sinFin ? P.ciclos[P.ciclos.length - 1].fin : null;
@@ -5858,7 +5863,7 @@ const Clip = {
         if (t === 'act') dias = act?.dias || []; else if (t.startsWith('ctx:')) dias = ctxs.find(x => 'ctx:' + x.id === t)?.dias || [];
       }
       const P = srv ? proceso(srv) : null;
-      $('#cl-opc').innerHTML = (t === 'nuevo' ? `<label class="f">Nombre<input type="text" id="cl-n" value="${esc(c.nombre)}"></label>` + (P?.ciclos?.length ? `<label class="f">Bloque del proceso<select id="cl-c">${P.ciclos.map(x => `<option value="${x.n}" ${x.n === P.ciclo ? 'selected' : ''}>${esc(nomCiclo(x))} · ${esc(fCorta(x.ini))} – ${esc(fCorta(x.fin))}</option>`).join('')}</select></label>` : '')
+      $('#cl-opc').innerHTML = (t === 'nuevo' ? `<label class="f">Nombre<input type="text" id="cl-n" value="${esc(c.nombre)}"></label>` + (P?.ciclos?.length ? `<label class="f">Bloque del proceso<select id="cl-c">${P.ciclos.filter(x => !x.sinPlan).map(x => `<option value="${x.n}" ${x.n === P.ciclo ? 'selected' : ''}>${esc(nomCiclo(x))} · ${esc(fCorta(x.ini))} – ${esc(fCorta(x.fin))}</option>`).join('')}</select></label>` : '')
         : t === 'nuevoctx' ? `<label class="f">Nombre del contexto<input type="text" id="cl-n" value="${esc(c.nombre)}" placeholder="Ej. Mancuernas en casa"></label>`
         : !fut && dias.length ? `<label class="f">¿En qué posición del bloque?<select id="cl-pos">${dias.map((d, i) => `<option value="${i + 1}">Como Día ${i + 1} (antes de «${esc(etiquetaFlex(d))}»)</option>`).join('')}<option value="" selected>Al final (Día ${dias.length + 1}${c.dias.length > 1 ? '…' : ''})</option></select></label>` : fut ? '<p class="small muted">Futbolista: los días conservan su día de la semana; ordénalos después en su programa.</p>' : '');
     };
@@ -5896,7 +5901,7 @@ function formNuevoCiclo() {
   const p = S.editor.prog; if (!p) return;
   const m = String(p.nombre).match(/ciclo\s*(\d+)/i), sug = m ? `Ciclo ${+m[1] + 1}` : 'Ciclo 2';
   const aid = p.alumno_id || S.editor.alumnoId, P = proceso(S.c.servicios.find(x => x.alumno_id === aid));
-  const prev = p.ciclo || P?.ciclo || 1, cic = P?.ciclos || [], def = cic.some(c => c.n === prev + 1) ? prev + 1 : prev;
+  const prev = p.ciclo || P?.ciclo || 1, cic = (P?.ciclos || []).filter(c => !c.sinPlan), def = cic.some(c => c.n === prev + 1) ? prev + 1 : prev;
   abrirSheet(`<form class="stack" id="f-nc"><h2>Nuevo ciclo</h2><p class="small">Se crea una copia de <b>${esc(p.nombre)}</b> con todos sus días, bloques y ejercicios para que la modifiques. El ciclo anterior queda guardado con su historial.</p>
     <label class="f">Nombre del nuevo ciclo<input type="text" id="nc-n" value="${esc(sug)}"></label>
     ${cic.length ? `<label class="f">Bloque del proceso al que pertenece<select id="nc-c">${cic.map(c => `<option value="${c.n}" ${c.n === def ? 'selected' : ''}>${esc(nomCiclo(c))} · ${esc(fCorta(c.ini))} – ${esc(fCorta(c.fin))}</option>`).join('')}</select></label>` : ''}
@@ -7184,7 +7189,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v261';
+const APP_VER = 'v262';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -7477,7 +7482,7 @@ document.addEventListener('click', async e => {
     case 'pdfCierre': PDF.cierreBono(b.dataset.id || null, b); break;
     case 'ecoTab': S.ecoTab = b.dataset.t; try { localStorage.setItem('lof-eco-tab', S.ecoTab); } catch (e) { } render(); window.scrollTo(0, 0); break;
     case 'extEditar': formExtEditar(+b.dataset.i); break;
-    case 'ajBloques': { const srv = S.ficha?.srv; if (!srv) break; b.disabled = true; try { await ajustarBloquesFin(S.ficha.id, srv.duracion_semanas); toast('Bloques ajustados: ya termina en su fecha'); await cargarCoach(); await abrirFicha(S.ficha.id); } catch (err) { b.disabled = false; fallo(err); } break; }
+    case 'ajBloques': { const srv = S.ficha?.srv; if (!srv) break; b.disabled = true; try { await ajustarBloquesFin(S.ficha.id, durContratada(srv)); toast('Bloques ajustados: ya termina en su fecha'); await cargarCoach(); await abrirFicha(S.ficha.id); } catch (err) { b.disabled = false; fallo(err); } break; }
     case 'entExtra': formEntExtra(); break;
     case 'programarSes': formProgramar(S.ficha?.id || null, b.dataset.f || null); break;
     case 'verAgenda': verAgenda(); break;
@@ -7634,6 +7639,9 @@ document.addEventListener('click', async e => {
     case 'mjNueva': await Negocio.nuevaMejora(); break;
     case 'mjEstado': await Negocio.estadoMejora(+b.dataset.id, b.dataset.v); break;
     case 'ecoSaldo': Negocio.formSaldo(); break;
+    case 'ecoImportar': Negocio.formImportar(); break;
+    case 'ecoAno': S.ecoAno = b.dataset.v; render(); break;
+    case 'ecoVista': S.ecoVista = b.dataset.v; render(); break;
     case 'ecoMov': Negocio.formMov(b.dataset.t, b.dataset.id ? +b.dataset.id : null); break;
     case 'ecoReserva': Negocio.formReserva(b.dataset.id ? +b.dataset.id : null); break;
     case 'ecoRevision': await Negocio.revisionHecha(); break;
