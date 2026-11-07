@@ -208,10 +208,43 @@ const Programas = (() => {
     const hoy = hoyISO(), nAl = id => (S.c.srvTodos || []).filter(v => v.tarifa === id && activo(v, hoy)).length;
     const fila = t => { const v = t.srv || {}, ent = [v.meses && `${v.meses} meses`, t.semanas && !v.meses && `${t.semanas} semanas`, (v.sesiones || t.sesiones) && `${v.sesiones || t.sesiones} personales`, v.vi && 'valoración inicial', v.vf && 'valoración final', v.seg === false ? 'sin seguimiento' : null].filter(Boolean).join(' · ');
       return `<button class="pg-tar ${t.oculta ? 'oculta' : ''}" data-act="pgTarifa" data-id="${t.id}"><span class="grow stack" style="gap:2px;min-width:0"><b class="small">${esc(t.nombre)}${t.oculta ? ' <span class="pill">oculta</span>' : ''}${t.nueva ? ' <span class="pill gold">tuya</span>' : ''}${t.oferta ? ` <span class="pill gold">oferta${t.ofHasta ? ' hasta ' + esc(fCorta(t.ofHasta)) : ''}</span>` : ''}</b><span class="small muted">${ent || '—'}</span><span class="small muted">${t.unico !== t.estandar ? `Único ${e0(t.unico)}` : 'Pago único'}${t.fracc ? ` · Fraccionado ${Tarifas.resumenFracc(t.fracc)}` : ''}${t.bonus24 ? ` · 24 h +${t.bonus24}` : ''}${t.bonusUnico ? ` · único +${t.bonusUnico}` : ''}</span></span><span class="stack" style="align-items:flex-end;gap:2px;flex:none"><b class="num">${e0(t.estandar)}</b><span class="small muted">${nAl(t.id)} activo${nAl(t.id) === 1 ? '' : 's'}</span></span></button>`; };
-    const grupos = L => [...new Set(L.map(t => t.grupo))].map(g => `<details class="pg-grupo"><summary><b class="small">${esc(g)}</b><span class="small muted">${L.filter(t => t.grupo === g).length}</span></summary>${L.filter(t => t.grupo === g).map(fila).join('')}</details>`).join('');
+    const grupos = L => [...new Set(L.map(t => t.grupo))].map(g => { const n = matDe(g).length; return `<details class="pg-grupo" ${S.pgGrupoAb === g ? 'open' : ''}><summary><b class="small">${esc(g)}</b><span class="small muted">${n ? `📎 ${n} · ` : ''}${L.filter(t => t.grupo === g).length}</span></summary>${vMaterial(g)}${L.filter(t => t.grupo === g).map(fila).join('')}</details>`; }).join('');
+    const todas = [...Tarifas.T, ...Tarifas.AMP];
     return `<section class="section"><div class="section-head"><h2>Tarifas y servicios</h2><div class="row" style="gap:6px"><button class="btn sm ghost" data-act="pgTarifa" data-id="" data-amp="1">＋ Ampliación</button><button class="btn sm" data-act="pgTarifa" data-id="">＋ Tarifa</button></div></div>
-      <div class="card stack" style="gap:6px"><span class="small muted">Lo que cambies aquí se aplica a los alumnos que des de alta a partir de ahora. Los planes de pago ya creados no cambian.</span>${grupos(Tarifas.T)}<b class="small" style="margin-top:6px">Ampliaciones</b>${grupos(Tarifas.AMP)}</div></section>`;
+      <div class="card stack" style="gap:6px"><span class="small muted">Lo que cambies aquí se aplica a los alumnos que des de alta a partir de ahora. Los planes de pago ya creados no cambian. Dentro de cada programa puedes adjuntar su material (hoja de ruta, flyer, dossier…).</span>
+      ${MODS_TAR.map(([k, l, ic]) => { const L = todas.filter(t => modTar(t) === k); return L.length ? `<div class="pg-mod"><b style="display:block;margin:10px 0 2px">${ic} ${l} <span class="small muted" style="font-weight:400">· ${L.filter(t => !t.oculta).length} tarifas</span></b>${grupos(L)}</div>` : ''; }).join('')}</div></section>`;
   }
+  /* Modalidad de cada tarifa: la de su servicio; las ampliaciones presenciales de la Ruta son híbridas y el resto online */
+  const MODS_TAR = [['online', 'Online', '🌐'], ['presencial', 'Presencial', '🏋️'], ['hibrido', 'Híbrido', '🔀'], ['otros', 'Otros', '•']];
+  const modTar = t => t.id === 'familia' ? 'otros' : t.srv?.modalidad || (/^amp-/.test(t.id || '') ? 'hibrido' : /^amp/.test(t.id || '') ? 'online' : 'otros');
+  /* ---------- Material de cada programa (imágenes y PDF en el bucket privado; la lista en ajustes_privados «material_programas») ---------- */
+  const MAT_URL = {};
+  const matTodo = () => { try { return JSON.parse(S.c.fiscal?.material_programas || '{}'); } catch (e) { return {}; } };
+  const matDe = g => matTodo()[g] || [];
+  async function matGuardar(todo) {
+    const v = JSON.stringify(todo), { error } = await sb.from('ajustes_privados').upsert({ clave: 'material_programas', valor: v }, { onConflict: 'clave' });
+    if (error) { fallo(error); return false; } (S.c.fiscal ||= {}).material_programas = v; return true;
+  }
+  function vMaterial(g) {
+    const l = matDe(g), faltan = l.map(x => x.ruta).filter(r => !(r in MAT_URL));
+    if (faltan.length) { faltan.forEach(r => MAT_URL[r] = null); sb.storage.from('planificacion').createSignedUrls(faltan, 6 * 3600).then(({ data }) => { (data || []).forEach(d => { if (d.signedUrl) MAT_URL[d.path] = d.signedUrl; }); render(); }); }
+    return `<div class="stack" style="gap:6px;padding:8px 0 10px 4px"><div class="row" style="gap:8px;flex-wrap:wrap">${l.map((x, i) => { const u = MAT_URL[x.ruta];
+      return `<div class="stack" style="gap:2px;width:92px"><a ${u ? `href="${esc(u)}" target="_blank" rel="noopener"` : ''} style="display:flex;align-items:center;justify-content:center;width:92px;height:92px;border-radius:10px;background:var(--surface-2);overflow:hidden;text-decoration:none">${x.pdf ? '<span style="font-size:28px">📄</span>' : u ? `<img src="${esc(u)}" alt="" style="width:100%;height:100%;object-fit:cover">` : '<span class="small muted">…</span>'}</a><span class="small" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(x.nombre)}">${esc(x.nombre)}</span><span class="row" style="gap:4px"><button type="button" class="linkbtn small" data-act="pgMatComp" data-g="${esc(g)}" data-i="${i}">Compartir</button><button type="button" class="linkbtn small" data-act="pgMatDel" data-g="${esc(g)}" data-i="${i}" style="color:var(--bad)">Quitar</button></span></div>`; }).join('')}</div>
+      <label class="btn sm ghost" style="align-self:flex-start"><input type="file" accept="image/*,application/pdf" multiple hidden data-mat-up="${esc(g)}">📎 Adjuntar material${l.length ? '' : ' (hoja de ruta, flyer, dossier…)'}</label></div>`;
+  }
+  async function matSubir(g, files) {
+    const todo = matTodo(), l = todo[g] = todo[g] || [], slug = nrm(g).replace(/[^a-z0-9]+/g, '-').slice(0, 30);
+    toast('Subiendo…');
+    try {
+      for (const f of files) {
+        const pdf = /pdf/i.test(f.type) || /\.pdf$/i.test(f.name), blob = pdf ? f : await reducirImagen(f, 1800), ruta = `${S.user.id}/material-${slug}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}.${pdf ? 'pdf' : 'jpg'}`;
+        const up = await sb.storage.from('planificacion').upload(ruta, blob, { contentType: pdf ? 'application/pdf' : 'image/jpeg' }); if (up.error) throw up.error;
+        l.push({ ruta, nombre: f.name.replace(/\.[a-z0-9]+$/i, '').slice(0, 60) || 'Material', pdf, fecha: hoyISO() });
+      }
+      if (await matGuardar(todo)) { S.pgGrupoAb = g; toast(files.length > 1 ? `${files.length} archivos adjuntados` : 'Adjuntado'); render(); }
+    } catch (err) { fallo(err, 'No se ha podido subir el archivo.'); }
+  }
+  document.addEventListener('change', e => { const g = e.target?.dataset?.matUp; if (g != null && e.target.files?.length) matSubir(g, [...e.target.files]); });
   async function guardarCfg(cfg) {
     const { error } = await sb.from('ajustes_privados').upsert({ clave: 'tarifas', valor: JSON.stringify(cfg) }, { onConflict: 'clave' });
     if (error) { fallo(error); return false; }
@@ -331,6 +364,10 @@ const Programas = (() => {
     else if (a === 'pgLinea') detalleLinea(b.dataset.l);
     else if (a === 'pgTarifa') formTarifa(b.dataset.id || null, b.dataset.amp === '1');
     else if (a === 'pgSinTarifa') formSinTarifa();
+    else if (a === 'pgMatDel') { const todo = matTodo(), l = todo[b.dataset.g] || [], x = l[+b.dataset.i]; if (!x || !confirm(`¿Quitar «${x.nombre}» del material de ${b.dataset.g}?`)) return; l.splice(+b.dataset.i, 1); if (await matGuardar(todo)) { sb.storage.from('planificacion').remove([x.ruta]); S.pgGrupoAb = b.dataset.g; render(); } }
+    else if (a === 'pgMatComp') { const x = matDe(b.dataset.g)[+b.dataset.i]; if (!x) return; const { data, error } = await sb.storage.from('planificacion').createSignedUrl(x.ruta, 7 * 86400); if (error || !data?.signedUrl) return fallo(error || {}, 'No se ha podido crear el enlace.'); const u = data.signedUrl;
+      if (navigator.share) { try { await navigator.share({ title: x.nombre, url: u }); return; } catch (er) { if (er?.name === 'AbortError') return; } }
+      try { await navigator.clipboard.writeText(u); toast('Enlace copiado (vale 7 días)'); } catch (er) { prompt('Copia el enlace (vale 7 días):', u); } }
     else if (a === 'pgCuotas') formCuotas();
     else if (a === 'pgTiempo') { let tm = {}; try { tm = JSON.parse(S.c.fiscal?.tiempo_lineas || '{}'); } catch (e) { } tm[b.dataset.l] = Math.max(0, +$('#pg-min').value || 0); const v = JSON.stringify(tm);
       sb.from('ajustes_privados').upsert({ clave: 'tiempo_lineas', valor: v }, { onConflict: 'clave' }).then(({ error }) => { if (error) return fallo(error); S.c.fiscal.tiempo_lineas = v; toast('Tiempo guardado'); detalleLinea(b.dataset.l); }); }
