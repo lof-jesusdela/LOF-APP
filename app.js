@@ -6013,12 +6013,14 @@ function registrosDe(lista, val, p) {
     .flatMap(v => (v.pruebas || []).filter(x => x.tipo === p.tipo && x.titulo === p.titulo).map(x => ({ v, x })))
     .sort((a, b) => b.v.fecha.localeCompare(a.v.fecha) || b.v.id - a.v.id);
 }
-const txtDatos = ds => (ds || []).filter(x => x.nombre && (x.valor || x.d || x.i)).map(x => `${x.nombre}: ${x.valor || `${x.d || '—'} / ${x.i || '—'}`}`).join(' · ');
+const txtDatos = ds => (ds || []).filter(x => x.nombre && (x.valor || x.d || x.i)).map(x => `${x.nombre}${x.ejercicio && normT(x.ejercicio) !== normT(x.nombre) ? ` (${x.ejercicio})` : ''}: ${x.valor || `dcha. ${x.d || '—'} / izda. ${x.i || '—'}`}`).join(' · ');
 function vRegistros(regs, p, coach) {
   if (!regs.length) return '';
   const base = (p.datos || []), num = (x, n) => numDe((x.datos || []).find(y => y.nombre === n)?.valor);
   return `<div class="stack" style="gap:6px"><span class="eyebrow">${coach ? 'Resultados que ha añadido' : 'Tus resultados'}</span>${regs.map(({ v, x }, i) => {
-    const prev = regs[i + 1]?.x || p, mejoras = p.tipo === '1rm' ? (x.datos || []).map(d => { const a = numDe(d.valor), b = num(prev, d.nombre); return a != null && b != null && a !== b ? `${d.nombre} ${a > b ? '+' : ''}${fmtNum(a - b)}` : null; }).filter(Boolean) : [];
+    const prev = regs[i + 1]?.x || p, dOf = (o, n) => (o.datos || []).find(y => y.nombre === n) || {};
+    const mejoras = p.tipo === 'descompensacion' ? (x.datos || []).map(d => { const y = dOf(prev, d.nombre), qd = pctCambio(numDe(y.d), numDe(d.d)), qi = pctCambio(numDe(y.i), numDe(d.i)); return qd != null || qi != null ? `${d.nombre}: dcha. ${qd != null ? fPct(qd) : '—'} · izda. ${qi != null ? fPct(qi) : '—'}` : null; }).filter(Boolean)
+      : (x.datos || []).map(d => { const a = numV(d.valor), b = numV(dOf(prev, d.nombre).valor), q = pctCambio(b, a); return q ? `${d.nombre} ${fPct(q)}` : null; }).filter(Boolean);
     return `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(v.fecha))}</span><div class="grow small">${esc(txtDatos(x.datos))}${mejoras.length ? `<div class="small" style="color:var(--ok);font-weight:700">${esc(mejoras.join(' · '))}</div>` : ''}</div>${coach ? `<button class="btn sm ghost" data-act="abrirValoracion" data-id="${v.id}">Ver</button>` : ''}</div>`;
   }).join('')}</div>`;
 }
@@ -6047,7 +6049,7 @@ function vPrueba(p, lista, val, coach) {
     ${p.foco ? `<div class="aprox stack" style="gap:4px"><span class="eyebrow">Foco de trabajo</span><div class="small pre">${esc(p.foco)}</div></div>` : ''}
     ${p.protocolo ? `<details class="como"><summary class="small"><b>Cómo se hace la prueba</b></summary><div class="small pre muted" style="margin-top:8px">${esc(p.protocolo)}</div></details>` : ''}
     ${p.video_url ? `<a class="btn sm" style="align-self:flex-start" href="${esc(p.video_url)}" target="_blank" rel="noopener">▶ Vídeo</a>` : ''}
-    ${coach ? `<div class="row" style="gap:8px"><button class="btn sm" data-act="editarPrueba" data-id="${p.id}">✎ Editar prueba</button></div>` : !S.obj && S.d && p.tipo !== 'fc' ? `<button class="btn sm ghost" data-act="nuevoResultado" data-id="${p.id}" style="align-self:flex-start">＋ Añadir un nuevo resultado</button>` : ''}
+    ${coach ? `<div class="row" style="gap:8px"><button class="btn sm" data-act="editarPrueba" data-id="${p.id}">✎ Editar prueba</button>${val.origen === 'alumno' && ['1rm', 'descompensacion', 'otra', 'ritmos', 'policia', 'movilidad'].includes(p.tipo) ? `<button class="btn sm ghost" data-act="conectarPrueba" data-id="${p.id}">🔗 ${p.titulo === 'Test propio' ? 'Conectar con su valoración' : 'Cambiar conexión'}</button>` : ''}</div>` : !S.obj && S.d && p.tipo !== 'fc' ? `<button class="btn sm ghost" data-act="nuevoResultado" data-id="${p.id}" style="align-self:flex-start">＋ Añadir un nuevo resultado</button>` : ''}
     </div></details>`;
 }
 /* ---- Evolución: cada prueba comparada con el test anterior → mejoras y puntos a mejorar ---- */
@@ -6165,21 +6167,110 @@ function formResultado(pid) {
     } catch (err) { bt.disabled = false; bt.textContent = 'Guardar resultado'; fallo(err, /origen|policy|row-level/i.test(err.message || '') ? 'Falta ejecutar el Bloque 35 en Supabase.' : 'No se ha podido guardar.'); }
   });
 }
+/* ---------- Test propio del alumno: elige cualquier ejercicio y, si lo hicimos en su valoración, se conecta y se compara ---------- */
+const normT = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+const TIPO_LIBRE = { fuerza: ['1rm'], lados: ['descompensacion'], otro: ['ritmos', 'policia', 'otra', 'movilidad'] };
+const SIN_MUSC = { pecho: 'pectoral', pectoral: 'pectoral', biceps: 'biceps', triceps: 'triceps', gluteo: 'gluteos', gluteos: 'gluteos', aductor: 'adductores', aductores: 'adductores', adductores: 'adductores', abdomen: 'abdomen', core: 'abdomen', isquio: 'isquiotibiales', isquiotibiales: 'isquiotibiales', femoral: 'isquiotibiales', cuadriceps: 'cuadriceps' };
+/* Pruebas de sus valoraciones (las del coach) en las que puede conectarse un test de ese tipo */
+function puntosConexion(tipo) {
+  const vs = (S.modo === 'coach' && S.ficha ? S.ficha.val : S.d?.valoraciones) || [], vistos = new Set(), r = [];
+  vs.filter(v => v.origen !== 'alumno').sort((a, b) => a.fecha.localeCompare(b.fecha)).forEach(v => (v.pruebas || []).filter(p => TIPO_LIBRE[tipo].includes(p.tipo)).forEach(p => (p.datos || []).filter(x => x.nombre).forEach(x => {
+    const k = `${p.tipo}|${p.titulo}|${x.nombre}`; if (vistos.has(k)) return; vistos.add(k); r.push({ k, tipo: p.tipo, titulo: p.titulo, nombre: x.nombre, obs: x.obs || '' });
+  })));
+  return r;
+}
+function sugerirConexion(tipo, ejercicio, musculo) {
+  const e = normT(ejercicio), m = normT(musculo); if (!e) return null;
+  const l = puntosConexion(tipo), n = x => normT(x.nombre);
+  return l.find(x => n(x) === e) || l.find(x => x.obs && normT(x.obs).includes(e)) || l.find(x => n(x).length > 3 && e.includes(n(x)))
+    || l.find(x => e.split(' ').some(w => SIN_MUSC[w] && normT(SIN_MUSC[w]) === n(x).split(' ')[0])) || (m && l.find(x => SIN_MUSC[m.split(' ')[0]] && n(x).startsWith(SIN_MUSC[m.split(' ')[0]]))) || null;
+}
+const rmEstimado = (kg, reps) => !kg ? null : reps > 1 ? Math.round(kg * 36 / (37 - Math.min(reps, 12)) * 2) / 2 : kg;
+async function formTestPropio() {
+  let cat = [];
+  try { const r = await sb.from('ejercicios').select('nombre,musculo').order('nombre'); if (!r.error) cat = r.data || []; } catch (e) { }
+  if (!cat.length) { const vistos = new Set(); (function w(o) { if (!o || typeof o !== 'object') return; if (o.ejercicios?.nombre && !vistos.has(o.ejercicios.nombre)) { vistos.add(o.ejercicios.nombre); cat.push({ nombre: o.ejercicios.nombre, musculo: o.ejercicios.musculo }); } Object.values(o).forEach(w); })(S.d?.programa); }
+  const st = { tipo: 'fuerza' };
+  abrirSheet(`<form class="stack" id="f-tp"><h2>Hacerme un test</h2><p class="small muted">Elige el ejercicio que quieras. Si lo hicimos en tu valoración, se compara con aquel resultado; si no, queda guardado en tus tests.</p>
+    <div class="chips" id="tp-t">${[['fuerza', 'Fuerza máxima (RM)'], ['lados', 'Fuerza por lados'], ['otro', 'Otro (tiempo, repeticiones…)']].map(([k, l]) => `<button type="button" class="pill ${k === 'fuerza' ? 'blue' : ''}" data-v="${k}">${l}</button>`).join('')}</div>
+    <label class="f">Fecha<input type="date" id="tp-f" value="${hoyISO()}" max="${hoyISO()}"></label>
+    <label class="f">Ejercicio<input type="text" id="tp-e" list="tp-dl" autocomplete="off" placeholder="Busca o escribe el ejercicio"><datalist id="tp-dl">${cat.map(x => `<option value="${esc(x.nombre)}">`).join('')}</datalist></label>
+    <div id="tp-campos"></div>
+    <label class="f">Comparar con tu valoración<select id="tp-c"></select><small class="muted" id="tp-cn"></small></label>
+    <label class="f">Notas (máquina, ajustes, sensaciones)<input type="text" id="tp-o"></label>
+    <p class="small" id="tp-err" style="color:var(--bad)"></p><button class="btn full" type="submit">Guardar test</button></form>`);
+  const fm = $('#f-tp');
+  const campos = () => { $('#tp-campos').innerHTML = st.tipo === 'fuerza' ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Peso (kg)<input type="text" inputmode="decimal" id="tp-kg"></label><label class="f">Repeticiones<input type="text" inputmode="numeric" id="tp-r" value="1"></label></div><small class="muted" id="tp-rm"></small>`
+      : st.tipo === 'lados' ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Derecha (kg)<input type="text" inputmode="decimal" id="tp-d"></label><label class="f">Izquierda (kg)<input type="text" inputmode="decimal" id="tp-i"></label></div>`
+      : `<label class="f">Resultado<input type="text" id="tp-v" placeholder="Ej. 4:20, 12 repeticiones, 1.200 m"></label>`; };
+  const opciones = (auto) => {
+    const l = puntosConexion(st.tipo), mus = cat.find(x => normT(x.nombre) === normT($('#tp-e').value))?.musculo, sug = sugerirConexion(st.tipo, $('#tp-e').value, mus), cur = auto ? null : $('#tp-c').value;
+    $('#tp-c').innerHTML = `<option value="">No lo hicimos en la valoración · no se compara</option>${l.map(x => `<option value="${esc(x.k)}">${esc(x.nombre)} · ${esc(x.titulo)}</option>`).join('')}`;
+    $('#tp-c').value = cur != null && l.some(x => x.k === cur) ? cur : sug ? sug.k : '';
+    $('#tp-cn').textContent = sug && $('#tp-c').value === sug.k ? 'Conectado automáticamente: cámbialo si no es el mismo ejercicio.' : l.length ? '' : 'En tu valoración no hay pruebas de este tipo: se guarda sin comparar.';
+  };
+  const rm = () => { const kg = numero($('#tp-kg')?.value), r = +($('#tp-r')?.value || 1); if ($('#tp-rm')) $('#tp-rm').textContent = kg && r > 1 ? `1RM estimado: ${fmtNum(rmEstimado(kg, r))} kg (con ${r} repeticiones${r > 10 ? '; a más de 10 la estimación es poco fiable' : ''})` : ''; };
+  campos(); opciones(true);
+  $('#tp-t').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; st.tipo = b.dataset.v; $('#tp-t').querySelectorAll('.pill').forEach(x => x.classList.toggle('blue', x === b)); campos(); opciones(true); });
+  $('#tp-e').addEventListener('change', () => opciones(true)); $('#tp-e').addEventListener('blur', () => opciones(true));
+  fm.addEventListener('input', e => { if (['tp-kg', 'tp-r'].includes(e.target.id)) rm(); });
+  fm.addEventListener('submit', async e => {
+    e.preventDefault(); const bt = fm.querySelector('[type=submit]'); if (bt.disabled) return;
+    const ej = $('#tp-e').value.trim(), obs = $('#tp-o').value.trim(); if (!ej) return $('#tp-err').textContent = 'Elige o escribe el ejercicio.';
+    let dato;
+    if (st.tipo === 'fuerza') { const kg = numero($('#tp-kg').value), r = Math.max(1, +$('#tp-r').value || 1); if (!kg) return $('#tp-err').textContent = 'Apunta el peso.'; dato = { valor: String(rmEstimado(kg, r)).replace('.', ','), kg, reps: r, obs: [r > 1 ? `${fmtNum(kg)} kg × ${r} rep (1RM estimado)` : '', obs].filter(Boolean).join(' · ') }; }
+    else if (st.tipo === 'lados') { const d = $('#tp-d').value.trim(), i = $('#tp-i').value.trim(); if (!d && !i) return $('#tp-err').textContent = 'Apunta al menos un lado.'; dato = { d, i, obs }; }
+    else { const v = $('#tp-v').value.trim(); if (!v) return $('#tp-err').textContent = 'Apunta el resultado.'; dato = { valor: v, obs }; }
+    const con = puntosConexion(st.tipo).find(x => x.k === $('#tp-c').value);
+    const prueba = con ? { tipo: con.tipo, titulo: con.titulo, datos: [{ nombre: con.nombre, ejercicio: ej, ...dato }] } : { tipo: st.tipo === 'fuerza' ? '1rm' : st.tipo === 'lados' ? 'descompensacion' : 'otra', titulo: 'Test propio', datos: [{ nombre: ej, ejercicio: ej, ...dato }] };
+    bt.disabled = true; bt.textContent = 'Guardando…';
+    try {
+      const { data: val, error } = await sb.from('valoraciones').insert({ alumno_id: S.user.id, nombre: con ? con.titulo : `Test propio · ${ej}`, fecha: $('#tp-f').value || hoyISO(), resumen: null, origen: 'alumno' }).select().single(); if (error) throw error;
+      const { error: e2 } = await sb.from('pruebas').insert({ valoracion_id: val.id, alumno_id: S.user.id, orden: 0, ...prueba }); if (e2) throw e2;
+      const r = await sb.from('valoraciones').select('*,pruebas(*)').eq('alumno_id', S.user.id).order('fecha', { ascending: false });
+      S.d.valoraciones = ordenarValoraciones(r.data || []);
+      cerrarSheet(); toast(con ? `Test guardado y comparado con «${con.nombre}»` : 'Test guardado en tus tests'); render();
+    } catch (err) { bt.disabled = false; bt.textContent = 'Guardar test'; fallo(err, /origen|policy|row-level/i.test(err.message || '') ? 'Falta ejecutar el Bloque 35 en Supabase.' : 'No se ha podido guardar.'); }
+  });
+}
+/* Tests propios que no se conectaron con la valoración: solo se listan (no se comparan) */
+function vTestsPropios(coach) {
+  const vs = (coach ? S.ficha?.val : S.d?.valoraciones) || [], l = vs.filter(v => v.origen === 'alumno').flatMap(v => (v.pruebas || []).filter(p => p.titulo === 'Test propio').map(p => ({ v, p }))).sort((a, b) => b.v.fecha.localeCompare(a.v.fecha));
+  if (!l.length) return '';
+  return `<div class="card stack" style="gap:6px"><span class="eyebrow">${coach ? 'Tests que ha hecho por su cuenta' : 'Tus tests propios'}</span><span class="small muted">No están en la valoración, así que no se comparan.</span>${l.map(({ v, p }) => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(v.fecha))}</span><div class="grow small">${esc(txtDatos(p.datos))}${(p.datos || [])[0]?.obs ? `<div class="muted">${esc(p.datos[0].obs)}</div>` : ''}</div>${coach ? `<button class="btn sm ghost" data-act="conectarPrueba" data-id="${p.id}">🔗 Conectar</button>` : ''}</div>`).join('')}</div>`;
+}
+/* Coach: conectar (o cambiar la conexión de) un test que añadió el alumno con una prueba de su valoración */
+function formConectarPrueba(pid) {
+  const v = (S.ficha?.val || []).find(x => (x.pruebas || []).some(p => p.id === pid)), p = v && v.pruebas.find(x => x.id === pid); if (!p) return;
+  const tipo = p.tipo === '1rm' ? 'fuerza' : p.tipo === 'descompensacion' ? 'lados' : 'otro', d0 = (p.datos || [])[0] || {}, l = puntosConexion(tipo), sug = sugerirConexion(tipo, d0.ejercicio || d0.nombre);
+  abrirSheet(`<form class="stack" id="f-cp"><h2>Conectar con su valoración</h2><p class="small">${esc(d0.ejercicio || d0.nombre)} · ${esc(txtDatos([d0]))}</p>
+    <label class="f">Prueba de la valoración<select id="cp-s"><option value="">No se conecta (no se compara)</option>${l.map(x => `<option value="${esc(x.k)}" ${(p.titulo !== 'Test propio' && x.k === `${p.tipo}|${p.titulo}|${d0.nombre}`) || (p.titulo === 'Test propio' && sug?.k === x.k) ? 'selected' : ''}>${esc(x.nombre)} · ${esc(x.titulo)}</option>`).join('')}</select></label>
+    <button class="btn full" type="submit">Guardar</button></form>`);
+  $('#f-cp').addEventListener('submit', async e => {
+    e.preventDefault(); const c = l.find(x => x.k === $('#cp-s').value), ej = d0.ejercicio || d0.nombre;
+    const up = c ? { tipo: c.tipo, titulo: c.titulo, datos: [{ ...d0, nombre: c.nombre, ejercicio: ej }] } : { titulo: 'Test propio', datos: [{ ...d0, nombre: ej, ejercicio: ej }] };
+    const { error } = await sb.from('pruebas').update(up).eq('id', pid); if (error) return fallo(error);
+    await sb.from('valoraciones').update({ nombre: c ? c.titulo : `Test propio · ${ej}` }).eq('id', v.id);
+    cerrarSheet(); toast(c ? `Conectado con «${c.nombre}»` : 'Desconectado'); await cargarValoraciones();
+  });
+}
 function vTests() {
   const l = S.d.valoraciones || [];
-  if (!l.length) return `<section class="stack"><span class="eyebrow">Control y evolución</span><h1>Tests</h1></section>${Temperamento.seccionTests()}<div class="section card empty">Al empezar tu proceso Jesús te hará el test inicial. Aquí verás tu informe y el resultado de cada prueba.</div>`;
+  const btTP = S.obj ? '' : '<button class="btn sm ghost" data-act="testPropio" style="align-self:flex-start">＋ Hacerme un test</button>';
+  if (!l.length) return `<section class="stack"><span class="eyebrow">Control y evolución</span><h1>Tests</h1>${btTP}</section>${Temperamento.seccionTests()}<div class="section card empty">Al empezar tu proceso Jesús te hará el test inicial. Aquí verás tu informe y el resultado de cada prueba.</div>`;
   const inf = l.filter(v => v.origen !== 'alumno').length ? l.filter(v => v.origen !== 'alumno') : l, sel = inf.find(v => v.id === S.valSel) || inf[0];
   return `<section class="stack"><span class="eyebrow">Control y evolución</span><h1>Tests</h1>
-    ${inf.length > 1 ? `<div class="chips" style="gap:6px">${inf.map(v => `<button class="pill ${v.id === sel.id ? 'blue' : ''}" data-act="verValoracion" data-id="${v.id}">${esc(v.nombre)} · ${esc(fCorta(v.fecha))}</button>`).join('')}</div>` : ''}</section>
-  ${Temperamento.seccionTests()}<section class="section">${vInforme(sel, l, false)}</section>`;
+    ${inf.length > 1 ? `<div class="chips" style="gap:6px">${inf.map(v => `<button class="pill ${v.id === sel.id ? 'blue' : ''}" data-act="verValoracion" data-id="${v.id}">${esc(v.nombre)} · ${esc(fCorta(v.fecha))}</button>`).join('')}</div>` : ''}${btTP}</section>
+  ${Temperamento.seccionTests()}<section class="section">${vInforme(sel, l, false)}</section>${vTestsPropios() ? `<section class="section">${vTestsPropios()}</section>` : ''}`;
 }
 
 /* Tests dentro de Progreso (antes tenían pestaña propia) */
 function vTestsProgreso() {
   const l = S.d.valoraciones || [];
-  if (!l.length) return `<section class="section"><h2>Tests</h2><div class="card empty">Al empezar tu proceso Jesús te hará el test inicial. Aquí verás tu informe y el resultado de cada prueba.</div></section>`;
+  const btTP = S.obj ? '' : '<button class="btn sm ghost" data-act="testPropio">＋ Hacerme un test</button>';
+  if (!l.length) return `<section class="section"><div class="section-head"><h2>Tests</h2>${btTP}</div><div class="card empty">Al empezar tu proceso Jesús te hará el test inicial. Aquí verás tu informe y el resultado de cada prueba.</div></section>`;
   const inf = l.filter(v => v.origen !== 'alumno').length ? l.filter(v => v.origen !== 'alumno') : l, sel = inf.find(v => v.id === S.valSel) || inf[0];
-  return `<section class="section"><div class="section-head"><h2>Tests</h2></div>${inf.length > 1 ? `<div class="chips" style="gap:6px;margin-bottom:10px">${inf.map(v => `<button class="pill ${v.id === sel.id ? 'blue' : ''}" data-act="verValoracion" data-id="${v.id}">${esc(v.nombre)} · ${esc(fCorta(v.fecha))}</button>`).join('')}</div>` : ''}${vInforme(sel, l, false)}</section>`;
+  return `<section class="section"><div class="section-head"><h2>Tests</h2>${btTP}</div>${inf.length > 1 ? `<div class="chips" style="gap:6px;margin-bottom:10px">${inf.map(v => `<button class="pill ${v.id === sel.id ? 'blue' : ''}" data-act="verValoracion" data-id="${v.id}">${esc(v.nombre)} · ${esc(fCorta(v.fecha))}</button>`).join('')}</div>` : ''}${vInforme(sel, l, false)}${vTestsPropios()}</section>`;
 }
 
 /* Coach: tests en la ficha */
@@ -7093,7 +7184,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v260';
+const APP_VER = 'v261';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -7346,6 +7437,8 @@ document.addEventListener('click', async e => {
     case 'verFactura': verFactura(+b.dataset.id); break;
     case 'cerrarFactura': S.factura = null; render(); break;
     case 'nuevoResultado': formResultado(+b.dataset.id); break;
+    case 'testPropio': formTestPropio(); break;
+    case 'conectarPrueba': formConectarPrueba(+b.dataset.id); break;
     case 'pdfValoracion': await PDF.valoracion(+b.dataset.id, b); break;
     case 'pdfTemp': await PDF.temperamento(b.dataset.n, b); break;
     case 'imprimirFactura': await PDF.factura(S.factura, b); break;
