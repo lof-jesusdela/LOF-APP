@@ -56,7 +56,7 @@ const Programas = (() => {
     if (!v?.activo) return false;
     const per = S.c.perfiles.find(p => p.id === v.alumno_id); if (!per || per.activo === false) return false;
     if (esBono(v)) { const D = S.c.presenciales ? datosPres(v, S.c.presenciales.filter(p => p.alumno_id === v.alumno_id)) : null; return !D || !D.total || D.quedan > 0 || D.prox.length > 0; }
-    const fin = finProceso(proceso(v)); return !fin || fin >= hoy;
+    const fin = typeof finTotal === 'function' ? finTotal(v) : finProceso(proceso(v)); return !fin || fin >= hoy;
   }
   /* Histórico importado (Economía → Importar histórico): cuenta como cobros, y en sus meses no se suman las cuotas de la app */
   const rangoHist = () => { const [a, b] = String(S.c.fiscal?.historico_rango || '').split('|'); return a && b ? [a, b] : null; };
