@@ -4570,13 +4570,13 @@ function formServicio() {
     <label class="f" id="sv-pasos-w" ${conPasos(s) ? '' : 'hidden'}>Objetivo de pasos diarios<input type="number" id="sv-pasos" min="0" step="500" value="${s.objetivo_pasos || ''}" placeholder="${PASOS_DEF}"></label>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Hora de acostarse objetivo<input type="time" id="sv-dormir" value="${esc(s.sueno_dormir || '')}" placeholder="23:00"></label><label class="f">Hora de levantarse objetivo<input type="time" id="sv-levantar" value="${esc(s.sueno_levantar || '')}" placeholder="08:00"></label></div>
     <label class="f" id="sv-pres-w"><span id="sv-pres-l">Sesiones presenciales incluidas (bono)</span><input type="number" id="sv-pres" min="0" max="300" value="${s.sesiones_incluidas || ''}" placeholder="Ej. 15"></label>
-    <label class="f" id="sv-spv-w">Sesiones presenciales ya hechas antes de la app <span class="muted small">(cuentan como usadas)</span><input type="number" id="sv-spv" min="0" max="500" value="${s.sesiones_previas || ''}" placeholder="0"></label>
+    <label class="f" id="sv-spv-w">De esos entrenamientos contigo, ¿cuántos ya habéis hecho antes de la app? <span class="muted small">(cuentan como usados)</span><input type="number" id="sv-spv" min="0" max="500" value="${s.sesiones_previas || ''}" placeholder="0"><span class="small muted" id="sv-spv-t"></span></label>
     <div class="stack" style="gap:8px">${[['entreno', 'Entrenamiento', s.modulo_entreno ?? true], ['nutricion', 'Nutrición · plan de alimentación (pestaña Nutrición y registro de comidas)', s.modulo_nutricion], ['presencial', 'Sesiones presenciales', s.modulo_presencial], ['habitos', 'Hábitos · programa de hábitos (pestaña Hábitos; bonus). Los pasos van aparte', s.modulo_habitos], ['futbol', 'Elite Player · seguimiento de futbolista (wellness, partidos y carga)', s.modulo_futbol], ['oposicion', 'Oposición · Policía Nacional (pruebas físicas, simulacros y nota oficial)', !!s.oposicion]].map(([k, l, v]) => `<label class="row small"><input type="checkbox" id="sv-${k}" ${v ? 'checked' : ''} style="width:20px;height:20px"> ${l}</label>`).join('')}</div>
     <label class="f" id="sv-fase-w" ${s.modulo_nutricion ? '' : 'hidden'}>Fase de la alimentación<select id="sv-fase"><option value="">Automática (activo si tiene plan visible; si no, en preparación)</option>${Object.entries(Nutricion.FASES).map(([k, [l]]) => `<option value="${k}" ${s.nutri_fase === k ? 'selected' : ''}>${l}</option>`).join('')}</select><span class="small muted">En recogida y en preparación no se mide el cumplimiento: el alumno solo registra.</span></label>
     <label class="f" id="sv-com-w" ${s.modulo_nutricion ? '' : 'hidden'}>Comidas de su plan al día <span class="muted">(registro de comidas cumplidas)</span><input type="number" id="sv-com" min="1" max="8" value="${comidasDia(s)}"></label>
-    <div class="card stack" id="sv-prev-w" style="padding:12px;gap:8px"><b class="small">✅ Entrenos ya realizados</b>
+    <div class="card stack" id="sv-prev-w" style="padding:12px;gap:8px"><b class="small">🏋️ Entrenos de su programa ya realizados</b><span class="small" style="color:var(--warn)">No son los entrenamientos contigo: son las sesiones de su planificación que hace por su cuenta (en el gimnasio o en casa).</span>
       <p class="small muted" style="margin:0" id="sv-prev-txt"></p>
-      <label class="f">¿Cuántos de esos entrenos ya ha hecho?<input type="number" id="sv-prev" min="0" max="999" value="${S.ficha.previas ?? ''}" placeholder="0"></label>
+      <label class="f">¿Cuántos entrenos de su programa ya ha hecho?<input type="number" id="sv-prev" min="0" max="999" value="${S.ficha.previas ?? ''}" placeholder="0"></label>
       <p class="small muted" style="margin:0">Quedan marcados como hechos en las semanas desde el inicio (sin series registradas), para que su cumplimiento y su número de entreno cuadren. Puedes cambiar el número cuando quieras.</p></div>
     <button class="btn full" type="submit">Guardar</button></form>`);
   /* Tipo de programa: lo que eliges rellena duración, sesiones, módulos y seguimiento (todo sigue editable debajo) */
@@ -4590,9 +4590,11 @@ function formServicio() {
     $('#sv-ptipo').hidden = m !== 'presencial'; $('#sv-modulos-w').hidden = !m || m === 'presencial';
     const lm = !m || bono ? [] : MESES[plan ? 'plan' : m]; $('#sv-meses-w').hidden = !lm.length;
     $('#sv-meses').innerHTML = lm.map(x => `<button type="button" class="pill ${st.meses === x ? 'blue' : ''}" data-v="${x}">${x} meses</button>`).join('');
-    const lf = plan ? (FREC_PLAN[st.meses] || []) : [];
-    $('#sv-frec-w').hidden = !lf.length; $('#sv-frec').innerHTML = lf.map(x => `<button type="button" class="pill ${st.frec === x ? 'blue' : ''}" data-v="${x}">${FRECUENCIAS[x]}</button>`).join('');
-    $('#sv-pres-w').hidden = m === 'online'; $('#sv-pres-l').textContent = bono ? 'Sesiones del bono' : m ? 'Entrenamientos personales incluidos' : 'Sesiones presenciales incluidas (bono)';
+    /* Ruta Integral de 6 meses antigua: 1 o 2 días/semana (25 o 50 entrenamientos personales) en vez de los 15 de la actual */
+    const rutaAnt = m === 'hibrido' && st.meses === 6, lf = plan ? (FREC_PLAN[st.meses] || []) : rutaAnt ? ['', '1s', '2s'] : [];
+    const etF = x => rutaAnt ? (x ? `${FRECUENCIAS[x]} · antigua (${sesionesDe(x, 6)})` : 'Actual (15)') : FRECUENCIAS[x];
+    $('#sv-frec-w').hidden = !lf.length; $('#sv-frec').innerHTML = lf.map(x => `<button type="button" class="pill ${(st.frec || '') === x ? 'blue' : ''}" data-v="${x}">${etF(x)}</button>`).join('');
+    $('#sv-pres-w').hidden = m === 'online'; $('#sv-pres-l').textContent = bono ? 'Sesiones del bono' : m ? 'Entrenamientos personales contigo incluidos (concertados)' : 'Sesiones presenciales incluidas (bono)'; $('#sv-spv-w').hidden = m === 'online';
     if (!st.segToc && m) $('#sv-seg').checked = !bono;
     /* Valoraciones: las presenciales e híbridas llevan la inicial; la final, en los de 6 meses o más. El online se la hace él mismo */
     $('#sv-val-w').hidden = !m || m === 'online';
@@ -4606,7 +4608,7 @@ function formServicio() {
   $('#sv-meses').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; st.meses = +b.dataset.v; $('#sv-dur').value = semanasDeMeses(st.meses);
     /* Ruta integral (híbrido con entreno y alimentación): 3 meses = 10 personales, 6 = 15, 10 = 20 */
     if (st.mod === 'hibrido' && lleva() === 'ambas' && { 3: 10, 6: 15, 10: 20 }[st.meses]) $('#sv-pres').value = { 3: 10, 6: 15, 10: 20 }[st.meses]; if (st.frec) $('#sv-pres').value = sesionesDe(st.frec, st.meses); if (st.mod === 'presencial' && !(FREC_PLAN[st.meses] || []).includes(st.frec)) st.frec = (FREC_PLAN[st.meses] || [])[0] || null, st.frec && ($('#sv-pres').value = sesionesDe(st.frec, st.meses)); $('#sv-dur').dispatchEvent(new Event('input')); pintaMod(); });
-  $('#sv-frec').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; st.frec = b.dataset.v; if (st.meses) $('#sv-pres').value = sesionesDe(st.frec, st.meses); pintaMod(); });
+  $('#sv-frec').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; st.frec = b.dataset.v || null; if (st.meses) $('#sv-pres').value = st.frec ? sesionesDe(st.frec, st.meses) : ({ 3: 10, 6: 15, 10: 20 }[st.meses] || ''); pintaMod(); spvTxt(); });
   $('#sv-seg').addEventListener('change', () => { st.segToc = true; pintaMod(); });
   ['#sv-vi', '#sv-vf'].forEach(q => $(q).addEventListener('change', () => { st.valToc = true; }));
   $('#sv-entreno').addEventListener('change', pintaMod);
@@ -4667,6 +4669,8 @@ function formServicio() {
     $('#sv-prev-txt').innerHTML = !dpwS ? 'Asígnale primero un programa con días por semana para calcular los entrenos incluidos.' : `Su programa incluye <b>${dpwS} entrenos por semana</b>${dur ? ` · <b>${dpwS * dur}</b> en las ${dur} semanas` : ''}. Desde el inicio hasta esta semana han pasado ${sem} ${sem === 1 ? 'semana' : 'semanas'}: hasta <b>${dpwS * sem}</b> entrenos.`;
     $('#sv-prev').placeholder = dpwS && sem ? `Ej. ${dpwS * sem}` : '0'; };
   prevTxt(); $('#sv-ini').addEventListener('input', prevTxt); $('#sv-dur').addEventListener('input', prevTxt);
+  const spvTxt = () => { const n = numero($('#sv-pres').value), h = numero($('#sv-spv').value); $('#sv-spv-t').textContent = n ? `${h || 0} de ${n} hechos · le quedan ${Math.max(0, n - (h || 0))}${h > n ? ' (has puesto más de los incluidos)' : ''}` : ''; };
+  spvTxt(); ['#sv-pres', '#sv-spv'].forEach(q => $(q).addEventListener('input', spvTxt)); ['#sv-mod', '#sv-meses', '#sv-lleva'].forEach(q => $(q)?.addEventListener('click', () => setTimeout(spvTxt)));
   $('#sv-nutricion').addEventListener('change', ev => { $('#sv-com-w').hidden = !ev.target.checked; $('#sv-fase-w').hidden = !ev.target.checked; });
   $('#sv-pasoson').addEventListener('change', ev => { $('#sv-pasos-w').hidden = !ev.target.checked; });
   $('#sv-futbol').addEventListener('change', ev => { if (ev.target.checked && !s.id) { $('#sv-pasoson').checked = false; $('#sv-pasos-w').hidden = true; } });
@@ -7189,7 +7193,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v266';
+const APP_VER = 'v267';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
