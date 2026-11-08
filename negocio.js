@@ -426,8 +426,40 @@ const Negocio = (() => {
       const base = `${fecha}|${normT(alumno)}|${imp}|${normT(fp)}`, n = vistos[base] = (vistos[base] || 0) + 1, sino = v => /^s[ií]$/i.test(v || '') ? true : /^no$/i.test(v || '') ? false : null;
       return { fecha, tipo: 'ingreso', categoria: `Histórico · ${em}`, concepto: [alumno, det || prog].filter(Boolean).join(' · ') || 'Ingreso', importe: Math.round(imp * 100) / 100, pagado: !/pendiente/i.test(fp), recurrente: false,
         ref: 'csv:' + huella(base) + ':' + n, emisor: em, programa: prog || null, alumno_nombre: alumno || null, forma_pago: fp || null, base: num2(r.base), iva: num2(r.iva), nota: [r.nota, r.marca].filter(Boolean).join(' · ') || null,
-        ...(r.modalidad !== undefined ? { modalidad: normMod(r.modalidad), entreno: sino(r.entreno), alimentacion: sino(r.alimentacion), meses: +r.meses || null, gimnasio: r.gimnasio || null } : {}) };
+        ...(r.modalidad !== undefined ? { modalidad: normMod(r.modalidad), entreno: sino(r.entreno), alimentacion: sino(r.alimentacion), meses: +r.meses || null, gimnasio: r.gimnasio || null } : {}), ...(r.sexo !== undefined ? { sexo: /^h/i.test(r.sexo) ? 'hombre' : /^m/i.test(r.sexo) ? 'mujer' : null } : {}) };
     }).filter(Boolean);
+  }
+
+  /* Enlaza los cobros del histórico con la ficha de cada alumno (por nombre); los antiguos quedan sin ficha */
+  async function formEnlazar() {
+    await cargar();
+    const cl = (S.c.perfiles || []).filter(p => p.rol !== 'coach').sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es'));
+    const tok = t => normT(String(t || '').replace(/\(.*?\)/g, ' ')).split(/[^a-z0-9]+/).filter(x => x.length > 1);
+    const sin = (S.c.movs || []).filter(m => m.ref && m.alumno_nombre && !m.alumno_id);
+    const noms = [...new Set(sin.map(m => m.alumno_nombre))].sort((a, b) => a.localeCompare(b, 'es'));
+    const cand = n => {
+      const t = tok(n); if (!t.length) return [];
+      const ex = cl.filter(p => { const u = tok(p.nombre); return u.length === t.length && t.every(x => u.includes(x)); }); if (ex.length) return ex;
+      return cl.filter(p => { const u = tok(p.nombre); return t.every(x => u.includes(x)) || (u.length >= 2 && u.every(x => t.includes(x))); });
+    };
+    const filas = noms.map(n => ({ n, c: cand(n), k: sin.filter(m => m.alumno_nombre === n).length }));
+    const auto = filas.filter(f => f.c.length === 1).length, dudosos = filas.filter(f => f.c.length > 1).length, antiguos = filas.length - auto - dudosos;
+    if (!filas.length) { abrirSheet(`<div class="stack"><h2>Enlazar cobros con fichas</h2><p class="small">Todos los cobros del histórico ya están enlazados (o no hay histórico importado).</p></div>`); return; }
+    abrirSheet(`<div class="stack" id="f-enl"><h2>Enlazar cobros con fichas</h2>
+      <p class="small">Busco a cada persona del histórico entre tus fichas. <b>${auto}</b> coinciden claramente${dudosos ? `, <b>${dudosos}</b> con duda (revisa las marcadas ⚠️)` : ''}; <b>${antiguos}</b> no tienen ficha (alumnos antiguos): se quedan solo con su nombre, que basta para las estadísticas.</p>
+      ${filas.map((f, i) => `<label class="f"><span>${f.c.length > 1 ? '⚠️ ' : ''}${esc(f.n)} <span class="muted">· ${f.k} ${f.k === 1 ? 'cobro' : 'cobros'}</span></span><select data-i="${i}"><option value="">Sin ficha (antiguo)</option>${cl.map(p => `<option value="${p.id}" ${f.c.length === 1 && f.c[0].id === p.id ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}</select></label>`).join('')}
+      <button class="btn full" id="enl-ok">Guardar enlaces</button></div>`);
+    $('#enl-ok').addEventListener('click', async ev => {
+      const bt = ev.currentTarget; bt.disabled = true; let n = 0;
+      for (const [i, f] of filas.entries()) {
+        const id = $(`#f-enl select[data-i="${i}"]`).value; if (!id) continue;
+        bt.textContent = `Guardando… ${i + 1} de ${filas.length}`;
+        const { error } = await sb.from('movimientos').update({ alumno_id: id }).eq('alumno_nombre', f.n).like('ref', 'csv:%');
+        if (error) { bt.disabled = false; bt.textContent = 'Reintentar'; return fallo(error, /alumno_id/.test(error.message || '') ? 'Falta ejecutar el Bloque 96 en Supabase.' : undefined); }
+        n++;
+      }
+      cerrarSheet(); toast(`${n} personas enlazadas con su ficha`); await cargar(); render();
+    });
   }
   function formImportar() {
     abrirSheet(`<div class="stack" id="f-imp"><h2>Importar histórico de ingresos</h2>
@@ -440,7 +472,7 @@ const Negocio = (() => {
       const { data: ya, error } = await sb.from('movimientos').select('*').like('ref', 'csv:%');
       if (error) { res.innerHTML = `<p class="small" style="color:var(--bad)">${/ref/.test(error.message || '') ? 'Antes de importar, ejecuta el <b>Bloque 95</b> en Supabase.' : esc(error.message)}</p>`; return; }
       const porRef = Object.fromEntries((ya || []).map(x => [x.ref, x])), nuevos = movs.filter(m => !porRef[m.ref]), sum = l => l.reduce((t, m) => t + m.importe, 0);
-      const CMP = ['concepto', 'categoria', 'programa', 'emisor', 'alumno_nombre', 'nota', 'pagado', 'base', 'iva', 'modalidad', 'entreno', 'alimentacion', 'meses', 'gimnasio'];
+      const CMP = ['concepto', 'categoria', 'programa', 'emisor', 'alumno_nombre', 'nota', 'pagado', 'base', 'iva', 'modalidad', 'entreno', 'alimentacion', 'meses', 'gimnasio', 'sexo'];
       const cambian = movs.filter(m => porRef[m.ref] && CMP.some(k => k in m && String(m[k] ?? '') !== String(porRef[m.ref][k] ?? ''))).map(m => ({ id: porRef[m.ref].id, up: Object.fromEntries(CMP.filter(k => k in m).map(k => [k, m[k]])) }));
       const cob = nuevos.filter(m => m.pagado), pen = nuevos.filter(m => !m.pagado), meses = [...new Set(movs.map(m => m.fecha.slice(0, 7)))].sort();
       const cuenta = {}; movs.forEach(m => cuenta[m.fecha.slice(0, 7)] = (cuenta[m.fecha.slice(0, 7)] || 0) + 1);
@@ -487,7 +519,7 @@ const Negocio = (() => {
     const resF = reservasEn(ini, finMes, cob).reduce((t, x) => t + x.imp, 0);
     const pendEntregar = pendienteEntregar(), rev = F().eco_revision;
     const cats = {}; (S.c.movs || []).filter(m => m.tipo === 'gasto' && m.fecha >= ini).forEach(m => { cats[m.categoria || 'Sin categoría'] = (cats[m.categoria || 'Sin categoría'] || 0) + +m.importe; });
-    return `<section class="stack"><span class="eyebrow">Tu negocio</span><h1>Economía</h1><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="ecoSaldo">Actualizar saldo</button><button class="btn sm ghost" data-act="ecoMov" data-t="gasto">＋ Gasto</button><button class="btn sm ghost" data-act="ecoMov" data-t="ingreso">＋ Ingreso</button><button class="btn sm ghost" data-act="ecoMov" data-t="personal">＋ Transferencia personal</button><button class="btn sm ghost" data-act="ecoImportar">⬆ Importar histórico (CSV)</button></div></section>
+    return `<section class="stack"><span class="eyebrow">Tu negocio</span><h1>Economía</h1><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="ecoSaldo">Actualizar saldo</button><button class="btn sm ghost" data-act="ecoMov" data-t="gasto">＋ Gasto</button><button class="btn sm ghost" data-act="ecoMov" data-t="ingreso">＋ Ingreso</button><button class="btn sm ghost" data-act="ecoMov" data-t="personal">＋ Transferencia personal</button><button class="btn sm ghost" data-act="ecoImportar">⬆ Importar histórico (CSV)</button><button class="btn sm ghost" data-act="ecoEnlazar">🔗 Enlazar cobros con fichas</button></div></section>
       ${S.c.negErr ? `<section class="section"><div class="card small muted">${AVISO}</div></section>` : ''}
       <section class="section"><div class="card stack"><div class="row"><b class="grow">Revisión semanal</b><span class="small muted">${rev ? 'última: ' + esc(fCorta(rev)) : 'aún sin hacer'}</span></div><ol class="small" style="margin:0;padding-left:18px"><li>Apunta el saldo real del banco.</li><li>Añade los gastos de la semana y marca los pagados.</li><li>Revisa cobros vencidos.</li></ol><button class="btn sm" data-act="ecoRevision" style="align-self:flex-start">Revisión hecha</button><span class="small muted">Duración prevista: unos 5-10 minutos. Lo comprobaremos con el uso real.</span></div></section>
       ${vEcoResumen()}
@@ -560,5 +592,5 @@ const Negocio = (() => {
   }
   async function revisionHecha() { await guardarAjuste('eco_revision', hoyISO()); toast('Revisión semanal anotada'); render(); }
 
-  return { verImportantes, formElegir, siguiente, capacidad, criticos, vRecordatorios, formRec, moverRec, hechoRec, cargar, vInicio, vEconomia, vEcoResumen, semana, propuestas, delDia, formCapacidad, formItem, formTarea, hecha, estrella, decidirAnterior, formCierre, nuevaMejora, estadoMejora, formSaldo, formMov, formReserva, revisionHecha, calc, formImportar, grupoProg };
+  return { verImportantes, formElegir, siguiente, capacidad, criticos, vRecordatorios, formRec, moverRec, hechoRec, cargar, vInicio, vEconomia, vEcoResumen, semana, propuestas, delDia, formCapacidad, formItem, formTarea, hecha, estrella, decidirAnterior, formCierre, nuevaMejora, estadoMejora, formSaldo, formMov, formReserva, revisionHecha, calc, formImportar, formEnlazar, grupoProg };
 })();

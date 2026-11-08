@@ -44,6 +44,7 @@ const esDia = (d, n) => norm(d?.nombre).split(/\s*(?:\/|·|,|\by\b)\s*/).some(x 
 const fCorta = iso => fecha(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
 const fLarga = iso => fecha(iso).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
 const fmtNum = (n, d = 1) => n == null ? '—' : Number(n).toLocaleString('es-ES', { maximumFractionDigits: d });
+const eur0 = n => fmtNum(+n || 0, 0) + ' €';
 const numero = v => { const n = parseFloat(String(v ?? '').replace(',', '.')); return isNaN(n) ? null : n; };
 const seg = s => s >= 60 ? (s % 60 ? `${Math.floor(s / 60)}' ${s % 60}''` : `${s / 60}'`) : `${s}''`;
 
@@ -2579,7 +2580,7 @@ function vAlumnos() {
 async function abrirFicha(id) {
   marcarReciente(id);
   S.ficha = { id, cargando: true }; S.verSes = null; S.verPlan = null; S.fichaSub = null; render(); window.scrollTo(0, 0);
-  const [med, ses, notas, prog, srv, todas] = await Promise.all([
+  const [med, ses, notas, prog, srv, todas, hist] = await Promise.all([
     sb.from('mediciones').select('*').eq('alumno_id', id).order('fecha', { ascending: false }),
     conRespaldo(() => sb.from('sesiones_hechas').select('*,dias(*),registros_series(id,ejercicio_sesion_id,serie)').eq('alumno_id', id).order('fecha', { ascending: false }).limit(60), () => sb.from('sesiones_hechas').select('*,dias(*),registros_series(id)').eq('alumno_id', id).order('fecha', { ascending: false }).limit(60)),
     sb.from('notas_coach').select('*').eq('alumno_id', id).order('fecha', { ascending: false }).limit(20),
@@ -2587,9 +2588,10 @@ async function abrirFicha(id) {
     sb.from('servicios').select('*').eq('alumno_id', id).eq('activo', true).limit(1),
     conRespaldo(() => sb.from('sesiones_hechas').select('id,fecha,dia_id,duracion_min,previa').eq('alumno_id', id).gte('fecha', sumaDias(hoyISO(), -730)),
       () => conRespaldo(() => sb.from('sesiones_hechas').select('id,fecha,dia_id,duracion_min').eq('alumno_id', id).gte('fecha', sumaDias(hoyISO(), -365)),
-        () => sb.from('sesiones_hechas').select('id,fecha,dia_id').eq('alumno_id', id).gte('fecha', sumaDias(hoyISO(), -365))))
+        () => sb.from('sesiones_hechas').select('id,fecha,dia_id').eq('alumno_id', id).gte('fecha', sumaDias(hoyISO(), -365)))),
+    sb.from('movimientos').select('fecha,importe,emisor,programa,forma_pago,pagado,nota').eq('alumno_id', id).like('ref', 'csv:%').order('fecha', { ascending: false })
   ]);
-  S.ficha = { id, med: (med.data || []).filter(m => !m.es_objetivo), medObj: (med.data || []).find(m => m.es_objetivo) || null, ses: (ses.data || []).filter(x => !x.previa), notas: notas.data || [], prog: prog.data?.[0], srv: srv.data?.[0], todas: todas.data || [] };
+  S.ficha = { id, med: (med.data || []).filter(m => !m.es_objetivo), medObj: (med.data || []).find(m => m.es_objetivo) || null, ses: (ses.data || []).filter(x => !x.previa), notas: notas.data || [], prog: prog.data?.[0], srv: srv.data?.[0], todas: todas.data || [], hist: hist?.error ? [] : (hist?.data || []) };
   S.ficha.previas = S.ficha.todas.filter(x => x.previa).length;
   S.valEd = null;
   const [pr, ru] = await Promise.all([sb.from('presenciales').select('*').eq('alumno_id', id).order('fecha'), sb.from('hoja_ruta').select('*').eq('alumno_id', id).order('orden')]);
@@ -3867,7 +3869,7 @@ function vFicha() {
     ${vGraficaComp(f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), a, f.medObj) || '<div class="card empty">Sin mediciones todavía.</div>'}
     ${vObjetivoComp(f.medObj, f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), true)}</section>`;
   const fb8 = `${vRevisionesFicha(a)}${vPresenciales(srv, f.pres, true)}`;
-  const fb9 = `<section class="section"><div class="section-head"><h2>Cuotas</h2><button class="btn sm ghost" data-act="nuevoPago">＋ Cuota</button></div><div class="card">${pagos.map(lineaPago).join('') || '<div class="empty">Sin cuotas registradas.</div>'}</div></section>`;
+  const fb9 = `<section class="section"><div class="section-head"><h2>Cuotas</h2><button class="btn sm ghost" data-act="nuevoPago">＋ Cuota</button></div><div class="card">${pagos.map(lineaPago).join('') || '<div class="empty">Sin cuotas registradas.</div>'}</div></section>${(f.hist || []).length ? `<section class="section"><div class="section-head"><h2>Histórico de pagos</h2><span class="small muted">${eur0(f.hist.filter(h => h.pagado).reduce((t, h) => t + (+h.importe || 0), 0))} cobrados</span></div><div class="card">${f.hist.map(h => `<div class="row small" style="gap:8px;padding:4px 0"><span class="muted" style="min-width:74px">${h.emisor === 'Efectivo' ? esc(new Date(h.fecha + 'T12:00').toLocaleDateString('es', { month: 'short', year: 'numeric' })) : esc(fCorta(h.fecha))}</span><span class="grow">${esc(h.programa || 'Cobro')}${h.nota ? ` <span class="muted">· ${esc(h.nota)}</span>` : ''}</span><span class="muted">${esc(h.forma_pago || '')}</span><b class="num">${eur0(h.importe)}</b></div>`).join('')}</div></section>` : ''}`;
   const fb11 = `<div class="card stack"><div class="small muted">Medidas de contorno, fotos de progreso, permisos de imagen y su caso de éxito.</div><button class="btn full" data-act="fichaSub" data-s="composicion">Abrir medidas, fotos y caso de éxito ›</button></div>`;
   const nivTxt = { ok: 'En camino', warn: 'Atención', bad: 'Revisar' }[e.nivel];
   const escr = true;   // la ficha tranquila se usa en el ordenador y en el móvil (el CSS la adapta)
@@ -7223,7 +7225,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v269';
+const APP_VER = 'v270';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -7674,6 +7676,7 @@ document.addEventListener('click', async e => {
     case 'mjEstado': await Negocio.estadoMejora(+b.dataset.id, b.dataset.v); break;
     case 'ecoSaldo': Negocio.formSaldo(); break;
     case 'ecoImportar': Negocio.formImportar(); break;
+    case 'ecoEnlazar': await Negocio.formEnlazar(); break;
     case 'ecoAno': S.ecoAno = b.dataset.v; render(); break;
     case 'ecoVista': S.ecoVista = b.dataset.v; render(); break;
     case 'ecoMov': Negocio.formMov(b.dataset.t, b.dataset.id ? +b.dataset.id : null); break;
