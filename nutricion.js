@@ -867,7 +867,8 @@ const Nutricion = (() => {
     ['Mozzarella en lonchas', 280, 20, 1, 21, 'L', ['ración (2 lonchas)', 'raciones (2 lonchas)', 40]],
     ['Mozzarella rallada', 300, 22, 2, 22, 'L', ['ración (2-3 cucharadas rasas)', 'raciones (2-3 cucharadas rasas)', 20]],
     ['Verdura variada (ensalada, brócoli, judías…)', 30, 2, 4, 0.3, 'V', ['plato', 'platos', 250]],
-    ['Calabaza o zanahoria cocida', 25, 0.8, 5, 0.1, 'V', ['taza', 'tazas', 150]]
+    ['Calabaza o zanahoria cocida', 25, 0.8, 5, 0.1, 'V', ['taza', 'tazas', 150]],
+    ['Tomates cherry', 18, 0.9, 3.9, 0.2, 'V', ['tomate cherry', 'tomates cherry', 12]]
   ].map(([n, kcal, p, c, gr, t, u]) => ({ n, kcal, p, c, g: gr, t, u }));
   const FRAC = [[0, ''], [0.25, '¼'], [1 / 3, '⅓'], [0.5, '½'], [2 / 3, '⅔'], [0.75, '¾']];
   function equivVisual(a, gramos) {
