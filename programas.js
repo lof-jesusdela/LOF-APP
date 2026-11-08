@@ -348,7 +348,7 @@ const Programas = (() => {
       for (const s of document.querySelectorAll('[data-st]')) {
         const v = l.find(x => x.id === +s.dataset.st), t = s.value && Tarifas.de(s.value); if (!v || (!s.value && v.modalidad)) continue;
         const up = s.value ? { tarifa: s.value } : {}, ts = t?.srv || {};
-        if (!v.modalidad && ts.modalidad) Object.assign(up, { modalidad: ts.modalidad, modulo_entreno: ts.ent !== false, modulo_nutricion: !!ts.ali, ...(ts.seg != null ? { seguimiento: !!ts.seg } : {}) });
+        if (!v.modalidad && ts.modalidad) Object.assign(up, { modalidad: ts.modalidad, modulo_entreno: ts.ent !== false || (v.modulo_entreno ?? true), modulo_nutricion: !!ts.ali || !!v.modulo_nutricion, ...(ts.seg != null ? { seguimiento: !!ts.seg } : {}) });
         if (!v.meses && ts.meses) up.meses = ts.meses;
         if (!Object.keys(up).length) continue;
         let { error } = await sb.from('servicios').update(up).eq('id', v.id);

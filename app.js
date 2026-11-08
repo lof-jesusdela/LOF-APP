@@ -4650,7 +4650,7 @@ function formServicio() {
     pintaMano();
     const t = tarifa(); if (!t) { pintaCambio(); pintaPago(); return; } const v = t.srv;
     st.mod = v.modalidad; st.ptipo = v.bono ? 'bono' : 'plan'; st.meses = v.meses || null; st.frec = v.frec || null;
-    $('#sv-entreno').checked = !!v.ent; $('#sv-nutricion').checked = !!v.ali || (t.extraAli && $('#sv-xali').checked); $('#sv-nutricion').dispatchEvent(new Event('change'));
+    $('#sv-entreno').checked = !!v.ent || !!(s.id && s.modulo_entreno); $('#sv-nutricion').checked = !!v.ali || (t.extraAli && $('#sv-xali').checked) || !!(s.id && s.modulo_nutricion); $('#sv-nutricion').dispatchEvent(new Event('change'));
     $('#sv-presencial').checked = v.modalidad !== 'online';
     $('#sv-pres').value = v.sesiones ? v.sesiones + (t.bonus24 && $('#sv-b24').checked ? t.bonus24 : 0) + (t.bonusUnico && pg.forma === 'unico' ? t.bonusUnico : 0) : (v.modalidad === 'online' ? '' : $('#sv-pres').value);
     if (v.oposicion && $('#sv-oposicion') && !$('#sv-oposicion').checked) { $('#sv-oposicion').checked = true; $('#sv-oposicion').dispatchEvent(new Event('change')); }
@@ -7305,7 +7305,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v273';
+const APP_VER = 'v274';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
