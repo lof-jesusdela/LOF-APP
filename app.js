@@ -3855,10 +3855,10 @@ function vFicha() {
     ${P ? `<div class="track gordo"><i style="width:${P.pctTotal}%"></i></div><div class="row small muted"><span class="grow">${P.antes ? 'Empieza' : 'Inicio'} ${esc(fF(srv.inicio))}${!P.antes && !P.fuera ? ` · semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''}</span>${P.sinFin ? '' : `<span>Final ${esc(fF(P.ciclos[P.ciclos.length - 1].fin))}</span>`}</div>` : '<p class="small muted">Pon la fecha de inicio y la duración en "Editar".</p>'}
     ${(() => { const dur = durContratada(srv), bl = srv?._bloques || [], fb = bl.length ? Math.max(...bl.map(b => b.semana_fin)) : 0; if (!dur || !bl.length || fb === dur) return '';
       return `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><span class="grow">Su servicio dice <b>${dur} semanas</b>${srv.duracion_semanas ? '' : ` (${srv.meses} meses)`}, pero sus bloques terminan en la semana <b>${fb}</b>. ${fb < dur ? 'La fecha de fin sale con la duración contratada; las semanas que faltan quedan «sin planificar».' : 'La fecha de fin sale con los bloques.'}</span><button class="btn sm" data-act="ajBloques">Ajustar bloques a ${dur} semanas</button></div>`; })()}
-    ${extensionesDe(srv).length ? `<div class="small row" style="flex-wrap:wrap;gap:6px">${extensionesDe(srv).map((x, i) => `<button class="pill gold" data-act="extEditar" data-i="${i}" title="Editar ampliación">${esc(x.nombre || 'Extensión')} · ${x.tipo === 'bono' ? `${x.sesiones} sesiones · ${esc(fCorta(x.fecha))}` : `${x.semanas} sem${x.sesiones ? ` · ${x.sesiones} personales` : ''} · desde ${esc(fCorta(x.desde))}`} ✎</button>`).join('')}</div>` : ''}
+    ${extensionesDe(srv).length ? `<div class="small row" style="flex-wrap:wrap;gap:6px">${extensionesDe(srv).map((x, i) => `<button class="pill gold" data-act="extEditar" data-i="${i}" title="Editar ampliación">${esc(x.nombre || 'Extensión')} · ${x.tipo === 'bono' || x.tipo === 'regalo' ? `${x.sesiones} sesiones${x.tipo === 'regalo' ? ' de regalo' : ''} · ${esc(fCorta(x.fecha))}` : `${x.semanas} sem${x.sesiones ? ` · ${x.sesiones} personales` : ''} · desde ${esc(fCorta(x.desde))}`} ✎</button>`).join('')}</div>` : ''}
     ${srv?.inicio ? `<div class="small row" style="flex-wrap:wrap;gap:6px;align-items:center">${pausasDe(srv).map((p, i) => `<button class="pill blue" ${p.enCurso ? 'data-act="estadoAl"' : `data-act="pausaEditar" data-i="${(srv.pausas || []).findIndex(q => q.desde === p.desde)}"`} title="${p.enCurso ? 'Pausa en curso' : 'Editar pausa'}">⏸ ${esc(fCorta(p.desde))} – ${esc(fCorta(p.hasta))} · ${Math.round(diasPausa(p) / 7 * 10) / 10} sem ✎</button>`).join('')}<button class="linkbtn small" data-act="pausaEditar" data-i="-1">＋ Pausa pasada</button>${pausasDe(srv).length ? `<span class="muted">Las pausas alargan su proceso: termina el ${esc(fCorta(finProceso(proceso(srv)) || ''))}.</span>` : ''}</div>` : ''}
     ${(() => { const ci = srv && cierreDe(a.id); return ci ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>Bono terminado el ${esc(fCorta(ci.fin))}.</b> Su app muestra su resumen y cómo seguir; ${a.activo === false ? 'ya está archivado.' : `pasa a antiguos alumnos y pierde el acceso el ${esc(fCorta(ci.limite))}. Si renueva o cambia de programa, se reactiva solo al guardar su servicio.`}</div><button class="btn sm" data-act="pdfCierre" data-id="${a.id}">📄 Resumen PDF</button></div>` : ''; })()}
-    ${srv ? (() => { const h = Array.isArray(srv.historial) ? srv.historial : []; return `<div class="small row" style="flex-wrap:wrap;gap:6px;align-items:center">${h.map((x, i) => `<button class="pill" data-act="histEditar" data-i="${i}" title="Editar programa anterior">Antes: ${esc(x.producto || x.linea || 'Programa')} · ${esc(fCorta(x.desde))}–${esc(fCorta(x.hasta))} ✎</button>`).join('')}<button class="linkbtn small" data-act="histEditar" data-i="-1">＋ Programa anterior</button></div>`; })() : ''}
+    ${srv ? (() => { const h = Array.isArray(srv.historial) ? srv.historial : []; return `<div class="small row" style="flex-wrap:wrap;gap:6px;align-items:center">${h.map((x, i) => `<button class="pill" data-act="histEditar" data-i="${i}" title="Editar programa anterior">Antes: ${esc(x.producto || x.linea || 'Programa')} · ${esc(fCorta(x.desde))}–${esc(fCorta(x.hasta))} ✎</button>`).join('')}<button class="linkbtn small" data-act="histEditar" data-i="-1">＋ Programa anterior</button><button class="linkbtn small" data-act="srvExtra">＋ Servicio extra</button></div>`; })() : ''}
     ${(() => { const af = avisoFin(srv); return af ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>${af.terminado ? `Su proceso terminó el ${esc(fCorta(af.fin))}` : `Le quedan ${af.dias} días de proceso`}</b> (final ${esc(fF(af.fin))}). Si sigue contigo, añádele una extensión: continúa con sus bloques y su historial.</div><button class="btn sm gold" data-act="extension">＋ Añadir extensión</button><button class="btn sm ghost" data-act="entExtra">＋ Entrenamientos sueltos</button></div>` : srv?.inicio ? '<span class="row" style="gap:12px;flex-wrap:wrap"><button class="linkbtn small" data-act="extension">＋ Añadir extensión del proceso</button><button class="linkbtn small" data-act="entExtra">＋ Entrenamientos sueltos</button></span>' : ''; })()}
     ${e.control ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>Toca su revisión mensual ${e.control.n}</b> (${esc(fCorta(e.control.fecha))}): llamada o videollamada de 10-15 minutos para ver cómo se siente, sus objetivos y su composición corporal.</div><button class="btn sm gold" data-act="revision" data-n="${e.control.n}">Registrar revisión</button></div>` : ''}
   </div></section>`;
@@ -4541,13 +4541,18 @@ function vBarraBloque() {
     ${sig ? `<button class="btn sm" data-act="cmSiguiente" data-t="${b.tipo}">Siguiente ›</button>` : ''}<button class="btn sm ghost" data-act="bloqueVolver">Volver a Hoy</button></div>`;
 }
 function formServicio() {
-  const s = S.ficha.srv || {};
+  const s = S.ficha.srv || {}, regPrev = +(extensionesDe(s).find(x => x.tipo === 'regalo') || {}).sesiones || 0;
   abrirSheet(`<form class="stack" id="f-srv"><h2>Servicio</h2>
     <label class="f">Programa / producto contratado<input type="text" id="sv-prod" list="sv-prods" value="${esc(s.producto || '')}" placeholder="Ej. Plan Integral 6 meses" required></label>
     <datalist id="sv-prods">${[...new Set(['Plan Integral 3 meses', 'Plan Integral 6 meses', 'Plan Integral 10 meses', 'Plan Entrenamiento 3 meses', 'Plan Entrenamiento 6 meses', 'Bono 10 sesiones presenciales', 'Bono 15 sesiones presenciales', 'Zero to Fit · Integral', 'Élite Player', ...S.c.servicios.map(x => x.producto).filter(Boolean)])].map(v => `<option value="${esc(v)}">`).join('')}</datalist>
     <div class="card stack" style="padding:12px;gap:10px"><b class="small">Tarifa</b>
-      <select id="sv-tar"><option value="">Sin tarifa · a mano (Élite Player, opositores…)</option>${Tarifas.opciones(Tarifas.T, s.tarifa)}</select>
+      <select id="sv-tar"><option value="">Sin tarifa · no cliente (Élite Player, opositores…)</option><option value="__mano">✍️ Tarifa a mano (nombre y precio)</option>${Tarifas.opciones(Tarifas.T, s.tarifa)}</select>
       <span class="small muted" id="sv-tar-txt">Al elegirla se rellena el programa y se prepara su plan de pagos.</span>
+      <div class="stack" id="sv-mano" style="gap:8px" hidden>
+        <label class="f">Nombre de la tarifa<input type="text" id="sv-mn" placeholder="Ej. Ruta Integral 6 meses (2025)"></label>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;align-items:end"><label class="f">Precio total €<input type="text" inputmode="decimal" id="sv-mp" placeholder="0"></label><label class="f">Nº de cuotas<input type="number" id="sv-mc" min="1" max="24" value="1"></label><label class="f">Primer pago<input type="date" id="sv-m0"></label></div>
+        <label class="row small" style="gap:8px"><input type="checkbox" id="sv-mg" style="width:20px;height:20px;flex:none"> <span>Crear su plan de pagos al guardar <span class="muted">(déjalo sin marcar si solo quieres asignarle la tarifa)</span></span></label>
+        <span class="small muted" id="sv-mt"></span></div>
       <div class="stack" id="sv-pago" style="gap:8px" hidden>
         <div class="chips" id="sv-forma"></div>
         <label class="row small" id="sv-b24-w" style="gap:8px" hidden><input type="checkbox" id="sv-b24" style="width:20px;height:20px;flex:none"> <span id="sv-b24-t">Decidió en 24 h: <b>+2 entrenamientos</b> de regalo</span></label>
@@ -4564,7 +4569,7 @@ function formServicio() {
       <div class="chips" id="sv-mod">${Object.entries(TIPOS_PROG).map(([k, l]) => `<button type="button" class="pill" data-v="${k}">${l}</button>`).join('')}</div>
       <div class="chips" id="sv-ptipo" hidden><button type="button" class="pill" data-v="bono">Bono de sesiones</button><button type="button" class="pill" data-v="plan">Plan con objetivos (3, 6 o 10 meses)</button></div>
       <div class="stack" id="sv-modulos-w" style="gap:4px" hidden><span class="small muted">Lleva</span><div class="chips" id="sv-lleva"><button type="button" class="pill" data-v="ent">Entrenamiento</button><button type="button" class="pill" data-v="ali">Alimentación</button><button type="button" class="pill" data-v="ambas">Ambas</button></div></div>
-      <div class="stack" id="sv-meses-w" style="gap:4px" hidden><span class="small muted">Meses contratados</span><div class="chips" id="sv-meses"></div></div>
+      <div class="stack" id="sv-meses-w" style="gap:4px" hidden><span class="small muted">Meses contratados</span><div class="chips" id="sv-meses"></div><input type="number" id="sv-meses-o" min="1" max="36" placeholder="Número de meses" hidden></div>
       <div class="stack" id="sv-frec-w" style="gap:4px" hidden><span class="small muted">Entrenamientos personales</span><div class="chips" id="sv-frec"></div></div>
       <div class="stack" id="sv-val-w" style="gap:6px" hidden><span class="small muted">Valoraciones incluidas <span class="muted">(no cuentan como entrenamiento)</span></span>
         <label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="sv-vi" ${s.valoracion_inicial ? 'checked' : ''} style="width:20px;height:20px;flex:none;margin-top:1px"> <span><b>Valoración inicial</b> presencial: lanzamiento y entrega del servicio</span></label>
@@ -4575,12 +4580,12 @@ function formServicio() {
     <label class="f">Fecha de fin<input type="date" id="sv-fin" value="${s.fin_manual || ''}" ${s.fin_manual ? 'data-man="1"' : ''}><small class="muted" id="sv-fin-t">Se calcula sola con el inicio y las semanas. Cámbiala si lo alargas o acortas; su extensión puede empezar después, aunque haya un hueco.</small></label>
     <label class="row small"><input type="checkbox" id="sv-pasoson" ${conPasos(s) && !(s.id == null && false) ? 'checked' : ''} style="width:20px;height:20px"> Seguimiento de pasos diarios <span class="muted">(desmárcalo para futbolistas o alumnos en buena composición)</span></label>
     <label class="f" id="sv-pasos-w" ${conPasos(s) ? '' : 'hidden'}>Objetivo de pasos diarios<input type="number" id="sv-pasos" min="0" step="500" value="${s.objetivo_pasos || ''}" placeholder="${PASOS_DEF}"></label>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Hora de acostarse objetivo<input type="time" id="sv-dormir" value="${esc(s.sueno_dormir || '')}" placeholder="23:00"></label><label class="f">Hora de levantarse objetivo<input type="time" id="sv-levantar" value="${esc(s.sueno_levantar || '')}" placeholder="08:00"></label></div>
-    <label class="f" id="sv-pres-w"><span id="sv-pres-l">Sesiones presenciales incluidas (bono)</span><input type="number" id="sv-pres" min="0" max="300" value="${s.sesiones_incluidas || ''}" placeholder="Ej. 15"></label>
+    <label class="f" id="sv-pres-w"><span id="sv-pres-l">Sesiones presenciales incluidas (bono)</span><input type="number" id="sv-pres" min="0" max="300" value="${(s.sesiones_incluidas || 0) - regPrev || ''}" placeholder="Ej. 15"></label>
+    <div class="stack" id="sv-reg-w" style="gap:8px"><label class="f">Entrenamientos extra de regalo o promoción <span class="muted small">(se suman a los del plan)</span><input type="number" id="sv-reg" min="0" max="200" value="${regPrev || ''}" placeholder="0"></label>
+      <label class="f" id="sv-regc-w" ${regPrev ? '' : 'hidden'}>¿Qué promoción es?<input type="text" id="sv-regc" value="${esc((extensionesDe(s).find(x => x.tipo === 'regalo') || {}).nombre || '')}" placeholder="Ej. Black Friday 2026, referido, regalo de bienvenida"></label></div>
     <label class="f" id="sv-spv-w">De esos entrenamientos contigo, ¿cuántos ya habéis hecho antes de la app? <span class="muted small">(cuentan como usados)</span><input type="number" id="sv-spv" min="0" max="500" value="${s.sesiones_previas || ''}" placeholder="0"><span class="small muted" id="sv-spv-t"></span></label>
     <div class="stack" style="gap:8px">${[['entreno', 'Entrenamiento', s.modulo_entreno ?? true], ['nutricion', 'Nutrición · plan de alimentación (pestaña Nutrición y registro de comidas)', s.modulo_nutricion], ['presencial', 'Sesiones presenciales', s.modulo_presencial], ['habitos', 'Hábitos · programa de hábitos (pestaña Hábitos; bonus). Los pasos van aparte', s.modulo_habitos], ['futbol', 'Elite Player · seguimiento de futbolista (wellness, partidos y carga)', s.modulo_futbol], ['oposicion', 'Oposición · Policía Nacional (pruebas físicas, simulacros y nota oficial)', !!s.oposicion]].map(([k, l, v]) => `<label class="row small"><input type="checkbox" id="sv-${k}" ${v ? 'checked' : ''} style="width:20px;height:20px"> ${l}</label>`).join('')}</div>
     <label class="f" id="sv-fase-w" ${s.modulo_nutricion ? '' : 'hidden'}>Fase de la alimentación<select id="sv-fase"><option value="">Automática (activo si tiene plan visible; si no, en preparación)</option>${Object.entries(Nutricion.FASES).map(([k, [l]]) => `<option value="${k}" ${s.nutri_fase === k ? 'selected' : ''}>${l}</option>`).join('')}</select><span class="small muted">En recogida y en preparación no se mide el cumplimiento: el alumno solo registra.</span></label>
-    <label class="f" id="sv-com-w" ${s.modulo_nutricion ? '' : 'hidden'}>Comidas de su plan al día <span class="muted">(registro de comidas cumplidas)</span><input type="number" id="sv-com" min="1" max="8" value="${comidasDia(s)}"></label>
     <button class="btn full" type="submit">Guardar</button></form>`);
   /* Tipo de programa: lo que eliges rellena duración, sesiones, módulos y seguimiento (todo sigue editable debajo) */
   const st = { valToc: s.valoracion_inicial != null || s.valoracion_final != null, mod: s.id ? modalidadSrv(s) : null, ptipo: esBono(s) ? 'bono' : s.meses || !s.id ? 'plan' : modalidadSrv(s) === 'presencial' ? 'bono' : 'plan', meses: s.meses || null, frec: s.pt_frecuencia || null, segToc: s.seguimiento != null };
@@ -4592,11 +4597,13 @@ function formServicio() {
     marca('#sv-mod', m); marca('#sv-ptipo', st.ptipo); marca('#sv-lleva', lleva());
     $('#sv-ptipo').hidden = m !== 'presencial'; $('#sv-modulos-w').hidden = !m || m === 'presencial';
     const lm = !m || bono ? [] : MESES[plan ? 'plan' : m]; $('#sv-meses-w').hidden = !lm.length;
-    $('#sv-meses').innerHTML = lm.map(x => `<button type="button" class="pill ${st.meses === x ? 'blue' : ''}" data-v="${x}">${x} meses</button>`).join('');
+    const otroM = !!lm.length && (st.otro || (st.meses && !lm.includes(st.meses)));
+    $('#sv-meses').innerHTML = lm.map(x => `<button type="button" class="pill ${st.meses === x && !otroM ? 'blue' : ''}" data-v="${x}">${x} meses</button>`).join('') + (lm.length ? `<button type="button" class="pill ${otroM ? 'blue' : ''}" data-v="otro">Otro</button>` : '');
+    $('#sv-meses-o').hidden = !otroM; if (otroM && document.activeElement !== $('#sv-meses-o')) $('#sv-meses-o').value = st.meses || '';
     /* Ruta Integral de 6 meses antigua: 1 o 2 días/semana (25 o 50 entrenamientos personales) en vez de los 15 de la actual */
     const rutaAnt = m === 'hibrido' && st.meses === 6, lf = plan ? (FREC_PLAN[st.meses] || []) : rutaAnt ? ['', '1s', '2s'] : [];
     const etF = x => rutaAnt ? (x ? `${FRECUENCIAS[x]} · antigua (${sesionesDe(x, 6)})` : 'Actual (15)') : FRECUENCIAS[x];
-    $('#sv-frec-w').hidden = !lf.length; $('#sv-frec').innerHTML = lf.map(x => `<button type="button" class="pill ${(st.frec || '') === x ? 'blue' : ''}" data-v="${x}">${etF(x)}</button>`).join('');
+    $('#sv-frec-w').hidden = !lf.length; $('#sv-frec').innerHTML = lf.map(x => `<button type="button" class="pill ${(st.frec || '') === x && !st.frecOtro ? 'blue' : ''}" data-v="${x}">${etF(x)}</button>`).join('') + (lf.length ? `<button type="button" class="pill ${st.frecOtro ? 'blue' : ''}" data-v="__o">Otro (a mano)</button>` : '');
     $('#sv-pres-w').hidden = m === 'online'; $('#sv-pres-l').textContent = bono ? 'Sesiones del bono' : m ? 'Entrenamientos personales contigo incluidos (concertados)' : 'Sesiones presenciales incluidas (bono)'; $('#sv-spv-w').hidden = m === 'online';
     if (!st.segToc && m) $('#sv-seg').checked = !bono;
     /* Valoraciones: las presenciales e híbridas llevan la inicial; la final, en los de 6 meses o más. El online se la hace él mismo */
@@ -4608,10 +4615,12 @@ function formServicio() {
   $('#sv-mod').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; st.mod = b.dataset.v; st.meses = null; st.frec = null; if (st.mod !== 'online') $('#sv-presencial').checked = true; if (st.mod === 'presencial') $('#sv-entreno').checked = true; pintaMod(); });
   $('#sv-ptipo').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; st.ptipo = b.dataset.v; st.meses = null; st.frec = null; pintaMod(); });
   $('#sv-lleva').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; const v = b.dataset.v; $('#sv-entreno').checked = v !== 'ali'; $('#sv-nutricion').checked = v !== 'ent'; $('#sv-nutricion').dispatchEvent(new Event('change')); pintaMod(); });
-  $('#sv-meses').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; st.meses = +b.dataset.v; $('#sv-dur').value = semanasDeMeses(st.meses);
+  const aplicaMeses = () => { $('#sv-dur').value = semanasDeMeses(st.meses);
     /* Ruta integral (híbrido con entreno y alimentación): 3 meses = 10 personales, 6 = 15, 10 = 20 */
-    if (st.mod === 'hibrido' && lleva() === 'ambas' && { 3: 10, 6: 15, 10: 20 }[st.meses]) $('#sv-pres').value = { 3: 10, 6: 15, 10: 20 }[st.meses]; if (st.frec) $('#sv-pres').value = sesionesDe(st.frec, st.meses); if (st.mod === 'presencial' && !(FREC_PLAN[st.meses] || []).includes(st.frec)) st.frec = (FREC_PLAN[st.meses] || [])[0] || null, st.frec && ($('#sv-pres').value = sesionesDe(st.frec, st.meses)); $('#sv-dur').dispatchEvent(new Event('input')); pintaMod(); });
-  $('#sv-frec').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; st.frec = b.dataset.v || null; if (st.meses) $('#sv-pres').value = st.frec ? sesionesDe(st.frec, st.meses) : ({ 3: 10, 6: 15, 10: 20 }[st.meses] || ''); pintaMod(); spvTxt(); });
+    if (st.mod === 'hibrido' && lleva() === 'ambas' && { 3: 10, 6: 15, 10: 20 }[st.meses]) $('#sv-pres').value = { 3: 10, 6: 15, 10: 20 }[st.meses]; if (st.frec) $('#sv-pres').value = sesionesDe(st.frec, st.meses); if (st.mod === 'presencial' && !(FREC_PLAN[st.meses] || []).includes(st.frec)) st.frec = (FREC_PLAN[st.meses] || [])[0] || null, st.frec && ($('#sv-pres').value = sesionesDe(st.frec, st.meses)); $('#sv-dur').dispatchEvent(new Event('input')); pintaMod(); };
+  $('#sv-meses').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; if (b.dataset.v === 'otro') { st.otro = true; pintaMod(); $('#sv-meses-o').focus(); return; } st.otro = false; st.meses = +b.dataset.v; aplicaMeses(); });
+  $('#sv-meses-o').addEventListener('input', () => { const n = Math.round(+$('#sv-meses-o').value); if (!n || n < 1) return; st.otro = true; st.meses = n; aplicaMeses(); });
+  $('#sv-frec').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; if (b.dataset.v === '__o') { st.frecOtro = true; st.frec = null; pintaMod(); $('#sv-pres').focus(); return; } st.frecOtro = false; st.frec = b.dataset.v || null; if (st.meses) $('#sv-pres').value = st.frec ? sesionesDe(st.frec, st.meses) : ({ 3: 10, 6: 15, 10: 20 }[st.meses] || ''); pintaMod(); spvTxt(); });
   $('#sv-seg').addEventListener('change', () => { st.segToc = true; pintaMod(); });
   ['#sv-vi', '#sv-vf'].forEach(q => $(q).addEventListener('change', () => { st.valToc = true; }));
   $('#sv-entreno').addEventListener('change', pintaMod);
@@ -4631,7 +4640,14 @@ function formServicio() {
     const cs = Tarifas.plan(t, opPago()), tot = cs.reduce((a, b) => a + b.importe, 0);
     $('#sv-cuotas').innerHTML = `<b>Total ${Tarifas.eur(tot)}</b>${cs.map(c => `<span class="muted">${esc(fCorta(c.vence))} · ${Tarifas.eur(c.importe)}</span>`).join('')}`;
   };
+  const pintaMano = () => {
+    const man = $('#sv-tar').value === '__mano'; $('#sv-mano').hidden = !man; if (!man) return;
+    const n = Math.max(1, Math.min(24, +$('#sv-mc').value || 1)), pr = numero($('#sv-mp').value) || 0;
+    $('#sv-mt').textContent = pr ? (n > 1 ? `${n} cuotas de ${Tarifas.eur(pr / n)} · total ${Tarifas.eur(pr)}` : `Pago único de ${Tarifas.eur(pr)}`) : 'Pon el precio total para calcular las cuotas.';
+  };
   const aplicaTarifa = () => {
+    if ($('#sv-tar').value === '__mano') { if (!$('#sv-mn').value) $('#sv-mn').value = $('#sv-prod').value.trim(); if (!$('#sv-m0').value) $('#sv-m0').value = $('#sv-ini').value || hoyISO(); pintaMano(); pintaCambio(); pintaPago(); return; }
+    pintaMano();
     const t = tarifa(); if (!t) { pintaCambio(); pintaPago(); return; } const v = t.srv;
     st.mod = v.modalidad; st.ptipo = v.bono ? 'bono' : 'plan'; st.meses = v.meses || null; st.frec = v.frec || null;
     $('#sv-entreno').checked = !!v.ent; $('#sv-nutricion').checked = !!v.ali || (t.extraAli && $('#sv-xali').checked); $('#sv-nutricion').dispatchEvent(new Event('change'));
@@ -4661,7 +4677,7 @@ function formServicio() {
   $('#sv-cmb').addEventListener('change', aplicaTarifa); $('#sv-cmbf').addEventListener('change', aplicaTarifa);
   $('#sv-p0').value = s.inicio && s.inicio >= hoyISO() ? s.inicio : ($('#sv-ini').value || hoyISO());
   $('#sv-genp').checked = !s.id || !((S.c.pagos || []).filter(x => x.alumno_id === S.ficha.id && !x.pagado_at).length);
-  $('#sv-tar').addEventListener('change', aplicaTarifa);
+  $('#sv-tar').addEventListener('change', aplicaTarifa); ['#sv-mn', '#sv-mp', '#sv-mc', '#sv-m0'].forEach(q => $(q).addEventListener('input', pintaMano));
   $('#sv-forma').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; pg.forma = b.dataset.v; if (tarifa()?.bonusUnico) aplicaTarifa(); else pintaPago(); });
   ['#sv-b24', '#sv-xali'].forEach(q => $(q).addEventListener('change', aplicaTarifa));
   ['#sv-desc', '#sv-desct', '#sv-p0', '#sv-prod'].forEach(q => $(q).addEventListener('input', pintaPago)); $('#sv-desct').addEventListener('change', pintaPago);
@@ -4672,9 +4688,10 @@ function formServicio() {
   $('#sv-fin').addEventListener('input', () => { if ($('#sv-fin').value) $('#sv-fin').dataset.man = '1'; else delete $('#sv-fin').dataset.man; pintaFin(); });
   ['#sv-dur', '#sv-ini'].forEach(q => ['input', 'change'].forEach(ev => $(q).addEventListener(ev, pintaFin))); $('#f-srv').addEventListener('click', () => setTimeout(pintaFin, 0)); pintaFin();
   pintaPago();
-  const spvTxt = () => { const n = numero($('#sv-pres').value), h = numero($('#sv-spv').value); $('#sv-spv-t').textContent = n ? `${h || 0} de ${n} hechos · le quedan ${Math.max(0, n - (h || 0))}${h > n ? ' (has puesto más de los incluidos)' : ''}` : ''; };
+  $('#sv-reg').addEventListener('input', () => { $('#sv-regc-w').hidden = !(+$('#sv-reg').value > 0); spvTxt(); });
+  const spvTxt = () => { const n = (numero($('#sv-pres').value) || 0) + (Math.max(0, numero($('#sv-reg')?.value) || 0)) || null, h = numero($('#sv-spv').value); $('#sv-spv-t').textContent = n ? `${h || 0} de ${n} hechos · le quedan ${Math.max(0, n - (h || 0))}${h > n ? ' (has puesto más de los incluidos)' : ''}` : ''; };
   spvTxt(); ['#sv-pres', '#sv-spv'].forEach(q => $(q).addEventListener('input', spvTxt)); ['#sv-mod', '#sv-meses', '#sv-lleva'].forEach(q => $(q)?.addEventListener('click', () => setTimeout(spvTxt)));
-  $('#sv-nutricion').addEventListener('change', ev => { $('#sv-com-w').hidden = !ev.target.checked; $('#sv-fase-w').hidden = !ev.target.checked; });
+  $('#sv-nutricion').addEventListener('change', ev => { $('#sv-fase-w').hidden = !ev.target.checked; });
   $('#sv-pasoson').addEventListener('change', ev => { $('#sv-pasos-w').hidden = !ev.target.checked; });
   $('#sv-futbol').addEventListener('change', ev => { if (ev.target.checked && !s.id) { $('#sv-pasoson').checked = false; $('#sv-pasos-w').hidden = true; } });
   $('#f-srv').addEventListener('submit', async e => {
@@ -4688,16 +4705,23 @@ function formServicio() {
     if ($('#sv-habitos').checked || s.modulo_habitos) row.modulo_habitos = $('#sv-habitos').checked;
     if ($('#sv-futbol').checked || s.modulo_futbol) row.modulo_futbol = $('#sv-futbol').checked;
     if ($('#sv-oposicion').checked || s.oposicion) row.oposicion = $('#sv-oposicion').checked ? (s.oposicion || 'policia_nacional') : null;
-    if ($('#sv-dormir').value || s.sueno_dormir) row.sueno_dormir = $('#sv-dormir').value || null;
-    if ($('#sv-levantar').value || s.sueno_levantar) row.sueno_levantar = $('#sv-levantar').value || null;
     const op = numero($('#sv-pasos').value); if (op) row.objetivo_pasos = op;
     if (!$('#sv-pasoson').checked || s.pasos_activo === false) row.pasos_activo = $('#sv-pasoson').checked;
     if ($('#sv-fase').value || s.nutri_fase) row.nutri_fase = $('#sv-fase').value || null;
-    if (row.modulo_nutricion) { const nc = numero($('#sv-com').value); if (nc && (nc !== comidasDia(s) || s.comidas_dia)) row.comidas_dia = Math.max(1, Math.min(8, nc)); }
+    { const reg = Math.max(0, numero($('#sv-reg').value) || 0), regc = $('#sv-regc').value.trim();
+      if (reg || regPrev) { const ext = extensionesDe(s).filter(x => x.tipo !== 'regalo'); if (reg) ext.push({ nombre: regc || 'Entrenamientos de regalo', tipo: 'regalo', sesiones: reg, fecha: $('#sv-ini').value || hoyISO() }); row.extensiones = ext; }
+      if (reg || regPrev || row.sesiones_incluidas != null) row.sesiones_incluidas = (row.sesiones_incluidas || 0) + reg; }
     const guardar = r => s.id ? sb.from('servicios').update(r).eq('id', s.id) : sb.from('servicios').insert(r);
     if (vals) Object.assign(row, vals);
-    const tSel = tarifa(), cuotas = tSel && tSel.estandar > 0 && $('#sv-genp').checked ? Tarifas.plan(tSel, opPago()) : [];
-    const extra88 = {}; if (tSel) Object.assign(extra88, { tarifa: tSel.id, forma_pago: pg.forma }); { const v = $('#sv-spv').value; if (v !== '' || s.sesiones_previas) extra88.sesiones_previas = v === '' ? null : Math.max(0, +v || 0); }
+    const tSel = tarifa(), mano = $('#sv-tar').value === '__mano';
+    let cuotas = tSel && tSel.estandar > 0 && $('#sv-genp').checked ? Tarifas.plan(tSel, opPago()) : [];
+    const extra88 = {}; if (tSel) Object.assign(extra88, { tarifa: tSel.id, forma_pago: pg.forma });
+    if (mano) {
+      const nom = $('#sv-mn').value.trim(), pr = numero($('#sv-mp').value) || 0, n = Math.max(1, Math.min(24, +$('#sv-mc').value || 1)), p0 = $('#sv-m0').value || $('#sv-ini').value || hoyISO();
+      if (nom) row.producto = nom;
+      Object.assign(extra88, { tarifa: null, forma_pago: n > 1 ? 'fracc' : 'unico' });
+      if ($('#sv-mg').checked && pr > 0) { const base = Math.floor(pr / n * 100) / 100; cuotas = Array.from({ length: n }, (_, i) => ({ concepto: `${nom || row.producto}${n > 1 ? ` · cuota ${i + 1}/${n}` : ''}`, importe: i < n - 1 ? base : Math.round((pr - base * (n - 1)) * 100) / 100, vence: sumaMeses(p0, i) })); }
+    } { const v = $('#sv-spv').value; if (v !== '' || s.sesiones_previas) extra88.sesiones_previas = v === '' ? null : Math.max(0, +v || 0); }
     Object.assign(row, extra88);
     const extra90 = {}; if (cambioProg() && $('#sv-cmb').checked) { const h = Array.isArray(s.historial) ? s.historial : [], nuevo = $('#sv-cmbf').value || hoyISO();
       const desde = s.inicio || h.map(x => x.hasta).filter(Boolean).sort().pop() || nuevo, hasta = sumaDias(nuevo, -1);
@@ -4719,7 +4743,7 @@ function formServicio() {
     if (error && /nutri_fase/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 57 en Supabase.');
     if (error && /objetivo_pasos/.test(error.message || '')) { delete row.objetivo_pasos; ({ error } = await guardar(row)); toast('Para guardar el objetivo de pasos falta ejecutar el Bloque 10'); }
     if (error) return fallo(error);
-    if (cuotas.length) { let { error: ep } = await sb.from('pagos').insert(cuotas.map(c => ({ ...c, alumno_id: S.ficha.id, tarifa: tSel.id })));
+    if (cuotas.length) { let { error: ep } = await sb.from('pagos').insert(cuotas.map(c => ({ ...c, alumno_id: S.ficha.id, ...(tSel ? { tarifa: tSel.id } : {}) })));
       if (ep && /tarifa/.test(ep.message || '')) ({ error: ep } = await sb.from('pagos').insert(cuotas.map(c => ({ ...c, alumno_id: S.ficha.id })))); toast(ep ? 'Servicio guardado, pero el plan de pagos no: ' + (ep.message || '') : `Plan de pagos creado: ${cuotas.length} cuota${cuotas.length === 1 ? '' : 's'}`); }
     /* Los entrenos del programa no se apuntan aquí: dependen de su planificación y de cada bloque */
     const np = !$('#sv-prev') || $('#sv-prev').value === '' ? null : Math.max(0, +$('#sv-prev').value || 0);
@@ -5442,8 +5466,8 @@ function formEntExtra() {
 }
 function formExtEditar(i) {
   const srv = S.ficha?.srv, l = extensionesDe(srv).slice(), x = l[i]; if (!x) return;
-  const bono = x.tipo === 'bono';
-  abrirSheet(`<form class="stack" id="f-exe"><h2>Editar ampliación</h2>
+  const bono = x.tipo === 'bono' || x.tipo === 'regalo', extra = x.tipo === 'servicio';
+  abrirSheet(`<form class="stack" id="f-exe"><h2>${extra ? 'Editar servicio extra' : x.tipo === 'regalo' ? 'Editar regalo' : 'Editar ampliación'}</h2>
     <label class="f">Nombre<input type="text" id="xe-n" value="${esc(x.nombre || '')}"></label>
     ${bono ? '' : `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Semanas<input type="number" id="xe-s" min="1" max="104" value="${x.semanas || 0}"></label><label class="f">Desde<input type="date" id="xe-d" value="${esc(x.desde || '')}"></label></div>
     <label class="f">Hasta<input type="date" id="xe-h" value="${esc(x.hasta || (x.desde && x.semanas ? sumaDias(x.desde, x.semanas * 7 - 1) : ''))}"><small class="muted">Se calcula con «Desde» y las semanas; si la cambias, se ajustan las semanas.</small></label>`}
@@ -5465,8 +5489,46 @@ function formExtEditar(i) {
   $('#f-exe').addEventListener('submit', e => { e.preventDefault();
     const sem = bono ? 0 : Math.max(1, +$('#xe-s').value || 1), ses = Math.max(0, +$('#xe-p').value || 0);
     l[i] = { ...x, nombre: $('#xe-n').value.trim() || x.nombre, ...(bono ? {} : { semanas: sem, desde: $('#xe-d').value || x.desde, hasta: ($('#xe-h').value && $('#xe-h').value !== sumaDias($('#xe-d').value || x.desde, sem * 7 - 1)) ? $('#xe-h').value : undefined }), sesiones: ses };
-    guarda(l, bono ? 0 : sem - (x.semanas || 0), ses - (x.sesiones || 0)); });
-  $('#xe-del').addEventListener('click', () => { if (!confirm('¿Quitar esta ampliación? Se resta su duración y sus sesiones.')) return; l.splice(i, 1); guarda(l, -(x.semanas || 0), -(x.sesiones || 0)); });
+    guarda(l, bono || extra ? 0 : sem - (x.semanas || 0), ses - (x.sesiones || 0)); });
+  $('#xe-del').addEventListener('click', () => { if (!confirm('¿Quitar esta ampliación? Se resta su duración y sus sesiones.')) return; l.splice(i, 1); guarda(l, extra || bono ? 0 : -(x.semanas || 0), -(x.sesiones || 0)); });
+}
+/* Servicio extra: algo que contrata después de empezar (p. ej. alimentación 3 semanas más tarde). Duración y fin propios; no toca los del plan */
+function formSrvExtra() {
+  const f = S.ficha, srv = f.srv; if (!srv?.id) return toast('Primero crea su servicio (Plan → Editar)');
+  const TIPOS = [['ali', 'Alimentación'], ['ent', 'Entrenamiento'], ['habitos', 'Hábitos'], ['otro', 'Otro']], NOM = { ali: 'Alimentación', ent: 'Entrenamiento', habitos: 'Hábitos', otro: 'Servicio extra' };
+  abrirSheet(`<form class="stack" id="f-sx"><h2>Servicio extra</h2>
+    <p class="small muted" style="margin:0">Algo que contrata después de empezar. Tiene su propia duración y fin, sin tocar los de su plan.</p>
+    <div class="chips" id="sx-t">${TIPOS.map(([k, l]) => `<button type="button" class="pill ${k === 'ali' ? 'blue' : ''}" data-v="${k}">${l}</button>`).join('')}</div>
+    <label class="f">Nombre<input type="text" id="sx-n" value="Alimentación" required></label>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Desde<input type="date" id="sx-d" value="${hoyISO()}"></label><label class="f">Duración (semanas)<input type="number" id="sx-s" min="1" max="104" value="13"></label></div>
+    <div class="chips" id="sx-m">${[1, 3, 6, 12].map(m => `<button type="button" class="pill" data-v="${m}">${m} ${m === 1 ? 'mes' : 'meses'}</button>`).join('')}</div>
+    <label class="f">Fecha de fin<input type="date" id="sx-h"><small class="muted" id="sx-ht">Se calcula sola; cámbiala si quieres otra.</small></label>
+    <div class="card stack" style="padding:12px;gap:8px"><b class="small">Pago</b>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;align-items:end"><label class="f">Precio total €<input type="text" inputmode="decimal" id="sx-p" placeholder="0"></label><label class="f">Nº de cuotas<input type="number" id="sx-c" min="1" max="24" value="1"></label><label class="f">Primer pago<input type="date" id="sx-p0" value="${hoyISO()}"></label></div>
+      <label class="row small" style="gap:8px"><input type="checkbox" id="sx-g" checked style="width:20px;height:20px;flex:none"> <span>Crear las cuotas en su plan de pagos</span></label>
+      <label class="row small" style="gap:8px"><input type="checkbox" id="sx-ya" style="width:20px;height:20px;flex:none"> <span>Ya está cobrado (se marcan como pagadas)</span></label></div>
+    <p class="err" id="sx-err"></p><button class="btn full" type="submit">Guardar servicio extra</button></form>`);
+  let tipo = 'ali', man = false;
+  const calc = () => { const d = $('#sx-d').value, n = +$('#sx-s').value; return d && n ? sumaDias(d, n * 7 - 1) : ''; };
+  const pinta = () => { if (!man) $('#sx-h').value = calc(); $('#sx-ht').textContent = man ? 'Fecha puesta a mano. Bórrala para que vuelva a calcularse.' : 'Se calcula sola; cámbiala si quieres otra.'; };
+  $('#sx-t').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; const ant = NOM[tipo]; tipo = b.dataset.v; document.querySelectorAll('#sx-t .pill').forEach(x => x.classList.toggle('blue', x === b)); if (!$('#sx-n').value || $('#sx-n').value === ant) $('#sx-n').value = NOM[tipo]; });
+  $('#sx-m').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; $('#sx-s').value = semanasDeMeses(+b.dataset.v); man = false; pinta(); });
+  ['#sx-d', '#sx-s'].forEach(q => ['input', 'change'].forEach(ev => $(q).addEventListener(ev, pinta)));
+  $('#sx-h').addEventListener('input', () => { man = !!$('#sx-h').value; pinta(); });
+  pinta();
+  $('#f-sx').addEventListener('submit', async e => {
+    e.preventDefault(); const bt = e.submitter; if (bt) bt.disabled = true;
+    const nom = $('#sx-n').value.trim() || NOM[tipo], desde = $('#sx-d').value || hoyISO(), sem = Math.max(1, +$('#sx-s').value || 1), hasta = $('#sx-h').value;
+    const x = { nombre: nom, tipo: 'servicio', modulo: tipo, semanas: sem, desde, ...(man && hasta && hasta !== calc() ? { hasta } : {}) };
+    const up = { extensiones: [...extensionesDe(srv), x] }; if (tipo === 'ali') up.modulo_nutricion = true; if (tipo === 'ent') up.modulo_entreno = true; if (tipo === 'habitos') up.modulo_habitos = true;
+    const { error } = await sb.from('servicios').update(up).eq('id', srv.id); if (error) { if (bt) bt.disabled = false; return $('#sx-err').textContent = error.message || 'No se ha podido guardar'; }
+    const pr = numero($('#sx-p').value) || 0, n = Math.max(1, Math.min(24, +$('#sx-c').value || 1)), p0 = $('#sx-p0').value || desde;
+    if ($('#sx-g').checked && pr > 0) {
+      const base = Math.floor(pr / n * 100) / 100, cuotas = Array.from({ length: n }, (_, i) => { const v = sumaMeses(p0, i); return { alumno_id: f.id, concepto: `${nom}${n > 1 ? ` · cuota ${i + 1}/${n}` : ''}`, importe: i < n - 1 ? base : Math.round((pr - base * (n - 1)) * 100) / 100, vence: v, ...($('#sx-ya').checked ? { pagado_at: v } : {}) }; });
+      const r = await sb.from('pagos').insert(cuotas); if (r.error) toast('Servicio guardado, pero las cuotas no: ' + (r.error.message || ''));
+    }
+    cerrarSheet(); toast('Servicio extra añadido'); const sub = S.fichaSub; await cargarCoach(); await abrirFicha(f.id); if (sub) await abrirSub(sub);
+  });
 }
 function formExtension() {
   const f = S.ficha, srv = f.srv; if (!srv?.id || !srv.inicio) return toast('Primero pon su servicio con fecha de inicio (Plan → Editar)');
@@ -7243,7 +7305,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v272';
+const APP_VER = 'v273';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -7517,6 +7579,7 @@ document.addEventListener('click', async e => {
     case 'nuevaPres': formPres(); break;
     case 'pausaEditar': formPausa(+b.dataset.i); break;
     case 'histEditar': formHistorial(+b.dataset.i); break;
+    case 'srvExtra': formSrvExtra(); break;
     case 'nuevoAlumno': formNuevoAlumno(); break;
     case 'accesoAl': formDatosAlumno(b.dataset.id); setTimeout(() => $('#da-acc')?.scrollIntoView({ block: 'center' }), 300); break;
     case 'cuotaAviso': { const c = cuotaPend(); const t = c ? c.x.map(p => `${p.concepto || 'cuota'} (${fmtNum(+p.importe, 2).replace(/,00$/, '')} €)`).join(', ') : 'mi cuota'; const u = waJesus(`Hola Jesús, te escribo por ${t}.`); if (u) window.open(u, '_blank', 'noopener'); else toast('Escríbele a Jesús por WhatsApp'); break; }
