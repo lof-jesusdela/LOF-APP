@@ -114,7 +114,7 @@ const Programas = (() => {
       if (v.inicio && (!x.ultAlta || v.inicio > x.ultAlta)) x.ultAlta = v.inicio;
       if (v.inicio && v.inicio >= sumaDias(hoy, -365)) x.altas12 = (x.altas12 || 0) + 1;
       if (activo(v, hoy)) x.activos.push(v);
-      const amp = extensionesDe(v).length > 0, f = !esBono(v) && finProceso(proceso(v));
+      const amp = extensionesDe(v).some(x => x.tipo !== 'incluida'), f = !esBono(v) && finProceso(proceso(v));
       if (amp) x.conAmp++; else if (f && f < hoy) x.terminados++;
     }
     const lineas = Object.values(L).map(x => {
