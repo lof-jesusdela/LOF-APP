@@ -4409,7 +4409,7 @@ function proceso(srv, f = hoyISO()) {
 /* Fin del proceso, extensiones y aviso cuando queda un mes */
 const finProceso = P => P && !P.sinFin ? (P.finManual || P.ciclos[P.ciclos.length - 1].fin) : null;
 /* Fin de una extensión con semanas (la de sesiones sueltas no tiene fin) */
-const finExt = x => x?.desde && +x.semanas ? sumaDias(x.desde, x.semanas * 7 - 1) : null;
+const finExt = x => x?.hasta || (x?.desde && +x.semanas ? sumaDias(x.desde, x.semanas * 7 - 1) : null);
 /* Fin real del acompañamiento: el del proceso o el de su última extensión; entre una y otra puede haber un hueco */
 const finTotal = srv => { let fin = finProceso(proceso(srv)); if (!fin) return null; for (const x of extensionesDe(srv)) { const e = finExt(x); if (e && e > fin) fin = e; } return fin; };
 const extensionesDe = srv => Array.isArray(srv?.extensiones) ? srv.extensiones : [];
@@ -4572,7 +4572,7 @@ function formServicio() {
       <label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="sv-seg" style="width:20px;height:20px;flex:none;margin-top:1px"> <span><b>Seguimiento</b>: revisión mensual, check-in semanal con devolución y avisos (a ti y en su app)</span></label>
       <p class="small muted" id="sv-mod-txt" style="margin:0"></p></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Inicio<input type="date" id="sv-ini" value="${s.inicio || hoyISO()}"></label><label class="f">Duración (semanas)<input type="number" id="sv-dur" min="1" max="104" value="${s.duracion_semanas || ''}" placeholder="Ej. 26"></label></div>
-    <label class="f">Fecha de fin (opcional)<input type="date" id="sv-fin" value="${s.fin_manual || ''}"><small class="muted">Vacía: se calcula con el inicio y las semanas. Si lo alargas o acortas, pon aquí el día en que acaba; su extensión puede empezar después, aunque haya un hueco.</small></label>
+    <label class="f">Fecha de fin<input type="date" id="sv-fin" value="${s.fin_manual || ''}" ${s.fin_manual ? 'data-man="1"' : ''}><small class="muted" id="sv-fin-t">Se calcula sola con el inicio y las semanas. Cámbiala si lo alargas o acortas; su extensión puede empezar después, aunque haya un hueco.</small></label>
     <label class="row small"><input type="checkbox" id="sv-pasoson" ${conPasos(s) && !(s.id == null && false) ? 'checked' : ''} style="width:20px;height:20px"> Seguimiento de pasos diarios <span class="muted">(desmárcalo para futbolistas o alumnos en buena composición)</span></label>
     <label class="f" id="sv-pasos-w" ${conPasos(s) ? '' : 'hidden'}>Objetivo de pasos diarios<input type="number" id="sv-pasos" min="0" step="500" value="${s.objetivo_pasos || ''}" placeholder="${PASOS_DEF}"></label>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Hora de acostarse objetivo<input type="time" id="sv-dormir" value="${esc(s.sueno_dormir || '')}" placeholder="23:00"></label><label class="f">Hora de levantarse objetivo<input type="time" id="sv-levantar" value="${esc(s.sueno_levantar || '')}" placeholder="08:00"></label></div>
@@ -4666,6 +4666,11 @@ function formServicio() {
   ['#sv-b24', '#sv-xali'].forEach(q => $(q).addEventListener('change', aplicaTarifa));
   ['#sv-desc', '#sv-desct', '#sv-p0', '#sv-prod'].forEach(q => $(q).addEventListener('input', pintaPago)); $('#sv-desct').addEventListener('change', pintaPago);
   $('#sv-ini').addEventListener('change', () => { if (!s.id) $('#sv-p0').value = $('#sv-ini').value; pintaPago(); });
+  /* Fecha de fin: automática (inicio + semanas) hasta que la cambias a mano; vacía = vuelve a ser automática */
+  const finCalc = () => { const i = $('#sv-ini').value, d = +$('#sv-dur').value; return i && d ? realDe(s, sumaDias(i, d * 7 - 1)) : ''; };
+  const pintaFin = () => { const fe = $('#sv-fin'); if (!fe.dataset.man) fe.value = finCalc(); $('#sv-fin-t').textContent = fe.dataset.man ? 'Fecha puesta a mano. Bórrala para que vuelva a calcularse con las semanas.' : 'Se calcula sola con el inicio y las semanas. Cámbiala si lo alargas o acortas; su extensión puede empezar después, aunque haya un hueco.'; };
+  $('#sv-fin').addEventListener('input', () => { if ($('#sv-fin').value) $('#sv-fin').dataset.man = '1'; else delete $('#sv-fin').dataset.man; pintaFin(); });
+  ['#sv-dur', '#sv-ini'].forEach(q => ['input', 'change'].forEach(ev => $(q).addEventListener(ev, pintaFin))); $('#f-srv').addEventListener('click', () => setTimeout(pintaFin, 0)); pintaFin();
   pintaPago();
   const spvTxt = () => { const n = numero($('#sv-pres').value), h = numero($('#sv-spv').value); $('#sv-spv-t').textContent = n ? `${h || 0} de ${n} hechos · le quedan ${Math.max(0, n - (h || 0))}${h > n ? ' (has puesto más de los incluidos)' : ''}` : ''; };
   spvTxt(); ['#sv-pres', '#sv-spv'].forEach(q => $(q).addEventListener('input', spvTxt)); ['#sv-mod', '#sv-meses', '#sv-lleva'].forEach(q => $(q)?.addEventListener('click', () => setTimeout(spvTxt)));
@@ -4678,7 +4683,7 @@ function formServicio() {
       modulo_entreno: $('#sv-entreno').checked, modulo_nutricion: $('#sv-nutricion').checked, modulo_presencial: $('#sv-presencial').checked, activo: true };
     const tipo = st.mod ? { modalidad: st.mod, meses: st.mod === 'presencial' && st.ptipo === 'bono' ? null : st.meses, pt_frecuencia: st.frec, seguimiento: $('#sv-seg').checked } : null;
     const vals = st.mod && st.mod !== 'online' ? { valoracion_inicial: $('#sv-vi').checked, valoracion_final: $('#sv-vf').checked } : st.mod === 'online' ? { valoracion_inicial: false, valoracion_final: false } : null;
-    { const fin = $('#sv-fin')?.value || null; if (fin || s.fin_manual !== undefined) row.fin_manual = fin; }
+    { const fe = $('#sv-fin'), man = fe?.dataset.man && fe.value && fe.value !== finCalc() ? fe.value : null; if (man || s.fin_manual !== undefined) row.fin_manual = man; }
     if (tipo) Object.assign(row, tipo);
     if ($('#sv-habitos').checked || s.modulo_habitos) row.modulo_habitos = $('#sv-habitos').checked;
     if ($('#sv-futbol').checked || s.modulo_futbol) row.modulo_futbol = $('#sv-futbol').checked;
@@ -5440,11 +5445,17 @@ function formExtEditar(i) {
   const bono = x.tipo === 'bono';
   abrirSheet(`<form class="stack" id="f-exe"><h2>Editar ampliación</h2>
     <label class="f">Nombre<input type="text" id="xe-n" value="${esc(x.nombre || '')}"></label>
-    ${bono ? '' : `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Semanas<input type="number" id="xe-s" min="1" max="104" value="${x.semanas || 0}"></label><label class="f">Desde<input type="date" id="xe-d" value="${esc(x.desde || '')}"></label></div>`}
+    ${bono ? '' : `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Semanas<input type="number" id="xe-s" min="1" max="104" value="${x.semanas || 0}"></label><label class="f">Desde<input type="date" id="xe-d" value="${esc(x.desde || '')}"></label></div>
+    <label class="f">Hasta<input type="date" id="xe-h" value="${esc(x.hasta || (x.desde && x.semanas ? sumaDias(x.desde, x.semanas * 7 - 1) : ''))}"><small class="muted">Se calcula con «Desde» y las semanas; si la cambias, se ajustan las semanas.</small></label>`}
     <label class="f">${bono ? 'Sesiones del bono' : 'Entrenamientos personales que añade'}<input type="number" id="xe-p" min="0" max="200" value="${x.sesiones || 0}"></label>
     <p class="note">Cambiar semanas o sesiones ajusta su duración total y su bono. Si la ampliación creó ciclos en su hoja de ruta, revísalos en Plan.</p>
     <p class="err" id="xe-err"></p>
     <div class="row" style="gap:8px"><button type="button" class="btn ghost" id="xe-del">Quitar ampliación</button><button class="btn grow" type="submit">Guardar</button></div></form>`);
+  if (!bono) {
+    const hasta = () => { const d = $('#xe-d').value, n = +$('#xe-s').value; if (d && n) $('#xe-h').value = sumaDias(d, n * 7 - 1); };
+    $('#xe-s').addEventListener('input', hasta); $('#xe-d').addEventListener('input', hasta);
+    $('#xe-h').addEventListener('input', () => { const d = $('#xe-d').value, h = $('#xe-h').value; if (d && h && h >= d) $('#xe-s').value = Math.max(1, Math.round((fecha(h) - fecha(d)) / 864e5 / 7 + 1 / 7)); });
+  }
   const guarda = async (nuevaL, dSem, dSes) => {
     const up = { extensiones: nuevaL }; if (dSem) up.duracion_semanas = Math.max(1, (srv.duracion_semanas || 0) + dSem); if (dSes) up.sesiones_incluidas = Math.max(0, (srv.sesiones_incluidas || 0) + dSes);
     const { error } = await sb.from('servicios').update(up).eq('id', srv.id); if (error) return $('#xe-err').textContent = error.message || 'No se ha podido guardar';
@@ -5453,7 +5464,7 @@ function formExtEditar(i) {
   };
   $('#f-exe').addEventListener('submit', e => { e.preventDefault();
     const sem = bono ? 0 : Math.max(1, +$('#xe-s').value || 1), ses = Math.max(0, +$('#xe-p').value || 0);
-    l[i] = { ...x, nombre: $('#xe-n').value.trim() || x.nombre, ...(bono ? {} : { semanas: sem, desde: $('#xe-d').value || x.desde }), sesiones: ses };
+    l[i] = { ...x, nombre: $('#xe-n').value.trim() || x.nombre, ...(bono ? {} : { semanas: sem, desde: $('#xe-d').value || x.desde, hasta: ($('#xe-h').value && $('#xe-h').value !== sumaDias($('#xe-d').value || x.desde, sem * 7 - 1)) ? $('#xe-h').value : undefined }), sesiones: ses };
     guarda(l, bono ? 0 : sem - (x.semanas || 0), ses - (x.sesiones || 0)); });
   $('#xe-del').addEventListener('click', () => { if (!confirm('¿Quitar esta ampliación? Se resta su duración y sus sesiones.')) return; l.splice(i, 1); guarda(l, -(x.semanas || 0), -(x.sesiones || 0)); });
 }
@@ -7232,7 +7243,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v271';
+const APP_VER = 'v272';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
