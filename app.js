@@ -4574,10 +4574,6 @@ function formServicio() {
     <div class="stack" style="gap:8px">${[['entreno', 'Entrenamiento', s.modulo_entreno ?? true], ['nutricion', 'Nutrición · plan de alimentación (pestaña Nutrición y registro de comidas)', s.modulo_nutricion], ['presencial', 'Sesiones presenciales', s.modulo_presencial], ['habitos', 'Hábitos · programa de hábitos (pestaña Hábitos; bonus). Los pasos van aparte', s.modulo_habitos], ['futbol', 'Elite Player · seguimiento de futbolista (wellness, partidos y carga)', s.modulo_futbol], ['oposicion', 'Oposición · Policía Nacional (pruebas físicas, simulacros y nota oficial)', !!s.oposicion]].map(([k, l, v]) => `<label class="row small"><input type="checkbox" id="sv-${k}" ${v ? 'checked' : ''} style="width:20px;height:20px"> ${l}</label>`).join('')}</div>
     <label class="f" id="sv-fase-w" ${s.modulo_nutricion ? '' : 'hidden'}>Fase de la alimentación<select id="sv-fase"><option value="">Automática (activo si tiene plan visible; si no, en preparación)</option>${Object.entries(Nutricion.FASES).map(([k, [l]]) => `<option value="${k}" ${s.nutri_fase === k ? 'selected' : ''}>${l}</option>`).join('')}</select><span class="small muted">En recogida y en preparación no se mide el cumplimiento: el alumno solo registra.</span></label>
     <label class="f" id="sv-com-w" ${s.modulo_nutricion ? '' : 'hidden'}>Comidas de su plan al día <span class="muted">(registro de comidas cumplidas)</span><input type="number" id="sv-com" min="1" max="8" value="${comidasDia(s)}"></label>
-    <div class="card stack" id="sv-prev-w" style="padding:12px;gap:8px"><b class="small">🏋️ Entrenos de su programa ya realizados</b><span class="small" style="color:var(--warn)">No son los entrenamientos contigo: son las sesiones de su planificación que hace por su cuenta (en el gimnasio o en casa).</span>
-      <p class="small muted" style="margin:0" id="sv-prev-txt"></p>
-      <label class="f">¿Cuántos entrenos de su programa ya ha hecho?<input type="number" id="sv-prev" min="0" max="999" value="${S.ficha.previas ?? ''}" placeholder="0"></label>
-      <p class="small muted" style="margin:0">Quedan marcados como hechos en las semanas desde el inicio (sin series registradas), para que su cumplimiento y su número de entreno cuadren. Puedes cambiar el número cuando quieras.</p></div>
     <button class="btn full" type="submit">Guardar</button></form>`);
   /* Tipo de programa: lo que eliges rellena duración, sesiones, módulos y seguimiento (todo sigue editable debajo) */
   const st = { valToc: s.valoracion_inicial != null || s.valoracion_final != null, mod: s.id ? modalidadSrv(s) : null, ptipo: esBono(s) ? 'bono' : s.meses || !s.id ? 'plan' : modalidadSrv(s) === 'presencial' ? 'bono' : 'plan', meses: s.meses || null, frec: s.pt_frecuencia || null, segToc: s.seguimiento != null };
@@ -4664,11 +4660,6 @@ function formServicio() {
   ['#sv-desc', '#sv-desct', '#sv-p0', '#sv-prod'].forEach(q => $(q).addEventListener('input', pintaPago)); $('#sv-desct').addEventListener('change', pintaPago);
   $('#sv-ini').addEventListener('change', () => { if (!s.id) $('#sv-p0').value = $('#sv-ini').value; pintaPago(); });
   pintaPago();
-  const dpwS = S.ficha.prog?.dias_semana || 0;
-  const prevTxt = () => { const ini = $('#sv-ini').value, dur = numero($('#sv-dur').value), sem = ini ? Math.max(0, Math.floor((fecha(lunesDe(hoyISO())) - fecha(lunesDe(ini))) / 6048e5)) : 0;
-    $('#sv-prev-txt').innerHTML = !dpwS ? 'Asígnale primero un programa con días por semana para calcular los entrenos incluidos.' : `Su programa incluye <b>${dpwS} entrenos por semana</b>${dur ? ` · <b>${dpwS * dur}</b> en las ${dur} semanas` : ''}. Desde el inicio hasta esta semana han pasado ${sem} ${sem === 1 ? 'semana' : 'semanas'}: hasta <b>${dpwS * sem}</b> entrenos.`;
-    $('#sv-prev').placeholder = dpwS && sem ? `Ej. ${dpwS * sem}` : '0'; };
-  prevTxt(); $('#sv-ini').addEventListener('input', prevTxt); $('#sv-dur').addEventListener('input', prevTxt);
   const spvTxt = () => { const n = numero($('#sv-pres').value), h = numero($('#sv-spv').value); $('#sv-spv-t').textContent = n ? `${h || 0} de ${n} hechos · le quedan ${Math.max(0, n - (h || 0))}${h > n ? ' (has puesto más de los incluidos)' : ''}` : ''; };
   spvTxt(); ['#sv-pres', '#sv-spv'].forEach(q => $(q).addEventListener('input', spvTxt)); ['#sv-mod', '#sv-meses', '#sv-lleva'].forEach(q => $(q)?.addEventListener('click', () => setTimeout(spvTxt)));
   $('#sv-nutricion').addEventListener('change', ev => { $('#sv-com-w').hidden = !ev.target.checked; $('#sv-fase-w').hidden = !ev.target.checked; });
@@ -4716,7 +4707,8 @@ function formServicio() {
     if (error) return fallo(error);
     if (cuotas.length) { let { error: ep } = await sb.from('pagos').insert(cuotas.map(c => ({ ...c, alumno_id: S.ficha.id, tarifa: tSel.id })));
       if (ep && /tarifa/.test(ep.message || '')) ({ error: ep } = await sb.from('pagos').insert(cuotas.map(c => ({ ...c, alumno_id: S.ficha.id })))); toast(ep ? 'Servicio guardado, pero el plan de pagos no: ' + (ep.message || '') : `Plan de pagos creado: ${cuotas.length} cuota${cuotas.length === 1 ? '' : 's'}`); }
-    const np = $('#sv-prev').value === '' ? null : Math.max(0, +$('#sv-prev').value || 0);
+    /* Los entrenos del programa no se apuntan aquí: dependen de su planificación y de cada bloque */
+    const np = !$('#sv-prev') || $('#sv-prev').value === '' ? null : Math.max(0, +$('#sv-prev').value || 0);
     if (np != null && np !== (S.ficha.previas || 0)) { const m = await fijarPrevias(S.ficha.id, row.inicio, np); if (m) toast(m); }
     cerrarSheet(); toast('Servicio guardado'); await cargarCoach(); if (S.ficha.id === S.user.id) await cargarAlumno(S.user.id); abrirFicha(S.ficha.id);
   });
@@ -7193,7 +7185,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v267';
+const APP_VER = 'v268';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
