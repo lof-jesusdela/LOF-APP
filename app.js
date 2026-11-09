@@ -4559,6 +4559,8 @@ function vBarraBloque() {
 }
 function formServicio() {
   const s = S.ficha.srv || {}, regPrev = +(extensionesDe(s).find(x => x.tipo === 'regalo') || {}).sesiones || 0;
+  /* Sesiones de sus ampliaciones y bonos extra: se suman solas al total; aquí solo se escriben las del programa base */
+  const sesExt = extensionesDe(s).filter(x => x.tipo !== 'regalo').reduce((t, x) => t + (+x.sesiones || 0), 0);
   abrirSheet(`<form class="stack" id="f-srv"><h2>Servicio</h2>
     <label class="f">Programa / producto contratado<input type="text" id="sv-prod" list="sv-prods" value="${esc(s.producto || '')}" placeholder="Ej. Plan Integral 6 meses" required></label>
     <datalist id="sv-prods">${[...new Set(['Plan Integral 3 meses', 'Plan Integral 6 meses', 'Plan Integral 10 meses', 'Plan Entrenamiento 3 meses', 'Plan Entrenamiento 6 meses', 'Bono 10 sesiones presenciales', 'Bono 15 sesiones presenciales', 'Zero to Fit · Integral', 'Élite Player', ...S.c.servicios.map(x => x.producto).filter(Boolean)])].map(v => `<option value="${esc(v)}">`).join('')}</datalist>
@@ -4597,7 +4599,7 @@ function formServicio() {
     <label class="f">Fecha de fin<input type="date" id="sv-fin" value="${s.fin_manual || ''}" ${s.fin_manual ? 'data-man="1"' : ''}><small class="muted" id="sv-fin-t">Se calcula sola con el inicio y las semanas. Cámbiala si lo alargas o acortas; su extensión puede empezar después, aunque haya un hueco.</small></label>
     <label class="row small"><input type="checkbox" id="sv-pasoson" ${conPasos(s) && !(s.id == null && false) ? 'checked' : ''} style="width:20px;height:20px"> Seguimiento de pasos diarios <span class="muted">(desmárcalo para futbolistas o alumnos en buena composición)</span></label>
     <label class="f" id="sv-pasos-w" ${conPasos(s) ? '' : 'hidden'}>Objetivo de pasos diarios<input type="number" id="sv-pasos" min="0" step="500" value="${s.objetivo_pasos || ''}" placeholder="${PASOS_DEF}"></label>
-    <label class="f" id="sv-pres-w"><span id="sv-pres-l">Sesiones presenciales incluidas (bono)</span><input type="number" id="sv-pres" min="0" max="300" value="${(s.sesiones_incluidas || 0) - regPrev || ''}" placeholder="Ej. 15"></label>
+    <label class="f" id="sv-pres-w"><span id="sv-pres-l">Sesiones presenciales incluidas (bono)</span><input type="number" id="sv-pres" min="0" max="300" value="${Math.max(0, (s.sesiones_incluidas || 0) - regPrev - sesExt) || ''}" placeholder="Ej. 15">${sesExt ? `<span class="small muted">Solo las del programa. Sus ampliaciones suman <b>${sesExt}</b> más y se añaden solas al total.</span>` : ''}</label>
     <div class="stack" id="sv-reg-w" style="gap:8px"><label class="f">Entrenamientos extra de regalo o promoción <span class="muted small">(se suman a los del plan)</span><input type="number" id="sv-reg" min="0" max="200" value="${regPrev || ''}" placeholder="0"></label>
       <label class="f" id="sv-regc-w" ${regPrev ? '' : 'hidden'}>¿Qué promoción es?<input type="text" id="sv-regc" value="${esc((extensionesDe(s).find(x => x.tipo === 'regalo') || {}).nombre || '')}" placeholder="Ej. Black Friday 2026, referido, regalo de bienvenida"></label></div>
     <label class="f" id="sv-spv-w">De esos entrenamientos contigo, ¿cuántos ya habéis hecho antes de la app? <span class="muted small">(cuentan como usados)</span><input type="number" id="sv-spv" min="0" max="500" value="${s.sesiones_previas || ''}" placeholder="0"><span class="small muted" id="sv-spv-t"></span></label>
@@ -4727,7 +4729,7 @@ function formServicio() {
     if ($('#sv-fase').value || s.nutri_fase) row.nutri_fase = $('#sv-fase').value || null;
     { const reg = Math.max(0, numero($('#sv-reg').value) || 0), regc = $('#sv-regc').value.trim();
       if (reg || regPrev) { const ext = extensionesDe(s).filter(x => x.tipo !== 'regalo'); if (reg) ext.push({ nombre: regc || 'Entrenamientos de regalo', tipo: 'regalo', sesiones: reg, fecha: $('#sv-ini').value || hoyISO() }); row.extensiones = ext; }
-      if (reg || regPrev || row.sesiones_incluidas != null) row.sesiones_incluidas = (row.sesiones_incluidas || 0) + reg; }
+      if (reg || regPrev || sesExt || row.sesiones_incluidas != null) row.sesiones_incluidas = (row.sesiones_incluidas || 0) + reg + (cambioProg() && $('#sv-cmb')?.checked ? 0 : sesExt); }
     const guardar = r => s.id ? sb.from('servicios').update(r).eq('id', s.id) : sb.from('servicios').insert(r);
     if (vals) Object.assign(row, vals);
     const tSel = tarifa(), mano = $('#sv-tar').value === '__mano';
@@ -7328,7 +7330,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v277';
+const APP_VER = 'v278';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
