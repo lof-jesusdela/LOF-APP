@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
 
   const desde = new Date(Date.now() - 60 * 864e5).toISOString().slice(0, 10);
   const [{ data: pres }, { data: per }] = await Promise.all([
-    admin.from("presenciales").select("id,alumno_id,fecha,hora,estado,tipo,nota").gte("fecha", desde).neq("estado", "cancelada").order("fecha"),
+    admin.from("presenciales").select("id,alumno_id,fecha,hora,estado,tipo,nota,persona,duracion_min").gte("fecha", desde).neq("estado", "cancelada").order("fecha"),
     admin.from("perfiles").select("id,nombre"),
   ]);
   const nom = Object.fromEntries((per || []).map((p: any) => [p.id, p.nombre || "Alumno"]));
@@ -33,12 +33,12 @@ Deno.serve(async (req) => {
     "X-WR-CALNAME:LOF · Sesiones", "X-WR-TIMEZONE:Europe/Madrid", "REFRESH-INTERVAL;VALUE=DURATION:PT1H", "X-PUBLISHED-TTL:PT1H"];
   for (const p of pres || []) {
     if (!p.fecha) continue;
-    const quien = nom[p.alumno_id] || "Alumno", tipo = p.tipo || "Entrenamiento";
+    const tipo = p.tipo || "Entrenamiento", quien = p.alumno_id ? nom[p.alumno_id] || "Alumno" : p.persona || "", dur = p.duracion_min || min;
     const hecho = p.estado === "dada" || p.estado === "tarde";
     L.push("BEGIN:VEVENT", `UID:pres-${p.id}@laobrafitness`, `DTSTAMP:${ahora}`);
-    if (p.hora) L.push(`DTSTART;TZID=Europe/Madrid:${f8(p.fecha)}T${hm(p.hora)}`, `DTEND;TZID=Europe/Madrid:${sumaMin(p.fecha, p.hora, min)}`);
+    if (p.hora) L.push(`DTSTART;TZID=Europe/Madrid:${f8(p.fecha)}T${hm(p.hora)}`, `DTEND;TZID=Europe/Madrid:${sumaMin(p.fecha, p.hora, dur)}`);
     else L.push(`DTSTART;VALUE=DATE:${f8(p.fecha)}`, `DTEND;VALUE=DATE:${diaSig(p.fecha)}`);
-    L.push(`SUMMARY:${esc(`${hecho ? "✓ " : ""}${quien} · ${tipo}`)}`, `DESCRIPTION:${esc([p.nota, "Programada en la app de La Obra Fitness"].filter(Boolean).join("\n"))}`, "STATUS:CONFIRMED", "END:VEVENT");
+    L.push(`SUMMARY:${esc(`${hecho ? "✓ " : ""}${p.alumno_id ? `${quien} · ${tipo}` : `${tipo}${quien ? " · " + quien : ""}`}`)}`, `DESCRIPTION:${esc([p.nota, "Programada en la app de La Obra Fitness"].filter(Boolean).join("\n"))}`, "STATUS:CONFIRMED", "END:VEVENT");
   }
   L.push("END:VCALENDAR");
   return new Response(L.join("\r\n") + "\r\n", { headers: { "Content-Type": "text/calendar; charset=utf-8", "Cache-Control": "no-cache" } });
