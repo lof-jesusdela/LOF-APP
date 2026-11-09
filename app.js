@@ -1256,7 +1256,8 @@ function cadenasDe(L, ag) {
   const junta = g => /juntos|super\s*(serie|set)|circuito/i.test(g || ''), out = [];
   /* Números citados en las indicaciones de superserie («5 y 6 juntos», «superserie 2, 3 y 4»): ejercicios nº N del bloque que van seguidos */
   const liga = new Set();
-  [ag, ...L.map(e => e.grupo)].filter(junta).forEach(t => {
+  /* Solo cuentan los números de la frase que habla de la superserie («Aproximación en 1 y 2. Superserie: 4 y 5» → solo 4 y 5) */
+  [ag, ...L.map(e => e.grupo)].flatMap(t => String(t || '').split(/[.;\n]+/)).filter(junta).forEach(t => {
     [...String(t).matchAll(/\b(\d{1,2})(?:\s*(?:y|e|,|\+|-|a|con)\s*(\d{1,2}))+\b/gi)].forEach(m => {
       const ns = (m[0].match(/\d{1,2}/g) || []).map(Number).sort((a, b) => a - b);
       if (ns.length > 1 && ns.every((n, k) => n >= 1 && n <= L.length && (!k || n === ns[k - 1] + 1))) ns.slice(1).forEach(n => liga.add(n - 1));
@@ -1264,7 +1265,7 @@ function cadenasDe(L, ag) {
   });
   L.forEach((e, i) => {
     const p = L[i - 1];
-    const enlaza = p && (liga.has(i) || ((p.descanso_seg ?? 60) === 0 || junta(p.grupo)) && !(junta(e.grupo) && e.grupo !== p.grupo));
+    const enlaza = p && !SEPARADO.test(p.grupo || '') && (liga.has(i) || ((p.descanso_seg ?? 60) === 0 || junta(p.grupo)) && !(junta(e.grupo) && e.grupo !== p.grupo));
     if (enlaza) out[out.length - 1].push(e); else out.push([e]);
   });
   return out;
@@ -7271,6 +7272,7 @@ function edEjercicios(b, fila) {
   return out;
 }
 const SS_AUTO = 'Superserie con el siguiente ejercicio';
+const SS_SEP = 'Separado del siguiente', SEPARADO = /^separado del siguiente$/i;
 /* Superserie unilateral: 1 con un lado, 2 con el mismo lado, y luego 1 y 2 con el otro lado */
 async function ssUniToggle(id) {
   const todos = S.editor.prog.dias.flatMap(d => d.bloques_sesion).flatMap(b => b.ejercicios_sesion), e = todos.find(x => x.id === id); if (!e) return;
@@ -7285,17 +7287,19 @@ async function ssPausa(id, seg) {
   const pauta = Array.isArray(e.pauta) && e.pauta.length ? e.pauta.map((t, k, a) => k === a.length - 1 ? { ...t, d: seg } : t) : e.pauta;
   const junta = /juntos|super\s*(serie|set)|circuito/i.test(e.grupo || '');
   const row = { descanso_seg: seg, pauta };
-  if (seg > 0 && !junta) row.grupo = SS_AUTO;                 // con pausa, la unión la marca el texto (si no, descanso 0 ya los une)
+  if (SEPARADO.test(e.grupo || '')) row.grupo = seg > 0 ? SS_AUTO : null;
+  else if (seg > 0 && !junta) row.grupo = SS_AUTO;                 // con pausa, la unión la marca el texto (si no, descanso 0 ya los une)
   if (seg === 0 && e.grupo === SS_AUTO) row.grupo = null;     // sin pausa vuelve a unirlos el descanso 0
   const { error } = await sb.from('ejercicios_sesion').update(row).eq('id', id); if (error) return fallo(error);
   toast(seg ? `Superserie con ${seg} s de pausa entre los dos ejercicios` : 'Superserie sin pausa entre los dos ejercicios'); refrescarEditor();
 }
 async function ssCambiar(id, juntar) {
   const e = S.editor.prog.dias.flatMap(d => d.bloques_sesion).flatMap(b => b.ejercicios_sesion).find(x => x.id === id); if (!e) return;
-  const des = juntar ? 0 : 90, pauta = Array.isArray(e.pauta) && e.pauta.length ? e.pauta.map((t, k, a) => k === a.length - 1 ? { ...t, d: des } : t) : e.pauta;
-  const row = { descanso_seg: des, pauta }; if (!juntar && /juntos|super\s*(serie|set)|circuito/i.test(e.grupo || '')) row.grupo = null;
+  /* Al separar se conserva su descanso (solo si no tenía, 0, se le pone 1:30); al juntar se quita la marca de «separado» */
+  const tenia = +e.descanso_seg || 0, des = juntar ? 0 : tenia > 0 ? tenia : 90, pauta = Array.isArray(e.pauta) && e.pauta.length ? e.pauta.map((t, k, a) => k === a.length - 1 ? { ...t, d: des } : t) : e.pauta;
+  const row = { descanso_seg: des, pauta, grupo: juntar ? (SEPARADO.test(e.grupo || '') ? null : e.grupo ?? null) : SS_SEP };
   const { error } = await sb.from('ejercicios_sesion').update(row).eq('id', id); if (error) return fallo(error);
-  toast(juntar ? 'Juntos en superserie (sin descanso entre ellos)' : 'Separados: 1 min 30 s de descanso (cámbialo al editar el ejercicio)'); refrescarEditor();
+  toast(juntar ? 'Juntos en superserie (sin descanso entre ellos)' : `Separados · descanso de ${des >= 60 ? (des % 60 ? `${Math.floor(des / 60)}:${String(des % 60).padStart(2, '0')}` : des / 60 + ' min') : des + ' s'}`); refrescarEditor();
 }
 async function separarEj(id) {
   const dia = S.editor.prog.dias.find(d => d.bloques_sesion.some(b => b.ejercicios_sesion.some(e => e.id === id))); if (!dia) return;
@@ -7438,7 +7442,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v285';
+const APP_VER = 'v286';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
