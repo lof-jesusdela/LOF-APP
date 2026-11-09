@@ -2923,7 +2923,7 @@ function vFutbolHoy() {
 function formPartido(id, alumnoId, fechaDef = null) {
   const lista = alumnoId ? (S.c.partidos || []) : (S.d.partidos || []), p = id ? lista.find(x => x.id === id) || {} : {};
   abrirSheet(`<form class="stack" id="f-pt"><h2>${id ? 'Partido' : 'Nuevo partido'}</h2>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Fecha<input type="date" id="pt-f" value="${p.fecha || fechaDef || ''}" required></label><label class="f">Hora<input type="time" id="pt-h" value="${esc(p.hora || '')}"></label></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Fecha<input type="date" id="pt-f" value="${p.fecha || fechaDef || ''}" required></label><label class="f">Hora${inHora('pt-h', p.hora)}</label></div>
     <label class="f">Rival<input type="text" id="pt-r" value="${esc(p.rival || '')}" placeholder="Ej. Rayo B"></label>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">¿Dónde?<select id="pt-l"><option value="1" ${p.local !== false ? 'selected' : ''}>En casa</option><option value="0" ${p.local === false ? 'selected' : ''}>Fuera</option></select></label><label class="f">Competición<input type="text" id="pt-c" value="${esc(p.competicion || '')}" placeholder="Liga, Copa, amistoso…"></label></div>
     <label class="f">Lugar<input type="text" id="pt-lu" value="${esc(p.lugar || '')}" placeholder="Ej. Estadio Pradoviejo"></label>
@@ -2936,7 +2936,8 @@ function formPartido(id, alumnoId, fechaDef = null) {
   $('#pt-del')?.addEventListener('click', async () => { if (!confirm('¿Eliminar este partido?')) return; const { error } = await sb.from('partidos').delete().eq('id', id); if (error) return fallo(error); toast('Partido eliminado'); recargar(); });
   $('#f-pt').addEventListener('submit', async e => {
     e.preventDefault();
-    const row = { alumno_id: alumnoId || uidSes(), fecha: $('#pt-f').value, hora: $('#pt-h').value || null, rival: $('#pt-r').value.trim() || null, local: $('#pt-l').value === '1', competicion: $('#pt-c').value.trim() || null, nivel: $('#pt-n').value || null };
+    const hP = normHora($('#pt-h').value); if (hP === undefined) return toast('Hora no válida: escríbela así, 17:00 o 9:30');
+    const row = { alumno_id: alumnoId || uidSes(), fecha: $('#pt-f').value, hora: hP, rival: $('#pt-r').value.trim() || null, local: $('#pt-l').value === '1', competicion: $('#pt-c').value.trim() || null, nivel: $('#pt-n').value || null };
     const lu = $('#pt-lu').value.trim(), de = $('#pt-de').value.trim(), fi = $('#pt-img')?.files[0];
     if (lu || p.lugar) row.lugar = lu || null; if (de || p.descripcion) row.descripcion = de || null;
     if (fi) { try { row.imagen_url = await subirImagenEj(fi, `partido-${Date.now()}`, 600); } catch (err) { console.error(err); return toast(motivoImg(err)); } }
@@ -3370,7 +3371,7 @@ function vCalSemana({ w, p, ses = [], pres = [], todos, DP, H, PS, lunes, aid, a
   const nomDia = id => { const d = dDe(id); return d ? `Día ${d.numero || ''} · ${d.nombre || ''}`.replace(/ · $/, '') : 'Sesión'; };
   const chip = (c, t, sub, op, id) => `<${id && alumno ? `button type="button" data-act="abrirDia" data-id="${id}"` : 'div'} style="display:block;width:100%;text-align:left;border:0;border-radius:8px;padding:5px 7px;background:${c};color:#fff;opacity:${op ? .55 : 1};font-size:12px;line-height:1.25${id && alumno ? ';cursor:pointer' : ''}"><b>${t}</b>${sub ? `<div style="opacity:.9">${sub}</div>` : ''}${id && alumno ? '<div style="opacity:.9;font-weight:700">Abrir ›</div>' : ''}</${id && alumno ? 'button' : 'div'}>`;
   const col = [...Array(7)].map((_, i) => { const d = sumaDias(lunes, i), M = mdDe(p, d), fut = d > hoy, out = [];
-    p.filter(x => x.fecha === d).forEach(x => out.push(chip('#0f766e', '⚽ Partido', esc([x.hora, x.rival].filter(Boolean).join(' · ')))));
+    p.filter(x => x.fecha === d).forEach(x => out.push(chip('#0f766e', '⚽ Partido', esc([hhmm(x.hora), x.rival].filter(Boolean).join(' · ')))));
     const dd = wDe(w, d, 'diario');
     if (dd?.datos?.eq_min) out.push(chip('#2563eb', '🏟 Equipo', `${dd.datos.eq_min} min${dd.datos.eq_rpe ? ' · RPE ' + dd.datos.eq_rpe : ''}`));
     else if (H[i] != null && !p.some(x => x.fecha === d) && !(dd && dd.datos?.eq_min === 0)) out.push(chip('#2563eb', '🏟 Equipo', esc(H[i] || 'previsto'), true));
@@ -7576,7 +7577,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v295';
+const APP_VER = 'v296';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
