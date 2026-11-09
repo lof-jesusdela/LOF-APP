@@ -1032,7 +1032,7 @@ function vHoy() {
       <p class="frase-hoy">${esc(S.perfil.frase_motivacion || FRASE_DEF)}</p></div>${avatarDe(S.perfil, 72)}</div>
     ${objetivoDe(S.d.ruta) ? `<div style="border-top:1px solid rgba(255,255,255,.14);padding-top:12px" class="stack"><span class="eyebrow">Tu objetivo</span><div class="small">${esc(objetivoDe(S.d.ruta))}</div></div>` : ''}
   </section>
-  ${s.modulo_futbol ? vCalFutAlumno() : ''}
+  ${s.modulo_futbol ? vCalFutAlumno() : (s.modulo_entreno ?? true) ? vCalPlanAlumno() : ''}
   ${Acomp.tarjetaEstadoHoy()}
   ${vAvisoContexto()}
   ${vAvisosHoy()}
@@ -3366,9 +3366,25 @@ function vCalFutAlumno() {
   return vCalSemana({ w: D.wellness || [], p: D.partidos || [], ses: D.sesiones || [], pres: D.presenciales || [], todos: [D.programa, D.programaBase, ...(D.contextos || []), ...(D.alternativos || [])].filter(Boolean).flatMap(q => q.dias || []),
     DP: (pr?.dias || []).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0)), H: h.eq, PS: h.plan, lunes: S.semFutA || lunesDe(hoyISO()), alumno: true });
 }
-function vCalSemana({ w, p, ses = [], pres = [], todos, DP, H, PS, lunes, aid, alumno }) {
+/* Alumnos que no son futbolistas: su semana con lo que planificó (plan_semana) o, si el programa va por días de la semana, por esos días */
+function vCalPlanAlumno() {
+  const D = S.d, pr = D.programa; if (!pr?.dias?.length) return '';
+  const lunes = S.semFutA || lunesDe(hoyISO()), fin = sumaDias(lunes, 6), DP = pr.dias.filter(d => !d.oculto).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0));
+  const todos = [D.programa, D.programaBase, ...(D.contextos || []), ...(D.alternativos || [])].filter(Boolean).flatMap(q => q.dias || []), dDe = id => todos.find(d => d.id === id);
+  const ses = (D.sesiones || []).filter(x => !x.previa), ix = d => [0, 1, 2, 3, 4, 5, 6].find(k => esDia(d, norm(DSEM_L[k])));
+  const PS = {};
+  if (DP.every(d => ix(d) != null)) DP.forEach(d => { PS[d.numero] = ix(d); });
+  else { const pl = (planDe(lunes)?.dias || []).slice().sort((a, b) => a - b), hechoN = new Set(ses.filter(x => x.fecha >= lunes && x.fecha <= fin).map(x => dDe(x.dia_id)?.numero));
+    const conSes = new Set(ses.filter(x => x.fecha >= lunes && x.fecha <= fin).map(x => (fecha(x.fecha).getDay() + 6) % 7)), libres = pl.filter(k => !conSes.has(k));
+    DP.filter(d => !hechoN.has(d.numero) && d.tipo_dia !== 'descanso').forEach((d, k) => { if (libres[k] != null) PS[d.numero] = libres[k]; }); }
+  const sinPlan = !Object.keys(PS).length && lunes >= lunesDe(hoyISO());
+  return vCalSemana({ w: [], p: [], ses, pres: D.presenciales || [], todos, DP, H: {}, PS, lunes, alumno: true, fut: false })
+    .replace('</div></section>', sinPlan && usaPlan() ? `<div class="small muted">Planifica tus días de entreno de esta semana y aquí verás qué te toca cada día.</div></div></section>` : '</div></section>');
+}
+function vCalSemana({ w, p, ses = [], pres = [], todos, DP, H, PS, lunes, aid, alumno, fut = true }) {
   const hoy = hoyISO(), L = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'], dDe = id => todos.find(d => d.id === id);
-  const nomDia = id => { const d = dDe(id); return d ? `Día ${d.numero || ''} · ${d.nombre || ''}`.replace(/ · $/, '') : 'Sesión'; };
+  const lab = d => { const t = d.titulo || (/^d[ií]a \d+$/i.test(d.nombre || '') ? '' : d.nombre); return `Día ${d.numero || ''}${t ? ' · ' + t : ''}`; };
+  const nomDia = id => { const d = dDe(id); return d ? lab(d) : 'Sesión'; };
   const chipP = x => alumno ? chip('#0f766e', '⚽ Partido', esc([hhmm(x.hora), x.rival].filter(Boolean).join(' · ')))
     : `<button type="button" data-act="partido" data-al="${aid}" data-id="${x.id}" style="display:block;width:100%;text-align:left;border:0;border-radius:8px;padding:5px 7px;background:#0f766e;color:#fff;font-size:12px;line-height:1.25;cursor:pointer"><b>⚽ Partido</b><div style="opacity:.9">${esc([hhmm(x.hora), x.rival].filter(Boolean).join(' · '))}</div><div style="opacity:.9;font-weight:700">Editar ›</div></button>`;
   const chip = (c, t, sub, op, id) => `<${id && alumno ? `button type="button" data-act="abrirDia" data-id="${id}"` : 'div'} style="display:block;width:100%;text-align:left;border:0;border-radius:8px;padding:5px 7px;background:${c};color:#fff;opacity:${op ? .55 : 1};font-size:12px;line-height:1.25${id && alumno ? ';cursor:pointer' : ''}"><b>${t}</b>${sub ? `<div style="opacity:.9">${sub}</div>` : ''}${id && alumno ? '<div style="opacity:.9;font-weight:700">Abrir ›</div>' : ''}</${id && alumno ? 'button' : 'div'}>`;
@@ -3380,15 +3396,15 @@ function vCalSemana({ w, p, ses = [], pres = [], todos, DP, H, PS, lunes, aid, a
     ses.filter(x => x.fecha === d && !x.previa).forEach(x => out.push(chip('#c2410c', '💪 ' + (alumno ? 'Tu sesión' : 'LOF'), esc(nomDia(x.dia_id)) + (x.estado === 'parcial' ? ' · a medias' : ' · hecha'), false, x.dia_id)));
     if (!ses.some(x => x.fecha === d) && dd?.datos?.lof_rpe) out.push(chip('#c2410c', '💪 LOF', `RPE ${dd.datos.lof_rpe}`));
     DP.filter(x => PS[x.numero] !== '' && PS[x.numero] != null && +PS[x.numero] === i).forEach(x => { const hecho = ses.some(z => z.fecha >= lunes && z.fecha <= sumaDias(lunes, 6) && dDe(z.dia_id)?.numero === x.numero);   /* si ya lo hizo otro día de esa semana, no sale como pendiente */
-      if (!hecho) out.push(chip('#c2410c', '💪 ' + (alumno ? 'Tu sesión' : 'LOF'), esc(`Día ${x.numero} · ${x.nombre || ''}`) + (d < hoy ? ' · no hecho' : ''), true, x.id)); });
+      if (!hecho) out.push(chip('#c2410c', '💪 ' + (alumno ? 'Tu sesión' : 'LOF'), esc(lab(x)) + (d < hoy ? ' · no hecho' : ''), true, x.id)); });
     pres.filter(x => x.fecha === d && x.estado !== 'cancelada').forEach(x => out.push(chip('#7c3aed', alumno ? '📍 Con Jesús' : '📍 Contigo', esc([hhmm(x.hora), x.tipo].filter(Boolean).join(' · ')), x.estado === 'programada' && fut)));
     return `<div class="stack" style="gap:5px;min-width:0;padding:6px;border-radius:10px;background:${d === hoy ? 'var(--surface-2, #eef3ff)' : 'transparent'};border:1px solid var(--line)">
-      <div style="text-align:center"><b class="small">${L[i]} ${+d.slice(8)}</b>${M.md ? `<div class="small" style="font-weight:700;color:${M.md === 'MD' ? '#0f766e' : 'var(--muted)'}">${M.md}</div>` : ''}</div>${out.join('') || '<span class="small muted" style="text-align:center">—</span>'}</div>`; }).join('');
+      <div style="text-align:center"><b class="small">${L[i]} ${+d.slice(8)}</b>${fut && M.md ? `<div class="small" style="font-weight:700;color:${M.md === 'MD' ? '#0f766e' : 'var(--muted)'}">${M.md}</div>` : ''}</div>${out.join('') || '<span class="small muted" style="text-align:center">—</span>'}</div>`; }).join('');
   const nav = k => `data-act="${alumno ? 'futSemA' : 'futSem'}" data-l="${sumaDias(lunes, k)}"`;
   return `<section class="section" style="grid-column:1/-1;column-span:all;-webkit-column-span:all"><div class="section-head"><h2>${alumno ? 'Tu semana' : 'Calendario de la semana'}</h2><span class="row" style="gap:6px">${alumno ? '' : `<button class="btn sm ghost" data-act="partido" data-al="${aid}">＋ Partido</button><button class="btn sm ghost" data-act="futEquipo" data-al="${aid}">🗓 Horario de la semana</button>`}<button class="btn sm ghost" ${nav(-7)} aria-label="Semana anterior">◀</button><button class="btn sm ghost" ${nav(7)} aria-label="Semana siguiente">▶</button></span></div>
     <div class="card stack"><div class="small muted">Del ${esc(fCorta(lunes))} al ${esc(fCorta(sumaDias(lunes, 6)))}${lunes === lunesDe(hoy) ? ' · esta semana' : ''} · claro = previsto, fuerte = hecho${alumno ? ' · toca tu sesión para abrirla' : ''}</div>
       <div style="overflow-x:auto"><div style="display:grid;grid-template-columns:repeat(7,minmax(92px,1fr));gap:6px">${col}</div></div>
-      <div class="row small" style="gap:12px;flex-wrap:wrap"><span>⚽ Partido</span><span>🏟 Equipo</span><span>💪 ${alumno ? 'Tu sesión' : 'Tu sesión (online)'}</span><span>📍 ${alumno ? 'Con Jesús' : 'Sesión contigo'}</span></div></div></section>`;
+      <div class="row small" style="gap:12px;flex-wrap:wrap">${fut ? '<span>⚽ Partido</span><span>🏟 Equipo</span>' : ''}<span>💪 ${alumno ? 'Tu sesión' : 'Tu sesión (online)'}</span><span>📍 ${alumno ? 'Con Jesús' : 'Sesión contigo'}</span></div></div></section>`;
 }
 function formEquipo(aid) {
   const H = horarioEq(aid), L = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'], { w } = futDe(aid), sw = w.filter(x => x.tipo === 'semana').sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
@@ -7589,7 +7605,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v299';
+const APP_VER = 'v300';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
