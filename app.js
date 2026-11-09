@@ -3348,10 +3348,14 @@ function vSemanaCal(a) {
       ${sel ? (ents.length || plan ? [...ents, ...(plan ? [plan] : [])].map(detalleW).join('') : `<div class="small muted">${esc(fLarga(sel))}: no rellenó nada${sel > hoy ? ' (todavía no ha llegado)' : ''}.</div>`) : ''}</div></section>`;
 }
 /* Calendario de la semana del futbolista: partido, entrenos con el equipo (hechos por su check-in o previstos por su horario) y tus sesiones */
+const planSem = id => { try { return JSON.parse(S.c.fiscal?.['plansem_' + id] || '{}') || {}; } catch (e) { return {}; } };
+const diasProg = f => { const pr = ctxEnSemana(f.contextos || [], lunesDe(hoyISO())) || f.progFull || f.prog; return (pr?.dias || []).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0)); };
 const horarioEq = id => { try { return JSON.parse(S.c.fiscal?.['equipo_' + id] || '{}') || {}; } catch (e) { return {}; } };
 function vCalFut(a) {
   const f = S.ficha, hoy = hoyISO(), lunes = f.semFut || lunesDe(hoy), { w, p } = futDe(a.id), H = horarioEq(a.id), L = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-  const nomDia = id => (f.prog?.dias || []).find(d => d.id === id)?.nombre || 'Sesión';
+  const todos = [f.progFull, f.prog, ...(f.contextos || [])].flatMap(x => x?.dias || []), dDe = id => todos.find(d => d.id === id);
+  const nomDia = id => { const d = dDe(id); return d ? `Día ${d.numero || ''} · ${d.nombre || ''}`.replace(/ · $/, '') : 'Sesión'; };
+  const PS = planSem(a.id), DP = diasProg(f);
   const chip = (c, t, sub, op) => `<div style="border-radius:8px;padding:5px 7px;background:${c};color:#fff;opacity:${op ? .55 : 1};font-size:12px;line-height:1.25"><b>${t}</b>${sub ? `<div style="opacity:.9">${sub}</div>` : ''}</div>`;
   const col = [...Array(7)].map((_, i) => { const d = sumaDias(lunes, i), M = mdDe(p, d), fut = d > hoy, out = [];
     p.filter(x => x.fecha === d).forEach(x => out.push(chip('#0f766e', '⚽ Partido', esc([x.hora, x.rival].filter(Boolean).join(' · ')))));
@@ -3360,24 +3364,30 @@ function vCalFut(a) {
     else if (H[i] != null && !p.some(x => x.fecha === d) && !(dd && dd.datos?.eq_min === 0)) out.push(chip('#2563eb', '🏟 Equipo', esc(H[i] || 'previsto'), true));
     (f.ses || []).filter(x => x.fecha === d).forEach(x => out.push(chip('#c2410c', '💪 LOF', esc(nomDia(x.dia_id)) + (x.estado === 'parcial' ? ' · a medias' : ''))));
     if (!(f.ses || []).some(x => x.fecha === d) && dd?.datos?.lof_rpe) out.push(chip('#c2410c', '💪 LOF', `RPE ${dd.datos.lof_rpe}`));
+    DP.filter(x => +PS[x.numero] === i && PS[x.numero] !== '' && PS[x.numero] != null).forEach(x => { const hecho = (f.ses || []).some(z => z.fecha >= lunes && z.fecha <= sumaDias(lunes, 6) && dDe(z.dia_id)?.numero === x.numero);   /* si ya lo hizo otro día de esa semana, no sale como pendiente */ if (!hecho) out.push(chip('#c2410c', '💪 LOF', esc(`Día ${x.numero} · ${x.nombre || ''}`) + (d < hoy ? ' · no hecho' : ''), true)); });
     (f.pres || []).filter(x => x.fecha === d && x.estado !== 'cancelada').forEach(x => out.push(chip('#7c3aed', '📍 Contigo', esc([hhmm(x.hora), x.tipo].filter(Boolean).join(' · ')), x.estado === 'programada' && fut)));
     return `<div class="stack" style="gap:5px;min-width:0;padding:6px;border-radius:10px;background:${d === hoy ? 'var(--surface-2, #eef3ff)' : 'transparent'};border:1px solid var(--line)">
       <div style="text-align:center"><b class="small">${L[i]} ${+d.slice(8)}</b>${M.md ? `<div class="small" style="font-weight:700;color:${M.md === 'MD' ? '#0f766e' : 'var(--muted)'}">${M.md}</div>` : ''}</div>${out.join('') || '<span class="small muted" style="text-align:center">—</span>'}</div>`; }).join('');
-  return `<section class="section"><div class="section-head"><h2>Calendario de la semana</h2><span class="row" style="gap:6px"><button class="btn sm ghost" data-act="futEquipo" data-al="${a.id}">Horario del equipo</button><button class="btn sm ghost" data-act="futSem" data-l="${sumaDias(lunes, -7)}" aria-label="Semana anterior">◀</button><button class="btn sm ghost" data-act="futSem" data-l="${sumaDias(lunes, 7)}" aria-label="Semana siguiente">▶</button></span></div>
+  return `<section class="section"><div class="section-head"><h2>Calendario de la semana</h2><span class="row" style="gap:6px"><button class="btn sm ghost" data-act="futEquipo" data-al="${a.id}">🗓 Horario de la semana</button><button class="btn sm ghost" data-act="futSem" data-l="${sumaDias(lunes, -7)}" aria-label="Semana anterior">◀</button><button class="btn sm ghost" data-act="futSem" data-l="${sumaDias(lunes, 7)}" aria-label="Semana siguiente">▶</button></span></div>
     <div class="card stack"><div class="small muted">Del ${esc(fCorta(lunes))} al ${esc(fCorta(sumaDias(lunes, 6)))}${lunes === lunesDe(hoy) ? ' · esta semana' : ''} · claro = previsto, fuerte = hecho</div>
       <div style="overflow-x:auto"><div style="display:grid;grid-template-columns:repeat(7,minmax(92px,1fr));gap:6px">${col}</div></div>
       <div class="row small" style="gap:12px;flex-wrap:wrap"><span>⚽ Partido</span><span>🏟 Equipo</span><span>💪 Tu sesión (online)</span><span>📍 Sesión contigo</span></div></div></section>`;
 }
 function formEquipo(aid) {
   const H = horarioEq(aid), L = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'], { w } = futDe(aid), sw = w.filter(x => x.tipo === 'semana').sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
-  abrirSheet(`<form class="stack" id="f-eq"><h2>Horario del equipo</h2><p class="small muted">Marca los días que entrena con su equipo (y la hora si la sabes). Sale como «previsto» en su calendario; el día que rellena su check-in se ve lo que hizo de verdad.</p>
+  const PS = planSem(aid), DP = diasProg(S.ficha);
+  abrirSheet(`<form class="stack" id="f-eq"><h2>Horario de la semana</h2>
+    <span class="eyebrow">Tus entrenamientos</span><p class="small muted">Coloca cada día de su programa en un día de la semana. Sale en el calendario como «previsto» hasta que lo hace.</p>
+    ${DP.length ? DP.map(x => `<label class="row" style="gap:10px"><span class="grow"><b>Día ${x.numero}</b> · ${esc(x.nombre || '')}</span><select data-pd="${x.numero}" style="max-width:150px"><option value="">Sin día fijo</option>${L.map((l, i) => `<option value="${i}" ${PS[x.numero] !== '' && PS[x.numero] != null && +PS[x.numero] === i ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`).join('') : '<p class="small muted">No tiene programa activo.</p>'}
+    <span class="eyebrow" style="margin-top:8px">Entrenos con su equipo</span><p class="small muted">Marca los días que entrena con su club (y la hora si la sabes). El día que rellena su check-in se ve lo que hizo de verdad.</p>
     ${sw?.datos?.semana ? `<div class="aprox small"><b>Lo que te dijo en su check-in:</b> ${esc(sw.datos.semana)}</div>` : ''}
     ${L.map((l, i) => `<div class="row" style="gap:10px"><label class="row grow" style="gap:8px"><input type="checkbox" data-d="${i}" ${H[i] != null ? 'checked' : ''} style="width:22px;height:22px">${l}</label><input type="text" data-h="${i}" value="${esc(H[i] || '')}" placeholder="hh:mm" inputmode="numeric" style="max-width:110px"></div>`).join('')}
     <button class="btn full" type="submit">Guardar</button></form>`);
   $('#f-eq').addEventListener('submit', async e => { e.preventDefault(); const o = {};
     document.querySelectorAll('#f-eq [data-d]').forEach(c => { if (c.checked) { const v = document.querySelector(`#f-eq [data-h="${c.dataset.d}"]`).value; o[c.dataset.d] = normHora(v) || ''; } });
-    const v = JSON.stringify(o), { error } = await sb.from('ajustes_privados').upsert({ clave: 'equipo_' + aid, valor: v }, { onConflict: 'clave' });
-    if (error) return fallo(error, 'No se ha podido guardar.'); S.c.fiscal['equipo_' + aid] = v; cerrarSheet(); toast('Horario del equipo guardado'); render(); });
+    const pl = {}; document.querySelectorAll('#f-eq [data-pd]').forEach(x => { if (x.value !== '') pl[x.dataset.pd] = +x.value; });
+    const v = JSON.stringify(o), v2 = JSON.stringify(pl), { error } = await sb.from('ajustes_privados').upsert([{ clave: 'equipo_' + aid, valor: v }, { clave: 'plansem_' + aid, valor: v2 }], { onConflict: 'clave' });
+    if (error) return fallo(error, 'No se ha podido guardar.'); S.c.fiscal['equipo_' + aid] = v; S.c.fiscal['plansem_' + aid] = v2; cerrarSheet(); toast('Horario de la semana guardado'); render(); });
 }
 function vFutbolFicha(a) {
   const { w, p } = futDe(a.id), M = mdDe(p), C = cargasSemana(w), [na, ta] = nivelAcwr(C.acwr), uf = ultimaFatiga(w);
@@ -7549,7 +7559,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v293';
+const APP_VER = 'v294';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
