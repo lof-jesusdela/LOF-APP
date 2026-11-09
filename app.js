@@ -3347,10 +3347,42 @@ function vSemanaCal(a) {
       <div class="row" style="justify-content:space-between;gap:4px">${esf}</div>
       ${sel ? (ents.length || plan ? [...ents, ...(plan ? [plan] : [])].map(detalleW).join('') : `<div class="small muted">${esc(fLarga(sel))}: no rellenó nada${sel > hoy ? ' (todavía no ha llegado)' : ''}.</div>`) : ''}</div></section>`;
 }
+/* Calendario de la semana del futbolista: partido, entrenos con el equipo (hechos por su check-in o previstos por su horario) y tus sesiones */
+const horarioEq = id => { try { return JSON.parse(S.c.fiscal?.['equipo_' + id] || '{}') || {}; } catch (e) { return {}; } };
+function vCalFut(a) {
+  const f = S.ficha, hoy = hoyISO(), lunes = f.semFut || lunesDe(hoy), { w, p } = futDe(a.id), H = horarioEq(a.id), L = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+  const nomDia = id => (f.prog?.dias || []).find(d => d.id === id)?.nombre || 'Sesión';
+  const chip = (c, t, sub, op) => `<div style="border-radius:8px;padding:5px 7px;background:${c};color:#fff;opacity:${op ? .55 : 1};font-size:12px;line-height:1.25"><b>${t}</b>${sub ? `<div style="opacity:.9">${sub}</div>` : ''}</div>`;
+  const col = [...Array(7)].map((_, i) => { const d = sumaDias(lunes, i), M = mdDe(p, d), fut = d > hoy, out = [];
+    p.filter(x => x.fecha === d).forEach(x => out.push(chip('#0f766e', '⚽ Partido', esc([x.hora, x.rival].filter(Boolean).join(' · ')))));
+    const dd = wDe(w, d, 'diario');
+    if (dd?.datos?.eq_min) out.push(chip('#2563eb', '🏟 Equipo', `${dd.datos.eq_min} min${dd.datos.eq_rpe ? ' · RPE ' + dd.datos.eq_rpe : ''}`));
+    else if (H[i] != null && !p.some(x => x.fecha === d) && !(dd && dd.datos?.eq_min === 0)) out.push(chip('#2563eb', '🏟 Equipo', esc(H[i] || 'previsto'), true));
+    (f.ses || []).filter(x => x.fecha === d).forEach(x => out.push(chip('#c2410c', '💪 LOF', esc(nomDia(x.dia_id)) + (x.estado === 'parcial' ? ' · a medias' : ''))));
+    if (!(f.ses || []).some(x => x.fecha === d) && dd?.datos?.lof_rpe) out.push(chip('#c2410c', '💪 LOF', `RPE ${dd.datos.lof_rpe}`));
+    (f.pres || []).filter(x => x.fecha === d && x.estado !== 'cancelada').forEach(x => out.push(chip('#7c3aed', '📍 Contigo', esc([hhmm(x.hora), x.tipo].filter(Boolean).join(' · ')), x.estado === 'programada' && fut)));
+    return `<div class="stack" style="gap:5px;min-width:0;padding:6px;border-radius:10px;background:${d === hoy ? 'var(--surface-2, #eef3ff)' : 'transparent'};border:1px solid var(--line)">
+      <div style="text-align:center"><b class="small">${L[i]} ${+d.slice(8)}</b>${M.md ? `<div class="small" style="font-weight:700;color:${M.md === 'MD' ? '#0f766e' : 'var(--muted)'}">${M.md}</div>` : ''}</div>${out.join('') || '<span class="small muted" style="text-align:center">—</span>'}</div>`; }).join('');
+  return `<section class="section"><div class="section-head"><h2>Calendario de la semana</h2><span class="row" style="gap:6px"><button class="btn sm ghost" data-act="futEquipo" data-al="${a.id}">Horario del equipo</button><button class="btn sm ghost" data-act="futSem" data-l="${sumaDias(lunes, -7)}" aria-label="Semana anterior">◀</button><button class="btn sm ghost" data-act="futSem" data-l="${sumaDias(lunes, 7)}" aria-label="Semana siguiente">▶</button></span></div>
+    <div class="card stack"><div class="small muted">Del ${esc(fCorta(lunes))} al ${esc(fCorta(sumaDias(lunes, 6)))}${lunes === lunesDe(hoy) ? ' · esta semana' : ''} · claro = previsto, fuerte = hecho</div>
+      <div style="overflow-x:auto"><div style="display:grid;grid-template-columns:repeat(7,minmax(92px,1fr));gap:6px">${col}</div></div>
+      <div class="row small" style="gap:12px;flex-wrap:wrap"><span>⚽ Partido</span><span>🏟 Equipo</span><span>💪 Tu sesión (online)</span><span>📍 Sesión contigo</span></div></div></section>`;
+}
+function formEquipo(aid) {
+  const H = horarioEq(aid), L = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'], { w } = futDe(aid), sw = w.filter(x => x.tipo === 'semana').sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
+  abrirSheet(`<form class="stack" id="f-eq"><h2>Horario del equipo</h2><p class="small muted">Marca los días que entrena con su equipo (y la hora si la sabes). Sale como «previsto» en su calendario; el día que rellena su check-in se ve lo que hizo de verdad.</p>
+    ${sw?.datos?.semana ? `<div class="aprox small"><b>Lo que te dijo en su check-in:</b> ${esc(sw.datos.semana)}</div>` : ''}
+    ${L.map((l, i) => `<div class="row" style="gap:10px"><label class="row grow" style="gap:8px"><input type="checkbox" data-d="${i}" ${H[i] != null ? 'checked' : ''} style="width:22px;height:22px">${l}</label><input type="text" data-h="${i}" value="${esc(H[i] || '')}" placeholder="hh:mm" inputmode="numeric" style="max-width:110px"></div>`).join('')}
+    <button class="btn full" type="submit">Guardar</button></form>`);
+  $('#f-eq').addEventListener('submit', async e => { e.preventDefault(); const o = {};
+    document.querySelectorAll('#f-eq [data-d]').forEach(c => { if (c.checked) { const v = document.querySelector(`#f-eq [data-h="${c.dataset.d}"]`).value; o[c.dataset.d] = normHora(v) || ''; } });
+    const v = JSON.stringify(o), { error } = await sb.from('ajustes_privados').upsert({ clave: 'equipo_' + aid, valor: v }, { onConflict: 'clave' });
+    if (error) return fallo(error, 'No se ha podido guardar.'); S.c.fiscal['equipo_' + aid] = v; cerrarSheet(); toast('Horario del equipo guardado'); render(); });
+}
 function vFutbolFicha(a) {
   const { w, p } = futDe(a.id), M = mdDe(p), C = cargasSemana(w), [na, ta] = nivelAcwr(C.acwr), uf = ultimaFatiga(w);
   const ult = w.slice().sort((x, y) => (y.fecha + y.tipo).localeCompare(x.fecha + x.tipo)).slice(0, 10);
-  return vSemanasFutbol(a) + vSemanaCal(a) + `<section class="section"><div class="section-head"><h2>Competición y fatiga</h2><button class="btn sm ghost" data-act="partido" data-al="${a.id}">＋ Partido</button></div>
+  return vCalFut(a) + vSemanasFutbol(a) + vSemanaCal(a) + `<section class="section"><div class="section-head"><h2>Competición y fatiga</h2><button class="btn sm ghost" data-act="partido" data-al="${a.id}">＋ Partido</button></div>
     <div class="card stack">
       <div class="row"><span class="md-chip">${esc(M.md || '—')}</span><div class="grow"><b>${esc(M.txt)}</b>${M.prox ? `<div class="small muted">${esc(M.prox.rival || 'Partido')} · ${esc(fCorta(M.prox.fecha))}${M.prox.hora ? ' · ' + esc(M.prox.hora) : ''}${M.prox.nivel ? ' · rival ' + esc(M.prox.nivel.toLowerCase()) : ''}</div>` : ''}</div></div>
       <div class="kpis"><div class="kpi"><div class="l">Fatiga</div><b class="num" style="color:var(--${nivelFat(uf?.v) || 'fg'})">${uf ? uf.v + '/10' : '—'}</b></div><div class="kpi"><div class="l">Carga 7 días</div><b class="num">${fmtNum(C.aguda, 0)}</b></div><div class="kpi"><div class="l">ACWR</div><b class="num" style="color:var(--${na || 'fg'})">${C.acwr != null ? fmtNum(C.acwr) : '—'}</b><div class="small muted">${ta}</div></div></div>
@@ -7517,7 +7549,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v292';
+const APP_VER = 'v293';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -7852,6 +7884,7 @@ document.addEventListener('click', async e => {
     case 'irAviso': irA(b.dataset.id, { tab: b.dataset.tab || null, sub: b.dataset.sub || null, ancla: b.dataset.ancla || null }); break;
     case 'checkin': controlFut(); break;
     case 'futSem': S.ficha.semFut = b.dataset.l; S.ficha.diaFut = null; render(); break;
+    case 'futEquipo': formEquipo(b.dataset.al); break;
     case 'futDia': S.ficha.diaFut = S.ficha.diaFut === b.dataset.f ? null : b.dataset.f; render(); firmarMini(); break;
     case 'ctrlFut': cerrarSheet(); controlFut(b.dataset.l, b.dataset.m); break;
     case 'checkinJ': cerrarSheet(); checkinSheet(b.dataset.id); break;
