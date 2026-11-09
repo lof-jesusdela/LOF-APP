@@ -144,16 +144,18 @@ const Casos = (() => {
   /* Solo se recuerda a quien ha dado permiso de fotos; y con una foto o la reflexión ya vale: el aviso se va (si faltan vistas, lo dice Jesús) */
   const sinRecordatorio = (srv, consent) => !!(srv?.modulo_futbol || srv?.oposicion || !consent?.fotos);
   const yaHecho = m => !!(m && (m.vistas > 0 || m.refl));
+  /* El aviso dura 15 días desde que se abre el mes; después desaparece hasta el mes siguiente */
+  const vigente = m => !!m && hoyISO() <= sumaDias(m.ini, 15);
   function pendienteMes() {
     const D = S.d; if (!D || sinRecordatorio(D.servicio, D.consent) || D.casosErr || D.puntosErr || !D.servicio?.inicio || S.vista || S.prueba) return null;
-    const act = saldo(D.servicio, D.fotosProg, D.testimonios, D.canjes).ms.find(m => m.abierto); if (!act || yaHecho(act)) return null;
+    const act = saldo(D.servicio, D.fotosProg, D.testimonios, D.canjes).ms.find(m => m.abierto); if (!act || yaHecho(act) || !vigente(act)) return null;
     const falta = [!act.foto && `fotos ${act.vistas}/3`, !act.refl && 'reflexión del mes'].filter(Boolean).join(' y ');
     return ['📸', 'Fotos y reflexión del mes', `Falta: ${falta} · hasta el ${fLarga(act.fin)}`, 'data-act="fpSubir"', 'Hacerlo ahora'];
   }
   function tarjetaHoy(arriba) {
     const D = S.d; if (!D || D.casosErr || D.puntosErr || !D.servicio?.inicio || S.vista || S.prueba) return '';
     const P = saldo(D.servicio, D.fotosProg, D.testimonios, D.canjes), act = P.ms.find(m => m.abierto), sig = PREMIOS.find(p => p[2] > P.saldo), puede = PREMIOS.filter(p => p[2] <= P.saldo).slice(-1)[0];
-    const enVentana = !!act && !yaHecho(act) && !sinRecordatorio(D.servicio, D.consent);
+    const enVentana = !!act && !yaHecho(act) && vigente(act) && !sinRecordatorio(D.servicio, D.consent);
     if (arriba !== enVentana) return '';
     if (enVentana && arriba) return '';   // la ventana abierta sale en «Pendiente»
     if (enVentana) {
@@ -163,6 +165,8 @@ const Casos = (() => {
         <p class="small muted" style="margin:0">Tienes hasta el ${esc(fLarga(act.fin))}. Solo para ti y Jesús: verte mes a mes es lo que más motiva. Llevas ${P.saldo} puntos${sig ? `; con este mes te acercas a ${sig[3]} ${esc(sig[1].toLowerCase())}` : ''}.</p>
         <button class="btn gold" data-act="fpSubir" style="align-self:flex-start">Hacerlo ahora</button></div></section>`;
     }
+    /* Hecho (o pasado el plazo del aviso): no vuelve a salir en Hoy hasta el mes siguiente; los puntos ya se han sumado y siguen en Progreso */
+    if (!arriba) return '';
     const hecho = act?.completo;
     return `<section class="section"><button class="card row" data-act="tab" data-t="progreso" style="width:100%;text-align:left;gap:10px;align-items:center"><span style="font-size:22px">${hecho ? '✅' : '🏆'}</span><div class="grow stack" style="gap:4px"><span class="small">${hecho ? `<b>Hecho este mes · +${act.pts}</b> · ` : ''}<b>${P.saldo} puntos</b>${puede ? ` · <span style="color:var(--gold-ink,#8a6d1f);font-weight:700">ya puedes canjear ${puede[3]}</span>` : sig ? ` · te faltan ${sig[2] - P.saldo} para ${sig[3]}` : ''}</span><div class="track"><i style="width:${Math.min(100, Math.round(P.saldo / (sig ? sig[2] : PREMIOS[PREMIOS.length - 1][2]) * 100))}%;background:var(--gold)"></i></div></div><span class="small" style="color:var(--blue-text)">›</span></button></section>`;
   }
