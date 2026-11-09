@@ -2193,6 +2193,23 @@ function formProgramar(aid, fechaIni, horaIni) {
     cerrarSheet(); toast(`Sesión de ${(a?.nombre || '').split(' ')[0]} programada`); render();
   });
 }
+/* Evento de la agenda: se abre sin salir de la agenda (ficha del alumno solo si la pides) */
+function agendaEvento(pid) {
+  const p = (S.c.presenciales || []).find(x => x.id === pid); if (!p) return;
+  const a = S.c.perfiles.find(x => x.id === p.alumno_id), nom = a?.nombre || 'Alumno', pri = nom.split(' ')[0];
+  const est = p.estado === 'programada' && p.fecha < hoyISO() ? 'Hecha' : (PRES_EST[p.estado] || p.estado);
+  abrirSheet(`<div class="stack"><h2>${esc(nom)}</h2>
+    <div class="card stack" style="gap:4px"><b>${esc(fLarga(p.fecha))}${p.hora ? ' · ' + hhmm(p.hora) + ' (' + durSesion() + ' min)' : ' · sin hora'}</b>
+      <span class="small">${esc(p.tipo || 'Entrenamiento')} · ${esc(est)}</span>${p.nota ? `<span class="small muted">${esc(p.nota)}</span>` : ''}</div>
+    <button class="btn full" type="button" id="ae-gc">📅 Añadir a mi Google Calendar</button>
+    ${a?.email ? `<button class="btn ghost full" type="button" id="ae-gci">✉️ Añadir e invitar a ${esc(pri)} (Google le envía un correo)</button>` : '<p class="small muted">Sin email en su ficha: no se puede invitar.</p>'}
+    <button class="btn ghost full" type="button" id="ae-fi">Abrir ficha de ${esc(pri)}</button>
+    <button class="btn ghost full" type="button" id="ae-vv">← Volver a la agenda</button></div>`);
+  $('#ae-gc').onclick = () => window.open(gcalLink(p, nom), '_blank', 'noopener');
+  $('#ae-gci') && ($('#ae-gci').onclick = () => window.open(gcalLink(p, nom, a.email), '_blank', 'noopener'));
+  $('#ae-fi').onclick = () => { cerrarSheet(); irA(p.alumno_id, { tab: 'calendario', fn: () => { if ((S.ficha.pres || []).some(x => x.id === pid)) formPres(pid); } }); };
+  $('#ae-vv').onclick = () => verAgenda();
+}
 /* Agenda: todas las sesiones presenciales de tus alumnos, por días (de la semana pasada a 3 semanas vista) */
 /* Agenda tipo Google Calendar: semana (7 días), 3 días o lista. Toca un hueco para programar ahí; toca una sesión para abrirla */
 const AG_VISTAS = [['semana', 'Semana'], ['3dias', '3 días'], ['lista', 'Lista']];
@@ -7311,7 +7328,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v276';
+const APP_VER = 'v277';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -7613,7 +7630,7 @@ document.addEventListener('click', async e => {
     case 'agendaVista': { const v = b.dataset.v; try { localStorage.setItem('lof-ag-vista', v); } catch (e) { } S.agIni = v === '3dias' ? hoyISO() : lunesDe(S.agIni || hoyISO()); verAgenda(); break; }
     case 'agendaHoy': S.agIni = null; verAgenda(); break;
     case 'agendaSuscribir': await agendaSuscribir(); break;
-    case 'agendaIr': { const id = b.dataset.id, pid = +b.dataset.p; await irA(id, { tab: 'calendario', fn: pid ? () => { if ((S.ficha.pres || []).some(x => x.id === pid)) formPres(pid); } : null }); break; }
+    case 'agendaIr': { if (+b.dataset.p && (S.c.presenciales || []).some(x => x.id === +b.dataset.p)) { agendaEvento(+b.dataset.p); break; } const id = b.dataset.id, pid = +b.dataset.p; await irA(id, { tab: 'calendario', fn: pid ? () => { if ((S.ficha.pres || []).some(x => x.id === pid)) formPres(pid); } : null }); break; }
     case 'nuevaPresVal': S.presVal = b.dataset.t; formPres(); break;
     case 'editarPres': formPres(+b.dataset.id); break;
     case 'presVerSesion': cerrarSheet(); await verSesion(+b.dataset.id); break;
