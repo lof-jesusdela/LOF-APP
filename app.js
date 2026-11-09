@@ -2421,6 +2421,7 @@ function semanaDatos(aid, lunes, src) {
    Se guarda en la tabla alertas_coach (Bloque 51); si no existe, en este dispositivo. */
 /* Tipos de aviso para el coach (por el texto del aviso): sirven para agruparlos y para elegir cuáles te llegan de cada alumno */
 const TIPOS_AL = [
+  ['salud', 'Dolor, molestias, lesiones y fatiga alta', /^🩹/],
   ['pago', 'Pagos vencidos', /pago vencido|cobro/i], ['bono', 'Bono de sesiones por agotarse', /del bono|bono agotado/i], ['revision', 'Revisión mensual pendiente', /revisi[oó]n(es)? mensual/i],
   ['devolucion', 'Check-in sin devolución', /sin devoluci[oó]n|devoluciones/i], ['motivacion', 'Bajadas de motivación', /motivaci[oó]n/i],
   ['peso', 'Cambios de peso en ejercicios', /ha cambiado su peso/i], ['casos', 'Permisos, testimonios y canjes de puntos', /permisos de imagen|testimonio|canje|puntos/i],
@@ -2469,6 +2470,22 @@ const Alertas = {
 /* Alertas: semana anterior incumplida, o semana en curso por debajo del 50 % a partir del sábado */
 /* Compromisos (lo que tienes que hacer tú): no se marcan con ✓ ni se esconden al silenciar; se resuelven al hacerlos */
 const T_COMPROMISO = ['pago', 'revision', 'devolucion', 'proxima', 'proceso'];
+/* ---------- Salud: dolor, molestias, lesión, sobrecarga o fatiga alta en los últimos 7 días (siempre en rojo y urgente) ---------- */
+const RX_SALUD = /dolor|duel[eo]n?\b|lesi[oó]n|lesionad|sobrecarg|molesti|pinchazo|contractur|esguince|tendin|rotura|tir[oó]n|inflamad|calambre|lumbalgia|ci[aá]tic/i;
+function saludDe(aid) {
+  const desde = sumaDias(hoyISO(), -7), out = [], corta = t => { t = String(t || '').trim(); return t.length > 90 ? t.slice(0, 87) + '…' : t; };
+  (S.c.wellness || []).filter(x => x.alumno_id === aid && x.fecha >= desde).forEach(x => { const d = x.datos || {};
+    if (d.molestias?.length) out.push({ f: x.fecha, m: `Molestia: ${d.molestias.join(', ')}${d.molestia_txt ? ' («' + corta(d.molestia_txt) + '»)' : ''}` });
+    if (d.fatiga >= 8) out.push({ f: x.fecha, m: `Fatiga ${d.fatiga}/10` });
+    if (d.dolor >= 7) out.push({ f: x.fecha, m: `Dolor muscular ${d.dolor}/10` });
+    if (RX_SALUD.test(d.nota || '')) out.push({ f: x.fecha, m: `«${corta(d.nota)}»` }); });
+  (S.c.sesiones || []).filter(x => x.alumno_id === aid && x.fecha >= desde).forEach(x => {
+    [x.nota, x.nota_revision, ...(x.comentarios || []).map(o => o?.texto)].filter(t => RX_SALUD.test(t || '')).forEach(t => out.push({ f: x.fecha, m: `En su entreno: «${corta(t)}»` }));
+    (x.omitidos || []).filter(o => /dolor|molest/i.test(o?.motivo || '')).forEach(o => out.push({ f: x.fecha, m: `No hizo ${o.nombre || 'un ejercicio'} por dolor o molestia` })); });
+  (S.c.diario || []).filter(r => r.alumno_id === aid && r.fecha >= desde && RX_SALUD.test(r.observacion || '')).forEach(r => out.push({ f: r.fecha, m: `En su día: «${corta(r.observacion)}»` }));
+  (S.c.checkins || []).filter(k => k.alumno_id === aid && (k.created_at || k.semana_inicio || '') >= desde).forEach(k => Object.entries(k).forEach(([c, v]) => { if (typeof v === 'string' && !/_at$|^id$|alumno/.test(c) && RX_SALUD.test(v)) out.push({ f: (k.created_at || k.semana_inicio).slice(0, 10), m: `En su check-in: «${corta(v)}»` }); }));
+  return out.sort((a, b) => b.f.localeCompare(a.f));
+}
 /* ---------- Radar de adherencia: cumplimiento semana a semana de cada alumno, tendencia y nivel de alerta ---------- */
 const Radar = {
   /* % de cumplimiento de una semana: entrenos, pasos, alimentación (si la mides) y check-in (si lleva seguimiento) */
@@ -2495,11 +2512,13 @@ const Radar = {
     else if (caida >= 12) razones.push(`Empieza a bajar: ${s1} % (su media es ${media} %)`);
     const cur = this.semana(a, srv, lunes), dow = (fecha(hoyISO()).getDay() + 6) % 7;
     if (dow >= 3 && cur.dpw && cur.d.entrenos === 0) razones.push(`Esta semana aún no ha entrenado (${['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'][dow]})`);
-    const rojo = e.nivel === 'bad' || (s1 != null && s1 < 50) || caida >= 25, nar = !rojo && (e.nivel === 'warn' || (s1 != null && s1 < 75) || seguida || caida >= 12 || razones.length);
-    return { a, srv, sem, s1, media, caida, nivel: rojo ? 'rojo' : nar ? 'naranja' : 'verde', razones: [...razones, ...e.motivos.slice(0, 3)], e, cur };
+    const sal = saludDe(a.id), salV = this.salVisto()[a.id] || '', saludPend = sal.length && sal[0].f > salV;
+    if (saludPend) razones.unshift(`🩹 ${sal[0].m} (${fCorta(sal[0].f)})`);
+    const rojo = saludPend || e.nivel === 'bad' || (s1 != null && s1 < 50) || caida >= 25, nar = !rojo && (e.nivel === 'warn' || (s1 != null && s1 < 75) || seguida || caida >= 12 || razones.length);
+    return { a, srv, sem, s1, media, caida, nivel: rojo ? 'rojo' : nar ? 'naranja' : 'verde', razones: [...razones, ...e.motivos.filter(m => !m.startsWith('🩹')).slice(0, 3)], e, cur, sal, saludPend };
   },
   todos() { return (S.c?.perfiles || []).filter(esCliente).map(a => this.de(a)).filter(Boolean)
-    .sort((x, y) => ({ rojo: 0, naranja: 1, verde: 2 }[x.nivel] - { rojo: 0, naranja: 1, verde: 2 }[y.nivel]) || (x.s1 ?? 101) - (y.s1 ?? 101) || y.caida - x.caida); },
+    .sort((x, y) => (y.saludPend ? 1 : 0) - (x.saludPend ? 1 : 0) || ({ rojo: 0, naranja: 1, verde: 2 }[x.nivel] - { rojo: 0, naranja: 1, verde: 2 }[y.nivel]) || (x.s1 ?? 101) - (y.s1 ?? 101) || y.caida - x.caida); },
   COL: { rojo: '#dc2626', naranja: '#d97706', verde: '#16a34a' },
   barras(r) { const l = r.sem.slice().reverse(); return `<span class="row" style="gap:3px;align-items:flex-end;height:28px" title="Últimas semanas: ${l.map(x => x.pct + ' %').join(' · ')}">${l.map(x => `<span style="width:9px;height:${Math.max(3, x.pct * .28)}px;border-radius:3px;background:${x.pct < 50 ? '#dc2626' : x.pct < 75 ? '#d97706' : '#16a34a'}"></span>`).join('')}</span>`; },
   fila(r) { const n = r.a.nombre, tl = r.s1 == null ? '—' : r.s1 + ' %', fl = r.media != null && r.s1 != null ? (r.s1 - r.media >= 5 ? '↗' : r.s1 - r.media <= -5 ? '↘' : '→') : '';
@@ -2515,9 +2534,11 @@ const Radar = {
   prox() { const dow = (fecha(hoyISO()).getDay() + 6) % 7, n = Math.min(...this.DIAS_REV.map(r => ((r - dow + 7) % 7) || 7)); return ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'][(dow + n) % 7]; },
   rev() { try { const r = JSON.parse(S.c?.fiscal?.radar_rev || '{}') || {}; return r.v === this.ventana() ? r : { v: this.ventana(), at: {} }; } catch (e) { return { v: this.ventana(), at: {} }; } },
   async guardaRev(r) { const v = JSON.stringify(r); S.c.fiscal ||= {}; S.c.fiscal.radar_rev = v; await sb.from('ajustes_privados').upsert({ clave: 'radar_rev', valor: v }, { onConflict: 'clave' }); },
-  urgente: r => r.e.motivos.some(m => /pago vencido|motivación [0-4]\/10/i.test(m)),
-  pendientes() { const at = this.rev().at, T = this.todos().filter(r => r.nivel !== 'verde' && at[r.a.id] !== r.nivel && !(r.nivel === 'naranja' && at[r.a.id] === 'rojo')); return this.esDiaRev() ? T : T.filter(r => this.urgente(r)); },
-  MSG: { rojo: ['Hablemos de tu semana', n => `${n}, he visto que estas semanas te está costando más. Escríbeme y reorganizamos tu plan para que encaje con tu vida. Estoy contigo. 💪`],
+  salVisto() { try { return JSON.parse(S.c?.fiscal?.radar_sal || '{}') || {}; } catch (e) { return {}; } },
+  urgente: r => r.saludPend || r.e.motivos.some(m => /pago vencido|motivación [0-4]\/10/i.test(m)),
+  pendientes() { const at = this.rev().at, T = this.todos().filter(r => r.saludPend || (r.nivel !== 'verde' && at[r.a.id] !== r.nivel && !(r.nivel === 'naranja' && at[r.a.id] === 'rojo'))); return this.esDiaRev() ? T : T.filter(r => this.urgente(r)); },
+  MSG: { salud: ['¿Cómo va esa molestia?', n => `${n}, he visto lo que me contaste. Cuéntame cómo estás ahora (dónde, desde cuándo y qué movimientos te molestan) y adaptamos tu entreno para que mejore. 🩹`],
+    rojo: ['Hablemos de tu semana', n => `${n}, he visto que estas semanas te está costando más. Escríbeme y reorganizamos tu plan para que encaje con tu vida. Estoy contigo. 💪`],
     naranja: ['Un empujón para esta semana', n => `${n}, vas bien, pero estás aflojando un poco. Revisa tu plan de la semana: cada entreno es un ladrillo más. ¡A por ello! 💪`] },
   async avisar(ids, nivel) { const [t, f] = this.MSG[nivel] || this.MSG.naranja; let ok = 0;
     for (const id of ids) { const n = (S.c.perfiles.find(p => p.id === id)?.nombre || '').split(' ')[0], cuerpo = f(n);
@@ -2525,15 +2546,17 @@ const Radar = {
       await sb.functions.invoke('enviar-aviso', { body: { alumno_ids: [id], titulo: t, cuerpo, url: './' } }).catch(() => {}); ok++; }
     const r = this.rev(); ids.forEach(id => { r.at[id] = (this.todos().find(x => x.a.id === id) || {}).nivel || nivel; }); await this.guardaRev(r);
     toast(ok === 1 ? 'Aviso enviado' : `Aviso enviado a ${ok} alumnos`); render(); },
-  async atendido(id) { const r = this.rev(), x = this.todos().find(y => y.a.id === id); r.at[id] = x?.nivel || 'rojo'; await this.guardaRev(r); render(); },
-  acciones: r => `<span class="row" style="gap:6px;flex:none"><button class="btn sm ghost" data-act="radarAviso" data-id="${r.a.id}" data-n="${r.nivel}" title="Le llega a su app y al móvil">✉️ Aviso</button><button class="btn sm" data-act="radarOk" data-id="${r.a.id}">✓ Atendido</button></span>`,
+  async atendido(id) { const r = this.rev(), x = this.todos().find(y => y.a.id === id); r.at[id] = x?.nivel || 'rojo'; await this.guardaRev(r);
+    if (x?.sal?.length) { const sv = { ...this.salVisto(), [id]: x.sal[0].f }, v = JSON.stringify(sv); S.c.fiscal.radar_sal = v; await sb.from('ajustes_privados').upsert({ clave: 'radar_sal', valor: v }, { onConflict: 'clave' }); }
+    render(); },
+  acciones: r => `<span class="row" style="gap:6px;flex:none"><button class="btn sm ghost" data-act="radarAviso" data-id="${r.a.id}" data-n="${r.saludPend ? 'salud' : r.nivel}" title="Le llega a su app y al móvil">✉️ Aviso</button><button class="btn sm" data-act="radarOk" data-id="${r.a.id}">✓ Atendido</button></span>`,
   /* Tarjeta de Tu día */
   vTarjeta() { const T = this.todos(); if (!T.length) return ''; const n = k => T.filter(r => r.nivel === k).length, P = this.pendientes(), dr = this.esDiaRev(), nar = P.filter(r => r.nivel === 'naranja');
     const lista = P.slice(0, dr ? 40 : 10).map(r => `<div class="row" style="gap:8px;align-items:center;border-bottom:1px solid var(--line)">${this.fila(r).replace('border-bottom:1px solid var(--line);', '')}${this.acciones(r)}</div>`).join('');
     return `<section class="section"><div class="section-head"><h2>📡 Radar de adherencia</h2><button class="btn sm ghost" data-act="verRadar">Ver todos</button></div><div class="card stack" style="gap:8px">
       <div class="row" style="gap:16px;flex-wrap:wrap"><span><b style="color:${this.COL.rojo}">● ${n('rojo')}</b> atención inmediata</span><span><b style="color:${this.COL.naranja}">● ${n('naranja')}</b> vigilar</span><span><b style="color:${this.COL.verde}">● ${n('verde')}</b> en camino</span></div>
       ${dr ? `<div class="aprox small row" style="gap:8px;flex-wrap:wrap"><span class="grow"><b>Toca revisión (${['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'][(fecha(hoyISO()).getDay() + 6) % 7]}):</b> ${P.length ? `${P.length} por atender. Empieza por los 🔴; a los 🟠 basta con un aviso.` : 'todo atendido. ✓'}</span>${nar.length > 1 ? `<button class="btn sm" data-act="radarAvisoTodos">✉️ Avisar a los ${nar.length} 🟠</button>` : ''}</div>`
-        : `<div class="small muted">Próxima revisión: el ${this.prox()}. Hasta entonces solo te salen los urgentes de verdad (pago vencido o motivación muy baja).</div>`}
+        : `<div class="small muted">Próxima revisión: el ${this.prox()}. Hasta entonces solo te salen los urgentes de verdad: 🩹 dolor, molestias, lesión o fatiga alta, pago vencido o motivación muy baja.</div>`}
       ${lista || (dr ? '' : '<div class="small muted">Ningún urgente. 👌</div>')}</div></section>`; },
   ver() { const T = this.todos(), g = k => T.filter(r => r.nivel === k), sec = (k, t) => g(k).length ? `<span class="eyebrow" style="color:${this.COL[k]}">${t} · ${g(k).length}</span><div class="card" style="padding:4px 14px">${g(k).map(r => this.fila(r)).join('')}</div>` : '';
     abrirSheet(`<div class="stack"><h2>📡 Radar de adherencia</h2><p class="small muted">Cumplimiento de cada alumno en sus últimas semanas (entrenos, pasos, alimentación si la mides y check-in). Las barras van de la más antigua a la semana pasada; la flecha compara con su media. Toca un alumno para abrir su ficha.</p>
@@ -2566,6 +2589,7 @@ function estadoAlumno(a) {
     if (conPasos(srv) && (cur.diasPasos < dias * 0.5 || (cur.pasosMedia != null && cur.pasosMedia < obj * 0.5))) { sube('warn'); motivos.push(`Esta semana: pasos registrados ${cur.diasPasos} de ${dias} días${cur.pasosMedia != null ? `, media ${fmtNum(cur.pasosMedia, 0)}` : ''}`); }
     if (srv?.modulo_nutricion && midoCoach(a.id) && cur.nutri != null && cur.nutri < 50) { sube('bad'); motivos.push(`Esta semana: alimentación al ${cur.nutri} %`); }
   }
+  saludDe(a.id).forEach(x => { sube('bad'); motivos.push(`🩹 ${x.m} (${fCorta(x.f)})`); });
   if (srv?.modulo_futbol) alertasFutbol(a.id).forEach(([n, m]) => { sube(n); motivos.push(m); });
   if (!srv?.modulo_futbol && !pausa) { const af = Casos.alertaFotos(a.id, srv); if (af) { sube('warn'); motivos.push(af); } }
   if (est.k === 'pausaVencida') { sube('warn'); motivos.push(`Su pausa terminó el ${fCorta(est.hasta)}: pásalo a Regreso o a Activo`); }
@@ -2583,7 +2607,7 @@ function estadoAlumno(a) {
   const control = !seg ? null : revisionPendiente(srv, (c.revisiones || []).filter(r => r.alumno_id === a.id), c.revisionesErr) || (c.revisionesErr ? controlEnSemana(srv, lunes) : null);
   { const bn = bonoDe(a.id, srv); if (bn && bn.total) { const usadas = bn.hechas.length; if (usadas >= bn.total && !bn.prox.length) { sube('warn'); const ci = cierreBono(srv, S.c.presenciales.filter(p => p.alumno_id === a.id)); motivos.push(`Bono agotado: ha usado las ${bn.total} sesiones${ci ? ` · tiene su resumen y la oferta en la app; se archiva el ${fCorta(ci.limite)}` : ''}`); } else if (bn.quedan <= 2 && usadas > 0) { sube('warn'); motivos.push(`Le ${bn.quedan === 1 ? 'queda 1 sesión' : `quedan ${bn.quedan} sesiones`} del bono (de ${bn.total})`); } } }
   if (control?.atrasada && !pausa) { sube('warn'); motivos.push(`Revisión mensual ${control.n} pendiente desde el ${fCorta(control.fecha)}`); }
-  const st = Alertas.de(a.id), items = esFamilia(a.id) ? [] : motivos.map((m, i) => ({ m, n: niveles[i], k: Alertas.clave(m), t: tipoAlerta(m) })).map(x => ({ ...x, comp: T_COMPROMISO.includes(x.t) })).filter(x => (seg || ['pago', 'bono'].includes(x.t)) && (x.comp ? !(Alertas.cfg(a.id).off || []).includes(x.t) : Alertas.activa(a.id, x.m))).map(x => ({ ...x, ok: !x.comp && st.resueltas.includes(x.k), nueva: !st.vistas.includes(x.k) }));
+  const st = Alertas.de(a.id), items = esFamilia(a.id) ? [] : motivos.map((m, i) => ({ m, n: niveles[i], k: Alertas.clave(m), t: tipoAlerta(m) })).map(x => ({ ...x, comp: T_COMPROMISO.includes(x.t) })).filter(x => (seg || ['pago', 'bono', 'salud'].includes(x.t)) && (x.comp ? !(Alertas.cfg(a.id).off || []).includes(x.t) : Alertas.activa(a.id, x.m))).map(x => ({ ...x, ok: !x.comp && st.resueltas.includes(x.k), nueva: !st.vistas.includes(x.k) }));
   const pend = items.filter(x => !x.ok);
   pend.forEach(x => { const n = est.k === 'regreso' && x.n === 'bad' ? 'warn' : x.n; if (n === 'bad' || nivel === 'ok') nivel = n; });
   return { nivel, motivos: pend.map(x => x.m), items, nuevas: items.filter(x => x.nueva && !x.ok).length, ult, ultSes: ses[0], dpw, dpw4, ctx: ctxDe(a.id), semana, mes, control, ses7: semana };
@@ -3149,8 +3173,7 @@ function vSemanaFutbol(ini, w, p) {
 const futDe = aid => ({ w: (S.c.wellness || []).filter(x => x.alumno_id === aid), p: (S.c.partidos || []).filter(x => x.alumno_id === aid) });
 function alertasFutbol(aid) {
   const { w } = futDe(aid), out = [], hoy = hoyISO(), dow = (fecha(hoy).getDay() + 6) % 7;
-  const uf = ultimaFatiga(w); if (uf && uf.f >= sumaDias(hoy, -1) && uf.v >= 7) out.push(['bad', `Fatiga ${uf.v}/10 (${fCorta(uf.f)})`]);
-  molestiasRecientes(w, 3).slice(-1).forEach(m => out.push(['warn', `Molestia: ${m.z.join(', ')}`]));
+  const uf = ultimaFatiga(w); if (uf && uf.f >= sumaDias(hoy, -1) && uf.v === 7) out.push(['bad', `Fatiga ${uf.v}/10 (${fCorta(uf.f)})`]);   /* 8 o más y las molestias van en «salud» (🩹) */
   const C = cargasSemana(w); if (C.acwr != null && C.acwr > 1.5) out.push(['warn', `Subida fuerte de carga (${fmtNum(C.acwr)} veces su media de 4 semanas): mírala junto a molestias y recuperación`]);
   if (dow <= 1 && !wDe(w, sumaDias(hoy, -dow), 'lunes')) out.push(['warn', 'Sin cuestionario del lunes']);
   if (dow <= 1 && !wDe(w, sumaDias(hoy, -dow - 1), 'semana')) out.push(['warn', 'Sin planificación del equipo']);
@@ -7675,7 +7698,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v302';
+const APP_VER = 'v303';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
