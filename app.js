@@ -2507,11 +2507,34 @@ const Radar = {
       <span style="width:12px;height:12px;border-radius:50%;background:${this.COL[r.nivel]};margin-top:5px;flex:none"></span>
       <span class="grow stack" style="gap:2px;min-width:0"><b>${esc(n)}</b>${r.razones.length ? `<span class="small muted">${r.razones.slice(0, 2).map(esc).join(' · ')}</span>` : '<span class="small muted">Cumpliendo su plan</span>'}</span>
       ${this.barras(r)}<span style="min-width:62px;text-align:right"><b>${tl}</b> <span class="small">${fl}</span></span></button>`; },
-  /* Tarjeta de Tu día: cuántos hay en cada nivel y los más urgentes */
-  vTarjeta() { const T = this.todos(); if (!T.length) return ''; const n = k => T.filter(r => r.nivel === k).length, top = T.filter(r => r.nivel !== 'verde').slice(0, 5);
+  /* Revisión por rutina, no apagando fuegos: lunes (planificar la semana) y viernes (cierre de seguimientos).
+     Los demás días solo salen los urgentes de verdad (pago vencido o motivación muy baja). Lo atendido se oculta hasta la siguiente revisión */
+  DIAS_REV: [0, 4],
+  ventana() { const h = hoyISO(), dow = (fecha(h).getDay() + 6) % 7, atras = Math.min(...this.DIAS_REV.map(r => (dow - r + 7) % 7)); return sumaDias(h, -atras); },
+  esDiaRev() { return this.DIAS_REV.includes((fecha(hoyISO()).getDay() + 6) % 7); },
+  prox() { const dow = (fecha(hoyISO()).getDay() + 6) % 7, n = Math.min(...this.DIAS_REV.map(r => ((r - dow + 7) % 7) || 7)); return ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'][(dow + n) % 7]; },
+  rev() { try { const r = JSON.parse(S.c?.fiscal?.radar_rev || '{}') || {}; return r.v === this.ventana() ? r : { v: this.ventana(), at: {} }; } catch (e) { return { v: this.ventana(), at: {} }; } },
+  async guardaRev(r) { const v = JSON.stringify(r); S.c.fiscal ||= {}; S.c.fiscal.radar_rev = v; await sb.from('ajustes_privados').upsert({ clave: 'radar_rev', valor: v }, { onConflict: 'clave' }); },
+  urgente: r => r.e.motivos.some(m => /pago vencido|motivación [0-4]\/10/i.test(m)),
+  pendientes() { const at = this.rev().at, T = this.todos().filter(r => r.nivel !== 'verde' && at[r.a.id] !== r.nivel && !(r.nivel === 'naranja' && at[r.a.id] === 'rojo')); return this.esDiaRev() ? T : T.filter(r => this.urgente(r)); },
+  MSG: { rojo: ['Hablemos de tu semana', n => `${n}, he visto que estas semanas te está costando más. Escríbeme y reorganizamos tu plan para que encaje con tu vida. Estoy contigo. 💪`],
+    naranja: ['Un empujón para esta semana', n => `${n}, vas bien, pero estás aflojando un poco. Revisa tu plan de la semana: cada entreno es un ladrillo más. ¡A por ello! 💪`] },
+  async avisar(ids, nivel) { const [t, f] = this.MSG[nivel] || this.MSG.naranja; let ok = 0;
+    for (const id of ids) { const n = (S.c.perfiles.find(p => p.id === id)?.nombre || '').split(' ')[0], cuerpo = f(n);
+      const { error } = await sb.from('avisos').insert({ alumno_id: id, tipo: 'radar', titulo: t, cuerpo }); if (error) { fallo(error, /avisos|relation/.test(error.message || '') ? 'Falta ejecutar el Bloque 69 en Supabase.' : 'No se ha podido avisar.'); return; }
+      await sb.functions.invoke('enviar-aviso', { body: { alumno_ids: [id], titulo: t, cuerpo, url: './' } }).catch(() => {}); ok++; }
+    const r = this.rev(); ids.forEach(id => { r.at[id] = (this.todos().find(x => x.a.id === id) || {}).nivel || nivel; }); await this.guardaRev(r);
+    toast(ok === 1 ? 'Aviso enviado' : `Aviso enviado a ${ok} alumnos`); render(); },
+  async atendido(id) { const r = this.rev(), x = this.todos().find(y => y.a.id === id); r.at[id] = x?.nivel || 'rojo'; await this.guardaRev(r); render(); },
+  acciones: r => `<span class="row" style="gap:6px;flex:none"><button class="btn sm ghost" data-act="radarAviso" data-id="${r.a.id}" data-n="${r.nivel}" title="Le llega a su app y al móvil">✉️ Aviso</button><button class="btn sm" data-act="radarOk" data-id="${r.a.id}">✓ Atendido</button></span>`,
+  /* Tarjeta de Tu día */
+  vTarjeta() { const T = this.todos(); if (!T.length) return ''; const n = k => T.filter(r => r.nivel === k).length, P = this.pendientes(), dr = this.esDiaRev(), nar = P.filter(r => r.nivel === 'naranja');
+    const lista = P.slice(0, dr ? 40 : 10).map(r => `<div class="row" style="gap:8px;align-items:center;border-bottom:1px solid var(--line)">${this.fila(r).replace('border-bottom:1px solid var(--line);', '')}${this.acciones(r)}</div>`).join('');
     return `<section class="section"><div class="section-head"><h2>📡 Radar de adherencia</h2><button class="btn sm ghost" data-act="verRadar">Ver todos</button></div><div class="card stack" style="gap:8px">
-      <div class="row" style="gap:16px;flex-wrap:wrap"><span><b style="color:${this.COL.rojo}">● ${n('rojo')}</b> atención inmediata</span><span><b style="color:${this.COL.naranja}">● ${n('naranja')}</b> vigilar esta semana</span><span><b style="color:${this.COL.verde}">● ${n('verde')}</b> en camino</span></div>
-      ${top.length ? `<div>${top.map(r => this.fila(r)).join('')}</div>` : '<div class="small muted">Todos cumplen su plan. 💪</div>'}</div></section>`; },
+      <div class="row" style="gap:16px;flex-wrap:wrap"><span><b style="color:${this.COL.rojo}">● ${n('rojo')}</b> atención inmediata</span><span><b style="color:${this.COL.naranja}">● ${n('naranja')}</b> vigilar</span><span><b style="color:${this.COL.verde}">● ${n('verde')}</b> en camino</span></div>
+      ${dr ? `<div class="aprox small row" style="gap:8px;flex-wrap:wrap"><span class="grow"><b>Toca revisión (${['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'][(fecha(hoyISO()).getDay() + 6) % 7]}):</b> ${P.length ? `${P.length} por atender. Empieza por los 🔴; a los 🟠 basta con un aviso.` : 'todo atendido. ✓'}</span>${nar.length > 1 ? `<button class="btn sm" data-act="radarAvisoTodos">✉️ Avisar a los ${nar.length} 🟠</button>` : ''}</div>`
+        : `<div class="small muted">Próxima revisión: el ${this.prox()}. Hasta entonces solo te salen los urgentes de verdad (pago vencido o motivación muy baja).</div>`}
+      ${lista || (dr ? '' : '<div class="small muted">Ningún urgente. 👌</div>')}</div></section>`; },
   ver() { const T = this.todos(), g = k => T.filter(r => r.nivel === k), sec = (k, t) => g(k).length ? `<span class="eyebrow" style="color:${this.COL[k]}">${t} · ${g(k).length}</span><div class="card" style="padding:4px 14px">${g(k).map(r => this.fila(r)).join('')}</div>` : '';
     abrirSheet(`<div class="stack"><h2>📡 Radar de adherencia</h2><p class="small muted">Cumplimiento de cada alumno en sus últimas semanas (entrenos, pasos, alimentación si la mides y check-in). Las barras van de la más antigua a la semana pasada; la flecha compara con su media. Toca un alumno para abrir su ficha.</p>
       ${sec('rojo', '🔴 Atención inmediata')}${sec('naranja', '🟠 Vigilar esta semana')}${sec('verde', '🟢 En camino')}</div>`); },
@@ -7652,7 +7675,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v301';
+const APP_VER = 'v302';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -7989,6 +8012,9 @@ document.addEventListener('click', async e => {
     case 'futSem': S.ficha.semFut = b.dataset.l; S.ficha.diaFut = null; render(); break;
     case 'futEquipo': formEquipo(b.dataset.al); break;
     case 'verRadar': Radar.ver(); break;
+    case 'radarOk': await Radar.atendido(b.dataset.id); break;
+    case 'radarAviso': await Radar.avisar([b.dataset.id], b.dataset.n); break;
+    case 'radarAvisoTodos': { const l = Radar.pendientes().filter(r => r.nivel === 'naranja').map(r => r.a.id); if (l.length && confirm(`¿Enviar el aviso «${Radar.MSG.naranja[0]}» a ${l.length} alumnos?`)) await Radar.avisar(l, 'naranja'); break; }
     case 'futSemA': S.semFutA = b.dataset.l === lunesDe(hoyISO()) ? null : b.dataset.l; render(); break;
     case 'futDia': S.ficha.diaFut = S.ficha.diaFut === b.dataset.f ? null : b.dataset.f; render(); firmarMini(); break;
     case 'ctrlFut': cerrarSheet(); controlFut(b.dataset.l, b.dataset.m); break;
