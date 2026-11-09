@@ -3369,9 +3369,11 @@ function vCalFutAlumno() {
 function vCalSemana({ w, p, ses = [], pres = [], todos, DP, H, PS, lunes, aid, alumno }) {
   const hoy = hoyISO(), L = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'], dDe = id => todos.find(d => d.id === id);
   const nomDia = id => { const d = dDe(id); return d ? `Día ${d.numero || ''} · ${d.nombre || ''}`.replace(/ · $/, '') : 'Sesión'; };
+  const chipP = x => alumno ? chip('#0f766e', '⚽ Partido', esc([hhmm(x.hora), x.rival].filter(Boolean).join(' · ')))
+    : `<button type="button" data-act="partido" data-al="${aid}" data-id="${x.id}" style="display:block;width:100%;text-align:left;border:0;border-radius:8px;padding:5px 7px;background:#0f766e;color:#fff;font-size:12px;line-height:1.25;cursor:pointer"><b>⚽ Partido</b><div style="opacity:.9">${esc([hhmm(x.hora), x.rival].filter(Boolean).join(' · '))}</div><div style="opacity:.9;font-weight:700">Editar ›</div></button>`;
   const chip = (c, t, sub, op, id) => `<${id && alumno ? `button type="button" data-act="abrirDia" data-id="${id}"` : 'div'} style="display:block;width:100%;text-align:left;border:0;border-radius:8px;padding:5px 7px;background:${c};color:#fff;opacity:${op ? .55 : 1};font-size:12px;line-height:1.25${id && alumno ? ';cursor:pointer' : ''}"><b>${t}</b>${sub ? `<div style="opacity:.9">${sub}</div>` : ''}${id && alumno ? '<div style="opacity:.9;font-weight:700">Abrir ›</div>' : ''}</${id && alumno ? 'button' : 'div'}>`;
   const col = [...Array(7)].map((_, i) => { const d = sumaDias(lunes, i), M = mdDe(p, d), fut = d > hoy, out = [];
-    p.filter(x => x.fecha === d).forEach(x => out.push(chip('#0f766e', '⚽ Partido', esc([hhmm(x.hora), x.rival].filter(Boolean).join(' · ')))));
+    p.filter(x => x.fecha === d).forEach(x => out.push(chipP(x)));
     const dd = wDe(w, d, 'diario');
     if (dd?.datos?.eq_min) out.push(chip('#2563eb', '🏟 Equipo', `${dd.datos.eq_min} min${dd.datos.eq_rpe ? ' · RPE ' + dd.datos.eq_rpe : ''}`));
     else if (H[i] != null && !p.some(x => x.fecha === d) && !(dd && dd.datos?.eq_min === 0)) out.push(chip('#2563eb', '🏟 Equipo', esc(H[i] || 'previsto'), true));
@@ -3383,7 +3385,7 @@ function vCalSemana({ w, p, ses = [], pres = [], todos, DP, H, PS, lunes, aid, a
     return `<div class="stack" style="gap:5px;min-width:0;padding:6px;border-radius:10px;background:${d === hoy ? 'var(--surface-2, #eef3ff)' : 'transparent'};border:1px solid var(--line)">
       <div style="text-align:center"><b class="small">${L[i]} ${+d.slice(8)}</b>${M.md ? `<div class="small" style="font-weight:700;color:${M.md === 'MD' ? '#0f766e' : 'var(--muted)'}">${M.md}</div>` : ''}</div>${out.join('') || '<span class="small muted" style="text-align:center">—</span>'}</div>`; }).join('');
   const nav = k => `data-act="${alumno ? 'futSemA' : 'futSem'}" data-l="${sumaDias(lunes, k)}"`;
-  return `<section class="section"><div class="section-head"><h2>${alumno ? 'Tu semana' : 'Calendario de la semana'}</h2><span class="row" style="gap:6px">${alumno ? '' : `<button class="btn sm ghost" data-act="futEquipo" data-al="${aid}">🗓 Horario de la semana</button>`}<button class="btn sm ghost" ${nav(-7)} aria-label="Semana anterior">◀</button><button class="btn sm ghost" ${nav(7)} aria-label="Semana siguiente">▶</button></span></div>
+  return `<section class="section"><div class="section-head"><h2>${alumno ? 'Tu semana' : 'Calendario de la semana'}</h2><span class="row" style="gap:6px">${alumno ? '' : `<button class="btn sm ghost" data-act="partido" data-al="${aid}">＋ Partido</button><button class="btn sm ghost" data-act="futEquipo" data-al="${aid}">🗓 Horario de la semana</button>`}<button class="btn sm ghost" ${nav(-7)} aria-label="Semana anterior">◀</button><button class="btn sm ghost" ${nav(7)} aria-label="Semana siguiente">▶</button></span></div>
     <div class="card stack"><div class="small muted">Del ${esc(fCorta(lunes))} al ${esc(fCorta(sumaDias(lunes, 6)))}${lunes === lunesDe(hoy) ? ' · esta semana' : ''} · claro = previsto, fuerte = hecho${alumno ? ' · toca tu sesión para abrirla' : ''}</div>
       <div style="overflow-x:auto"><div style="display:grid;grid-template-columns:repeat(7,minmax(92px,1fr));gap:6px">${col}</div></div>
       <div class="row small" style="gap:12px;flex-wrap:wrap"><span>⚽ Partido</span><span>🏟 Equipo</span><span>💪 ${alumno ? 'Tu sesión' : 'Tu sesión (online)'}</span><span>📍 ${alumno ? 'Con Jesús' : 'Sesión contigo'}</span></div></div></section>`;
@@ -7577,7 +7579,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v296';
+const APP_VER = 'v297';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
