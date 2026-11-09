@@ -2152,12 +2152,12 @@ async function cargarCoach() {
 /* ---------- Agenda de sesiones presenciales (la app manda; Google Calendar las recibe) ---------- */
 const durSesion = () => Math.max(15, Math.min(240, parseInt(S.c?.fiscal?.agenda_min) || 60));
 /* Enlace para añadir una sesión a Google Calendar al momento */
-function gcalLink(p, nombre) {
+function gcalLink(p, nombre, email) {
   const f = (p.fecha || hoyISO()).replace(/-/g, ''), h = hhmm(p.hora);
   let dates;
   if (h) { const [H, M] = h.split(':').map(Number), fin = H * 60 + M + durSesion(), hh = n => String(n).padStart(2, '0'); dates = `${f}T${hh(H)}${hh(M)}00/${f}T${hh(Math.floor(fin / 60) % 24)}${hh(fin % 60)}00`; }
   else { const d = fecha(p.fecha || hoyISO()); d.setDate(d.getDate() + 1); dates = `${f}/${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`; }
-  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`${nombre} · ${p.tipo || 'Entrenamiento'}`)}&dates=${dates}&ctz=Europe/Madrid&details=${encodeURIComponent('Programada en la app de La Obra Fitness')}`;
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`${nombre} · ${p.tipo || 'Entrenamiento'}`)}&dates=${dates}&ctz=Europe/Madrid&details=${encodeURIComponent('Programada en la app de La Obra Fitness')}${email ? '&add=' + encodeURIComponent(email) : ''}`;
 }
 /* Programar una sesión sin entrar en la ficha: alumno, día, hora y tipo; dice lo que le queda del bono */
 function formProgramar(aid, fechaIni, horaIni) {
@@ -5759,7 +5759,7 @@ function motivoPres(err) {
   return 'No se ha podido guardar la presencial: ' + m.slice(0, 160);
 }
 async function formPres(id) {
-  const p = id ? S.ficha.pres.find(x => x.id === id) : null;
+  const p = id ? S.ficha.pres.find(x => x.id === id) : null, alF = S.c?.perfiles?.find(x => x.id === S.ficha.id);
   const sesDia = f => S.ficha.ses.filter(s => s.fecha === f);
   let dias = S.ficha.prog?.dias || (S.ficha.programas || []).find(x => x.activo)?.dias || [];
   if (!dias.length) { const r = await sb.from('programas').select('id,activo,dias(id,numero,nombre,foco)').eq('alumno_id', S.ficha.id).eq('activo', true).order('id', { ascending: false }).limit(1); dias = (r.data?.[0]?.dias || []).sort((a, b) => a.numero - b.numero); }
@@ -5771,6 +5771,7 @@ async function formPres(id) {
     <label class="f">Título del entrenamiento<input type="text" id="pr-tt" list="pr-dl" value="${esc(p?.tipo || '')}" placeholder="Escríbelo tú, p. ej. Complementario: core y movilidad"><datalist id="pr-dl">${dias.map(d => `<option value="${esc(etiquetaDia(d))}"></option>`).join('')}</datalist></label>
     <label class="f">Sesión hecha ese día (opcional, para vincularla)<select id="pr-s"><option value="">— Ninguna —</option></select></label>
     <label class="f">Nota (la ve el alumno)<input type="text" id="pr-n" value="${esc(p?.nota || '')}" placeholder="Ej. Trabajo de técnica en sentadilla"></label>
+    ${p ? `<div class="stack" style="gap:6px"><button class="btn ghost full" type="button" id="pr-gc">📅 Añadir a mi Google Calendar</button>${alF?.email ? `<button class="btn ghost full" type="button" id="pr-gci">✉️ Añadir e invitar a ${esc((alF.nombre || '').split(' ')[0])} (Google le envía un correo)</button>` : ''}</div>` : ''}
     <p class="note">${REGLA_24H}</p>
     <button class="btn full" type="submit">Guardar</button>${p ? '<button class="btn ghost full" type="button" id="pr-del" style="color:var(--bad)">Eliminar</button>' : ''}</form>`);
   const llenar = () => { const f = $('#pr-f').value; $('#pr-s').innerHTML = '<option value="">— Ninguno —</option>' + sesDia(f).map(s => `<option value="${s.id}" ${p?.sesion_id === s.id ? 'selected' : ''}>${esc(nomDia(s.dias) + ' · ' + (s.dias?.foco || ''))}</option>`).join(''); };
@@ -5789,6 +5790,8 @@ async function formPres(id) {
     if (error) return fallo(error, motivoPres(error));
     cerrarSheet(); toast(aviso || 'Guardado'); await cargarPres();
   });
+  const gcal = inv => () => window.open(gcalLink({ fecha: $('#pr-f').value || hoyISO(), hora: $('#pr-h').value || null, tipo: $('#pr-tt').value.trim() || null }, alF?.nombre || 'Alumno', inv ? alF?.email : ''), '_blank', 'noopener');
+  $('#pr-gc')?.addEventListener('click', gcal(false)); $('#pr-gci')?.addEventListener('click', gcal(true));
   $('#pr-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para eliminarla'; return; } const { error } = await sb.from('presenciales').delete().eq('id', p.id); if (error) return fallo(error); cerrarSheet(); toast('Eliminada'); await cargarPres(); });
 }
 async function cargarPres() {
@@ -7308,7 +7311,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v275';
+const APP_VER = 'v276';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
