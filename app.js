@@ -5629,14 +5629,17 @@ const hhmm = h => h ? String(h).slice(0, 5) : '';
 const fNum = iso => { const d = fecha(iso); return `${d.getDate()}/${d.getMonth() + 1}`; };
 const REGLA_24H = 'Si se avisa con menos de 24 horas de antelación y no está justificado, la sesión cuenta como hecha.';
 function datosPres(srv, lista) {
+  /* Las sesiones anteriores al inicio del programa actual pertenecen a un proceso anterior: no gastan su bono */
+  const ini = srv?.inicio, esAntes = p => !!(ini && !esValPres(p) && p.fecha && p.fecha < ini), todas = lista, antes = todas.filter(p => esAntes(p) && cuentaPres(p)).length;
+  lista = todas.filter(p => !esAntes(p));
   const hechas = lista.filter(cuentaPres).sort(ordPres), total = srv?.sesiones_incluidas || 0;
   const prox = lista.filter(p => !esValPres(p) && p.estado === 'programada' && (!p.fecha || p.fecha >= hoyISO())).sort(ordPres);
   /* Sesiones hechas antes de la app (Excel, Google Calendar…): cuentan como usadas */
   const previas = Math.max(0, +srv?.sesiones_previas || 0); if (previas) hechas.unshift(...Array.from({ length: previas }, (_, i) => ({ id: null, previa: true, estado: 'dada', n: i + 1 })));
   /* Valoraciones (no cuentan como sesión): la inicial es el lanzamiento presencial; la final compara con la inicial */
-  const vDe = re => { const l = lista.filter(p => esValPres(p) && re.test(p.tipo) && p.estado !== 'cancelada').sort(ordPres); return l.find(p => p.estado !== 'programada' || (p.fecha && p.fecha < hoyISO())) || l[0] || null; };
-  const val = { ini: srv?.valoracion_inicial || lista.some(p => esValPres(p) && /inicial/i.test(p.tipo)) ? { p: vDe(/inicial/i) } : null, fin: srv?.valoracion_final || lista.some(p => esValPres(p) && /final/i.test(p.tipo)) ? { p: vDe(/final/i) } : null };
-  return { total, hechas, prox, val, quedan: Math.max(0, total - hechas.length - prox.length) }; // quedan = sin usar ni reservar
+  const vDe = re => { const l = todas.filter(p => esValPres(p) && re.test(p.tipo) && p.estado !== 'cancelada').sort(ordPres); return l.find(p => p.estado !== 'programada' || (p.fecha && p.fecha < hoyISO())) || l[0] || null; };
+  const val = { ini: srv?.valoracion_inicial || todas.some(p => esValPres(p) && /inicial/i.test(p.tipo)) ? { p: vDe(/inicial/i) } : null, fin: srv?.valoracion_final || todas.some(p => esValPres(p) && /final/i.test(p.tipo)) ? { p: vDe(/final/i) } : null };
+  return { total, hechas, prox, val, antes, quedan: Math.max(0, total - hechas.length - prox.length) }; // quedan = sin usar ni reservar
 }
 /* De dónde salen sus entrenamientos contigo: el programa + cada ampliación o bono con sesiones */
 function desglosePres(srv) {
@@ -5663,7 +5666,7 @@ function vPresenciales(srv, lista, coach) {
   const sincBtn = `<button class="btn ghost full" data-act="sincCal">↻ ${coach ? 'Traer las reservas de Calendly de todos tus alumnos' : 'Actualizar mis reservas de Calendly'}</button>`;
   return `<section class="section"><div class="section-head"><h2>${coach ? 'Entrenamientos presenciales' : 'Tus entrenamientos conmigo'}</h2>${coach ? '<button class="btn sm" data-act="nuevaPres">＋ Añadir</button>' : ''}</div><div class="card stack">
     ${D.total ? `<div class="row"><div class="grow"><b class="num" style="font-family:var(--display);font-size:26px">${D.hechas.length} de ${D.total}</b><div class="small muted">sesiones hechas</div></div><div style="text-align:right"><b class="num" style="font-family:var(--display);font-size:26px;color:var(--blue)">${D.quedan}</b><div class="small muted">${D.quedan === 1 ? 'queda' : 'quedan'}</div></div></div>` : `<p class="small muted">${coach ? 'Indica en "Servicio → Editar" cuántas sesiones presenciales incluye su bono.' : 'Jesús indicará aquí tu bono de sesiones.'}</p>`}
-    ${vDes}${vals}${n || D.val.ini || D.val.fin ? `<div class="cajas">${cajaVal(D.val.ini, 'Valoración inicial')}${cajas}${cajaVal(D.val.fin, 'Valoración final')}</div><div class="row small muted" style="gap:12px;flex-wrap:wrap"><span><i class="lp hecha"></i> Hecha</span><span><i class="lp tarde"></i> Aviso &lt; 24 h (cuenta)</span><span><i class="lp prog"></i> Reservada</span><span><i class="lp libre"></i> Por usar</span></div>` : ''}
+    ${vDes}${vals}${D.antes ? `<span class="small muted">Además hizo <b>${D.antes}</b> entrenamientos contigo antes de este programa (proceso anterior). No gastan estos.</span>` : ''}${n || D.val.ini || D.val.fin ? `<div class="cajas">${cajaVal(D.val.ini, 'Valoración inicial')}${cajas}${cajaVal(D.val.fin, 'Valoración final')}</div><div class="row small muted" style="gap:12px;flex-wrap:wrap"><span><i class="lp hecha"></i> Hecha</span><span><i class="lp tarde"></i> Aviso &lt; 24 h (cuenta)</span><span><i class="lp prog"></i> Reservada</span><span><i class="lp libre"></i> Por usar</span></div>` : ''}
     <div class="stack" style="gap:6px"><span class="eyebrow">Próximos entrenamientos</span>${D.prox.map(p => `<div class="line" data-act="${coach ? 'editarPres' : 'verPres'}" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">${esc(fLargaP(p))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</b>${p.tipo ? `<div class="small"><b>${esc(p.tipo)}</b></div>` : ''}${p.nota ? `<div class="small muted">${esc(p.nota)}</div>` : ''}</div><span class="small" style="color:var(--blue-text)">${coach ? 'Editar' : 'Ver / cancelar'} ›</span></div>`).join('') || '<div class="small muted">No hay ninguno programado.</div>'}</div>
     ${D.hechas.length ? `<div class="stack" style="gap:6px"><span class="eyebrow">Ya canjeados</span>${D.hechas.filter(p => !p.previa).slice().reverse().map(p => `<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><span class="caja mini ${estP(p)}"><b>${ocup.indexOf(p) + 1}</b></span><div class="grow"><b class="small">${esc(fLargaP(p))}</b><div class="small muted">${esc(qEntreno(p, coach) || (p.estado === 'tarde' ? 'Aviso con menos de 24 h' : p.nota || 'Sesión presencial'))}</div></div><span class="small muted">›</span></div>`).join('')}</div>` : ''}
     ${reservar}${sincBtn}
@@ -7305,7 +7308,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v274';
+const APP_VER = 'v275';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
