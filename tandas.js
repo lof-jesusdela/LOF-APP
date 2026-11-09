@@ -124,17 +124,17 @@ const Tandas = {
       const viejo = G.length === 1 && G[0].tramos.length > 1 && G[0].s === G[0].tramos.length;
       const series = viejo ? G[0].tramos.map((t, i) => i === 0 ? [t] : trocear({ ...t, s: 1 }, /''|´´|seg/.test(t.r || '') ? 'Rest-pause' : /\+/.test(t.r || '') ? 'Dropset' : '', false)) : exp(gruposDe(pautaEfectiva(e)));
       const v = G[0]?.tramos[0]?.op?.var;
-      const lados = G[0]?.tramos[0]?.op?.lados || '2';
+      const lados = G[0]?.tramos[0]?.op?.lados || '2', bl = G[0]?.tramos[0]?.op?.blados || lados;   // top set con «lados»; las siguientes con «blados»
       out = series.map((tr, i) => ({ etq: i === 0 ? 'Top set' : ({ drop: 'Back-off en dropset', rp: 'Back-off en rest-pause', backup: 'Back-off set' }[v] || (tr.length > 1 ? (tr.some(t => t.d > 0 && t !== tr[tr.length - 1]) ? 'Back-off en rest-pause' : 'Back-off en dropset') : 'Back-off set')),
         tandas: tr.map((t, k) => ({ partes: [P(t, { rir: rirS(tr, t) })], d: t.d ?? (k < tr.length - 1 ? 0 : e.descanso_seg ?? 60) })) }));
-      if (lados === 'uni') out.forEach(s => {   // un lado y luego el otro: cada lado hace su top set / back-off completo
+      const LD = i => i === 0 ? lados : bl;
+      out.forEach((s, i) => { if (LD(i) === 'uni') {   // un lado y luego el otro: cada lado hace su top set / back-off completo
         const b = s.tandas, fin = b[b.length - 1].d;
         s.tandas = ['D', 'I'].flatMap(l => b.map((t, k) => ({ partes: t.partes.map(x => ({ ...x, r: this.limpiaR(x.r), lado: l })), lado: l, d: k < b.length - 1 ? t.d : (l === 'D' ? 0 : fin) })));
-      });
-      else if (lados === 'doble') out.forEach(s => {   // derecho e izquierdo y, sin parar, otra vuelta (la 2ª hasta el fallo)
+      } else if (LD(i) === 'doble') {   // derecho e izquierdo y, sin parar, otra vuelta (la 2ª hasta el fallo)
         const b = s.tandas, fin = b[b.length - 1].d, v = b.length > 1 ? b.map(t => t.partes[0]) : [b[0].partes[0], { ...b[0].partes[0], rir: 0 }];
         s.tandas = [{ doble: true, partes: v.flatMap((x, k) => ['D', 'I'].map(l => ({ ...x, r: this.limpiaR(x.r), lado: l, vuelta: k + 1 }))), d: fin }];
-      });
+      } });
     } else {
       const X = M.iso ? { tipo: 'iso' } : {};
       out = exp(G).map(tr => ({ tandas: tr.map((t, k) => ({ partes: [P(t, { rir: rirS(tr, t), ...X, ...(M.iso && t.op?.pos ? { pos: t.op.pos } : {}) })], d: t.d ?? (k < tr.length - 1 ? 0 : e.descanso_seg ?? 60) })) }));
@@ -470,7 +470,7 @@ Tandas.ed = {
     if (tipo === 'top') {
       const nuevo = g.length > 1 && g[0].s === 1, b = nuevo ? g[1] : null;
       v.var = t0.op?.var || (b ? (b.tramos.length > 1 ? (b.tramos[0].d > 0 ? 'rp' : 'drop') : 'backup') : 'backup');
-      v.lados = t0.op?.lados || '2'; v.rm = t0.op?.rm ?? ''; v.r = Tandas.limpiaR(t0.r || '') || '4-5'; v.rir = t0.rir ?? 0;
+      v.lados = t0.op?.lados || '2'; v.blados = t0.op?.blados || v.lados; v.rm = t0.op?.rm ?? ''; v.r = Tandas.limpiaR(t0.r || '') || '4-5'; v.rir = t0.rir ?? 0;
       v.bs = b?.s || 2; v.br = b ? Tandas.limpiaR(b.tramos[0].r || '') : '8'; v.brir = b?.tramos[0].rir ?? 1; v.bn = b?.tramos.length > 1 ? b.tramos.length : (v.var === 'rp' ? 3 : 2);
     }
     return v;
@@ -503,7 +503,7 @@ Tandas.ed = {
       extra = this.contador('n', 'Tandas (con sus bajadas)', Math.min(Math.max(v.n, 2), 5), 2, 5) + '<p class="small as-prev" data-prev></p>';
     } else if (M.tipo === 'top') {
       campos = [this.num('rm', '1RM estimado (kg, opcional)', v.rm), this.num('kg', 'Peso top set (kg)', v.kg), this.txt('r', 'Reps top set', v.r), this.txt('rir', 'RIR top set', v.rir),
-        this.sel('var', 'Series siguientes', v.var, [['backup', 'Back-off set'], ['drop', 'Dropset'], ['rp', 'Rest-pause']]), this.sel('lados', 'Se hace con', v.lados, [['2', 'Los 2 lados a la vez (2 manos / 2 piernas)'], ['uni', 'Unilateral: 1 mano / pierna y luego la otra'], ['doble', 'Unilateral doble: dos vueltas por lado']]), this.num('bs', 'Nº series back-off', v.bs), this.txt('br', 'Reps back-off', v.br), this.txt('brir', 'RIR back-off', v.brir), this.num('d', 'Descanso entre series (s)', v.d)].join('');
+        this.sel('var', 'Series siguientes', v.var, [['backup', 'Back-off set'], ['drop', 'Dropset'], ['rp', 'Rest-pause']]), this.sel('lados', 'Top set se hace con', v.lados, [['2', 'Los 2 lados a la vez (2 manos / 2 piernas)'], ['uni', 'Unilateral: 1 mano / pierna y luego la otra'], ['doble', 'Unilateral doble: dos vueltas por lado']]), this.sel('blados', 'Series siguientes se hacen con', v.blados, [['2', 'Los 2 lados a la vez (2 manos / 2 piernas)'], ['uni', 'Unilateral: 1 mano / pierna y luego la otra'], ['doble', 'Unilateral doble: dos vueltas por lado']]), this.num('bs', 'Nº series back-off', v.bs), this.txt('br', 'Reps back-off', v.br), this.txt('brir', 'RIR back-off', v.brir), this.num('d', 'Descanso entre series (s)', v.d)].join('');
       extra = this.contador('bn', 'Tandas en cada back-off (dropset o rest-pause)', Math.min(Math.max(v.bn, 2), 4), 2, 4) + '<p class="small as-prev" data-prev></p>';
     } else if (M.tipo === 'contraste' || M.tipo === 'ucontraste') {
       const ps = v.ps === '1', S1 = [['pesado', 'Pesado (kilos)'], ['superlento', 'Superlento (6-3-6)'], ['iso', 'Isométrico (tiempo y peso)'], ['explosivo', 'Explosivo']], S2 = [...(M.isoUni ? [['normal', 'Repeticiones (isotónico)']] : []), ['explosivo', 'Explosivo'], ['pesado', 'Pesado (kilos)'], ['superlento', 'Superlento (6-3-6)'], ['iso', 'Isométrico (tiempo)']];
@@ -564,8 +564,8 @@ Tandas.ed = {
       case 'drop': { const N = cnt('n'), b = (n('baja') ?? 20) / 100;
         return [...Array(N)].map((_, k) => T({ s: k ? undefined : s, r: a('r') || '10', rir: k ? undefined : rir, kg: kg ? this.kg(kg * Math.pow(1 - b, k)) : undefined, d: k < N - 1 ? 0 : d })); }
       case 'top': { const rm = n('rm'), top = kg || (rm ? rm * 0.9 : null), bk = top ? top * 0.85 : null, v = a('var'), bn = cnt('bn'), bs = Math.max(1, n('bs') || 2), brir = R(a('brir'));
-        const L = a('lados') || '2', xl = L === '2' ? '' : ' x lado';
-        const out = [T({ s: 1, r: (a('r') || '4-5') + xl, rir, kg: this.kg(top), d, op: { var: v, ...(L !== '2' ? { lados: L } : {}), ...(rm ? { rm } : {}) } })];
+        const L = a('lados') || '2', BL = a('blados') || L, xt = L === '2' ? '' : ' x lado', xl = BL === '2' ? '' : ' x lado';
+        const out = [T({ s: 1, r: (a('r') || '4-5') + xt, rir, kg: this.kg(top), d, op: { var: v, ...(L !== '2' ? { lados: L } : {}), ...(BL !== L ? { blados: BL } : {}), ...(rm ? { rm } : {}) } })];
         if (v === 'backup') out.push(T({ s: bs, r: (a('br') || '8') + xl, rir: brir, kg: this.kg(bk), d }));
         else if (v === 'drop') [...Array(bn)].forEach((_, k) => out.push(T({ s: k ? undefined : bs, r: (a('br') || '8') + xl, rir: k ? undefined : brir, kg: bk ? this.kg(bk * Math.pow(0.8, k)) : undefined, d: k < bn - 1 ? 0 : d })));
         else [...Array(bn)].forEach((_, k) => out.push(T({ s: k ? undefined : bs, r: (a('br') || '8') + xl, rir: k ? undefined : brir, kg: this.kg(bk), d: k < bn - 1 ? 20 : d })));
