@@ -2125,7 +2125,7 @@ async function cargarCoach() {
   S.c = { perfiles: per.data || [], servicios: srv.data || [], sesiones: ses.data || [], checkins: chk.data || [], diario: reg.data || [], pagos: pag.data || [], programas: prg.data || [], ejercicios: ejs.data || [] };
   await Casos.cargarCoach();
   { const r = await sb.from('cambios_peso').select('*').is('visto_at', null).order('created_at', { ascending: false }); S.c.cambiosPeso = r.data || []; }
-  { const r = await conRespaldo(() => sb.from('presenciales').select('id,alumno_id,estado,fecha,hora,tipo,nota,persona,duracion_min,grupo,lugar'), () => conRespaldo(() => sb.from('presenciales').select('id,alumno_id,estado,fecha,hora,tipo,nota,persona,duracion_min,grupo'), () => conRespaldo(() => sb.from('presenciales').select('id,alumno_id,estado,fecha,hora,tipo,nota,persona,duracion_min'), () => conRespaldo(() => sb.from('presenciales').select('id,alumno_id,estado,fecha,hora,tipo'), () => sb.from('presenciales').select('id,alumno_id,estado,fecha,hora'))))); S.c.presenciales = r.error ? null : r.data || []; }
+  await cargarPresCoach();
   await Acomp.cargarCoach();
   await Negocio.cargar();
   S.c.servicios.forEach(x => x._bloques = bloquesDe((rut.data || []).filter(r => r.alumno_id === x.alumno_id)));
@@ -2163,20 +2163,22 @@ function gcalLink(p, nombre, email) {
 /* Hora escrita a mano: «9», «930», «9:30», «9.30» → «09:30» */
 function normHora(v) { v = String(v || '').trim(); if (!v) return null; let m = /^\d{3,4}$/.test(v) ? [v, v.slice(0, -2), v.slice(-2)] : v.match(/^(\d{1,2})(?:[:.,h ]?(\d{1,2}))?$/); if (!m) return undefined;
   const H = +m[1], M = +(m[2] || 0); if (H > 23 || M > 59) return undefined; return `${String(H).padStart(2, '0')}:${String(M).padStart(2, '0')}`; }
-const esOnline = t => /revisi|entrevista online|videollamada/i.test(t || '');
+const esOnline = t => /videollamada|online/i.test(t || '');
 const esEnlace = v => /^https?:\/\//i.test(String(v || '').trim());
 /* Ubicación o videollamada de una cita, como enlace */
 const vLugar = p => !p?.lugar ? '' : esEnlace(p.lugar) ? `<span class="small">🎥 <a href="${esc(p.lugar)}" target="_blank" rel="noopener">Entrar a la videollamada</a></span>` : `<span class="small">📍 <a href="https://maps.google.com/?q=${encodeURIComponent(p.lugar)}" target="_blank" rel="noopener">${esc(p.lugar)}</a></span>`;
 const inHora = (id, v) => `<input type="text" id="${id}" inputmode="numeric" placeholder="hh:mm" autocomplete="off" value="${esc(hhmm(v) || '')}">`;
 /* Mensaje y ubicación por defecto de cada tipo de cita (ajustes_privados «agenda_def») */
-const DEF_CITAS = {"Reunión de negocio": {"n": "Gracias por reservar este espacio.\n\nMi propósito es ayudar a cada vez más personas a construir un cuerpo, una salud y un estilo de vida que puedan sostener toda la vida. Y eso no se hace solo: se hace rodeándose de personas y proyectos que comparten esa misma exigencia.\n\nEn esta reunión quiero conocerte a ti y a tu proyecto, entender qué buscas y ver con claridad si podemos sumar el uno al otro. Vengo con la mente abierta, con propuestas concretas y con ganas de construir algo que tenga sentido para los dos y, sobre todo, para las personas a las que servimos.\n\nSi quieres que repasemos algo en concreto, mándamelo antes y lo traigo preparado. Así aprovechamos el tiempo al máximo y salimos con próximos pasos claros.\n\nNos vemos,\nJesús de la Obra\nLa Obra Fitness"}, "PTI / primera sesión": {"n": "Hoy no vienes a una clase de prueba. Vienes a descubrir cómo se construye un cuerpo y una salud que duran toda la vida.\n\nDurante 30 minutos te explico mi metodología: cómo entreno, cómo planteo la alimentación y por qué la mayoría de procesos fracasan antes de empezar. Los otros 30 minutos los pasamos entrenando, para que sientas en tu propio cuerpo lo que significa entrenar con intención.\n\nAl terminar sabrás exactamente dónde estás, hacia dónde puedes ir y qué necesitas para llegar. Y tendrás la oportunidad de empezar un acompañamiento conmigo, si sientes que es tu momento.\n\nNo te pido que lo tengas todo claro. Solo que vengas con la mente abierta y con ganas de escuchar a tu mejor versión.\n\nTrae ropa cómoda, agua y toalla. El primer ladrillo lo ponemos juntos.\n\nNos vemos,\nJesús", "l": "Basic-Fit, C. Hilados, 23, 28850 Torrejón de Ardoz, Madrid, España"}, "Entrevista online": {"n": "Esta videollamada puede ser el punto de inflexión que llevas tiempo buscando.\n\nTe cuento cómo trabajo: cómo entreno, cómo planteo la alimentación y los hábitos, y por qué mis alumnos no solo cambian su cuerpo, sino su forma de vivir. Pero, sobre todo, quiero conocerte a ti: de dónde partes, qué has intentado hasta ahora y qué quieres conseguir de verdad.\n\nAl terminar tendrás claro qué te ha frenado, qué camino tiene sentido para ti y si quieres que lo recorramos juntos en un acompañamiento.\n\nNo necesitas preparar nada. Busca un sitio tranquilo, con buena conexión, y regálate este tiempo sin interrupciones. Es tiempo para ti.\n\nVen con preguntas, con dudas y con ganas. Del resto me encargo yo.\n\nNos vemos al otro lado de la pantalla,\nJesús"}, "Entrenamiento": {"n": "Esto no es solo una sesión de entrenamiento.\n\nCada vez que vienes entrenas algo más importante que un músculo: construyes el hábito. Te estás convirtiendo en la persona capaz de sostener el cuerpo y la salud que quieres, no durante unas semanas, sino para siempre.\n\nEsta hora es tuya. Es el momento en el que dejas fuera el trabajo, las prisas y las excusas, y te dedicas tiempo a ti. Y no lo haces solo: lo haces con alguien obsesionado con tus resultados y tus objetivos.\n\nVen descansado, hidratado y con la cabeza puesta en lo que vamos a hacer. Cada repetición bien hecha es un ladrillo más en tu construcción.\n\nTrae ropa cómoda, agua y toalla. Si no puedes venir, avísame con al menos 24 horas.\n\nA por ello,\nJesús", "l": "Basic-Fit, C. Hilados, 23, 28850 Torrejón de Ardoz, Madrid, España"}, "Revisión (videollamada)": {"n": "Esta no es una llamada para ver qué tal vas.\n\nEs una llamada para marcar estándares. Para fijar objetivos y revisar con honestidad lo que ha funcionado y lo que no. Celebraremos lo que estás consiguiendo y ajustaremos lo que haga falta, sin juicios y sin excusas.\n\nQuiero que salgas sintiéndote acompañado, visto y entendido. Porque un proceso no se sostiene solo con un plan: se sostiene cuando alguien conoce tu contexto y camina a tu lado.\n\nA partir de aquí seguimos poniendo ladrillos en esa megaconstrucción que es tu salud y el estilo de vida que quieres sostener.\n\nAntes de la llamada, rellena tu check-in en la app y apunta lo que quieras comentarme: dudas, dificultades o logros. Busca un sitio tranquilo y con buena conexión.\n\nHablamos pronto,\nJesús"}, "Valoración inicial": {"n": "Hoy empieza todo.\n\nLa valoración inicial es tu punto de partida: toma de datos y puro análisis. Medimos, evaluamos y entendemos en qué punto exacto te encuentras.\n\nEsto es lo que diferencia un proceso individualizado de engañarte con una pauta genérica. Nadie puede llevarte a ningún sitio si no sabe de dónde partes. Es como Google Maps: antes de darte la ruta, necesita saber dónde estás.\n\nCon estos datos diseño tu camino: tu entrenamiento, tu alimentación y tus hábitos, pensados para ti y para nadie más. Y dentro de unos meses volveremos a ellos para demostrar todo lo que has avanzado.\n\nNo vengas a impresionarme: ven a ser honesto contigo. Los números no te juzgan, te orientan.\n\nTrae ropa cómoda, agua y toalla.\n\nEmpezamos a construir,\nJesús", "l": "Basic-Fit, C. Hilados, 23, 28850 Torrejón de Ardoz, Madrid, España"}, "Valoración final": {"n": "Hoy toca mirar atrás para ver todo lo que has construido.\n\nRepetimos las mismas mediciones que el primer día y las comparamos con tu punto de partida. Aquí no hay opiniones: hay datos. Vamos a demostrar cada mejora, cada cambio y cada esfuerzo que ha merecido la pena.\n\nY, como en todo proceso honesto, también veremos los puntos que aún puedes seguir mejorando. No como un fallo, sino como tu siguiente objetivo. Tu salud no es una meta a la que se llega: es una construcción que se sostiene.\n\nSiéntete orgulloso de haber llegado hasta aquí. Pocas personas son constantes el tiempo suficiente para ver resultados reales.\n\nTrae ropa cómoda, agua y toalla. Después hablaremos de tus próximos pasos.\n\nNos vemos para celebrarlo,\nJesús", "l": "Basic-Fit, C. Hilados, 23, 28850 Torrejón de Ardoz, Madrid, España"}};
+const DEF_CITAS = {"Reunión de negocio": {"n": "Gracias por reservar este espacio.\n\nMi propósito es ayudar a cada vez más personas a construir un cuerpo, una salud y un estilo de vida que puedan sostener toda la vida. Y eso no se hace solo: se hace rodeándose de personas y proyectos que comparten esa misma exigencia.\n\nEn esta reunión quiero conocerte a ti y a tu proyecto, entender qué buscas y ver con claridad si podemos sumar el uno al otro. Vengo con la mente abierta, con propuestas concretas y con ganas de construir algo que tenga sentido para los dos y, sobre todo, para las personas a las que servimos.\n\nSi quieres que repasemos algo en concreto, mándamelo antes y lo traigo preparado. Así aprovechamos el tiempo al máximo y salimos con próximos pasos claros.\n\nNos vemos,\nJesús de la Obra\nLa Obra Fitness"}, "PTI / primera sesión": {"n": "Hoy no vienes a una clase de prueba. Vienes a descubrir cómo se construye un cuerpo y una salud que duran toda la vida.\n\nDurante 30 minutos te explico mi metodología: cómo entreno, cómo planteo la alimentación y por qué la mayoría de procesos fracasan antes de empezar. Los otros 30 minutos los pasamos entrenando, para que sientas en tu propio cuerpo lo que significa entrenar con intención.\n\nAl terminar sabrás exactamente dónde estás, hacia dónde puedes ir y qué necesitas para llegar. Y tendrás la oportunidad de empezar un acompañamiento conmigo, si sientes que es tu momento.\n\nNo te pido que lo tengas todo claro. Solo que vengas con la mente abierta y con ganas de escuchar a tu mejor versión.\n\nTrae ropa cómoda, agua y toalla. El primer ladrillo lo ponemos juntos.\n\nNos vemos,\nJesús", "l": "Basic-Fit, C. Hilados, 23, 28850 Torrejón de Ardoz, Madrid, España"}, "Entrevista online": {"n": "Esta videollamada puede ser el punto de inflexión que llevas tiempo buscando.\n\nTe cuento cómo trabajo: cómo entreno, cómo planteo la alimentación y los hábitos, y por qué mis alumnos no solo cambian su cuerpo, sino su forma de vivir. Pero, sobre todo, quiero conocerte a ti: de dónde partes, qué has intentado hasta ahora y qué quieres conseguir de verdad.\n\nAl terminar tendrás claro qué te ha frenado, qué camino tiene sentido para ti y si quieres que lo recorramos juntos en un acompañamiento.\n\nNo necesitas preparar nada. Busca un sitio tranquilo, con buena conexión, y regálate este tiempo sin interrupciones. Es tiempo para ti.\n\nVen con preguntas, con dudas y con ganas. Del resto me encargo yo.\n\nNos vemos al otro lado de la pantalla,\nJesús"}, "Entrenamiento": {"n": "Esto no es solo una sesión de entrenamiento.\n\nCada vez que vienes entrenas algo más importante que un músculo: construyes el hábito. Te estás convirtiendo en la persona capaz de sostener el cuerpo y la salud que quieres, no durante unas semanas, sino para siempre.\n\nEsta hora es tuya. Es el momento en el que dejas fuera el trabajo, las prisas y las excusas, y te dedicas tiempo a ti. Y no lo haces solo: lo haces con alguien obsesionado con tus resultados y tus objetivos.\n\nVen descansado, hidratado y con la cabeza puesta en lo que vamos a hacer. Cada repetición bien hecha es un ladrillo más en tu construcción.\n\nTrae ropa cómoda, agua y toalla. Si no puedes venir, avísame con al menos 24 horas.\n\nA por ello,\nJesús", "l": "Basic-Fit, C. Hilados, 23, 28850 Torrejón de Ardoz, Madrid, España"}, "Revisión (videollamada)": {"n": "Esta no es una llamada para ver qué tal vas.\n\nEs una llamada para marcar estándares. Para fijar objetivos y revisar con honestidad lo que ha funcionado y lo que no. Celebraremos lo que estás consiguiendo y ajustaremos lo que haga falta, sin juicios y sin excusas.\n\nQuiero que salgas sintiéndote acompañado, visto y entendido. Porque un proceso no se sostiene solo con un plan: se sostiene cuando alguien conoce tu contexto y camina a tu lado.\n\nA partir de aquí seguimos poniendo ladrillos en esa megaconstrucción que es tu salud y el estilo de vida que quieres sostener.\n\nAntes de la llamada, rellena tu check-in en la app y apunta lo que quieras comentarme: dudas, dificultades o logros. Busca un sitio tranquilo y con buena conexión.\n\nHablamos pronto,\nJesús"}, "Valoración inicial": {"n": "Hoy empieza todo.\n\nLa valoración inicial es tu punto de partida: toma de datos y puro análisis. Medimos, evaluamos y entendemos en qué punto exacto te encuentras.\n\nEsto es lo que diferencia un proceso individualizado de engañarte con una pauta genérica. Nadie puede llevarte a ningún sitio si no sabe de dónde partes. Es como Google Maps: antes de darte la ruta, necesita saber dónde estás.\n\nCon estos datos diseño tu camino: tu entrenamiento, tu alimentación y tus hábitos, pensados para ti y para nadie más. Y dentro de unos meses volveremos a ellos para demostrar todo lo que has avanzado.\n\nNo vengas a impresionarme: ven a ser honesto contigo. Los números no te juzgan, te orientan.\n\nTrae ropa cómoda, agua y toalla.\n\nEmpezamos a construir,\nJesús", "l": "Basic-Fit, C. Hilados, 23, 28850 Torrejón de Ardoz, Madrid, España"}, "Valoración final": {"n": "Hoy toca mirar atrás para ver todo lo que has construido.\n\nRepetimos las mismas mediciones que el primer día y las comparamos con tu punto de partida. Aquí no hay opiniones: hay datos. Vamos a demostrar cada mejora, cada cambio y cada esfuerzo que ha merecido la pena.\n\nY, como en todo proceso honesto, también veremos los puntos que aún puedes seguir mejorando. No como un fallo, sino como tu siguiente objetivo. Tu salud no es una meta a la que se llega: es una construcción que se sostiene.\n\nSiéntete orgulloso de haber llegado hasta aquí. Pocas personas son constantes el tiempo suficiente para ver resultados reales.\n\nTrae ropa cómoda, agua y toalla. Después hablaremos de tus próximos pasos.\n\nNos vemos para celebrarlo,\nJesús", "l": "Basic-Fit, C. Hilados, 23, 28850 Torrejón de Ardoz, Madrid, España"}, "Revisión presencial": {"n": "Esta no es una revisión para ver qué tal vas.\n\nEs un encuentro para marcar estándares. Para fijar objetivos y revisar con honestidad lo que ha funcionado y lo que no. Celebraremos lo que estás consiguiendo y ajustaremos lo que haga falta, sin juicios y sin excusas.\n\nQuiero que salgas sintiéndote acompañado, visto y entendido. Porque un proceso no se sostiene solo con un plan: se sostiene cuando alguien conoce tu contexto y camina a tu lado.\n\nA partir de aquí seguimos poniendo ladrillos en esa megaconstrucción que es tu salud y el estilo de vida que quieres sostener.\n\nAntes de vernos, rellena tu check-in en la app y apunta lo que quieras comentarme: dudas, dificultades o logros.\n\nNos vemos,\nJesús", "l": "Basic-Fit, C. Hilados, 23, 28850 Torrejón de Ardoz, Madrid, España"}};
 const agendaDef = () => { let g = {}; try { g = JSON.parse(S.c?.fiscal?.agenda_def || '{}') || {}; } catch (e) { } return { ...DEF_CITAS, ...g }; };
-const TIPOS_CITA = [['Entrenamiento', 'al'], ['Valoración inicial', 'al'], ['Valoración final', 'al'], ['Revisión (videollamada)', 'al'], ['PTI / primera sesión', 'ext'], ['Entrevista online', 'ext'], ['Reunión de negocio', 'ext']];
-function formProgramar(aid, fechaIni, horaIni) {
+const TIPOS_CITA = [['Entrenamiento', 'al'], ['Valoración inicial', 'al'], ['Valoración final', 'al'], ['Revisión presencial', 'al'], ['Revisión (videollamada)', 'al'], ['PTI / primera sesión', 'ext'], ['Entrevista online', 'ext'], ['Reunión de negocio', 'ext']];
+function formProgramar(aid, fechaIni, horaIni, pid) {
+  const P0 = pid ? (S.c.presenciales || []).find(x => x.id === pid) : null, G0 = P0?.grupo ? S.c.presenciales.filter(x => x.grupo === P0.grupo) : P0 ? [P0] : [];
+  const keepT = P0?.tipo && !TIPOS_CITA.some(x => x[0] === P0.tipo) ? P0.tipo : null; if (P0) { aid = G0[0].alumno_id; fechaIni = P0.fecha; horaIni = P0.hora; }
   const als = S.c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach').sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
   const conBono = id => { const v = srvDe(id); return !!(v && (v.modulo_presencial || v.sesiones_incluidas || modalidadSrv(v) !== 'online')); };
   const orden = [...als.filter(a => conBono(a.id)), ...als.filter(a => !conBono(a.id))];
-  abrirSheet(`<form class="stack" id="f-prog"><h2>Programar sesión</h2>
+  abrirSheet(`<form class="stack" id="f-prog"><h2>${P0 ? 'Editar cita' : 'Programar sesión'}</h2>
     <div class="chips" id="pg-t">${TIPOS_CITA.map(([t], i) => `<button type="button" class="pill ${i ? '' : 'blue'}" data-t="${t}">${t}</button>`).join('')}</div>
     <div class="stack" id="pg-ext" hidden style="gap:8px"><label class="f">Con quién<input type="text" id="pg-q" placeholder="Ej. Laura (PTI Basic Fit) · Partner suplementos"></label></div>
     <label class="f" id="pg-aw">Alumno<select id="pg-a"><option value="">Elige alumno…</option>${orden.map((a, i) => `${i === als.filter(x => conBono(x.id)).length && i ? '<option disabled>── Sin sesiones presenciales ──</option>' : ''}<option value="${a.id}" ${a.id === aid ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('')}</select></label>
@@ -2189,25 +2191,34 @@ function formProgramar(aid, fechaIni, horaIni) {
     <label class="f">Mensaje (lo ve en su app y en el evento de Google Calendar)<textarea id="pg-n" rows="5" placeholder="Ej. Trae zapatillas, toalla y agua. Llega 5 minutos antes."></textarea></label>
     <label class="row small" style="gap:8px"><input type="checkbox" id="pg-def" style="width:20px;height:20px"> Guardar mensaje y ubicación por defecto para <b id="pg-def-t">Entrenamiento</b></label>
     <label class="row small" style="gap:8px"><input type="checkbox" id="pg-g" style="width:20px;height:20px"> Abrir también Google Calendar para añadirla al momento</label>
-    <p class="err" id="pg-err"></p><button class="btn full" type="submit">Guardar sesión</button>
+    ${P0 ? `<label class="f">Estado<select id="pg-e">${Object.entries(PRES_EST).map(([k, l]) => `<option value="${k}" ${P0.estado === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>` : ''}
+    <p class="err" id="pg-err"></p><button class="btn full" type="submit">${P0 ? 'Guardar cambios' : 'Guardar sesión'}</button>
+    ${P0 ? '<button class="btn ghost full" type="button" id="pg-del" style="color:var(--bad)">Eliminar cita</button><button class="btn ghost full" type="button" id="pg-vv">← Volver a la agenda</button>' : ''}
     <p class="note">Se le resta del bono y le aparece en su calendario. Si estás suscrito al calendario «LOF · Sesiones», también llega sola a tu Google Calendar.</p></form>`);
-  let tipo = 'Entrenamiento';
+  let tipo = P0 ? (TIPOS_CITA.some(x => x[0] === P0.tipo) ? P0.tipo : P0.alumno_id ? 'Entrenamiento' : 'Reunión de negocio') : 'Entrenamiento';
+  if (P0) { document.querySelectorAll('#pg-t .pill').forEach(x => x.classList.toggle('blue', x.dataset.t === tipo)); $('#pg-q').value = P0.persona || ''; $('#pg-d').value = P0.duracion_min || durSesion(); $('#pg-l').value = P0.lugar || ''; $('#pg-n').value = P0.nota || ''; }
   const ext = () => TIPOS_CITA.find(x => x[0] === tipo)?.[1] === 'ext';
   const bono = () => { const id = $('#pg-a').value, v = srvDe(id); $('#pg-ext').hidden = !ext(); $('#pg-aw').hidden = ext(); $('#pg-mas').hidden = $('#pg-mas-b').hidden = ext(); if (ext()) return $('#pg-bono').innerHTML = '<span class="muted">Va a tu agenda y a tu Google Calendar. No es de ningún alumno.</span>'; if (!id) return $('#pg-bono').textContent = ''; if (/revisi/i.test(tipo)) return $('#pg-bono').innerHTML = '<span class="muted">Revisión por videollamada: no cuenta como entrenamiento ni gasta bono.</span>';
     const D = v?.sesiones_incluidas ? datosPres(v, (S.c.presenciales || []).filter(p => p.alumno_id === id)) : null;
     const dia = (S.c.presenciales || []).filter(p => p.alumno_id === id && p.fecha === $('#pg-f').value && p.estado !== 'cancelada');
     $('#pg-bono').innerHTML = (D ? `Le quedan <b>${D.quedan}</b> de ${D.total} sesiones${D.prox.length ? ` (${D.prox.length} ya reservada${D.prox.length > 1 ? 's' : ''})` : ''}.` : '<span class="muted">Sin bono de sesiones en su servicio: se apunta igual.</span>') + (dia.length ? ` <b style="color:var(--warn)">Ya tiene una sesión ese día${dia[0].hora ? ' a las ' + hhmm(dia[0].hora) : ''}.</b>` : '') + (D && D.quedan <= 0 && tipo === 'Entrenamiento' ? ' <b style="color:var(--bad)">No le quedan sesiones.</b>' : ''); };
-  let defPrev = { n: '', l: '' };
-  const ponDef = () => { const d = agendaDef()[tipo] || {}, n = $('#pg-n'), l = $('#pg-l');
-    if (!n.value.trim() || n.value === defPrev.n) n.value = d.n || ''; if (!l.value.trim() || l.value === defPrev.l) l.value = d.l || ''; defPrev = { n: d.n || '', l: d.l || '' }; $('#pg-def-t').textContent = tipo;
+  let defPrev = P0 ? { n: (agendaDef()[tipo] || {}).n || '', l: (agendaDef()[tipo] || {}).l || '' } : { n: '', l: '' };
+  const ponDef = (rellena = true) => { const d = agendaDef()[tipo] || {}, n = $('#pg-n'), l = $('#pg-l');
+    if (rellena) { if (!n.value.trim() || n.value === defPrev.n) n.value = d.n || ''; if (!l.value.trim() || l.value === defPrev.l || (esEnlace(l.value) && !esOnline(tipo) && !/reuni/i.test(tipo))) l.value = d.l || ''; } defPrev = { n: d.n || '', l: d.l || '' }; $('#pg-def-t').textContent = tipo;
     const on = esOnline(tipo), mix = /reuni/i.test(tipo); $('#pg-meet').hidden = !(on || mix);
     $('#pg-l-t').textContent = on ? 'Enlace de Google Meet' : mix ? 'Ubicación o enlace de Meet (opcional)' : 'Ubicación (opcional)';
     $('#pg-l').placeholder = on ? 'https://meet.google.com/abc-defg-hij' : 'Ej. Basic Fit Torrejón · Calle Mayor 5, Alcalá'; };
   $('#pg-meet').addEventListener('click', () => { window.open('https://meet.google.com/new', '_blank', 'noopener'); toast('Copia el enlace de la reunión y pégalo aquí'); });
-  ponDef();
-  $('#pg-mas-b').addEventListener('click', () => { const d = document.createElement('div'); d.className = 'row'; d.style.gap = '6px';
-    d.innerHTML = `<select class="pg-a2 grow">${$('#pg-a').innerHTML}</select><button type="button" class="btn sm ghost" aria-label="Quitar">✕</button>`; d.querySelector('select').value = '';
-    d.querySelector('button').onclick = () => d.remove(); $('#pg-mas').append(d); });
+  ponDef(!P0);
+  const masAlumno = v => { const d = document.createElement('div'); d.className = 'row'; d.style.gap = '6px';
+    d.innerHTML = `<select class="pg-a2 grow">${$('#pg-a').innerHTML}</select><button type="button" class="btn sm ghost" aria-label="Quitar">✕</button>`; d.querySelector('select').value = v || '';
+    d.querySelector('button').onclick = () => d.remove(); $('#pg-mas').append(d); };
+  G0.slice(1).forEach(r => r.alumno_id && masAlumno(r.alumno_id));
+  $('#pg-vv')?.addEventListener('click', () => verAgenda());
+  $('#pg-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = G0.length > 1 ? `Pulsa otra vez: se borra para los ${G0.length}` : 'Pulsa otra vez para eliminarla'; return; }
+    for (const r of G0) { const { error } = await sb.from('presenciales').delete().eq('id', r.id); if (error) return fallo(error); }
+    await cargarPresCoach(); if (S.ficha) await cargarPres(); toast('Cita eliminada'); verAgenda(); });
+  $('#pg-mas-b').addEventListener('click', () => masAlumno());
   bono(); $('#pg-a').addEventListener('change', bono); $('#pg-f').addEventListener('change', bono);
   $('#pg-t').addEventListener('click', e => { const b = e.target.closest('[data-t]'); if (!b) return; tipo = b.dataset.t; document.querySelectorAll('#pg-t .pill').forEach(x => x.classList.toggle('blue', x === b)); ponDef(); bono(); });
   $('#f-prog').addEventListener('submit', async e => {
@@ -2218,7 +2229,14 @@ function formProgramar(aid, fechaIni, horaIni) {
     const bt = e.target.querySelector('[type=submit]'); bt.disabled = true; bt.textContent = 'Guardando…';
     if ($('#pg-def').checked) { const D = agendaDef(); D[tipo] = { n: $('#pg-n').value.trim(), l: $('#pg-l').value.trim() }; const v = JSON.stringify(D);
       const { error: eD } = await sb.from('ajustes_privados').upsert({ clave: 'agenda_def', valor: v }, { onConflict: 'clave' }); if (!eD) (S.c.fiscal ||= {}).agenda_def = v; }
-    const row = { alumno_id: id, fecha: $('#pg-f').value || hoyISO(), hora, estado: 'programada', tipo: tipo === 'Entrenamiento' ? null : tipo, nota: $('#pg-n').value.trim() || null };
+    const row = { alumno_id: id, fecha: $('#pg-f').value || hoyISO(), hora, estado: 'programada', tipo: tipo === 'Entrenamiento' ? keepT : tipo, nota: $('#pg-n').value.trim() || null };
+    if (P0) { /* Edición: mismos datos para todos los del grupo; añade o quita alumnos */
+      const idsE = X ? [null] : [...new Set([id, ...[...document.querySelectorAll('.pg-a2')].map(x => x.value).filter(Boolean)])];
+      const com = { fecha: row.fecha, hora, tipo: row.tipo, nota: row.nota, lugar, duracion_min: X || dur !== durSesion() ? dur : null, persona: X ? quien : null, estado: $('#pg-e').value };
+      const err = await syncGrupo(P0, idsE, com); if (err) { bt.disabled = false; bt.textContent = 'Guardar cambios'; return $('#pg-err').textContent = errCita(err); }
+      await cargarPresCoach(); if (S.ficha) await cargarPres();
+      if ($('#pg-g').checked) window.open(gcalLink({ ...P0, ...com }, idsE.filter(Boolean).map(i => S.c.perfiles.find(x => x.id === i)?.nombre || 'Alumno').join(' + ') || quien || 'Cita'), '_blank', 'noopener');
+      toast('Cita guardada'); return verAgenda(); }
     if (X) row.persona = quien; if (X || dur !== durSesion()) row.duracion_min = dur; if (lugar) row.lugar = lugar;
     /* Sesión conjunta: una fila por alumno (a cada uno le cuenta en su bono), unidas por «grupo» para verse como un solo evento */
     const ids = X ? [null] : [...new Set([id, ...[...document.querySelectorAll('.pg-a2')].map(x => x.value).filter(Boolean)])];
@@ -2236,6 +2254,23 @@ function formProgramar(aid, fechaIni, horaIni) {
     cerrarSheet(); toast(`${noms.length ? (noms.length > 1 ? 'Sesión conjunta de ' : 'Sesión de ') + noms.map(n => n.split(' ')[0]).join(' y ') : tipo + ' · ' + quien} programada`); render();
   });
 }
+/* Presenciales de todos los alumnos (agenda, bonos). select('*') sirve con cualquier versión de la tabla */
+async function cargarPresCoach() { const r = await sb.from('presenciales').select('*'); S.c.presenciales = r.error ? null : r.data || []; }
+/* Sesión conjunta: deja en el grupo exactamente a «ids» (crea, actualiza y quita filas) con los datos comunes «com» */
+async function syncGrupo(base, ids, com) {
+  ids = [...new Set(ids)];
+  let g = base.grupo || null; const ex = g ? ((await sb.from('presenciales').select('id,alumno_id').eq('grupo', g)).data || [base]) : [base];
+  if (ids.length > 1 && !g) g = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
+  const gr = ids.length > 1 ? { grupo: g } : base.grupo ? { grupo: null } : {};
+  for (const r of ex) {
+    const { error } = ids.includes(r.alumno_id) ? await sb.from('presenciales').update({ ...com, ...gr }).eq('id', r.id) : await sb.from('presenciales').delete().eq('id', r.id);
+    if (error) return error; }
+  const nuevos = ids.filter(i => !ex.some(r => r.alumno_id === i));
+  if (nuevos.length) { const { error } = await sb.from('presenciales').insert(nuevos.map(i => ({ ...com, estado: com.estado || base.estado || 'programada', alumno_id: i, ...gr }))); if (error) return error; }
+  return null;
+}
+const errCita = e => /grupo|lugar/.test(e?.message || '') ? 'Falta ejecutar el Bloque 99 en Supabase.' : /persona|duracion|null value/.test(e?.message || '') ? 'Falta ejecutar el Bloque 98 en Supabase.' : motivoPres(e);
+const opcAlumnos = sel => S.c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach').sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).map(a => `<option value="${a.id}" ${a.id === sel ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('');
 /* Sesiones conjuntas: las filas con el mismo «grupo» se ven como un solo evento */
 function agruparCitas(l) { const vis = {}, out = []; for (const p of l) { if (!p.grupo) { out.push(p); continue; } if (vis[p.grupo]) { vis[p.grupo]._g.push(p); continue; } const q = { ...p, _g: [p] }; vis[p.grupo] = q; out.push(q); } return out; }
 /* Evento de la agenda: se abre sin salir de la agenda (ficha del alumno solo si la pides) */
@@ -2247,7 +2282,8 @@ function agendaEvento(pid) {
   abrirSheet(`<div class="stack"><h2>${esc(nom)}</h2>
     <div class="card stack" style="gap:4px"><b>${esc(fLarga(p.fecha))}${p.hora ? ' · ' + hhmm(p.hora) + ' (' + (+p.duracion_min || durSesion()) + ' min)' : ' · sin hora'}</b>
       <span class="small">${esc(p.tipo || 'Entrenamiento')} · ${esc(est)}</span>${vLugar(p)}${p.nota ? `<details class="small"><summary class="muted">Mensaje</summary><div style="white-space:pre-line">${esc(p.nota)}</div></details>` : ''}</div>
-    <button class="btn full" type="button" id="ae-gc">📅 Añadir a mi Google Calendar</button>
+    <button class="btn full" type="button" id="ae-ed">✏️ Editar cita (hora, tipo, alumnos, ubicación, mensaje)</button>
+    <button class="btn ghost full" type="button" id="ae-gc">📅 Añadir a mi Google Calendar</button>
     ${mails.length ? `<button class="btn ghost full" type="button" id="ae-gci">✉️ Añadir e invitar a ${esc(pri)} (Google le envía un correo)</button>` : als.length ? '<p class="small muted">Sin email en su ficha: no se puede invitar.</p>' : '<p class="small muted">Para invitar a alguien, añádelo como invitado al guardar en Google Calendar.</p>'}
     ${als.length ? als.map(x => `<button class="btn ghost full" type="button" data-fi="${x.id}">Abrir ficha de ${esc(x.nombre.split(' ')[0])}</button>`).join('') : `<button class="btn ghost full" type="button" id="ae-del" style="color:var(--bad)">Eliminar cita</button>`}
     <button class="btn ghost full" type="button" id="ae-vv">← Volver a la agenda</button></div>`);
@@ -2255,7 +2291,7 @@ function agendaEvento(pid) {
   $('#ae-gci') && ($('#ae-gci').onclick = () => window.open(gcalLink(p, nom, mails.join(',')), '_blank', 'noopener'));
   $('#ae-del') && ($('#ae-del').onclick = async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para eliminarla'; return; } const { error } = await sb.from('presenciales').delete().eq('id', p.id); if (error) return fallo(error, 'No se ha podido eliminar.'); S.c.presenciales = S.c.presenciales.filter(y => y.id !== p.id); toast('Cita eliminada'); verAgenda(); });
   document.querySelectorAll('[data-fi]').forEach(b => b.onclick = () => { const aid = b.dataset.fi, mid = grp.find(x => x.alumno_id === aid)?.id; cerrarSheet(); irA(aid, { tab: 'calendario', fn: () => { if ((S.ficha.pres || []).some(x => x.id === mid)) formPres(mid); } }); });
-  $('#ae-vv').onclick = () => verAgenda();
+  $('#ae-vv').onclick = () => verAgenda(); $('#ae-ed').onclick = () => formProgramar(null, null, null, pid);
 }
 /* Agenda: todas las sesiones presenciales de tus alumnos, por días (de la semana pasada a 3 semanas vista) */
 /* Agenda tipo Google Calendar: semana (7 días), 3 días o lista. Toca un hueco para programar ahí; toca una sesión para abrirla */
@@ -5829,38 +5865,59 @@ function motivoPres(err) {
 }
 async function formPres(id) {
   const p = id ? S.ficha.pres.find(x => x.id === id) : null, alF = S.c?.perfiles?.find(x => x.id === S.ficha.id);
+  const tipo0 = TIPOS_CITA.some(x => x[0] === (p?.tipo || S.presVal)) ? (p?.tipo || S.presVal) : 'Entrenamiento', d0 = p ? {} : agendaDef()[tipo0] || {};
+  const otros = p?.grupo ? ((await sb.from('presenciales').select('id,alumno_id').eq('grupo', p.grupo)).data || []).filter(x => x.alumno_id && x.alumno_id !== S.ficha.id).map(x => x.alumno_id) : [];
   const sesDia = f => S.ficha.ses.filter(s => s.fecha === f);
   let dias = S.ficha.prog?.dias || (S.ficha.programas || []).find(x => x.activo)?.dias || [];
   if (!dias.length) { const r = await sb.from('programas').select('id,activo,dias(id,numero,nombre,foco)').eq('alumno_id', S.ficha.id).eq('activo', true).order('id', { ascending: false }).limit(1); dias = (r.data?.[0]?.dias || []).sort((a, b) => a.numero - b.numero); }
   abrirSheet(`<form class="stack" id="f-pres"><h2>${p ? 'Editar sesión presencial' : 'Sesión presencial'}</h2>
     <div style="display:grid;grid-template-columns:1fr 110px;gap:8px"><label class="f">Fecha<input type="date" id="pr-f" value="${p?.fecha || hoyISO()}"></label><label class="f">Hora${inHora('pr-h', p?.hora)}</label></div>
-    <div class="chips" id="pr-tipo-r"><span class="small muted">Es:</span>${['Entrenamiento', 'Valoración inicial', 'Valoración final'].map(t => `<button type="button" class="pill ${(t === 'Entrenamiento' ? !esValPres(p) : (p?.tipo || S.presVal) === t) ? 'blue' : ''}" data-t="${t}">${t}</button>`).join('')}</div>
+    <div class="chips" id="pr-tipo-r"><span class="small muted">Es:</span>${TIPOS_CITA.filter(x => x[1] === 'al').map(([t]) => `<button type="button" class="pill ${t === tipo0 ? 'blue' : ''}" data-t="${t}">${t}</button>`).join('')}</div>
     <label class="f">Estado<select id="pr-e">${Object.entries(PRES_EST).map(([k, l]) => `<option value="${k}" ${(p?.estado || 'programada') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
     ${dias.length ? `<label class="f">Entrenamiento de su programa<select id="pr-dia"><option value="">— Otro (escríbelo abajo) —</option>${dias.map(d => `<option value="${d.id}" ${p?.dia_id === d.id || (!p?.dia_id && p?.tipo === etiquetaDia(d)) ? 'selected' : ''}>${esc(etiquetaDia(d))}</option>`).join('')}</select></label>` : ''}
     <label class="f">Título del entrenamiento<input type="text" id="pr-tt" list="pr-dl" value="${esc(p?.tipo || '')}" placeholder="Escríbelo tú, p. ej. Complementario: core y movilidad"><datalist id="pr-dl">${dias.map(d => `<option value="${esc(etiquetaDia(d))}"></option>`).join('')}</datalist></label>
     <label class="f">Sesión hecha ese día (opcional, para vincularla)<select id="pr-s"><option value="">— Ninguna —</option></select></label>
-    <label class="f">Nota (la ve el alumno)<input type="text" id="pr-n" value="${esc(p?.nota || '')}" placeholder="Ej. Trabajo de técnica en sentadilla"></label>
+    <label class="f">Duración (minutos)<input type="number" id="pr-d" min="5" max="600" step="5" inputmode="numeric" value="${p?.duracion_min || durSesion()}" list="pg-dl2"><datalist id="pg-dl2">${[30, 45, 60, 75, 90, 120].map(m => `<option value="${m}">`).join('')}</datalist></label>
+    <label class="f"><span id="pr-l-t">Ubicación</span><input type="text" id="pr-l" value="${esc(p ? p.lugar || '' : d0.l || '')}" placeholder="Ej. Basic-Fit Torrejón"></label>
+    <button type="button" class="btn sm ghost" id="pr-meet" hidden style="align-self:flex-start">🎥 Crear enlace de Google Meet nuevo</button>
+    <label class="f">Mensaje (lo ve el alumno y sale en Google Calendar)<textarea id="pr-n" rows="4" placeholder="Ej. Trabajo de técnica en sentadilla">${esc(p ? p.nota || '' : d0.n || '')}</textarea></label>
+    <div class="stack" style="gap:6px"><span class="small muted">Alumnos en esta sesión: <b>${esc(alF?.nombre || '')}</b>${otros.length ? '' : ' (sesión individual)'}</span><div class="stack" id="pr-mas" style="gap:6px"></div>
+      <button type="button" class="btn sm ghost" id="pr-mas-b" style="align-self:flex-start">＋ Añadir otro alumno (sesión conjunta)</button></div>
     ${p ? `<div class="stack" style="gap:6px"><button class="btn ghost full" type="button" id="pr-gc">📅 Añadir a mi Google Calendar</button>${alF?.email ? `<button class="btn ghost full" type="button" id="pr-gci">✉️ Añadir e invitar a ${esc((alF.nombre || '').split(' ')[0])} (Google le envía un correo)</button>` : ''}</div>` : ''}
     <p class="note">${REGLA_24H}</p>
     <button class="btn full" type="submit">Guardar</button>${p ? '<button class="btn ghost full" type="button" id="pr-del" style="color:var(--bad)">Eliminar</button>' : ''}</form>`);
   const llenar = () => { const f = $('#pr-f').value; $('#pr-s').innerHTML = '<option value="">— Ninguno —</option>' + sesDia(f).map(s => `<option value="${s.id}" ${p?.sesion_id === s.id ? 'selected' : ''}>${esc(nomDia(s.dias) + ' · ' + (s.dias?.foco || ''))}</option>`).join(''); };
   llenar(); $('#pr-f').addEventListener('change', llenar);
   if (!p && S.presVal) { setTimeout(() => { const tt = $('#pr-tt'); if (tt) tt.value = S.presVal; S.presVal = null; }, 0); }
-  $('#pr-tipo-r').addEventListener('click', ev => { const b = ev.target.closest('[data-t]'); if (!b) return; document.querySelectorAll('#pr-tipo-r .pill').forEach(x => x.classList.toggle('blue', x === b)); const tt = $('#pr-tt'); if (tt) tt.value = b.dataset.t === 'Entrenamiento' ? (esValPres({ tipo: tt.value }) ? '' : tt.value) : b.dataset.t; });
+  let tipoP = tipo0, defP = agendaDef()[tipo0] || {};
+  const lblP = () => { const on = esOnline(tipoP); $('#pr-meet').hidden = !on; $('#pr-l-t').textContent = on ? 'Enlace de Google Meet' : 'Ubicación'; $('#pr-l').placeholder = on ? 'https://meet.google.com/abc-defg-hij' : 'Ej. Basic-Fit Torrejón'; };
+  lblP(); $('#pr-meet').addEventListener('click', () => { window.open('https://meet.google.com/new', '_blank', 'noopener'); toast('Copia el enlace de la reunión y pégalo aquí'); });
+  const masP = v => { const d = document.createElement('div'); d.className = 'row'; d.style.gap = '6px'; d.innerHTML = `<select class="pr-a2 grow"><option value="">Elige alumno…</option>${opcAlumnos(v)}</select><button type="button" class="btn sm ghost" aria-label="Quitar">✕</button>`;
+    d.querySelector('button').onclick = () => d.remove(); $('#pr-mas').append(d); };
+  otros.forEach(masP); $('#pr-mas-b').addEventListener('click', () => masP(''));
+  $('#pr-tipo-r').addEventListener('click', ev => { const b = ev.target.closest('[data-t]'); if (!b) return; document.querySelectorAll('#pr-tipo-r .pill').forEach(x => x.classList.toggle('blue', x === b)); const tt = $('#pr-tt'); const esC = v => TIPOS_CITA.some(x => x[0] === v); if (tt) tt.value = b.dataset.t === 'Entrenamiento' ? (esC(tt.value) ? '' : tt.value) : b.dataset.t;
+    tipoP = b.dataset.t; const d = agendaDef()[tipoP] || {}, n = $('#pr-n'), l = $('#pr-l');
+    if (!n.value.trim() || n.value === defP.n) n.value = d.n || ''; if (!l.value.trim() || l.value === defP.l || (esEnlace(l.value) && !esOnline(tipoP))) l.value = d.l || ''; defP = d; lblP(); });
   $('#pr-dia')?.addEventListener('change', ev => { const d = dias.find(x => x.id === +ev.target.value); if (d) $('#pr-tt').value = etiquetaDia(d); });
   $('#f-pres').addEventListener('submit', async e => {
     e.preventDefault();
     const hP = normHora($('#pr-h').value); if (hP === undefined) return toast('Hora no válida: escríbela así, 9:30 o 18:00');
+    const durP = Math.max(5, Math.min(600, Math.round(+$('#pr-d').value) || durSesion())), lugP = $('#pr-l').value.trim() || null;
     const row = { fecha: $('#pr-f').value || hoyISO(), hora: hP, estado: $('#pr-e').value, sesion_id: +$('#pr-s').value || null, nota: $('#pr-n').value.trim() || null, tipo: $('#pr-tt').value.trim() || null };
+    if (lugP || p?.lugar) row.lugar = lugP; if (durP !== durSesion() || p?.duracion_min) row.duracion_min = durP !== durSesion() ? durP : null;
+    const masIds = [...document.querySelectorAll('.pr-a2')].map(x => x.value).filter(v => v && v !== S.ficha.id);
     if ($('#pr-dia')?.value || p?.dia_id) row.dia_id = +$('#pr-dia').value || null;
-    const guardar = r => p ? sb.from('presenciales').update(r).eq('id', p.id) : sb.from('presenciales').insert({ ...r, alumno_id: S.ficha.id });
-    let { error } = await guardar(row), aviso = null;
+    const guardar = r => p ? sb.from('presenciales').update(r).eq('id', p.id).select().single() : sb.from('presenciales').insert({ ...r, alumno_id: S.ficha.id }).select().single();
+    let { data: fila, error } = await guardar(row), aviso = null;
     if (error && /dia_id/.test(error.message || '')) { delete row.dia_id; ({ error } = await guardar(row)); }
     if (error && /tipo/.test(error.message || '') && row.tipo) { delete row.tipo; ({ error } = await guardar(row)); aviso = 'Guardado, pero el tipo no: ejecuta el Bloque 28 en Supabase'; }
-    if (error) return fallo(error, motivoPres(error));
-    cerrarSheet(); toast(aviso || 'Guardado'); await cargarPres();
+    if (error) return fallo(error, errCita(error));
+    if (masIds.length || p?.grupo) { const base = { ...(p || {}), ...(fila || {}), id: fila?.id || p?.id, alumno_id: S.ficha.id, grupo: p?.grupo || fila?.grupo || null };
+      const com = { fecha: row.fecha, hora: row.hora, tipo: row.tipo, nota: row.nota, ...('lugar' in row ? { lugar: row.lugar } : {}), ...('duracion_min' in row ? { duracion_min: row.duracion_min } : {}) };
+      const err = base.id ? await syncGrupo(base, [S.ficha.id, ...masIds], com) : null; if (err) return fallo(err, errCita(err)); }
+    cerrarSheet(); toast(aviso || (masIds.length ? 'Guardada como sesión conjunta' : 'Guardado')); await cargarPresCoach(); await cargarPres();
   });
-  const gcal = inv => () => window.open(gcalLink({ fecha: $('#pr-f').value || hoyISO(), hora: normHora($('#pr-h').value) || null, tipo: $('#pr-tt').value.trim() || null, nota: $('#pr-n').value.trim() || null, lugar: p?.lugar || null, duracion_min: p?.duracion_min }, alF?.nombre || 'Alumno', inv ? alF?.email : ''), '_blank', 'noopener');
+  const gcal = inv => () => window.open(gcalLink({ fecha: $('#pr-f').value || hoyISO(), hora: normHora($('#pr-h').value) || null, tipo: $('#pr-tt').value.trim() || null, nota: $('#pr-n').value.trim() || null, lugar: $('#pr-l').value.trim() || null, duracion_min: +$('#pr-d').value || null }, alF?.nombre || 'Alumno', inv ? alF?.email : ''), '_blank', 'noopener');
   $('#pr-gc')?.addEventListener('click', gcal(false)); $('#pr-gci')?.addEventListener('click', gcal(true));
   $('#pr-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para eliminarla'; return; } const { error } = await sb.from('presenciales').delete().eq('id', p.id); if (error) return fallo(error); cerrarSheet(); toast('Eliminada'); await cargarPres(); });
 }
@@ -5917,7 +5974,7 @@ async function sincronizarCalendly(manual) {
     if (data?.error) throw new Error(data.error);
     const coach = S.modo === 'coach', n = (data?.nuevas || 0) + (data?.vinculadas || 0);
     if (n || data?.canceladas) {
-      if (coach) { const r = await sb.from('presenciales').select('id,alumno_id,estado,fecha,hora,tipo'); if (!r.error) S.c.presenciales = r.data || []; if (S.ficha) { const q = await sb.from('presenciales').select('*').eq('alumno_id', S.ficha.id).order('fecha'); S.ficha.pres = q.data || S.ficha.pres; } }
+      if (coach) { await cargarPresCoach(); if (S.ficha) { const q = await sb.from('presenciales').select('*').eq('alumno_id', S.ficha.id).order('fecha'); S.ficha.pres = q.data || S.ficha.pres; } }
       else await cargarAlumno(S.user.id);
       render();
       if (manual || !coach) toast(coach ? `${n} reserva${n === 1 ? '' : 's'} nueva${n === 1 ? '' : 's'}${data.canceladas ? ` · ${data.canceladas} cancelada${data.canceladas === 1 ? '' : 's'}` : ''}` : n ? 'Reserva descontada de tu bono' : 'Reserva cancelada');
@@ -7381,7 +7438,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v284';
+const APP_VER = 'v285';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
