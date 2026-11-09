@@ -773,6 +773,11 @@ const vamDe = vals => vamMedida(vals) ?? vamEstimada(vals);
 const vamEsEstimada = vals => vamMedida(vals) == null && vamEstimada(vals) != null;
 const ritmoTxt = kmh => { const t = Math.round(3600 / kmh), m = Math.floor(t / 60); return `${m}:${String(t % 60).padStart(2, '0')}`; };
 /* «Zona 4 · 4:10–3:45 min/km · 160–178 ppm» con su VAM y su FC máxima (si las tiene) */
+/* Objetivo de un tramo de carrera: ritmo o FC de una zona (con su test / FC máxima) o escrito a mano */
+const ritmoZ = (n, vam) => { const v = ZONAS_VAM.find(z => z[0] === n); return v && vam ? `${ritmoTxt(vam * v[1])}–${ritmoTxt(vam * v[2])} min/km` : ''; };
+const fcZona = (n, mx) => { const f = ZONAS_FC5.find(z => z.n === n), r = f && rangoZona(f, mx, S.modo === 'coach' && S.editor ? fcEditor().srv : S.modo === 'coach' && S.ficha ? S.ficha.srv : S.d?.servicio, true); return r ? `${r[0]}–${r[1]} ppm` : ''; };
+const objTramo = (o, vam, mx) => { if (!o?.tipo) return ''; const z = +o.zona || 0, auto = z ? (o.tipo === 'ritmo' ? ritmoZ(z, vam) : fcZona(z, mx)) : '';
+  return o.tipo === 'ritmo' ? `Ritmo ${auto || o.valor || (z ? 'Zona ' + z : '')}`.trim() : auto ? `FC ${auto}` : o.valor ? `FC ${o.valor}` : z ? `Zona de FC ${z}` : ''; };
 function zonaCarrera(n, vam, mx) {
   const v = ZONAS_VAM.find(z => z[0] === n), f = ZONAS_FC5.find(z => z.n === n), out = [];
   if (v && vam) out.push(`${ritmoTxt(vam * v[1])}–${ritmoTxt(vam * v[2])} min/km`);
@@ -803,8 +808,8 @@ function vCarrera(c, o = {}) {
   const ICO = { calentamiento: '↗', enfriamiento: '↘' }, rit = v => /^\d+:\d\d$/.test(v || '') ? v + ' min/km' : v;
   const paso = (t, fase, solo) => { const I = t.ind || {}, z = zonaN(t.tipo), zt = z ? zonaCarrera(z, vam, mx) : '', rec = /recuper/i.test(t.tipo || '');
     const obj = [I.distancia, I.tiempo].filter(Boolean).join(' · ') || I.reps || I.series && `${I.series} series` || '';
-    const meta = I.ritmo ? `Ritmo ${rit(I.ritmo)}` : z ? `Zona ${z}` : I.zonas ? I.zonas : I.fc ? `${I.fc}` : '';
-    const sub = [z && zt, I.ritmo && z && `Zona ${z}`, I.fc && (I.ritmo || z || I.zonas) && `FC ${I.fc}`, I.reps && obj !== I.reps && I.reps, I.series && !obj.includes('series') && `${I.series} series`, I.rec && `Recuperación: ${I.rec}`, I.zonas && meta !== I.zonas && I.zonas].filter(Boolean);
+    const meta = t.obj?.tipo ? objTramo(t.obj, vam, mx) : I.ritmo ? `Ritmo ${rit(I.ritmo)}` : z ? `Zona ${z}` : I.zonas ? I.zonas : I.fc ? `${I.fc}` : '';
+    const sub = [z && zt && !(t.obj?.tipo && +t.obj.zona === z), I.ritmo && z && `Zona ${z}`, I.fc && (I.ritmo || z || I.zonas) && `FC ${I.fc}`, I.reps && obj !== I.reps && I.reps, I.series && !obj.includes('series') && `${I.series} series`, I.rec && `Recuperación: ${I.rec}`, I.zonas && meta !== I.zonas && I.zonas].filter(Boolean);
     const nom = solo && fase !== 'principal' ? FASES.find(x => x[0] === fase)?.[1] : t.tipo || 'Tramo', ico = solo && ICO[fase] ? ICO[fase] : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${rec ? '<path d="M6 6l6 6 6-6M6 12l6 6 6-6"/>' : '<path d="M6 18l6-6 6 6M6 12l6-6 6 6"/>'}</svg>`;
     return `<div class="row" style="gap:12px;align-items:flex-start;padding:10px 0"><span style="font-size:18px;line-height:1.3;color:var(--blue-text, #2f6df6)">${ico}</span>
       <div class="grow stack" style="gap:2px"><div class="row" style="gap:8px;align-items:baseline"><b class="grow">${esc(nom)}</b>${meta ? `<span class="small" style="color:var(--blue-text, #2f6df6);font-weight:700;text-align:right">➜ ${esc(meta)}</span>` : ''}</div>
@@ -6843,7 +6848,8 @@ ${editorEsFutbol() || b?.momento ? `    <label class="f">Momento (día de partid
   /* Sesión de carrera completa en un bloque: calentamiento, parte principal y enfriamiento, cada uno con sus tramos */
   const RUN = { fases: FASES.map(([k]) => ({ fase: k, tramos: JSON.parse(JSON.stringify(carreraFases(b?.carrera).find(f => f.fase === k)?.tramos || [])) })) };
   const sinFase = carreraFases(b?.carrera).find(f => !FASES.some(x => x[0] === f.fase)); if (sinFase) RUN.fases[1].tramos.push(...JSON.parse(JSON.stringify(sinFase.tramos)));
-  const leerRun = () => { document.querySelectorAll('#b-run [data-tr]').forEach(el => { const t = RUN.fases[+el.dataset.f]?.tramos[+el.dataset.tr]; if (!t) return; t.ind = {}; el.querySelectorAll('[data-iv]').forEach(i => { const on = el.querySelector(`[data-ic="${i.dataset.iv}"]`)?.checked; if (on) t.ind[i.dataset.iv] = i.value.trim(); }); t.obs = el.querySelector('[data-obs]')?.value.trim() || ''; });
+  const leerRun = () => { document.querySelectorAll('#b-run [data-tr]').forEach(el => { const t = RUN.fases[+el.dataset.f]?.tramos[+el.dataset.tr]; if (!t) return; t.ind = {}; el.querySelectorAll('[data-iv]').forEach(i => { const on = el.querySelector(`[data-ic="${i.dataset.iv}"]`)?.checked; if (on) t.ind[i.dataset.iv] = i.value.trim(); }); t.obs = el.querySelector('[data-obs]')?.value.trim() || '';
+      const ot = el.querySelector('[data-ot]')?.value; if (ot) t.obj = { tipo: ot, zona: +el.querySelector('[data-oz]').value || null, valor: el.querySelector('[data-ov]').value.trim() || null }; else delete t.obj; });
     document.querySelectorAll('#b-run [data-rep]').forEach(i => { const t = RUN.fases[+i.dataset.f]?.tramos[+i.dataset.i]; if (t) t.vueltas = Math.max(1, Math.min(50, Math.round(+i.value) || 1)); }); };
   const pintarRun = () => {
     const w = $('#b-run'), on = $('#b-t').value === 'cardio' && $('#b-mq').value === 'Correr'; w.hidden = !on; if (!on) return;
@@ -6853,14 +6859,27 @@ ${editorEsFutbol() || b?.momento ? `    <label class="f">Momento (día de partid
         <div class="row"><span class="pill ${z ? 'blue' : 'gold'}">${esc(t.tipo)}</span><span class="small muted grow">${esc(zt || (z ? 'Sin test VAM ni FC máxima: escribe ritmo y pulso' : ''))}</span><button type="button" class="btn ghost" data-act="runQuita" data-f="${fi}" data-i="${i}" style="color:var(--bad);padding:4px 10px" aria-label="Quitar tramo">✕</button></div>
         <div class="chips">${INDICADORES.map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-ic="${k}" ${t.ind?.[k] != null ? 'checked' : ''} style="width:20px;height:20px"> ${l}</label>`).join('')}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${INDICADORES.map(([k, l, ph]) => `<label class="f" data-iw="${k}" ${t.ind?.[k] != null ? '' : 'hidden'}>${l}<input type="text" data-iv="${k}" value="${esc(t.ind?.[k] || '')}" placeholder="${esc(z && k === 'ritmo' && FC.vam ? zonaCarrera(z, FC.vam, null).split(' ')[0] : z && k === 'fc' && FC.mx ? zonaCarrera(z, null, FC.mx) : ph)}"></label>`).join('')}</div>
+        ${(() => { const o = t.obj || {}; return `<div class="stack" data-ob style="gap:6px;padding:8px;border-radius:10px;background:var(--surface-2, #f3f5f9)"><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <label class="f">Objetivo<select data-ot><option value="">Ningún objetivo</option><option value="ritmo" ${o.tipo === 'ritmo' ? 'selected' : ''}>Ritmo</option><option value="fc" ${o.tipo === 'fc' ? 'selected' : ''}>Frecuencia cardiaca</option></select></label>
+          <label class="f" data-ozw ${o.tipo ? '' : 'hidden'}>De<select data-oz><option value="">A mano (escribo yo)</option>${[1, 2, 3, 4, 5].map(n => `<option value="${n}" ${+(o.zona ?? (o.tipo ? z : 0)) === n ? 'selected' : ''}>Su zona ${n}</option>`).join('')}</select></label></div>
+          <label class="f" data-ovw hidden>Valor o intervalo<input type="text" data-ov value="${esc(o.valor || '')}" placeholder=""></label><span class="small muted" data-opv></span></div>`; })()}
         <label class="f">Observaciones<textarea data-obs rows="2" placeholder="${t.tipo === 'Escaleras' ? 'Ej. 3 series de cada: skipping de 1 en 1…' : 'Qué tiene que hacer y cómo'}">${esc(t.obs || '')}</textarea></label></div>`; }; const G = gruposTramos(F.tramos);
         return G.map((ix, gi) => { const ts = ix.map(i => F.tramos[i]), h = ix.map((i, k) => (k ? `<button type="button" class="ss-link on" data-act="runUne" data-f="${fi}" data-i="${i}" title="Separar">🔗 Unido al anterior · separar</button>` : '') + caja(F.tramos[i])).join('');
           const une = gi ? `<button type="button" class="ss-link" data-act="runUne" data-f="${fi}" data-i="${ix[0]}">＋ unir con el anterior (para repetirlos como series)</button>` : '';
           return une + (ix.length > 1 ? `<div class="stack" style="gap:8px;padding:10px;border:2px solid var(--gold, #c9a227);border-radius:14px"><label class="f" style="max-width:260px">🔁 Repeticiones (veces que se repite el bloque)<input type="number" min="1" max="50" inputmode="numeric" data-rep data-f="${fi}" data-i="${ix[0]}" value="${+ts[0].vueltas || 2}"></label>${h}<span class="small muted">Se repite ${ts.map(t => esc(t.tipo)).join(' + ')} las veces que pongas.</span></div>` : h); }).join(''); })()}
       <div class="stack" style="gap:6px"><span class="small muted">+ Añadir tramo</span><div class="chips">${TIPOS_TRAMO.map(t => `<button type="button" data-act="runAdd" data-f="${fi}" data-v="${t}">${t}</button>`).join('')}</div>
         <button type="button" class="btn sm ghost" data-act="runRep" data-f="${fi}" style="align-self:flex-start">🔁 Añadir repetición (serie + recuperación)</button></div></div>`).join('')}`;
+    refObjs();
   };
-  $('#b-run').addEventListener('change', ev => { const k = ev.target.dataset.ic; if (k) { const tr = ev.target.closest('[data-tr]'); tr.querySelector(`[data-iw="${k}"]`).hidden = !ev.target.checked; } });
+  /* Objetivo del tramo: con zona y test se calcula solo (vista previa); a mano, se escribe el valor o el intervalo */
+  const refObj = el => { const ob = el.querySelector('[data-ob]'); if (!ob) return; const ot = ob.querySelector('[data-ot]').value, zs = ob.querySelector('[data-oz]'), z = +zs.value || 0;
+    if (ot && !zs.dataset.toc && !zs.value) { const zn = zonaN(RUN.fases[+el.dataset.f]?.tramos[+el.dataset.tr]?.tipo); if (zn) zs.value = zn; }
+    const zz = +zs.value || 0, auto = zz ? (ot === 'ritmo' ? ritmoZ(zz, FC.vam) : fcZona(zz, FC.mx)) : '';
+    ob.querySelector('[data-ozw]').hidden = !ot; ob.querySelector('[data-ovw]').hidden = !ot || !!auto;
+    ob.querySelector('[data-ov]').placeholder = ot === 'ritmo' ? 'Ej. 4:30 o 4:20–4:40 min/km' : 'Ej. 150 o 150–165 ppm';
+    ob.querySelector('[data-opv]').textContent = !ot ? '' : auto ? `Se le pone solo: ${auto}. Si cambia su test, se actualiza.` : zz ? (ot === 'ritmo' ? 'Sin test de carrera: escribe el ritmo a mano (o hazle el test de 5 minutos).' : 'Sin FC máxima: escribe las pulsaciones a mano.') : ''; };
+  const refObjs = () => document.querySelectorAll('#b-run [data-tr]').forEach(refObj);
+  $('#b-run').addEventListener('change', ev => { if (ev.target.matches('[data-ot],[data-oz]')) { if (ev.target.matches('[data-oz]')) ev.target.dataset.toc = 1; refObj(ev.target.closest('[data-tr]')); return; } const k = ev.target.dataset.ic; if (k) { const tr = ev.target.closest('[data-tr]'); tr.querySelector(`[data-iw="${k}"]`).hidden = !ev.target.checked; } });
   $('#b-run').addEventListener('click', ev => {
     const x = ev.target.closest('[data-act="runAdd"],[data-act="runQuita"],[data-act="runUne"],[data-act="runRep"]'); if (!x) return; ev.preventDefault(); ev.stopPropagation(); leerRun(); const F = RUN.fases[+x.dataset.f];
     if (x.dataset.act === 'runAdd') F.tramos.push({ tipo: x.dataset.v, ind: {}, obs: '' });
@@ -7463,7 +7482,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v289';
+const APP_VER = 'v290';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
