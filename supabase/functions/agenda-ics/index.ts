@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
     L.push("BEGIN:VEVENT", `UID:pres-${p.id}@laobrafitness`, `DTSTAMP:${ahora}`);
     if (p.hora) L.push(`DTSTART;TZID=Europe/Madrid:${f8(p.fecha)}T${hm(p.hora)}`, `DTEND;TZID=Europe/Madrid:${sumaMin(p.fecha, p.hora, dur)}`);
     else L.push(`DTSTART;VALUE=DATE:${f8(p.fecha)}`, `DTEND;VALUE=DATE:${diaSig(p.fecha)}`);
-    L.push(`SUMMARY:${esc(`${hecho ? "✓ " : ""}${p.alumno_id ? `${quien} · ${tipo}` : `${tipo}${quien ? " · " + quien : ""}`}`)}`, `DESCRIPTION:${esc([p.nota, "Programada en la app de La Obra Fitness"].filter(Boolean).join("\n"))}`, ...(p.lugar ? [`LOCATION:${esc(p.lugar)}`] : []), "STATUS:CONFIRMED", "END:VEVENT");
+    L.push(`SUMMARY:${esc(`${hecho ? "✓ " : ""}${p.alumno_id ? `${quien} · ${tipo}` : `${tipo}${quien ? " · " + quien : ""}`}`)}`, `DESCRIPTION:${esc([/^https?:\/\//i.test(p.lugar || "") && "Videollamada: " + p.lugar, p.nota, "Programada en la app de La Obra Fitness"].filter(Boolean).join("\n"))}`, ...(p.lugar ? [`LOCATION:${esc(p.lugar)}`] : []), "STATUS:CONFIRMED", "END:VEVENT");
   }
   L.push("END:VCALENDAR");
   return new Response(L.join("\r\n") + "\r\n", { headers: { "Content-Type": "text/calendar; charset=utf-8", "Cache-Control": "no-cache" } });
