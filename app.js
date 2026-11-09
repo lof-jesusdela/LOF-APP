@@ -2125,7 +2125,7 @@ async function cargarCoach() {
   S.c = { perfiles: per.data || [], servicios: srv.data || [], sesiones: ses.data || [], checkins: chk.data || [], diario: reg.data || [], pagos: pag.data || [], programas: prg.data || [], ejercicios: ejs.data || [] };
   await Casos.cargarCoach();
   { const r = await sb.from('cambios_peso').select('*').is('visto_at', null).order('created_at', { ascending: false }); S.c.cambiosPeso = r.data || []; }
-  { const r = await conRespaldo(() => sb.from('presenciales').select('id,alumno_id,estado,fecha,hora,tipo,nota,persona,duracion_min'), () => conRespaldo(() => sb.from('presenciales').select('id,alumno_id,estado,fecha,hora,tipo'), () => sb.from('presenciales').select('id,alumno_id,estado,fecha,hora'))); S.c.presenciales = r.error ? null : r.data || []; }
+  { const r = await conRespaldo(() => sb.from('presenciales').select('id,alumno_id,estado,fecha,hora,tipo,nota,persona,duracion_min,grupo'), () => conRespaldo(() => sb.from('presenciales').select('id,alumno_id,estado,fecha,hora,tipo,nota,persona,duracion_min'), () => conRespaldo(() => sb.from('presenciales').select('id,alumno_id,estado,fecha,hora,tipo'), () => sb.from('presenciales').select('id,alumno_id,estado,fecha,hora')))); S.c.presenciales = r.error ? null : r.data || []; }
   await Acomp.cargarCoach();
   await Negocio.cargar();
   S.c.servicios.forEach(x => x._bloques = bloquesDe((rut.data || []).filter(r => r.alumno_id === x.alumno_id)));
@@ -2170,6 +2170,7 @@ function formProgramar(aid, fechaIni, horaIni) {
     <div class="stack" id="pg-ext" hidden style="gap:8px"><label class="f">Con quién<input type="text" id="pg-q" placeholder="Ej. Laura (PTI Basic Fit) · Partner suplementos"></label>
       <label class="f">Duración<select id="pg-d">${[30, 45, 60, 90, 120].map(m => `<option value="${m}" ${m === durSesion() ? 'selected' : ''}>${m} min</option>`).join('')}</select></label></div>
     <label class="f" id="pg-aw">Alumno<select id="pg-a"><option value="">Elige alumno…</option>${orden.map((a, i) => `${i === als.filter(x => conBono(x.id)).length && i ? '<option disabled>── Sin sesiones presenciales ──</option>' : ''}<option value="${a.id}" ${a.id === aid ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('')}</select></label>
+    <div class="stack" id="pg-mas" style="gap:6px"></div><button type="button" class="btn sm ghost" id="pg-mas-b" style="align-self:flex-start">＋ Añadir otro alumno (sesión conjunta)</button>
     <p class="small" id="pg-bono" style="margin:-4px 0 0"></p>
     <div style="display:grid;grid-template-columns:1fr 120px;gap:8px"><label class="f">Día<input type="date" id="pg-f" value="${fechaIni || hoyISO()}" required></label><label class="f">Hora<input type="time" id="pg-h" step="900" value="${esc(horaIni || '')}"></label></div>
     <label class="f">Nota para el alumno (opcional)<input type="text" id="pg-n" placeholder="Ej. Trae zapatillas de correr"></label>
@@ -2178,10 +2179,13 @@ function formProgramar(aid, fechaIni, horaIni) {
     <p class="note">Se le resta del bono y le aparece en su calendario. Si estás suscrito al calendario «LOF · Sesiones», también llega sola a tu Google Calendar.</p></form>`);
   let tipo = 'Entrenamiento';
   const ext = () => TIPOS_CITA.find(x => x[0] === tipo)?.[1] === 'ext';
-  const bono = () => { const id = $('#pg-a').value, v = srvDe(id); $('#pg-ext').hidden = !ext(); $('#pg-aw').hidden = ext(); if (ext()) return $('#pg-bono').innerHTML = '<span class="muted">Va a tu agenda y a tu Google Calendar. No es de ningún alumno.</span>'; if (!id) return $('#pg-bono').textContent = ''; if (/revisi/i.test(tipo)) return $('#pg-bono').innerHTML = '<span class="muted">Revisión por videollamada: no cuenta como entrenamiento ni gasta bono.</span>';
+  const bono = () => { const id = $('#pg-a').value, v = srvDe(id); $('#pg-ext').hidden = !ext(); $('#pg-aw').hidden = ext(); $('#pg-mas').hidden = $('#pg-mas-b').hidden = ext(); if (ext()) return $('#pg-bono').innerHTML = '<span class="muted">Va a tu agenda y a tu Google Calendar. No es de ningún alumno.</span>'; if (!id) return $('#pg-bono').textContent = ''; if (/revisi/i.test(tipo)) return $('#pg-bono').innerHTML = '<span class="muted">Revisión por videollamada: no cuenta como entrenamiento ni gasta bono.</span>';
     const D = v?.sesiones_incluidas ? datosPres(v, (S.c.presenciales || []).filter(p => p.alumno_id === id)) : null;
     const dia = (S.c.presenciales || []).filter(p => p.alumno_id === id && p.fecha === $('#pg-f').value && p.estado !== 'cancelada');
     $('#pg-bono').innerHTML = (D ? `Le quedan <b>${D.quedan}</b> de ${D.total} sesiones${D.prox.length ? ` (${D.prox.length} ya reservada${D.prox.length > 1 ? 's' : ''})` : ''}.` : '<span class="muted">Sin bono de sesiones en su servicio: se apunta igual.</span>') + (dia.length ? ` <b style="color:var(--warn)">Ya tiene una sesión ese día${dia[0].hora ? ' a las ' + hhmm(dia[0].hora) : ''}.</b>` : '') + (D && D.quedan <= 0 && tipo === 'Entrenamiento' ? ' <b style="color:var(--bad)">No le quedan sesiones.</b>' : ''); };
+  $('#pg-mas-b').addEventListener('click', () => { const d = document.createElement('div'); d.className = 'row'; d.style.gap = '6px';
+    d.innerHTML = `<select class="pg-a2 grow">${$('#pg-a').innerHTML}</select><button type="button" class="btn sm ghost" aria-label="Quitar">✕</button>`; d.querySelector('select').value = '';
+    d.querySelector('button').onclick = () => d.remove(); $('#pg-mas').append(d); });
   bono(); $('#pg-a').addEventListener('change', bono); $('#pg-f').addEventListener('change', bono);
   $('#pg-t').addEventListener('click', e => { const b = e.target.closest('[data-t]'); if (!b) return; tipo = b.dataset.t; document.querySelectorAll('#pg-t .pill').forEach(x => x.classList.toggle('blue', x === b)); bono(); });
   $('#f-prog').addEventListener('submit', async e => {
@@ -2190,31 +2194,40 @@ function formProgramar(aid, fechaIni, horaIni) {
     const bt = e.target.querySelector('[type=submit]'); bt.disabled = true; bt.textContent = 'Guardando…';
     const row = { alumno_id: id, fecha: $('#pg-f').value || hoyISO(), hora: $('#pg-h').value || null, estado: 'programada', tipo: tipo === 'Entrenamiento' ? null : tipo, nota: $('#pg-n').value.trim() || null };
     if (X) Object.assign(row, { persona: quien, duracion_min: +$('#pg-d').value || null });
-    let { data, error } = await sb.from('presenciales').insert(row).select().single();
-    if (error && /tipo/.test(error.message || '')) { delete row.tipo; ({ data, error } = await sb.from('presenciales').insert(row).select().single()); }
+    /* Sesión conjunta: una fila por alumno (a cada uno le cuenta en su bono), unidas por «grupo» para verse como un solo evento */
+    const ids = X ? [null] : [...new Set([id, ...[...document.querySelectorAll('.pg-a2')].map(x => x.value).filter(Boolean)])];
+    const gr = ids.length > 1 ? (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())) : null;
+    const filas = () => ids.map(i => ({ ...row, alumno_id: i, ...(gr ? { grupo: gr } : {}) }));
+    let fs = filas(), { data, error } = await sb.from('presenciales').insert(fs).select();
+    if (error && /grupo/.test(error.message || '')) { bt.disabled = false; bt.textContent = 'Guardar sesión'; return $('#pg-err').textContent = 'Para sesiones conjuntas falta ejecutar el Bloque 99 en Supabase.'; }
+    if (error && /tipo/.test(error.message || '')) { delete row.tipo; fs = filas(); ({ data, error } = await sb.from('presenciales').insert(fs).select()); }
     if (error) { bt.disabled = false; bt.textContent = 'Guardar sesión'; return $('#pg-err').textContent = /persona|duracion|alumno_id|null value/.test(error.message || '') ? 'Falta ejecutar el Bloque 98 en Supabase.' : motivoPres(error); }
-    const nueva = data || row; (S.c.presenciales ||= []).push(nueva); if (S.ficha?.id === id && S.ficha.pres) S.ficha.pres.push(nueva);
-    const a = id && S.c.perfiles.find(x => x.id === id), g = $('#pg-g').checked;
-    if (g) window.open(gcalLink(nueva, a?.nombre || quien || 'Cita'), '_blank', 'noopener');
-    cerrarSheet(); toast(`${a ? 'Sesión de ' + a.nombre.split(' ')[0] : tipo + ' · ' + quien} programada`); render();
+    const nuevas = Array.isArray(data) && data.length ? data : fs, nueva = nuevas[0]; (S.c.presenciales ||= []).push(...nuevas);
+    nuevas.forEach(n => { if (S.ficha?.id && S.ficha.id === n.alumno_id && S.ficha.pres) S.ficha.pres.push(n); });
+    const noms = ids.filter(Boolean).map(i => S.c.perfiles.find(x => x.id === i)?.nombre || 'Alumno'), g = $('#pg-g').checked;
+    if (g) window.open(gcalLink(nueva, noms.join(' + ') || quien || 'Cita'), '_blank', 'noopener');
+    cerrarSheet(); toast(`${noms.length ? (noms.length > 1 ? 'Sesión conjunta de ' : 'Sesión de ') + noms.map(n => n.split(' ')[0]).join(' y ') : tipo + ' · ' + quien} programada`); render();
   });
 }
+/* Sesiones conjuntas: las filas con el mismo «grupo» se ven como un solo evento */
+function agruparCitas(l) { const vis = {}, out = []; for (const p of l) { if (!p.grupo) { out.push(p); continue; } if (vis[p.grupo]) { vis[p.grupo]._g.push(p); continue; } const q = { ...p, _g: [p] }; vis[p.grupo] = q; out.push(q); } return out; }
 /* Evento de la agenda: se abre sin salir de la agenda (ficha del alumno solo si la pides) */
 function agendaEvento(pid) {
   const p = (S.c.presenciales || []).find(x => x.id === pid); if (!p) return;
-  const a = p.alumno_id && S.c.perfiles.find(x => x.id === p.alumno_id), nom = a?.nombre || p.persona || 'Cita', pri = nom.split(' ')[0];
+  const grp = p.grupo ? S.c.presenciales.filter(x => x.grupo === p.grupo) : [p], als = grp.map(x => x.alumno_id && S.c.perfiles.find(y => y.id === x.alumno_id)).filter(Boolean);
+  const a = als.length === 1 ? als[0] : null, nom = als.length ? als.map(x => x.nombre).join(' + ') : p.persona || 'Cita', pri = a ? a.nombre.split(' ')[0] : als.map(x => x.nombre.split(' ')[0]).join(' y '), mails = als.map(x => x.email).filter(Boolean);
   const est = p.estado === 'programada' && p.fecha < hoyISO() ? 'Hecha' : (PRES_EST[p.estado] || p.estado);
   abrirSheet(`<div class="stack"><h2>${esc(nom)}</h2>
     <div class="card stack" style="gap:4px"><b>${esc(fLarga(p.fecha))}${p.hora ? ' · ' + hhmm(p.hora) + ' (' + (+p.duracion_min || durSesion()) + ' min)' : ' · sin hora'}</b>
       <span class="small">${esc(p.tipo || 'Entrenamiento')} · ${esc(est)}</span>${p.nota ? `<span class="small muted">${esc(p.nota)}</span>` : ''}</div>
     <button class="btn full" type="button" id="ae-gc">📅 Añadir a mi Google Calendar</button>
-    ${a?.email ? `<button class="btn ghost full" type="button" id="ae-gci">✉️ Añadir e invitar a ${esc(pri)} (Google le envía un correo)</button>` : a ? '<p class="small muted">Sin email en su ficha: no se puede invitar.</p>' : '<p class="small muted">Para invitar a alguien, añádelo como invitado al guardar en Google Calendar.</p>'}
-    ${a ? `<button class="btn ghost full" type="button" id="ae-fi">Abrir ficha de ${esc(pri)}</button>` : `<button class="btn ghost full" type="button" id="ae-del" style="color:var(--bad)">Eliminar cita</button>`}
+    ${mails.length ? `<button class="btn ghost full" type="button" id="ae-gci">✉️ Añadir e invitar a ${esc(pri)} (Google le envía un correo)</button>` : als.length ? '<p class="small muted">Sin email en su ficha: no se puede invitar.</p>' : '<p class="small muted">Para invitar a alguien, añádelo como invitado al guardar en Google Calendar.</p>'}
+    ${als.length ? als.map(x => `<button class="btn ghost full" type="button" data-fi="${x.id}">Abrir ficha de ${esc(x.nombre.split(' ')[0])}</button>`).join('') : `<button class="btn ghost full" type="button" id="ae-del" style="color:var(--bad)">Eliminar cita</button>`}
     <button class="btn ghost full" type="button" id="ae-vv">← Volver a la agenda</button></div>`);
   $('#ae-gc').onclick = () => window.open(gcalLink(p, nom), '_blank', 'noopener');
-  $('#ae-gci') && ($('#ae-gci').onclick = () => window.open(gcalLink(p, nom, a.email), '_blank', 'noopener'));
+  $('#ae-gci') && ($('#ae-gci').onclick = () => window.open(gcalLink(p, nom, mails.join(',')), '_blank', 'noopener'));
   $('#ae-del') && ($('#ae-del').onclick = async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para eliminarla'; return; } const { error } = await sb.from('presenciales').delete().eq('id', p.id); if (error) return fallo(error, 'No se ha podido eliminar.'); S.c.presenciales = S.c.presenciales.filter(y => y.id !== p.id); toast('Cita eliminada'); verAgenda(); });
-  $('#ae-fi') && ($('#ae-fi').onclick = () => { cerrarSheet(); irA(p.alumno_id, { tab: 'calendario', fn: () => { if ((S.ficha.pres || []).some(x => x.id === pid)) formPres(pid); } }); });
+  document.querySelectorAll('[data-fi]').forEach(b => b.onclick = () => { const aid = b.dataset.fi, mid = grp.find(x => x.alumno_id === aid)?.id; cerrarSheet(); irA(aid, { tab: 'calendario', fn: () => { if ((S.ficha.pres || []).some(x => x.id === mid)) formPres(mid); } }); });
   $('#ae-vv').onclick = () => verAgenda();
 }
 /* Agenda: todas las sesiones presenciales de tus alumnos, por días (de la semana pasada a 3 semanas vista) */
@@ -2225,8 +2238,8 @@ function verAgenda(desplaza = 0) {
   const hoy = hoyISO(), nDias = vista === 'semana' ? 7 : vista === '3dias' ? 3 : 14;
   if (!S.agIni) S.agIni = vista === '3dias' ? hoy : lunesDe(hoy);
   if (desplaza) S.agIni = sumaDias(S.agIni, desplaza * nDias); else if (vista === 'semana' && S.agIni !== lunesDe(S.agIni)) S.agIni = lunesDe(S.agIni);
-  const ini = S.agIni, fin = sumaDias(ini, nDias - 1), nom = x => x?.alumno_id ? S.c.perfiles.find(p => p.id === x.alumno_id)?.nombre || 'Alumno' : x?.persona || x?.tipo || 'Cita';
-  const l = (S.c.presenciales || []).filter(p => p.fecha && p.fecha >= ini && p.fecha <= fin && p.estado !== 'cancelada').sort(ordPres);
+  const ini = S.agIni, fin = sumaDias(ini, nDias - 1), nom = x => x?._g?.length > 1 ? x._g.map(y => (S.c.perfiles.find(p => p.id === y.alumno_id)?.nombre || 'Alumno').split(' ')[0]).join(' + ') : x?.alumno_id ? S.c.perfiles.find(p => p.id === x.alumno_id)?.nombre || 'Alumno' : x?.persona || x?.tipo || 'Cita';
+  const l = agruparCitas((S.c.presenciales || []).filter(p => p.fecha && p.fecha >= ini && p.fecha <= fin && p.estado !== 'cancelada').sort(ordPres));
   const dias = [...Array(nDias)].map((_, i) => sumaDias(ini, i));
   const EST = { programada: ['blue', 'Reservada'], dada: ['ok', 'Hecha'], tarde: ['warn', 'Aviso < 24 h'], falta: ['bad', 'No vino'] };
   const rango = ini.slice(0, 7) === fin.slice(0, 7) ? `${+ini.slice(8)}–${fCorta(fin)}` : `${fCorta(ini)} – ${fCorta(fin)}`;
@@ -7340,7 +7353,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v279';
+const APP_VER = 'v280';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}

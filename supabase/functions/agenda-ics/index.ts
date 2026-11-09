@@ -24,16 +24,20 @@ Deno.serve(async (req) => {
 
   const desde = new Date(Date.now() - 60 * 864e5).toISOString().slice(0, 10);
   const [{ data: pres }, { data: per }] = await Promise.all([
-    admin.from("presenciales").select("id,alumno_id,fecha,hora,estado,tipo,nota,persona,duracion_min").gte("fecha", desde).neq("estado", "cancelada").order("fecha"),
+    admin.from("presenciales").select("id,alumno_id,fecha,hora,estado,tipo,nota,persona,duracion_min,grupo").gte("fecha", desde).neq("estado", "cancelada").order("fecha"),
     admin.from("perfiles").select("id,nombre"),
   ]);
   const nom = Object.fromEntries((per || []).map((p: any) => [p.id, p.nombre || "Alumno"]));
   const ahora = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z";
   const L = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//La Obra Fitness//Sesiones//ES", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
     "X-WR-CALNAME:LOF · Sesiones", "X-WR-TIMEZONE:Europe/Madrid", "REFRESH-INTERVAL;VALUE=DURATION:PT1H", "X-PUBLISHED-TTL:PT1H"];
+  // Sesiones conjuntas: las filas del mismo «grupo» salen como un solo evento con los dos nombres
+  const vistos = new Set<string>(), gnom: Record<string, string[]> = {};
+  for (const p of pres || []) if (p.grupo) (gnom[p.grupo] ||= []).push(nom[p.alumno_id] || "Alumno");
   for (const p of pres || []) {
     if (!p.fecha) continue;
-    const tipo = p.tipo || "Entrenamiento", quien = p.alumno_id ? nom[p.alumno_id] || "Alumno" : p.persona || "", dur = p.duracion_min || min;
+    if (p.grupo) { if (vistos.has(p.grupo)) continue; vistos.add(p.grupo); }
+    const tipo = p.tipo || "Entrenamiento", quien = p.grupo ? gnom[p.grupo].join(" + ") : p.alumno_id ? nom[p.alumno_id] || "Alumno" : p.persona || "", dur = p.duracion_min || min;
     const hecho = p.estado === "dada" || p.estado === "tarde";
     L.push("BEGIN:VEVENT", `UID:pres-${p.id}@laobrafitness`, `DTSTAMP:${ahora}`);
     if (p.hora) L.push(`DTSTART;TZID=Europe/Madrid:${f8(p.fecha)}T${hm(p.hora)}`, `DTEND;TZID=Europe/Madrid:${sumaMin(p.fecha, p.hora, dur)}`);
