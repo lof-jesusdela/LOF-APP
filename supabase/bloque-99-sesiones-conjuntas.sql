@@ -2,4 +2,6 @@
 -- Una fila por alumno (a cada uno le cuenta en su bono) unidas por el mismo «grupo».
 alter table public.presenciales add column if not exists grupo uuid;
 create index if not exists presenciales_grupo_idx on public.presenciales (grupo);
+-- Ubicación de la cita (sale en Google Calendar)
+alter table public.presenciales add column if not exists lugar text;
 notify pgrst, 'reload schema';
