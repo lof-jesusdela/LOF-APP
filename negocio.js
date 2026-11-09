@@ -222,6 +222,7 @@ const Negocio = (() => {
     const hoy = hoyISO(), ci = (S.c.cierres || []).find(x => x.fecha === hoy), k = capacidad();
     return `<section class="stack"><span class="eyebrow">${esc(fLarga(hoy))}</span><h1>Tu día</h1><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="programarSes">📅 Programar sesión</button><button class="btn sm ghost" data-act="verAgenda">Agenda</button></div></section>
       ${vCapacidad(k)}
+      ${typeof Radar !== 'undefined' ? Radar.vTarjeta() : ''}
       ${ci ? `<section class="section"><div class="card stack" style="border:2px solid var(--ok);gap:4px"><b>✓ Jornada cerrada a las ${esc(new Date(ci.cerrado_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }))}</b>${(ci.pendientes || []).length ? `<div class="small">Quedó abierto: ${ci.pendientes.map(esc).join(' · ')}</div>` : ''}${ci.proximo ? `<div class="small">Próximo bloque: <b>${esc(ci.proximo)}</b></div>` : ''}<button class="linkbtn small" data-act="agCierre" style="align-self:flex-start">Revisar el cierre</button></div></section>` : ''}
       ${vPrioridades()}
       ${vBloques()}

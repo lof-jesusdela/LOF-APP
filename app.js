@@ -2469,6 +2469,53 @@ const Alertas = {
 /* Alertas: semana anterior incumplida, o semana en curso por debajo del 50 % a partir del sábado */
 /* Compromisos (lo que tienes que hacer tú): no se marcan con ✓ ni se esconden al silenciar; se resuelven al hacerlos */
 const T_COMPROMISO = ['pago', 'revision', 'devolucion', 'proxima', 'proceso'];
+/* ---------- Radar de adherencia: cumplimiento semana a semana de cada alumno, tendencia y nivel de alerta ---------- */
+const Radar = {
+  /* % de cumplimiento de una semana: entrenos, pasos, alimentación (si la mides) y check-in (si lleva seguimiento) */
+  semana(a, srv, L) {
+    const c = S.c, base = (c.programas.find(p => p.alumno_id === a.id) || {}).dias_semana || 0, dpw = dpwEn(a.id, L, base), d = semanaDatos(a.id, L, c), parts = {};
+    if (dpw) parts.ent = Math.min(1, d.entrenos / dpw);
+    if (conPasos(srv)) parts.pas = d.pasosMedia == null ? 0 : Math.min(1, d.pasosMedia / (objPasos(srv) || 1));
+    if (srv?.modulo_nutricion && midoCoach(a.id) && d.nutri != null) parts.nut = Math.min(1, d.nutri / 100);
+    if (conSeguimiento(srv)) parts.chk = d.chk ? 1 : 0;
+    /* Peso: entrenos 50 %, pasos 20 %, alimentación 20 %, check-in 10 % (sobre lo que aplique a ese alumno) */
+    const W = { ent: .5, pas: .2, nut: .2, chk: .1 }, k = Object.keys(parts), tw = k.reduce((t, x) => t + W[x], 0);
+    return { L, pct: k.length ? Math.round(k.reduce((t, x) => t + parts[x] * W[x], 0) / tw * 100) : null, parts, d, dpw };
+  },
+  de(a) {
+    const srv = S.c.servicios.find(x => x.alumno_id === a.id); if (!srv || esFamilia(a.id)) return null;
+    const est = Acomp.estado(srv); if (['pausado', 'antiguo', 'baja'].includes(est.k)) return null;
+    const lunes = lunesDe(hoyISO()), sem = [1, 2, 3, 4].map(k => sumaDias(lunes, -7 * k)).filter(L => !srv.inicio || srv.inicio <= sumaDias(L, 3)).map(L => this.semana(a, srv, L)).filter(x => x.pct != null);
+    const e = estadoAlumno(a), [s1, s2, s3] = sem.map(x => x.pct), media = sem.length > 1 ? Math.round(sem.slice(1).reduce((t, x) => t + x.pct, 0) / (sem.length - 1)) : null;
+    const razones = [];
+    const caida = s1 != null && media != null ? media - s1 : 0, seguida = s1 != null && s2 != null && s3 != null && s1 < s2 && s2 < s3 && s3 - s1 >= 10;
+    if (s1 != null && s1 < 50) razones.push(`Semana pasada al ${s1} %`);
+    if (caida >= 25) razones.push(`Ha caído ${caida} puntos respecto a su media (${media} %)`);
+    else if (seguida) razones.push(`Bajando dos semanas seguidas: ${s3} → ${s2} → ${s1} %`);
+    else if (caida >= 12) razones.push(`Empieza a bajar: ${s1} % (su media es ${media} %)`);
+    const cur = this.semana(a, srv, lunes), dow = (fecha(hoyISO()).getDay() + 6) % 7;
+    if (dow >= 3 && cur.dpw && cur.d.entrenos === 0) razones.push(`Esta semana aún no ha entrenado (${['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'][dow]})`);
+    const rojo = e.nivel === 'bad' || (s1 != null && s1 < 50) || caida >= 25, nar = !rojo && (e.nivel === 'warn' || (s1 != null && s1 < 75) || seguida || caida >= 12 || razones.length);
+    return { a, srv, sem, s1, media, caida, nivel: rojo ? 'rojo' : nar ? 'naranja' : 'verde', razones: [...razones, ...e.motivos.slice(0, 3)], e, cur };
+  },
+  todos() { return (S.c?.perfiles || []).filter(esCliente).map(a => this.de(a)).filter(Boolean)
+    .sort((x, y) => ({ rojo: 0, naranja: 1, verde: 2 }[x.nivel] - { rojo: 0, naranja: 1, verde: 2 }[y.nivel]) || (x.s1 ?? 101) - (y.s1 ?? 101) || y.caida - x.caida); },
+  COL: { rojo: '#dc2626', naranja: '#d97706', verde: '#16a34a' },
+  barras(r) { const l = r.sem.slice().reverse(); return `<span class="row" style="gap:3px;align-items:flex-end;height:28px" title="Últimas semanas: ${l.map(x => x.pct + ' %').join(' · ')}">${l.map(x => `<span style="width:9px;height:${Math.max(3, x.pct * .28)}px;border-radius:3px;background:${x.pct < 50 ? '#dc2626' : x.pct < 75 ? '#d97706' : '#16a34a'}"></span>`).join('')}</span>`; },
+  fila(r) { const n = r.a.nombre, tl = r.s1 == null ? '—' : r.s1 + ' %', fl = r.media != null && r.s1 != null ? (r.s1 - r.media >= 5 ? '↗' : r.s1 - r.media <= -5 ? '↘' : '→') : '';
+    return `<button type="button" class="line" data-act="ficha" data-id="${r.a.id}" style="width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);cursor:pointer;color:inherit;gap:10px;align-items:flex-start">
+      <span style="width:12px;height:12px;border-radius:50%;background:${this.COL[r.nivel]};margin-top:5px;flex:none"></span>
+      <span class="grow stack" style="gap:2px;min-width:0"><b>${esc(n)}</b>${r.razones.length ? `<span class="small muted">${r.razones.slice(0, 2).map(esc).join(' · ')}</span>` : '<span class="small muted">Cumpliendo su plan</span>'}</span>
+      ${this.barras(r)}<span style="min-width:62px;text-align:right"><b>${tl}</b> <span class="small">${fl}</span></span></button>`; },
+  /* Tarjeta de Tu día: cuántos hay en cada nivel y los más urgentes */
+  vTarjeta() { const T = this.todos(); if (!T.length) return ''; const n = k => T.filter(r => r.nivel === k).length, top = T.filter(r => r.nivel !== 'verde').slice(0, 5);
+    return `<section class="section"><div class="section-head"><h2>📡 Radar de adherencia</h2><button class="btn sm ghost" data-act="verRadar">Ver todos</button></div><div class="card stack" style="gap:8px">
+      <div class="row" style="gap:16px;flex-wrap:wrap"><span><b style="color:${this.COL.rojo}">● ${n('rojo')}</b> atención inmediata</span><span><b style="color:${this.COL.naranja}">● ${n('naranja')}</b> vigilar esta semana</span><span><b style="color:${this.COL.verde}">● ${n('verde')}</b> en camino</span></div>
+      ${top.length ? `<div>${top.map(r => this.fila(r)).join('')}</div>` : '<div class="small muted">Todos cumplen su plan. 💪</div>'}</div></section>`; },
+  ver() { const T = this.todos(), g = k => T.filter(r => r.nivel === k), sec = (k, t) => g(k).length ? `<span class="eyebrow" style="color:${this.COL[k]}">${t} · ${g(k).length}</span><div class="card" style="padding:4px 14px">${g(k).map(r => this.fila(r)).join('')}</div>` : '';
+    abrirSheet(`<div class="stack"><h2>📡 Radar de adherencia</h2><p class="small muted">Cumplimiento de cada alumno en sus últimas semanas (entrenos, pasos, alimentación si la mides y check-in). Las barras van de la más antigua a la semana pasada; la flecha compara con su media. Toca un alumno para abrir su ficha.</p>
+      ${sec('rojo', '🔴 Atención inmediata')}${sec('naranja', '🟠 Vigilar esta semana')}${sec('verde', '🟢 En camino')}</div>`); },
+};
 function estadoAlumno(a) {
   const c = S.c, hoy = hoyISO(), lunes = lunesDe(hoy), dow = (fecha(hoy).getDay() + 6) % 7; // 0 = lunes … 6 = domingo
   const srv = c.servicios.find(x => x.alumno_id === a.id), dpwBase = (c.programas.find(p => p.alumno_id === a.id) || {}).dias_semana || 0, obj = objPasos(srv);
@@ -7605,7 +7652,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v300';
+const APP_VER = 'v301';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -7941,6 +7988,7 @@ document.addEventListener('click', async e => {
     case 'checkin': controlFut(); break;
     case 'futSem': S.ficha.semFut = b.dataset.l; S.ficha.diaFut = null; render(); break;
     case 'futEquipo': formEquipo(b.dataset.al); break;
+    case 'verRadar': Radar.ver(); break;
     case 'futSemA': S.semFutA = b.dataset.l === lunesDe(hoyISO()) ? null : b.dataset.l; render(); break;
     case 'futDia': S.ficha.diaFut = S.ficha.diaFut === b.dataset.f ? null : b.dataset.f; render(); firmarMini(); break;
     case 'ctrlFut': cerrarSheet(); controlFut(b.dataset.l, b.dataset.m); break;
