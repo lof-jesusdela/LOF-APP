@@ -794,6 +794,8 @@ const carreraFases = c => !c ? [] : Array.isArray(c.fases) ? c.fases : c.tramos?
 const carreraTieneTramos = c => carreraFases(c).some(f => (f.tramos || []).length);
 const INDICADORES = [['zonas', 'Zonas (de → a)', 'Z1 → Z3'], ['tiempo', 'Tiempo total', '20 min'], ['distancia', 'Distancia', '5 km'], ['series', 'Series', '3'], ['reps', 'Repeticiones', '8 x 200 m'], ['rec', 'Recuperación', '1 min trotando'], ['ritmo', 'Ritmo por km', '5:30'], ['fc', 'Frecuencia cardiaca', '150 ppm']];
 const zonaN = t => +(/^zona\s*(\d)/i.exec(t || '')?.[1] || 0);
+/* Series de carrera: tramos unidos («con» = va unido al anterior) que se repiten «vueltas» veces (p. ej. 6 × [Zona 4 5 min + recuperación 1 min]) */
+const gruposTramos = l => (l || []).reduce((g, t, i) => { if (i && t.con && g.length) g[g.length - 1].push(i); else g.push([i]); return g; }, []);
 /* Lo que ve el alumno: cada tramo con solo los indicadores rellenados */
 function vCarrera(c, o = {}) {
   const vam = 'vam' in o ? o.vam : vamDe(), mx = 'mx' in o ? o.mx : fcMaxDe(), fases = carreraFases(c).filter(f => (f.tramos || []).length), cab = fases.length > 1 || (c.fases && fases.length);
@@ -801,7 +803,9 @@ function vCarrera(c, o = {}) {
     return `<div class="stack" style="gap:8px;padding:12px;border:1px solid var(--line);border-radius:12px">${(n > 1 || t.tipo !== 'Continuo') && t.tipo ? `<div class="row"><span class="pill ${z ? 'blue' : 'gold'}">${esc(t.tipo)}</span>${zt ? `<span class="small muted">${esc(zt)}</span>` : ''}</div>` : ''}
       ${ind.length ? `<div class="kpis" style="grid-template-columns:repeat(${Math.min(3, ind.length)},1fr)">${ind.map(([k, l]) => `<div class="kpi"><div class="l">${l}</div><b${k === 'fc' ? ' style="color:var(--bad)"' : ''}>${esc(k === 'ritmo' && /^\d+:\d\d$/.test(t.ind[k]) ? t.ind[k] + ' min/km' : t.ind[k])}</b></div>`).join('')}</div>` : ''}
       ${t.obs ? `<p class="note" style="margin:0">${esc(t.obs)}</p>` : ''}</div>`; };
-  return fases.map(f => `${cab && f.fase ? `<span class="eyebrow">${esc(FASES.find(x => x[0] === f.fase)?.[1] || f.fase)}</span>` : ''}${f.tramos.map(t => tr(t, f.tramos.length)).join('')}`).join('');
+  const grupo = (f, ix) => { const ts = ix.map(i => f.tramos[i]), h = ts.map(t => tr(t, f.tramos.length)).join(''); if (ix.length < 2) return h; const n = +ts[0].vueltas || 1;
+    return `<div class="stack" style="gap:8px;padding:10px;border:2px solid var(--gold, #c9a227);border-radius:14px"><b class="small">🔁 ${n > 1 ? `Repite ${n} veces` : 'Serie'}: ${ts.map(t => esc(t.tipo)).join(' + ')}</b>${h}</div>`; };
+  return fases.map(f => `${cab && f.fase ? `<span class="eyebrow">${esc(FASES.find(x => x[0] === f.fase)?.[1] || f.fase)}</span>` : ''}${gruposTramos(f.tramos).map(ix => grupo(f, ix)).join('')}`).join('');
 }
 /* Datos de FC de la persona del editor (si se abrió desde su ficha) */
 function fcEditor() {
@@ -6830,22 +6834,28 @@ ${editorEsFutbol() || b?.momento ? `    <label class="f">Momento (día de partid
   /* Sesión de carrera completa en un bloque: calentamiento, parte principal y enfriamiento, cada uno con sus tramos */
   const RUN = { fases: FASES.map(([k]) => ({ fase: k, tramos: JSON.parse(JSON.stringify(carreraFases(b?.carrera).find(f => f.fase === k)?.tramos || [])) })) };
   const sinFase = carreraFases(b?.carrera).find(f => !FASES.some(x => x[0] === f.fase)); if (sinFase) RUN.fases[1].tramos.push(...JSON.parse(JSON.stringify(sinFase.tramos)));
-  const leerRun = () => { document.querySelectorAll('#b-run [data-tr]').forEach(el => { const t = RUN.fases[+el.dataset.f]?.tramos[+el.dataset.tr]; if (!t) return; t.ind = {}; el.querySelectorAll('[data-iv]').forEach(i => { const on = el.querySelector(`[data-ic="${i.dataset.iv}"]`)?.checked; if (on) t.ind[i.dataset.iv] = i.value.trim(); }); t.obs = el.querySelector('[data-obs]')?.value.trim() || ''; }); };
+  const leerRun = () => { document.querySelectorAll('#b-run [data-tr]').forEach(el => { const t = RUN.fases[+el.dataset.f]?.tramos[+el.dataset.tr]; if (!t) return; t.ind = {}; el.querySelectorAll('[data-iv]').forEach(i => { const on = el.querySelector(`[data-ic="${i.dataset.iv}"]`)?.checked; if (on) t.ind[i.dataset.iv] = i.value.trim(); }); t.obs = el.querySelector('[data-obs]')?.value.trim() || ''; });
+    document.querySelectorAll('#b-run [data-rep]').forEach(i => { const t = RUN.fases[+i.dataset.f]?.tramos[+i.dataset.i]; if (t) t.vueltas = Math.max(1, Math.min(50, Math.round(+i.value) || 1)); }); };
   const pintarRun = () => {
     const w = $('#b-run'), on = $('#b-t').value === 'cardio' && $('#b-mq').value === 'Correr'; w.hidden = !on; if (!on) return;
     w.innerHTML = `<b class="small">Sesión de carrera</b><span class="small muted">Monta aquí todo lo que va a correr: calentamiento, parte principal y enfriamiento, con tantos tramos como necesites.</span>
       ${RUN.fases.map((F, fi) => `<div class="stack" style="gap:8px;border-top:2px solid var(--line);padding-top:10px"><span class="eyebrow">${FASES[fi][1]}</span>
-      ${F.tramos.map((t, i) => { const z = zonaN(t.tipo), zt = z ? zonaCarrera(z, FC.vam, FC.mx) : ''; return `<div class="stack" data-f="${fi}" data-tr="${i}" style="gap:8px;border:1px solid var(--line);border-radius:12px;padding:10px">
+      ${(() => { const caja = t => { const i = F.tramos.indexOf(t); const z = zonaN(t.tipo), zt = z ? zonaCarrera(z, FC.vam, FC.mx) : ''; return `<div class="stack" data-f="${fi}" data-tr="${i}" style="gap:8px;border:1px solid var(--line);border-radius:12px;padding:10px">
         <div class="row"><span class="pill ${z ? 'blue' : 'gold'}">${esc(t.tipo)}</span><span class="small muted grow">${esc(zt || (z ? 'Sin test VAM ni FC máxima: escribe ritmo y pulso' : ''))}</span><button type="button" class="btn ghost" data-act="runQuita" data-f="${fi}" data-i="${i}" style="color:var(--bad);padding:4px 10px" aria-label="Quitar tramo">✕</button></div>
         <div class="chips">${INDICADORES.map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-ic="${k}" ${t.ind?.[k] != null ? 'checked' : ''} style="width:20px;height:20px"> ${l}</label>`).join('')}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${INDICADORES.map(([k, l, ph]) => `<label class="f" data-iw="${k}" ${t.ind?.[k] != null ? '' : 'hidden'}>${l}<input type="text" data-iv="${k}" value="${esc(t.ind?.[k] || '')}" placeholder="${esc(z && k === 'ritmo' && FC.vam ? zonaCarrera(z, FC.vam, null).split(' ')[0] : z && k === 'fc' && FC.mx ? zonaCarrera(z, null, FC.mx) : ph)}"></label>`).join('')}</div>
-        <label class="f">Observaciones<textarea data-obs rows="2" placeholder="${t.tipo === 'Escaleras' ? 'Ej. 3 series de cada: skipping de 1 en 1…' : 'Qué tiene que hacer y cómo'}">${esc(t.obs || '')}</textarea></label></div>`; }).join('')}
+        <label class="f">Observaciones<textarea data-obs rows="2" placeholder="${t.tipo === 'Escaleras' ? 'Ej. 3 series de cada: skipping de 1 en 1…' : 'Qué tiene que hacer y cómo'}">${esc(t.obs || '')}</textarea></label></div>`; }; const G = gruposTramos(F.tramos);
+        return G.map((ix, gi) => { const ts = ix.map(i => F.tramos[i]), h = ix.map((i, k) => (k ? `<button type="button" class="ss-link on" data-act="runUne" data-f="${fi}" data-i="${i}" title="Separar">🔗 Unido al anterior · separar</button>` : '') + caja(F.tramos[i])).join('');
+          const une = gi ? `<button type="button" class="ss-link" data-act="runUne" data-f="${fi}" data-i="${ix[0]}">＋ unir con el anterior (para repetirlos como series)</button>` : '';
+          return une + (ix.length > 1 ? `<div class="stack" style="gap:8px;padding:10px;border:2px solid var(--gold, #c9a227);border-radius:14px"><label class="f" style="max-width:260px">🔁 Repeticiones de la serie (veces)<input type="number" min="1" max="50" inputmode="numeric" data-rep data-f="${fi}" data-i="${ix[0]}" value="${+ts[0].vueltas || 2}"></label>${h}<span class="small muted">Se repite ${ts.map(t => esc(t.tipo)).join(' + ')} las veces que pongas.</span></div>` : h); }).join(''); })()}
       <div class="stack" style="gap:6px"><span class="small muted">+ Añadir tramo</span><div class="chips">${TIPOS_TRAMO.map(t => `<button type="button" data-act="runAdd" data-f="${fi}" data-v="${t}">${t}</button>`).join('')}</div></div></div>`).join('')}`;
   };
   $('#b-run').addEventListener('change', ev => { const k = ev.target.dataset.ic; if (k) { const tr = ev.target.closest('[data-tr]'); tr.querySelector(`[data-iw="${k}"]`).hidden = !ev.target.checked; } });
   $('#b-run').addEventListener('click', ev => {
-    const x = ev.target.closest('[data-act="runAdd"],[data-act="runQuita"]'); if (!x) return; ev.preventDefault(); ev.stopPropagation(); leerRun(); const F = RUN.fases[+x.dataset.f];
-    if (x.dataset.act === 'runAdd') F.tramos.push({ tipo: x.dataset.v, ind: {}, obs: '' }); else F.tramos.splice(+x.dataset.i, 1);
+    const x = ev.target.closest('[data-act="runAdd"],[data-act="runQuita"],[data-act="runUne"]'); if (!x) return; ev.preventDefault(); ev.stopPropagation(); leerRun(); const F = RUN.fases[+x.dataset.f];
+    if (x.dataset.act === 'runAdd') F.tramos.push({ tipo: x.dataset.v, ind: {}, obs: '' });
+    else if (x.dataset.act === 'runUne') { const i = +x.dataset.i, t = F.tramos[i]; t.con = !t.con; if (t.con) { const g = gruposTramos(F.tramos).find(ix => ix.includes(i)); const t0 = F.tramos[g[0]]; t0.vueltas ||= +t.vueltas || 2; delete t.vueltas; } }
+    else { const i = +x.dataset.i, t = F.tramos[i], sig = F.tramos[i + 1]; if (sig?.con && !t.con) { sig.con = false; if (t.vueltas) sig.vueltas = t.vueltas; } F.tramos.splice(i, 1); }
     pintarRun();
   });
   const pintarCardio = () => {
@@ -7442,7 +7452,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v287';
+const APP_VER = 'v288';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
