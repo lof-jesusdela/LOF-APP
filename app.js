@@ -1340,7 +1340,8 @@ function cadenasDe(L, ag) {
   });
   L.forEach((e, i) => {
     const p = L[i - 1];
-    const enlaza = p && !SEPARADO.test(p.grupo || '') && (liga.has(i) || ((p.descanso_seg ?? 60) === 0 || junta(p.grupo)) && !(junta(e.grupo) && e.grupo !== p.grupo));
+    /* «Superserie con el siguiente» (lo que pone «juntar» o una pausa de superserie) une siempre; «Separado del siguiente» separa siempre */
+    const enlaza = p && !SEPARADO.test(p.grupo || '') && (liga.has(i) || p.grupo === SS_AUTO || ((p.descanso_seg ?? 60) === 0 || junta(p.grupo)) && !(junta(e.grupo) && e.grupo !== p.grupo));
     if (enlaza) out[out.length - 1].push(e); else out.push([e]);
   });
   return out;
@@ -7600,9 +7601,7 @@ async function ssPausa(id, seg) {
   const pauta = Array.isArray(e.pauta) && e.pauta.length ? e.pauta.map((t, k, a) => k === a.length - 1 ? { ...t, d: seg } : t) : e.pauta;
   const junta = /juntos|super\s*(serie|set)|circuito/i.test(e.grupo || '');
   const row = { descanso_seg: seg, pauta };
-  if (SEPARADO.test(e.grupo || '')) row.grupo = seg > 0 ? SS_AUTO : null;
-  else if (seg > 0 && !junta) row.grupo = SS_AUTO;                 // con pausa, la unión la marca el texto (si no, descanso 0 ya los une)
-  if (seg === 0 && e.grupo === SS_AUTO) row.grupo = null;     // sin pausa vuelve a unirlos el descanso 0
+  row.grupo = SS_AUTO;   // la unión la marca este texto, con o sin pausa
   const { error } = await sb.from('ejercicios_sesion').update(row).eq('id', id); if (error) return fallo(error);
   toast(seg ? `Superserie con ${seg} s de pausa entre los dos ejercicios` : 'Superserie sin pausa entre los dos ejercicios'); refrescarEditor();
 }
@@ -7610,7 +7609,7 @@ async function ssCambiar(id, juntar) {
   const e = S.editor.prog.dias.flatMap(d => d.bloques_sesion).flatMap(b => b.ejercicios_sesion).find(x => x.id === id); if (!e) return;
   /* Al separar se conserva su descanso (solo si no tenía, 0, se le pone 1:30); al juntar se quita la marca de «separado» */
   const tenia = +e.descanso_seg || 0, des = juntar ? 0 : tenia > 0 ? tenia : 90, pauta = Array.isArray(e.pauta) && e.pauta.length ? e.pauta.map((t, k, a) => k === a.length - 1 ? { ...t, d: des } : t) : e.pauta;
-  const row = { descanso_seg: des, pauta, grupo: juntar ? (SEPARADO.test(e.grupo || '') ? null : e.grupo ?? null) : SS_SEP };
+  const row = { descanso_seg: des, pauta, grupo: juntar ? SS_AUTO : SS_SEP };
   const { error } = await sb.from('ejercicios_sesion').update(row).eq('id', id); if (error) return fallo(error);
   toast(juntar ? 'Juntos en superserie (sin descanso entre ellos)' : `Separados · descanso de ${des >= 60 ? (des % 60 ? `${Math.floor(des / 60)}:${String(des % 60).padStart(2, '0')}` : des / 60 + ' min') : des + ' s'}`); refrescarEditor();
 }
@@ -7755,7 +7754,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v307';
+const APP_VER = 'v308';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
