@@ -257,7 +257,10 @@ function contextosDe(aid) {
   if (S.ficha?.id === aid && S.ficha.contextos) return S.ficha.contextos;
   return (S.c?.contextos || []).filter(x => x.alumno_id === aid);
 }
-const ctxEnSemana = (lista, lunes) => (lista || []).find(x => x.contexto_desde <= lunes && x.contexto_hasta >= lunes) || null;
+/* Si se solapan (unas vacaciones dentro de un bloque de 8 semanas), manda el más corto */
+const ctxEnSemana = (lista, lunes) => (lista || []).filter(x => x.contexto_desde <= lunes && x.contexto_hasta >= lunes).sort((a, b) => (fecha(a.contexto_hasta) - fecha(a.contexto_desde)) - (fecha(b.contexto_hasta) - fecha(b.contexto_desde)))[0] || null;
+/* Bloques de entrenamiento con fechas (7-8 semanas…): son programas con fechas, como los contextos, pero largos y marcados «Bloque · …» */
+const esBloqueP = p => /^Bloque · /.test(p?.nombre || '');
 const ctxDe = (aid, f = hoyISO()) => ctxEnSemana(contextosDe(aid), lunesDe(f));
 /* Entrenos que tocan en una semana: los del contexto si lo hay; si no, los de su programa */
 const dpwEn = (aid, lunes, base) => { const c = ctxEnSemana(contextosDe(aid), lunes); return c ? c.dias_semana || 0 : base || 0; };
@@ -269,7 +272,7 @@ function previstosCiclo(cc, aid, base) {
 const fCtx = c => `${fCorta(c.contexto_desde)} – ${fCorta(c.contexto_hasta)}`;
 const semanasCtx = c => Math.round((fecha(c.contexto_hasta) - fecha(c.contexto_desde)) / 6048e5 + 1 / 7);
 function vAvisoContexto() {
-  const c = S.d?.contexto; if (!c) return '';
+  const c = S.d?.contexto; if (!c || esBloqueP(c)) return '';
   return `<section class="section"><div class="card ctx-aviso"><span class="pill gold">Semana adaptada</span><div class="grow"><b>${esc(c.contexto_nombre || 'Contexto especial')}</b><div class="small muted">${c.dias_semana} ${c.dias_semana === 1 ? 'entreno' : 'entrenos'} por semana · ${esc(fCtx(c))}. Tu progreso se mide con este plan: cumplirlo es el 100 %.</div></div></div></section>`;
 }
 
@@ -279,13 +282,63 @@ function vSelectorProgs(alumnoId, actualId) {
   const hoy = hoyISO(), lunes = lunesDe(hoy);
   const it = [];
   (f.programas || []).slice().reverse().forEach(p => it.push([p.id, (p.activo !== false ? '★ ' : '') + (p.nombre || 'Programa')]));
-  (f.contextos || []).slice().sort((x, y) => y.contexto_desde.localeCompare(x.contexto_desde)).forEach(c => it.push([c.id, (c.contexto_hasta < hoy ? '✓ ' : c.contexto_desde <= lunes ? '● ' : '◷ ') + (c.contexto_nombre || 'Contexto') + ' · ' + fCtx(c)]));
+  (f.contextos || []).slice().sort((x, y) => y.contexto_desde.localeCompare(x.contexto_desde)).forEach(c => it.push([c.id, (esBloqueP(c) ? '🧱 ' : '') + (c.contexto_hasta < hoy ? '✓ ' : c.contexto_desde <= lunes ? '● ' : '◷ ') + (c.contexto_nombre || 'Contexto') + ' · ' + fCtx(c)]));
   (f.guardados || []).forEach(g => it.push([g.id, '🗂 ' + (g.contexto_nombre || g.nombre || 'Guardado')]));
   if (it.length < 2) return '';
   return `<div class="stack" style="gap:6px"><span class="small muted">Programas y contextos de este alumno</span><div class="row" style="gap:6px;flex-wrap:wrap">${it.map(([id, t]) => `<button class="btn sm ${id === actualId ? '' : 'ghost'}" data-act="abrirProg" data-id="${id}">${esc(t)}</button>`).join('')}</div></div>`;
 }
+/* ---------- Bloques de entrenamiento con fechas: cada bloque guarda sus entrenos; se crea copiando el anterior o vacío ---------- */
+function vBloquesEnt(f, a) {
+  const B = (f.contextos || []).filter(esBloqueP).sort((x, y) => x.contexto_desde.localeCompare(y.contexto_desde)), hoy = hoyISO(), lunes = lunesDe(hoy), base = f.progFull;
+  const semN = c => Math.round((fecha(c.contexto_hasta) - fecha(c.contexto_desde)) / 6048e5 + 1 / 7), semAct = c => Math.floor((fecha(lunes) - fecha(c.contexto_desde)) / 6048e5) + 1;
+  const fila = c => { const fin = c.contexto_hasta < hoy, act = !fin && c.contexto_desde <= lunes, n = semN(c);
+    return `<div class="line" style="flex-wrap:wrap;gap:8px"><div class="grow" style="min-width:200px"><b>🧱 ${esc(c.contexto_nombre || 'Bloque')}</b> <span class="pill ${fin ? '' : act ? 'ok' : 'blue'}">${fin ? '✓ Terminado' : act ? `En curso · semana ${semAct(c)} de ${n}` : 'Programado'}</span>
+      <div class="small muted">${esc(fCtx(c))} · ${n} ${n === 1 ? 'semana' : 'semanas'} · ${c.dias_semana} entrenos/semana · ${(c.dias || []).length} ${(c.dias || []).length === 1 ? 'día' : 'días'}</div></div>
+      <button class="btn sm" data-act="abrirProg" data-id="${c.id}">Entrenos</button><button class="btn sm ghost" data-act="bloqueEnt" data-id="${c.id}">✎ Fechas</button>
+      ${act ? `<button class="btn sm gold" data-act="bloqueSig" data-id="${c.id}">Terminar y empezar el siguiente</button>` : ''}</div>`; };
+  return `<section class="section"><div class="section-head"><h2>Bloques de entrenamiento</h2><button class="btn sm" data-act="bloqueEnt">＋ Nuevo bloque</button></div>
+    <div class="card">${B.map(fila).join('') || `<div class="small muted" style="padding:8px 0">Aún no tiene bloques con fechas: ahora entrena con su programa ${base ? `«${esc(base.nombre)}»` : ''}. Crea el primero y elige si copia sus entrenos o empiezas de cero; lo anterior queda guardado.</div>`}
+    ${B.length && base ? `<div class="small muted" style="padding-top:8px">Fuera de las fechas de un bloque entrena con su programa base «${esc(base.nombre)}». Si un contexto temporal (vacaciones…) cae dentro de un bloque, esas semanas manda el contexto.</div>` : ''}</div></section>`;
+}
+function formBloqueEnt(id, op = {}) {
+  const f = S.ficha, B = (f.contextos || []).filter(esBloqueP).sort((x, y) => x.contexto_desde.localeCompare(y.contexto_desde)), c = id ? B.find(x => x.id === id) : null, prev = op.prev ? B.find(x => x.id === op.prev) : null;
+  const ult = B[B.length - 1], hoy = hoyISO(), lunesSig = sumaDias(lunesDe(hoy), 7);
+  const ini0 = c?.contexto_desde || (prev ? lunesSig : ult && ult.contexto_hasta >= hoy ? sumaDias(ult.contexto_hasta, 1) : lunesDe(hoy)), sem0 = c ? Math.round((fecha(c.contexto_hasta) - fecha(c.contexto_desde)) / 6048e5 + 1 / 7) : 8;
+  const fuentes = [...B.slice().reverse(), ...(f.programas || []).slice().reverse()], def = prev || ult || f.progFull;
+  const num = B.length + 1;
+  abrirSheet(`<form class="stack" id="f-be"><h2>${c ? 'Fechas del bloque' : prev ? 'Terminar este bloque y empezar el siguiente' : 'Nuevo bloque'}</h2>
+    ${prev ? `<p class="small muted">«${esc(prev.contexto_nombre)}» se cierra el domingo antes de que empiece el nuevo. Sus entrenos y lo ya hecho quedan guardados en ese bloque.</p>` : ''}
+    <label class="f">Nombre del bloque<input type="text" id="be-n" value="${esc(c?.contexto_nombre || `Bloque ${num}`)}" placeholder="Ej. Bloque ${num} · Hipertrofia" required></label>
+    <div style="display:grid;grid-template-columns:1fr 90px 1fr;gap:8px"><label class="f">Empieza<input type="date" id="be-i" value="${ini0}" required></label><label class="f">Semanas<input type="number" id="be-s" min="1" max="52" value="${sem0}"></label><label class="f">Termina<input type="date" id="be-f" value="${c?.contexto_hasta || ''}"></label></div>
+    <p class="small muted" id="be-r"></p>
+    <label class="f">Entrenos por semana<input type="number" id="be-d" min="1" max="7" value="${c?.dias_semana || def?.dias_semana || 3}"></label>
+    ${c ? '' : `<label class="f">Entrenos del bloque<select id="be-c">${def ? `<option value="${def.id}">Copiar los de «${esc(def.contexto_nombre || def.nombre)}» (recomendado)</option>` : ''}${fuentes.filter(x => x.id !== def?.id).map(x => `<option value="${x.id}">Copiar los de «${esc(x.contexto_nombre || x.nombre)}»</option>`).join('')}<option value="">Empezar vacío (entrenos nuevos)</option></select></label>`}
+    <p class="small" id="be-err" style="color:var(--bad)"></p>
+    <button class="btn full" type="submit">${c ? 'Guardar' : 'Crear bloque y preparar sus entrenos'}</button>${c ? '<button class="btn ghost full" type="button" id="be-del" style="color:var(--bad)">Eliminar bloque</button>' : ''}</form>`);
+  let finMano = !!c;
+  const rango = () => { const i = $('#be-i').value; if (!i) return null; const ini = lunesDe(i), fin = finMano && $('#be-f').value ? sumaDias(lunesDe($('#be-f').value), 6) : sumaDias(ini, Math.max(1, +$('#be-s').value || 1) * 7 - 1); return fin < ini ? null : { ini, fin }; };
+  const pinta = () => { const r = rango(); if (!r) return $('#be-r').textContent = 'Revisa las fechas.'; if (!finMano) $('#be-f').value = r.fin; else $('#be-s').value = Math.round((fecha(r.fin) - fecha(r.ini)) / 6048e5 + 1 / 7);
+    $('#be-r').textContent = `De lunes ${fCorta(r.ini)} a domingo ${fCorta(r.fin)} · ${Math.round((fecha(r.fin) - fecha(r.ini)) / 6048e5 + 1 / 7)} semanas. Los bloques van por semanas completas (check-ins y cumplimiento son semanales).`; };
+  pinta(); $('#be-i').addEventListener('change', pinta); $('#be-s').addEventListener('input', () => { finMano = false; pinta(); }); $('#be-f').addEventListener('change', () => { finMano = true; pinta(); });
+  $('#f-be').addEventListener('submit', async e => {
+    e.preventDefault(); const bt = $('#f-be [type=submit]'); if (bt.disabled) return; const r = rango(), nombre = $('#be-n').value.trim(); if (!r || !nombre) return;
+    const cruza = B.filter(x => x.id !== c?.id && x.id !== prev?.id && x.contexto_desde <= r.fin && x.contexto_hasta >= r.ini)[0];
+    if (cruza) return $('#be-err').textContent = `Se cruza con «${cruza.contexto_nombre}» (${fCtx(cruza)}). Cambia las fechas o ajusta ese bloque primero.`;
+    bt.disabled = true; bt.textContent = 'Guardando…';
+    const row = { nombre: `Bloque · ${nombre}`, contexto_nombre: nombre, contexto_desde: r.ini, contexto_hasta: r.fin, dias_semana: Math.max(1, Math.min(7, +$('#be-d').value || 3)) };
+    try {
+      if (prev) { const finP = sumaDias(r.ini, -1); if (finP < prev.contexto_desde) throw new Error('El bloque nuevo empezaría antes que el actual.'); const { error } = await sb.from('programas').update({ contexto_hasta: finP }).eq('id', prev.id); if (error) throw error; }
+      if (c) { const { error } = await sb.from('programas').update(row).eq('id', c.id); if (error) throw error; cerrarSheet(); toast('Bloque guardado'); await cargarProgramasFicha(f); await recargarContextosCoach(); render(); return; }
+      const { data: np, error } = await sb.from('programas').insert({ ...row, alumno_id: f.id, activo: false }).select().single(); if (error) throw error;
+      const src = +$('#be-c')?.value || 0; if (src) await copiarDiasPrograma(src, np.id);
+      cerrarSheet(); toast(src ? 'Bloque creado con los entrenos copiados: ajústalos' : 'Bloque creado: añade sus entrenos'); await recargarContextosCoach(); await cargarProgramasFicha(f); await abrirEditor(f.id, np.id);
+    } catch (err) { bt.disabled = false; bt.textContent = c ? 'Guardar' : 'Crear bloque y preparar sus entrenos'; fallo(err, err.message || 'No se ha podido guardar el bloque.'); }
+  });
+  $('#be-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez: se borra el bloque y sus entrenos (lo ya entrenado se conserva)'; return; }
+    const { error } = await sb.from('programas').delete().eq('id', c.id).eq('alumno_id', f.id); if (error) return fallo(error); cerrarSheet(); toast('Bloque eliminado'); await cargarProgramasFicha(f); await recargarContextosCoach(); render(); });
+}
 function vContextos(f, a) {
-  const l = (f.contextos || contextosDe(a.id)).slice().sort((x, y) => y.contexto_desde.localeCompare(x.contexto_desde)), hoy = hoyISO(), lunes = lunesDe(hoy);
+  const l = (f.contextos || contextosDe(a.id)).filter(c => !esBloqueP(c)).slice().sort((x, y) => y.contexto_desde.localeCompare(x.contexto_desde)), hoy = hoyISO(), lunes = lunesDe(hoy);
   const est = c => c.contexto_hasta < hoy ? ['', 'Terminado'] : c.contexto_desde <= lunes ? ['gold', 'Activo esta semana'] : ['blue', 'Programado'];
   return `<section class="section"><div class="section-head"><h2>Contextos temporales</h2><button class="btn sm" data-act="nuevoContexto">＋ Nuevo contexto</button></div>
     <div class="card">${l.map(c => `<div class="line" style="flex-wrap:wrap"><div class="grow" style="min-width:180px"><b>${esc(c.contexto_nombre || 'Contexto')}</b><div class="small muted">${esc(fCtx(c))} · ${semanasCtx(c)} ${semanasCtx(c) === 1 ? 'semana' : 'semanas'} · ${c.dias_semana} ${c.dias_semana === 1 ? 'entreno' : 'entrenos'}/semana${c.dias ? ` · ${c.dias.length} ${c.dias.length === 1 ? 'sesión' : 'sesiones'}` : ''}</div></div><span class="pill ${est(c)[0]}">${est(c)[1]}</span><div class="row" style="gap:6px"><button class="btn sm ghost" data-act="sesionesContexto" data-id="${c.id}">✎ Sesiones</button><button class="btn sm ghost" data-act="editarContexto" data-id="${c.id}">Datos</button>${c.contexto_hasta >= hoy ? `<button class="btn sm ghost" data-act="hacerPatron" data-id="${c.id}">⭐ Hacerla semana patrón</button>` : ''}</div></div>`).join('') || '<div class="empty small">Sin contextos. Úsalos cuando sepas que unas semanas no podrá seguir su plan (vacaciones, viaje, lesión…): le preparas un plan para esas semanas y se mide contra él.</div>'}</div>
@@ -311,7 +364,7 @@ function formContexto(id, op = {}) {
     const bt = $('#f-ctx [type=submit]'); if (bt.disabled) return;
     const sinFechas = !!$('#cx-g')?.checked, r = sinFechas ? { ini: null, fin: null } : rango(), nombre = $('#cx-n').value.trim(), n = Math.max(1, Math.min(7, +$('#cx-e').value || 1));
     if (!r || !nombre) return;
-    const cruce = !sinFechas && (f.contextos || []).find(x => x.id !== c?.id && x.contexto_desde <= r.fin && x.contexto_hasta >= r.ini);
+    const cruce = !sinFechas && !esBloqueP(c) && (f.contextos || []).find(x => x.id !== c?.id && !esBloqueP(x) && x.contexto_desde <= r.fin && x.contexto_hasta >= r.ini);
     if (cruce) return $('#cx-err').textContent = `Se cruza con "${cruce.contexto_nombre}" (${fCtx(cruce)}). Cambia las fechas.`;
     if (!sinFechas) { const cb = await cruceEnBase(f.id, r.ini, r.fin, c?.id); if (cb) return $('#cx-err').textContent = `Ya existe "${cb.contexto_nombre}" (${fCtx(cb)}) para esas fechas (quizá creada desde otro dispositivo). Ábrela en vez de crear otra.`; }
     bt.disabled = true; bt.textContent = 'Guardando…';
@@ -3367,9 +3420,9 @@ async function copiarDiasPrograma(baseId, npId) {
 }
 /* ¿Ya hay en la base una semana ajustada que se cruce con estas fechas? (evita duplicados por doble toque o por otro dispositivo) */
 async function cruceEnBase(aid, ini, fin, excepto) {
-  const { data, error } = await sb.from('programas').select('id,contexto_nombre,contexto_desde,contexto_hasta').eq('alumno_id', aid).lte('contexto_desde', fin).gte('contexto_hasta', ini);
+  const { data, error } = await sb.from('programas').select('id,nombre,contexto_nombre,contexto_desde,contexto_hasta').eq('alumno_id', aid).lte('contexto_desde', fin).gte('contexto_hasta', ini);
   if (error) return null;
-  return (data || []).find(x => x.id !== excepto) || null;
+  return (data || []).find(x => x.id !== excepto && !esBloqueP(x)) || null;   /* los bloques largos no cuentan: un contexto puede caer dentro de un bloque */
 }
 async function ajustarSemana(lunes, anterior) {
   const f = S.ficha, base = anterior ? ctxEnSemana(f.contextos, sumaDias(lunes, -7)) : f.progFull;
@@ -4150,6 +4203,7 @@ function vFicha() {
     ${(() => { const ci = srv && cierreDe(a.id); return ci ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>Bono terminado el ${esc(fCorta(ci.fin))}.</b> Su app muestra su resumen y cómo seguir; ${a.activo === false ? 'ya está archivado.' : `pasa a antiguos alumnos y pierde el acceso el ${esc(fCorta(ci.limite))}. Si renueva o cambia de programa, se reactiva solo al guardar su servicio.`}</div><button class="btn sm" data-act="pdfCierre" data-id="${a.id}">📄 Resumen PDF</button></div>` : ''; })()}
     ${srv ? (() => { const h = Array.isArray(srv.historial) ? srv.historial : []; return `<div class="small row" style="flex-wrap:wrap;gap:6px;align-items:center">${h.map((x, i) => `<button class="pill" data-act="histEditar" data-i="${i}" title="Editar programa anterior">Antes: ${esc(x.producto || x.linea || 'Programa')} · ${esc(fCorta(x.desde))}–${esc(fCorta(x.hasta))} ✎</button>`).join('')}<button class="linkbtn small" data-act="histEditar" data-i="-1">＋ Programa anterior</button><button class="linkbtn small" data-act="srvExtra">＋ Servicio extra</button></div>`; })() : ''}
     ${(() => { const af = avisoFin(srv); return af ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>${af.terminado ? `Su proceso terminó el ${esc(fCorta(af.fin))}` : `Le quedan ${af.dias} días de proceso`}</b> (final ${esc(fF(af.fin))}). Si sigue contigo, añádele una extensión: continúa con sus bloques y su historial.</div><button class="btn sm gold" data-act="extension">＋ Añadir extensión</button><button class="btn sm ghost" data-act="entExtra">＋ Entrenamientos sueltos</button></div>` : srv?.inicio ? '<span class="row" style="gap:12px;flex-wrap:wrap"><button class="linkbtn small" data-act="extension">＋ Añadir extensión del proceso</button><button class="linkbtn small" data-act="entExtra">＋ Entrenamientos sueltos</button></span>' : ''; })()}
+    ${srv?.modulo_futbol ? '' : (() => { const B = (f.contextos || []).filter(esBloqueP), c = ctxEnSemana(B, lunesDe(hoyISO())); return `<div class="row small" style="gap:8px;flex-wrap:wrap"><span class="grow">🧱 ${c ? `<b>${esc(c.contexto_nombre)}</b> · ${esc(fCtx(c))}` : B.length ? 'Ahora sin bloque con fechas (programa base)' : 'Sin bloques con fechas'}</span>${c ? `<button class="btn sm gold" data-act="bloqueSig" data-id="${c.id}">Terminar y empezar el siguiente</button>` : ''}<button class="btn sm ghost" data-act="bloqueEnt">＋ Nuevo bloque</button></div>`; })()}
     ${e.control ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>Toca su revisión mensual ${e.control.n}</b> (${esc(fCorta(e.control.fecha))}): llamada o videollamada de 10-15 minutos para ver cómo se siente, sus objetivos y su composición corporal.</div><button class="btn sm gold" data-act="revision" data-n="${e.control.n}">Registrar revisión</button></div>` : ''}
   </div></section>`;
   const fb4 = `${srv?.modulo_futbol ? vSemanaEnCurso(f, a) + `<details class="card" style="margin:0 0 14px"><summary><b>Semana patrón</b> <span class="small muted">· su programa base</span></summary>${vBloqueActual(f, a)}</details>` : vBloqueActual(f, a)}<div style="padding:0 2px"><button class="btn ghost full" data-act="fichaSub" data-s="entreno">Programas, contextos y zonas de FC ›</button></div>${IA.vFicha(f, a)}`;
@@ -4301,7 +4355,7 @@ function vFichaSub(f, a) {
     const dpwB = f.prog?.dias_semana || 0, dpw = dpwEn(a.id, lunes, dpwB), dpw4 = [0, 1, 2, 3].reduce((t, k) => t + dpwEn(a.id, sumaDias(lunes, -7 * k), dpwB), 0), P = proceso(srv), linea = s2 => `<div class="line" data-act="verSesion" data-id="${s2.id}" style="cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(s2.fecha))}</span><div class="grow"><div class="small"><b>${esc(nomDia(s2.dias))}</b> · ${esc(s2.dias?.foco || '')} · ${nSeriesReg(s2.registros_series)} series${s2.duracion_min ? ` · ${s2.duracion_min} min` : ''}${s2.cansancio ? ` · cansancio ${s2.cansancio}/5` : ''}${(s2.omitidos || []).length ? ` · ${s2.omitidos.length} no realizado${s2.omitidos.length > 1 ? 's' : ''}` : ''}</div>${s2.nota ? `<div class="small muted">"${esc(s2.nota)}"</div>` : ''}</div><span class="small" style="color:var(--blue-text)">›</span></div>`;
     const semana = f.ses.filter(x => x.fecha >= lunes), bloque = P && !P.antes ? f.ses.filter(x => x.fecha >= P.cc.ini && x.fecha <= P.cc.fin && x.fecha < lunes) : [];
     const unicas = l => new Set(l.map(x => x.fecha + x.dia_id)).size, mes = unicas(f.todas.filter(x => x.fecha >= sumaDias(hoy, -27)));
-    return cab('Entrenamiento') + vCambiosPeso(a.id) + vZonasFC({ vals: f.val, perfil: a, srv, coach: true }) + vRitmosVAM({ vals: f.val, perfil: a, coach: true }) + (() => { const h = vSelectorProgs(a.id, null); return h ? `<section class="section"><div class="card">${h}</div></section>` : ''; })() + vContextos(f, a) + `
+    return cab('Entrenamiento') + vCambiosPeso(a.id) + vZonasFC({ vals: f.val, perfil: a, srv, coach: true }) + vRitmosVAM({ vals: f.val, perfil: a, coach: true }) + (() => { const h = vSelectorProgs(a.id, null); return h ? `<section class="section"><div class="card">${h}</div></section>` : ''; })() + (srv?.modulo_futbol ? '' : vBloquesEnt(f, a)) + vContextos(f, a) + `
     <section class="section"><div class="section-head"><h2>Semana patrón</h2><button class="btn sm" data-act="editarPrograma" data-id="${a.id}">${f.prog ? '✎ Editar' : 'Crear programa'}</button></div><div class="card small">${f.prog ? `<b>${esc(f.prog.nombre)}</b> · ${dpw || '—'} días por semana<div class="muted" style="margin-top:4px">Se repite cada semana que no tenga un contexto temporal. Para que una semana que has preparado pase a ser la patrón, pulsa «⭐ Hacerla semana patrón» en su contexto.</div>` : 'Aún no tiene programa.'}</div></section>
     <section class="section"><h2>Esta semana</h2><div class="card">${dpw ? barra('Entrenos de la semana', unicas(semana), dpw, '') + barra('Últimas 4 semanas', mes, dpw4, '') : ''}${semana.map(linea).join('') || '<div class="empty">Aún no ha entrenado esta semana.</div>'}</div></section>
     ${P && !P.antes ? `<section class="section"><h2>Resto del bloque · ${esc(nomCiclo(P.cc))}</h2><div class="card">${bloque.map(linea).join('') || '<div class="empty">Sin entrenamientos anteriores en este bloque.</div>'}</div></section>` : ''}
@@ -6906,7 +6960,7 @@ function vEditor() {
   if (E.cargando) return '<div class="empty">Cargando programa…</div>';
   const p = E.prog;
   const resumen = e => { const g = gruposDe(e.pauta); return `${e.series} × ${esc(e.repeticiones)}${e.rir != null ? ' · RIR ' + e.rir : ''}${e.peso_ref ? ' · ' + esc(e.peso_ref) : ''} · desc. ${e.descanso_seg ? seg(e.descanso_seg) : 'no'}${g.some(x => x.tramos.length > 1) ? ' · tramos' : ''}`; };
-  return `<section class="stack"><button class="btn sm ghost" data-act="cerrarEditor" style="align-self:flex-start">← Volver</button><span class="eyebrow">${E.plantilla ? 'Plantilla · ' + esc(p?.categoria || 'sin categoría') : E.ctx ? `Contexto temporal de ${esc(a.nombre || '')} · ${esc(fCtx(E.ctx))} · ${E.ctx.dias_semana} entrenos/semana` : 'Programa de ' + esc(a.nombre || '')}</span><h1>${p ? esc(p.nombre) : 'Sin programa'}</h1>${E.alumnoId ? vSelectorProgs(E.alumnoId, p?.id) : ''}
+  return `<section class="stack"><button class="btn sm ghost" data-act="cerrarEditor" style="align-self:flex-start">← Volver</button><span class="eyebrow">${E.plantilla ? 'Plantilla · ' + esc(p?.categoria || 'sin categoría') : E.ctx ? `${esBloqueP(E.ctx) ? 'Bloque' : 'Contexto temporal'} de ${esc(a.nombre || '')} · ${esc(fCtx(E.ctx))} · ${E.ctx.dias_semana} entrenos/semana` : 'Programa de ' + esc(a.nombre || '')}</span><h1>${p ? esc(p.nombre) : 'Sin programa'}</h1>${E.alumnoId ? vSelectorProgs(E.alumnoId, p?.id) : ''}
     <div class="row" style="gap:8px;flex-wrap:wrap">${p ? `<button class="btn sm ghost" data-act="nuevoPrograma">Cambiar nombre</button><button class="btn sm" data-act="edDia">Añadir día</button>${p.dias.length ? '<button class="btn sm ghost" data-act="clipProg">📋 Copiar programa</button>' : ''}${Clip.hay() ? `<button class="btn sm gold" data-act="clipPegar">📥 Pegar ${Clip.hay().tipo === 'dia' ? 'día' : 'programa'}</button>` : ''}${editorEsFutbol() && p.dias.length < 7 ? '<button class="btn sm ghost" data-act="semanaCompleta">📅 Completar semana (lunes a domingo)</button>' : ''}${E.plantilla ? `<button class="btn sm gold" data-act="probarPlantilla" data-id="${p.id}">👁 Ver como alumno de prueba</button>` : E.ctx ? '' : '<button class="btn sm gold" data-act="nuevoCiclo">Nuevo ciclo (copiar)</button>'}` : `<button class="btn sm" data-act="nuevoPrograma">Crear programa</button>`}</div>
     ${p && !editorSemana() && !esFlex(p) && p.dias.length ? `<div class="aprox small row" style="gap:8px;flex-wrap:wrap"><span class="grow">Este programa usa días de la semana. Para alumnos que no son futbolistas, mejor <b>Día 1, Día 2…</b>: el alumno elige cuándo los hace.</span><button class="btn sm" data-act="aDiasN">Pasar a Día 1, 2, 3…</button></div>` : ''}
     <p class="note">${E.plantilla ? 'Toca cualquier elemento para editarlo. Los cambios solo afectan a la plantilla: los alumnos que ya la tienen asignada conservan su copia.' : 'Toca cualquier elemento para editarlo. Los cambios los ve el alumno en cuanto vuelve a abrir la app.'}</p></section>
@@ -7698,7 +7752,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v305';
+const APP_VER = 'v306';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8106,6 +8160,8 @@ document.addEventListener('click', async e => {
       S.editor = null; S.verPlan = null; if (S.ficha && !S.ficha.cargando) await cargarProgramasFicha(S.ficha); render(); window.scrollTo(0, 0); break;
     case 'edDia': formDia(b.dataset.id ? +b.dataset.id : null); break;
     case 'nuevoContexto': formContexto(null); break;
+    case 'bloqueEnt': formBloqueEnt(b.dataset.id ? +b.dataset.id : null); break;
+    case 'bloqueSig': formBloqueEnt(null, { prev: +b.dataset.id }); break;
     case 'ajustarSemana': { const f = S.ficha, al = b.dataset.al, lunes = $(`#aj-sem-${al}`)?.value; if (!f || !lunes) break;
       const ctxs = f.contextos || [], ya = ctxEnSemana(ctxs, lunes); if (ya) { formContexto(ya.id); break; }
       const ant = b.dataset.m === 'anterior' ? ctxEnSemana(ctxs, sumaDias(lunes, -7)) : null, src = ant || f.progFull;
