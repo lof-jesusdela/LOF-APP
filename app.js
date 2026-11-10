@@ -258,7 +258,9 @@ function contextosDe(aid) {
   return (S.c?.contextos || []).filter(x => x.alumno_id === aid);
 }
 /* Si se solapan (unas vacaciones dentro de un bloque de 8 semanas), manda el más corto */
-const ctxEnSemana = (lista, lunes) => (lista || []).filter(x => x.contexto_desde <= lunes && x.contexto_hasta >= lunes).sort((a, b) => (fecha(a.contexto_hasta) - fecha(a.contexto_desde)) - (fecha(b.contexto_hasta) - fecha(b.contexto_desde)))[0] || null;
+/* Nada rígido: si un bloque termina y aún no has creado el siguiente, sigue con el último bloque (no vuelve a un programa antiguo) */
+const ctxEnSemana = (lista, lunes) => (lista || []).filter(x => x.contexto_desde <= lunes && x.contexto_hasta >= lunes).sort((a, b) => (fecha(a.contexto_hasta) - fecha(a.contexto_desde)) - (fecha(b.contexto_hasta) - fecha(b.contexto_desde)))[0]
+  || (lista || []).filter(x => esBloqueP(x) && x.contexto_hasta < lunes).sort((a, b) => b.contexto_hasta.localeCompare(a.contexto_hasta))[0] || null;
 /* Bloques de entrenamiento con fechas (7-8 semanas…): son programas con fechas, como los contextos, pero largos y marcados «Bloque · …» */
 const esBloqueP = p => /^Bloque · /.test(p?.nombre || '');
 const ctxDe = (aid, f = hoyISO()) => ctxEnSemana(contextosDe(aid), lunesDe(f));
@@ -291,14 +293,15 @@ function vSelectorProgs(alumnoId, actualId) {
 function vBloquesEnt(f, a) {
   const B = (f.contextos || []).filter(esBloqueP).sort((x, y) => x.contexto_desde.localeCompare(y.contexto_desde)), hoy = hoyISO(), lunes = lunesDe(hoy), base = f.progFull;
   const semN = c => Math.round((fecha(c.contexto_hasta) - fecha(c.contexto_desde)) / 6048e5 + 1 / 7), semAct = c => Math.floor((fecha(lunes) - fecha(c.contexto_desde)) / 6048e5) + 1;
-  const fila = c => { const fin = c.contexto_hasta < hoy, act = !fin && c.contexto_desde <= lunes, n = semN(c);
-    return `<div class="line" style="flex-wrap:wrap;gap:8px"><div class="grow" style="min-width:200px"><b>🧱 ${esc(c.contexto_nombre || 'Bloque')}</b> <span class="pill ${fin ? '' : act ? 'ok' : 'blue'}">${fin ? '✓ Terminado' : act ? `En curso · semana ${semAct(c)} de ${n}` : 'Programado'}</span>
+  const vigente = ctxEnSemana(B, lunes);
+  const fila = c => { const prorr = vigente?.id === c.id && c.contexto_hasta < lunes, fin = c.contexto_hasta < hoy && !prorr, act = (!fin && c.contexto_desde <= lunes) || prorr, n = semN(c);
+    return `<div class="line" style="flex-wrap:wrap;gap:8px"><div class="grow" style="min-width:200px"><b>🧱 ${esc(c.contexto_nombre || 'Bloque')}</b> <span class="pill ${fin ? '' : prorr ? 'gold' : act ? 'ok' : 'blue'}">${fin ? '✓ Terminado' : prorr ? `Alargado · semana ${semAct(c)} (previstas ${n})` : act ? `En curso · semana ${semAct(c)} de ${n}` : 'Programado'}</span>
       <div class="small muted">${esc(fCtx(c))} · ${n} ${n === 1 ? 'semana' : 'semanas'} · ${c.dias_semana} entrenos/semana · ${(c.dias || []).length} ${(c.dias || []).length === 1 ? 'día' : 'días'}</div></div>
       <button class="btn sm" data-act="abrirProg" data-id="${c.id}">Entrenos</button><button class="btn sm ghost" data-act="bloqueEnt" data-id="${c.id}">✎ Fechas</button>
       ${act ? `<button class="btn sm gold" data-act="bloqueSig" data-id="${c.id}">Terminar y empezar el siguiente</button>` : ''}</div>`; };
   return `<section class="section"><div class="section-head"><h2>Bloques de entrenamiento</h2><button class="btn sm" data-act="bloqueEnt">＋ Nuevo bloque</button></div>
     <div class="card">${B.map(fila).join('') || `<div class="small muted" style="padding:8px 0">Aún no tiene bloques con fechas: ahora entrena con su programa ${base ? `«${esc(base.nombre)}»` : ''}. Crea el primero y elige si copia sus entrenos o empiezas de cero; lo anterior queda guardado.</div>`}
-    ${B.length && base ? `<div class="small muted" style="padding-top:8px">Fuera de las fechas de un bloque entrena con su programa base «${esc(base.nombre)}». Si un contexto temporal (vacaciones…) cae dentro de un bloque, esas semanas manda el contexto.</div>` : ''}</div></section>`;
+    ${B.length ? `<div class="small muted" style="padding-top:8px">Nada es fijo: puedes terminar un bloque antes, alargarlo o cambiar sus fechas cuando quieras según cómo evolucione. Si un bloque llega a su fecha y aún no has creado el siguiente, sigue con ese mismo bloque hasta que decidas. Si unas vacaciones (contexto temporal) caen dentro, esas semanas manda el contexto.</div>` : ''}</div></section>`;
 }
 function formBloqueEnt(id, op = {}) {
   const f = S.ficha, B = (f.contextos || []).filter(esBloqueP).sort((x, y) => x.contexto_desde.localeCompare(y.contexto_desde)), c = id ? B.find(x => x.id === id) : null, prev = op.prev ? B.find(x => x.id === op.prev) : null;
@@ -7752,7 +7755,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v306';
+const APP_VER = 'v307';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
