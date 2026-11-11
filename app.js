@@ -2229,6 +2229,15 @@ async function cargarCoach() {
 /* ---------- Agenda de sesiones presenciales (la app manda; Google Calendar las recibe) ---------- */
 const durSesion = () => Math.max(15, Math.min(240, parseInt(S.c?.fiscal?.agenda_min) || 60));
 /* Enlace para añadir una sesión a Google Calendar al momento */
+/* Sincronización instantánea con tu Google Calendar (función gcal-sync). Se activa en la agenda; si falla no bloquea nada */
+const gcalOn = () => S.c?.fiscal?.gcal_sync === '1';
+async function gcalSync(ids = [], borrar = [], avisar = false) {
+  if (!gcalOn() || (!ids.length && !borrar.length)) return;
+  try { const { data, error } = await sb.functions.invoke('gcal-sync', { body: { ids: ids.filter(Boolean), borrar: borrar.filter(Boolean), avisar } });
+    if (error || data?.error) return toast('Google Calendar no se ha actualizado: ' + (data?.error || error.message || 'error'));
+    if (data?.errores?.length) toast('Google Calendar: ' + data.errores[0]); } catch (e) { toast('Google Calendar no se ha actualizado'); }
+}
+const gcalIdsDe = l => [...new Set((l || []).map(x => x.gcal_id).filter(Boolean))];
 /* Qué número de entrenamiento del bono es esta sesión (cuenta las de antes de la app); null si no es un entreno con bono */
 function numSesion(p) {
   if (!p?.alumno_id || noCuentaPres(p) || ['cancelada', 'falta'].includes(p.estado)) return null; const srv = srvDe(p.alumno_id); if (!srv) return null;
@@ -2284,7 +2293,8 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
     ${fila('🎥', `<button type="button" class="linkbtn" id="pg-meet" style="align-self:flex-start">Crear enlace de Google Meet nuevo</button>`, 'pg-meetw')}
     ${fila('📍', `<span class="small muted" id="pg-l-t">Ubicación</span><input type="text" id="pg-l" class="gc-in" placeholder="Añade una ubicación">`)}
     ${fila('☰', `<textarea id="pg-n" rows="4" class="gc-in" placeholder="Añade una descripción (la ve en su app y en el evento de Google Calendar)"></textarea><label class="row small" style="gap:8px"><input type="checkbox" id="pg-def" style="width:18px;height:18px"> Guardar descripción y ubicación por defecto para <b id="pg-def-t">Entrenamiento</b></label>`)}
-    ${fila('📅', `<label class="row small" style="gap:8px"><input type="checkbox" id="pg-g" style="width:18px;height:18px"> Abrir también Google Calendar para añadirla al momento</label>`)}
+    ${gcalOn() ? fila('📅', `<span class="small muted">Se guarda sola en tu Google Calendar.</span><label class="row small" style="gap:8px"><input type="checkbox" id="pg-av" style="width:18px;height:18px"> Enviar invitación o aviso por correo a los alumnos (Google)</label><input type="checkbox" id="pg-g" hidden>`)
+      : fila('📅', `<label class="row small" style="gap:8px"><input type="checkbox" id="pg-g" style="width:18px;height:18px"> Abrir también Google Calendar para añadirla al momento</label>`)}
     ${P0 ? fila('✔', `<select id="pg-e" class="gc-in">${Object.entries(PRES_EST).map(([k, l]) => `<option value="${k}" ${P0.estado === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`) : ''}
     <p class="err" id="pg-err"></p><button class="btn full" type="submit">${P0 ? 'Guardar cambios' : 'Guardar'}</button>
     ${P0 ? (P0.serie ? '<button class="btn ghost full" type="button" id="pg-dels" style="color:var(--bad)">Eliminar esta y las siguientes de la serie</button>' : '') + '<button class="btn ghost full" type="button" id="pg-del" style="color:var(--bad)">Eliminar cita</button><button class="btn ghost full" type="button" id="pg-vv">← Volver a la agenda</button>' : ''}
@@ -2324,11 +2334,12 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
       if (k === 'mes') { const x = fecha(f0), m = out.length; const t = new Date(x.getFullYear(), x.getMonth() + m, x.getDate()); d = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; } else d = sumaDias(d, k === 'lab' ? 1 : +k); }
     return out; };
   $('#pg-dels')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para borrar esta y las siguientes'; return; }
-    const { error } = await sb.from('presenciales').delete().eq('serie', P0.serie).gte('fecha', P0.fecha); if (error) return fallo(error);
+    const bor = gcalIdsDe((S.c.presenciales || []).filter(x => x.serie === P0.serie && x.fecha >= P0.fecha));
+    const { error } = await sb.from('presenciales').delete().eq('serie', P0.serie).gte('fecha', P0.fecha); if (error) return fallo(error); gcalSync([], bor);
     await cargarPresCoach(); if (S.ficha) await cargarPres(); toast('Serie eliminada desde esta fecha'); verAgenda(); });
   $('#pg-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = G0.length > 1 ? `Pulsa otra vez: se borra para los ${G0.length}` : 'Pulsa otra vez para eliminarla'; return; }
     for (const r of G0) { const { error } = await sb.from('presenciales').delete().eq('id', r.id); if (error) return fallo(error); }
-    await cargarPresCoach(); if (S.ficha) await cargarPres(); toast('Cita eliminada'); verAgenda(); });
+    gcalSync([], gcalIdsDe(G0)); await cargarPresCoach(); if (S.ficha) await cargarPres(); toast('Cita eliminada'); verAgenda(); });
   $('#pg-mas-b').addEventListener('click', () => masAlumno());
   bono(); $('#pg-a').addEventListener('change', bono); $('#pg-f').addEventListener('change', bono);
   $('#pg-t').addEventListener('click', e => { const b = e.target.closest('[data-t]'); if (!b) return; tipo = b.dataset.t; document.querySelectorAll('#pg-t .pill').forEach(x => x.classList.toggle('blue', x === b)); ponDef(); bono(); });
@@ -2355,7 +2366,11 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
           const { error: er } = await sb.from('presenciales').insert(filas); if (er) { cierraWin(); bt.disabled = false; bt.textContent = 'Guardar cambios'; return $('#pg-err').textContent = /serie/.test(er.message || '') ? 'Para las citas que se repiten falta ejecutar el Bloque 101 en Supabase.' : errCita(er); }
           com.serie = ser; toast(`Se repite: ${fs2.length} citas más hasta el ${fCorta(fs2[fs2.length - 1])}`); } }
       const err = await syncGrupo(P0, idsE, com); if (err) { cierraWin(); bt.disabled = false; bt.textContent = 'Guardar cambios'; return $('#pg-err').textContent = errCita(err); }
+      const quitadas = gcalIdsDe(G0.filter(r => !idsE.includes(r.alumno_id)));
       await cargarPresCoach(); if (S.ficha) await cargarPres();
+      { const nuevasG = P0.grupo || idsE.length > 1 ? (S.c.presenciales || []).filter(x => x.fecha === com.fecha && idsE.includes(x.alumno_id) && (x.grupo && x.grupo === (S.c.presenciales.find(y => y.id === P0.id)?.grupo))) : [];
+        const serieIds = P0.serie || com.serie ? (S.c.presenciales || []).filter(x => x.serie && x.serie === (com.serie || P0.serie) && x.fecha >= P0.fecha).map(x => x.id) : [];
+        gcalSync([P0.id, ...nuevasG.map(x => x.id), ...serieIds], quitadas, !!$('#pg-av')?.checked); }
       if ($('#pg-g').checked) abreCal(gcalLink({ ...P0, ...com }, idsE.filter(Boolean).map(i => S.c.perfiles.find(x => x.id === i)?.nombre || 'Alumno').join(' + ') || quien || 'Cita'));
       toast('Cita guardada'); return verAgenda(); }
     if (X) row.persona = quien; if (X || dur !== durSesion()) row.duracion_min = dur; if (lugar) row.lugar = lugar;
@@ -2373,6 +2388,7 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
     const nuevas = Array.isArray(data) && data.length ? data : fs, nueva = nuevas[0]; (S.c.presenciales ||= []).push(...nuevas);
     nuevas.forEach(n => { if (S.ficha?.id && S.ficha.id === n.alumno_id && S.ficha.pres) S.ficha.pres.push(n); });
     const noms = ids.filter(Boolean).map(i => S.c.perfiles.find(x => x.id === i)?.nombre || 'Alumno'), g = $('#pg-g').checked;
+    gcalSync(nuevas.map(x => x.id), [], !!$('#pg-av')?.checked);
     cerrarSheet(); if (fechas.length > 1) toast(`${fechas.length} citas creadas (hasta el ${fCorta(fechas[fechas.length - 1])})`); if (g) abreCal(gcalLink(nueva, noms.join(' + ') || quien || 'Cita') + (fechas.length > 1 ? '&recur=' + encodeURIComponent(`RRULE:${rep === 'mes' ? 'FREQ=MONTHLY' : rep === 'lab' ? 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR' : rep === '1' ? 'FREQ=DAILY' : 'FREQ=WEEKLY' + (rep === '14' ? ';INTERVAL=2' : '')};COUNT=${rep === 'lab' ? fechas.length : fechas.length}`) : '')); toast(`${noms.length ? (noms.length > 1 ? 'Sesión conjunta de ' : 'Sesión de ') + noms.map(n => n.split(' ')[0]).join(' y ') : tipo + ' · ' + quien} programada`); render();
   });
 }
@@ -2421,12 +2437,12 @@ function agendaEvento(pid) {
   $('#ae-gc').onclick = () => { cerrarMenu(); window.open(gcalLink(p, nom), '_blank', 'noopener'); };
   $('#ae-gci') && ($('#ae-gci').onclick = () => { cerrarMenu(); window.open(gcalLink(p, nom, mails.join(',')), '_blank', 'noopener'); });
   $('#ae-dup').onclick = async () => { cerrarMenu(); const { id: _i, created_at: _c, serie: _s, ...base } = p, gr = grp.length > 1 ? (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())) : null;
-    const filas = grp.map(({ id: _x, created_at: _y, serie: _z, ...r }) => ({ ...r, estado: 'programada', ...(gr ? { grupo: gr } : {}) }));
+    const filas = grp.map(({ id: _x, created_at: _y, serie: _z, gcal_id: _w, ...r }) => ({ ...r, estado: 'programada', ...(gr ? { grupo: gr } : {}) }));
     const { data, error } = await sb.from('presenciales').insert(filas).select(); if (error) return fallo(error, 'No se ha podido duplicar.');
-    await cargarPresCoach(); toast('Duplicada: cámbiale el día o la hora'); formProgramar(null, null, null, (data || [])[0]?.id); };
+    gcalSync((data || []).map(x => x.id)); await cargarPresCoach(); toast('Duplicada: cámbiale el día o la hora'); formProgramar(null, null, null, (data || [])[0]?.id); };
   $('#ae-del').onclick = async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = grp.length > 1 ? `Pulsa otra vez: se borra para los ${grp.length}` : 'Pulsa otra vez para eliminarla'; return; }
     for (const r of grp) { const { error } = await sb.from('presenciales').delete().eq('id', r.id); if (error) return fallo(error); }
-    await cargarPresCoach(); if (S.ficha) await cargarPres(); toast('Cita eliminada'); verAgenda(); };
+    gcalSync([], gcalIdsDe(grp)); await cargarPresCoach(); if (S.ficha) await cargarPres(); toast('Cita eliminada'); verAgenda(); };
   document.querySelectorAll('[data-fi]').forEach(b => b.onclick = () => { const aid = b.dataset.fi, mid = grp.find(x => x.alumno_id === aid)?.id; cerrarSheet(); irA(aid, { tab: 'calendario', fn: () => { if ((S.ficha.pres || []).some(x => x.id === mid)) formPres(mid); } }); });
   $('#ae-vv').onclick = () => verAgenda(); $('#ae-ed').onclick = () => formProgramar(null, null, null, pid);
 }
@@ -2451,7 +2467,8 @@ function verAgenda(desplaza = 0) {
     <div class="seg ag-vistas">${AG_VISTAS.map(([k, t]) => `<button class="${k === vista ? 'on' : ''}" data-act="agendaVista" data-v="${k}">${t}</button>`).join('')}</div>
     <div class="row" style="gap:6px"><button class="btn sm ghost" data-act="agendaMover" data-d="-1" aria-label="Anterior">‹</button><b class="small grow" style="text-align:center">${esc(rango)}</b>${ini <= hoy && hoy <= fin ? '' : '<button class="btn sm ghost" data-act="agendaHoy">Hoy</button>'}<button class="btn sm ghost" data-act="agendaMover" data-d="1" aria-label="Siguiente">›</button></div>
     ${cuerpo}
-    <div class="card stack" style="gap:6px"><b class="small">📲 Tus sesiones en Google Calendar</b><span class="small muted">${S.c.fiscal?.agenda_token ? 'Ya tienes tu enlace de suscripción.' : 'Suscríbete una vez y te llegan solas todas las sesiones (las tuyas y las de Calendly).'}</span><button class="btn sm ghost" data-act="agendaSuscribir" style="align-self:flex-start">${S.c.fiscal?.agenda_token ? 'Ver enlace y pasos' : 'Configurar'}</button></div></div>`);
+    <div class="card stack" style="gap:6px"><b class="small">📲 Tus sesiones en Google Calendar</b><span class="small muted">${S.c.fiscal?.agenda_token ? 'Ya tienes tu enlace de suscripción.' : 'Suscríbete una vez y te llegan solas todas las sesiones (las tuyas y las de Calendly).'}</span><button class="btn sm ghost" data-act="agendaSuscribir" style="align-self:flex-start">${S.c.fiscal?.agenda_token ? 'Ver enlace y pasos' : 'Configurar'}</button>
+      <label class="row small" style="gap:8px;margin-top:6px"><input type="checkbox" data-act="gcalToggle" ${gcalOn() ? 'checked' : ''} style="width:20px;height:20px"> <span><b>Sincronizar al instante con mi Google Calendar</b> (crear, mover y borrar se ve en segundos; necesita la función gcal-sync)</span></label></div></div>`);
   const g = $('#ag-grid'); if (!g) return;
   const H = +g.dataset.h, h0 = +g.dataset.h0, hs = l.filter(p => p.hora).map(p => parseInt(p.hora));
   g.scrollTop = Math.max(0, ((hs.length ? Math.min(...hs) : 8) - h0 - 0.5) * H);
@@ -2494,7 +2511,7 @@ function confirmarMover(pid, f, h) {
     for (const r of grp) { const { error } = await sb.from('presenciales').update({ fecha: f, hora: h }).eq('id', r.id); if (error) { bt.disabled = false; return fallo(error, 'No se ha podido mover.'); } }
     if ($('#mv-av')?.checked) { const cuerpo = `Tu ${(p.tipo || 'entrenamiento').toLowerCase()} pasa al ${fLarga(f)} a las ${h}.`;
       for (const a of als) { await sb.from('avisos').insert({ alumno_id: a.id, tipo: 'cita', titulo: 'Cambio de cita', cuerpo }).then(() => {}, () => {}); await sb.functions.invoke('enviar-aviso', { body: { alumno_ids: [a.id], titulo: 'Cambio de cita', cuerpo, url: './' } }).catch(() => {}); } }
-    await cargarPresCoach(); toast('Cita movida' + ($('#mv-av')?.checked ? ' y alumno avisado' : '')); verAgenda(); };
+    gcalSync(grp.map(r => r.id), [], !!$('#mv-av')?.checked); await cargarPresCoach(); toast('Cita movida' + ($('#mv-av')?.checked ? ' y alumno avisado' : '')); verAgenda(); };
 }
 function agendaRejilla(dias, l, hoy, nom, EST) {
   const H = 52, dur = durSesion(), min = h => { const [a, b] = String(h || '').split(':'); return +a * 60 + (+b || 0); };
@@ -6265,10 +6282,12 @@ async function formPres(id) {
       const com = { fecha: row.fecha, hora: row.hora, tipo: row.tipo, nota: row.nota, ...('lugar' in row ? { lugar: row.lugar } : {}), ...('duracion_min' in row ? { duracion_min: row.duracion_min } : {}) };
       const err = base.id ? await syncGrupo(base, [S.ficha.id, ...masIds], com) : null; if (err) return fallo(err, errCita(err)); }
     cerrarSheet(); toast(aviso || (masIds.length ? 'Guardada como sesión conjunta' : 'Guardado')); await cargarPresCoach(); await cargarPres();
+    { const fid = fila?.id || p?.id, gg = (S.c.presenciales || []).find(x => x.id === fid)?.grupo; gcalSync([fid, ...(gg ? S.c.presenciales.filter(x => x.grupo === gg).map(x => x.id) : [])]); }
   });
   const gcal = inv => () => window.open(gcalLink({ fecha: $('#pr-f').value || hoyISO(), hora: normHora($('#pr-h').value) || null, tipo: $('#pr-tt').value.trim() || null, nota: $('#pr-n').value.trim() || null, lugar: $('#pr-l').value.trim() || null, duracion_min: +$('#pr-d').value || null }, alF?.nombre || 'Alumno', inv ? alF?.email : ''), '_blank', 'noopener');
   $('#pr-gc')?.addEventListener('click', gcal(false)); $('#pr-gci')?.addEventListener('click', gcal(true));
-  $('#pr-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para eliminarla'; return; } const { error } = await sb.from('presenciales').delete().eq('id', p.id); if (error) return fallo(error); cerrarSheet(); toast('Eliminada'); await cargarPres(); });
+  $('#pr-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para eliminarla'; return; } const otros = p.grupo ? (S.c.presenciales || []).filter(y => y.grupo === p.grupo && y.id !== p.id) : [];
+    const { error } = await sb.from('presenciales').delete().eq('id', p.id); if (error) return fallo(error); gcalSync(otros.map(y => y.id), otros.length ? [] : [p.gcal_id]); cerrarSheet(); toast('Eliminada'); await cargarPresCoach(); await cargarPres(); });
 }
 async function cargarPres() {
   const { data } = await sb.from('presenciales').select('*').eq('alumno_id', S.ficha.id).order('fecha');
@@ -7885,7 +7904,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v315';
+const APP_VER = 'v316';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8222,6 +8241,7 @@ document.addEventListener('click', async e => {
     case 'futSem': S.ficha.semFut = b.dataset.l; S.ficha.diaFut = null; render(); break;
     case 'futEquipo': formEquipo(b.dataset.al); break;
     case 'verRadar': Radar.ver(); break;
+    case 'gcalToggle': { const v = b.checked ? '1' : '0', { error } = await sb.from('ajustes_privados').upsert({ clave: 'gcal_sync', valor: v }, { onConflict: 'clave' }); if (error) { b.checked = !b.checked; fallo(error); break; } (S.c.fiscal ||= {}).gcal_sync = v; toast(v === '1' ? 'Sincronización con Google Calendar activada' : 'Sincronización desactivada'); if (v === '1') { const fut = (S.c.presenciales || []).filter(p => p.fecha >= hoyISO() && p.estado !== 'cancelada' && !p.gcal_id).map(p => p.id); if (fut.length && confirm(`¿Paso ya a tu Google Calendar las ${fut.length} citas que tienes desde hoy? (sin enviar correos)`)) { toast('Pasando citas a Google Calendar…'); await gcalSync(fut, [], false); await cargarPresCoach(); toast('Citas pasadas a Google Calendar'); } } break; }
     case 'radarOk': await Radar.atendido(b.dataset.id); break;
     case 'radarAviso': await Radar.avisar([b.dataset.id], b.dataset.n); break;
     case 'radarAvisoTodos': { const l = Radar.pendientes().filter(r => r.nivel === 'naranja').map(r => r.a.id); if (l.length && confirm(`¿Enviar el aviso «${Radar.MSG.naranja[0]}» a ${l.length} alumnos?`)) await Radar.avisar(l, 'naranja'); break; }

@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
 
   const desde = new Date(Date.now() - 60 * 864e5).toISOString().slice(0, 10);
   const [{ data: pres }, { data: per }] = await Promise.all([
-    admin.from("presenciales").select("id,alumno_id,fecha,hora,estado,tipo,nota,persona,duracion_min,grupo,lugar").gte("fecha", desde).neq("estado", "cancelada").order("fecha"),
+    admin.from("presenciales").select("*").gte("fecha", desde).neq("estado", "cancelada").order("fecha"),
     admin.from("perfiles").select("id,nombre"),
   ]);
   // Nº de entrenamiento del bono de cada sesión (como en la app): desde el inicio de su servicio, + las hechas antes de la app
@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
   const vistos = new Set<string>(), gnom: Record<string, string[]> = {};
   for (const p of pres || []) if (p.grupo) (gnom[p.grupo] ||= []).push(nom[p.alumno_id] || "Alumno");
   for (const p of pres || []) {
-    if (!p.fecha) continue;
+    if (!p.fecha || p.gcal_id) continue;   // ya está en tu Google Calendar por la sincronización instantánea: no duplicar
     if (p.grupo) { if (vistos.has(p.grupo)) continue; vistos.add(p.grupo); }
     const tipo = p.tipo || "Entrenamiento", quien = p.grupo ? gnom[p.grupo].join(" + ") : p.alumno_id ? nom[p.alumno_id] || "Alumno" : p.persona || "", dur = p.duracion_min || min;
     const hecho = p.estado === "dada" || p.estado === "tarde";
