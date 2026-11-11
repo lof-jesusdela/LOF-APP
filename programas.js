@@ -95,7 +95,7 @@ const Programas = (() => {
       const enAnio = p.pagado_at ? p.pagado_at >= ini && p.pagado_at <= fin : p.vence >= ini && p.vence <= fin;
       if (!enAnio && !(!p.pagado_at && p.vence < ini)) continue;
       const x = get(lineaPago(p));
-      if (p.pagado_at) { x.cob[mesDe(p.pagado_at)] += imp; x.alumnosPago.add(p.alumno_id); }
+      if (p.pagado_at) { x.cob[mesDe(p.pagado_at)] += imp; x.alumnosPago.add(p.alumno_id); /* pago compartido: cuenta a partes iguales para cada persona que cubre */ (typeof cubreA === 'function' ? cubreA(p.alumno_id) : []).forEach(o => x.alumnosPago.add(o.id)); }
       else if (p.vence < hoy) x.venc += imp; else if (p.vence <= fin) x.pend += imp;
     }
     const conv = [];
