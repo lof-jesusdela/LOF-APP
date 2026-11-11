@@ -2229,6 +2229,14 @@ async function cargarCoach() {
 /* ---------- Agenda de sesiones presenciales (la app manda; Google Calendar las recibe) ---------- */
 const durSesion = () => Math.max(15, Math.min(240, parseInt(S.c?.fiscal?.agenda_min) || 60));
 /* Enlace para añadir una sesión a Google Calendar al momento */
+/* Pago compartido (pareja, familia, amigos): el servicio de uno dice quién paga por él (servicios.paga_id) y sus cuotas van a la ficha de quien paga */
+document.addEventListener('change', async e => { const el = e.target; if (!el.matches?.('select[data-act="pagaPor"]')) return; const aid = el.dataset.al, v = el.value || null, sv = (S.c.servicios || []).find(x => x.alumno_id === aid); if (!sv) return;
+  const { error } = await sb.from('servicios').update({ paga_id: v }).eq('id', sv.id); if (error) return fallo(error, /paga_id/.test(error.message || '') ? 'Falta ejecutar el Bloque 103 en Supabase.' : 'No se ha podido guardar.');
+  sv.paga_id = v; if (S.ficha?.srv && S.ficha.id === aid) S.ficha.srv.paga_id = v; toast(v ? `Sus cuotas irán a la ficha de ${(S.c.perfiles.find(p => p.id === v)?.nombre || '').split(' ')[0]}` : 'Vuelve a pagar sus propias cuotas'); render(); });
+const pagaPor = aid => { const v = (S.c?.servicios || []).find(x => x.alumno_id === aid)?.paga_id; return v && v !== aid ? v : null; };
+const pagadorDe = aid => pagaPor(aid) || aid;
+const cubreA = aid => (S.c?.servicios || []).filter(x => x.paga_id === aid && x.alumno_id !== aid).map(x => S.c.perfiles.find(p => p.id === x.alumno_id)).filter(Boolean);
+const conceptoDe = (aid, c) => pagaPor(aid) ? `${c} · ${(S.c.perfiles.find(p => p.id === aid)?.nombre || '').split(' ')[0]}` : c;
 /* Sincronización instantánea con tu Google Calendar (función gcal-sync). Se activa en la agenda; si falla no bloquea nada */
 const gcalOn = () => S.c?.fiscal?.gcal_sync === '1';
 async function gcalSync(ids = [], borrar = [], avisar = false) {
@@ -4335,7 +4343,12 @@ function vFicha() {
     ${vGraficaComp(f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), a, f.medObj) || '<div class="card empty">Sin mediciones todavía.</div>'}
     ${vObjetivoComp(f.medObj, f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), true)}</section>`;
   const fb8 = `${vRevisionesFicha(a)}${vPresenciales(srv, f.pres, true)}`;
-  const fb9 = `<section class="section"><div class="section-head"><h2>Cuotas</h2><button class="btn sm ghost" data-act="nuevoPago">＋ Cuota</button></div><div class="card">${pagos.map(lineaPago).join('') || '<div class="empty">Sin cuotas registradas.</div>'}</div></section>${(f.hist || []).length ? `<section class="section"><div class="section-head"><h2>Histórico de pagos</h2><span class="small muted">${eur0(f.hist.filter(h => h.pagado).reduce((t, h) => t + (+h.importe || 0), 0))} cobrados</span></div><div class="card">${f.hist.map(h => `<div class="row small" style="gap:8px;padding:4px 0"><span class="muted" style="min-width:74px">${h.emisor === 'Efectivo' ? esc(new Date(h.fecha + 'T12:00').toLocaleDateString('es', { month: 'short', year: 'numeric' })) : esc(fCorta(h.fecha))}</span><span class="grow">${esc(h.programa || 'Cobro')}${h.nota ? ` <span class="muted">· ${esc(h.nota)}</span>` : ''}</span><span class="muted">${esc(h.forma_pago || '')}</span><b class="num">${eur0(h.importe)}</b></div>`).join('')}</div></section>` : ''}`;
+  const pPor = pagaPor(a.id), pagador = pPor && S.c.perfiles.find(x => x.id === pPor), cubre = cubreA(a.id);
+  const fbPaga = srv ? `<section class="section"><div class="card stack" style="gap:8px"><b class="small">💑 ¿Quién paga?</b>
+    ${pagador ? `<div class="small">Sus cuotas van en la ficha de <b>${esc(pagador.nombre)}</b> (pago conjunto). Aquí no se le generan cuotas ni avisos de pago.</div><button class="btn sm" data-act="ficha" data-id="${pagador.id}" style="align-self:flex-start">Ver los pagos de ${esc(pagador.nombre.split(' ')[0])} ›</button>`
+      : cubre.length ? `<div class="small">Paga también por <b>${cubre.map(x => esc(x.nombre)).join(', ')}</b>: sus cuotas salen aquí, con su nombre en el concepto.</div>` : '<div class="small muted">Paga sus propias cuotas.</div>'}
+    <label class="f">Lo paga<select data-act="pagaPor" data-al="${a.id}"><option value="">Él / ella</option>${S.c.perfiles.filter(x => x.id !== a.id && esCliente(x) && !pagaPor(x.id)).sort((x, y) => x.nombre.localeCompare(y.nombre, 'es')).map(x => `<option value="${x.id}" ${x.id === pPor ? 'selected' : ''}>Junto con ${esc(x.nombre)} (paga ${esc(x.nombre.split(' ')[0])})</option>`).join('')}</select></label></div></section>` : '';
+  const fb9 = fbPaga + `<section class="section"><div class="section-head"><h2>Cuotas</h2><button class="btn sm ghost" data-act="nuevoPago">＋ Cuota</button></div><div class="card">${pagos.map(lineaPago).join('') || '<div class="empty">Sin cuotas registradas.</div>'}</div></section>${(f.hist || []).length ? `<section class="section"><div class="section-head"><h2>Histórico de pagos</h2><span class="small muted">${eur0(f.hist.filter(h => h.pagado).reduce((t, h) => t + (+h.importe || 0), 0))} cobrados</span></div><div class="card">${f.hist.map(h => `<div class="row small" style="gap:8px;padding:4px 0"><span class="muted" style="min-width:74px">${h.emisor === 'Efectivo' ? esc(new Date(h.fecha + 'T12:00').toLocaleDateString('es', { month: 'short', year: 'numeric' })) : esc(fCorta(h.fecha))}</span><span class="grow">${esc(h.programa || 'Cobro')}${h.nota ? ` <span class="muted">· ${esc(h.nota)}</span>` : ''}</span><span class="muted">${esc(h.forma_pago || '')}</span><b class="num">${eur0(h.importe)}</b></div>`).join('')}</div></section>` : ''}`;
   const fb11 = `<div class="card stack"><div class="small muted">Medidas de contorno, fotos de progreso, permisos de imagen y su caso de éxito.</div><button class="btn full" data-act="fichaSub" data-s="composicion">Abrir medidas, fotos y caso de éxito ›</button></div>`;
   const nivTxt = { ok: 'En camino', warn: 'Atención', bad: 'Revisar' }[e.nivel];
   const escr = true;   // la ficha tranquila se usa en el ordenador y en el móvil (el CSS la adapta)
@@ -4372,7 +4385,7 @@ function vFicha() {
       <h2 class="fx-nom">${esc(a.nombre)} <button class="fx-fav" data-act="favorito" data-id="${a.id}" aria-pressed="${favoritos().includes(a.id)}" aria-label="${favoritos().includes(a.id) ? 'Quitar de favoritos' : 'Añadir a favoritos'}" title="Favorito">${favoritos().includes(a.id) ? '★' : '☆'}</button></h2>
       <div class="fx-est"><span class="fx-dot ${e.nivel}"></span>${nivTxt}${pend.length ? ` · ${pend.length} aviso${pend.length > 1 ? 's' : ''}` : ''}</div>
       <div class="fx-acc fx-acc-mov"><button class="btn sm" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar</button><button class="btn sm ghost" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como</button><button class="btn sm ghost" data-act="abrirReporte" data-id="${a.id}">📋 Reporting</button></div>
-      <div class="fx-datos">${filaP('Plan', esc(srv?.producto || 'Sin plan'))}${srv ? filaP('Tipo', esc(modalidadDe(a.id)) + (conSeguimiento(srv) ? '' : ' · sin seguimiento')) : ''}${filaP('Bloque', P && !P.antes && !P.fuera ? esc(nomCiclo(P.cc)) : '')}${filaP('Semana', P && !P.antes && !P.fuera ? `${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : P?.antes ? 'Empieza ' + esc(fCorta(srv.inicio)) : '')}${filaP('Programa', f.prog ? esc(f.prog.nombre) : '')}${filaP('Alta', esc(fF(a.fecha_alta || srv?.inicio || hoy)))}${filaP('Email', esc(a.email || ''))}<button class="fx-dato fx-pago" data-act="fTab" data-t="pagos"><span>Pagos</span><b style="${pagV.length ? 'color:var(--bad)' : ''}">${pagV.length ? `${pagV.length} vencida${pagV.length === 1 ? '' : 's'}` : pagP.length ? `Próxima ${esc(fCorta(pagP.slice().sort((x, y) => x.vence.localeCompare(y.vence))[0].vence))}` : pagos.length ? 'Al día' : 'Sin cuotas'} ›</b></button></div>
+      <div class="fx-datos">${filaP('Plan', esc(srv?.producto || 'Sin plan'))}${srv ? filaP('Tipo', esc(modalidadDe(a.id)) + (conSeguimiento(srv) ? '' : ' · sin seguimiento')) : ''}${filaP('Bloque', P && !P.antes && !P.fuera ? esc(nomCiclo(P.cc)) : '')}${filaP('Semana', P && !P.antes && !P.fuera ? `${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : P?.antes ? 'Empieza ' + esc(fCorta(srv.inicio)) : '')}${filaP('Programa', f.prog ? esc(f.prog.nombre) : '')}${filaP('Alta', esc(fF(a.fecha_alta || srv?.inicio || hoy)))}${filaP('Email', esc(a.email || ''))}<button class="fx-dato fx-pago" data-act="fTab" data-t="pagos"><span>Pagos</span><b style="${pagV.length ? 'color:var(--bad)' : ''}">${pagaPor(a.id) ? `Con ${esc((S.c.perfiles.find(x => x.id === pagaPor(a.id))?.nombre || '').split(' ')[0])}` : pagV.length ? `${pagV.length} vencida${pagV.length === 1 ? '' : 's'}` : pagP.length ? `Próxima ${esc(fCorta(pagP.slice().sort((x, y) => x.vence.localeCompare(y.vence))[0].vence))}` : pagos.length ? 'Al día' : 'Sin cuotas'} ›</b></button></div>
       <div class="fx-acc"><button class="btn sm" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm ghost" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como ${esc(nom)}</button><button class="btn sm ghost" data-act="abrirReporte" data-id="${a.id}">📋 Reporting</button></div>
       <details class="fx-mas"><summary>Más acciones</summary><div class="stack" style="gap:6px;margin-top:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button><button class="btn sm ghost" data-act="accesoAl" data-id="${a.id}">🔑 Acceso y contraseña</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}<button class="btn sm ghost" data-act="pausarAcceso" data-id="${a.id}" data-on="${a.acceso_pausado ? 0 : 1}">${a.acceso_pausado ? '🔓 Devolver el acceso' : '🔒 Quitar el acceso'}</button></div></details>
       ${a.activo === false ? '<p class="small muted" style="margin:0">Antiguo alumno: no genera avisos.</p>' : ''}</aside>`;
@@ -5211,8 +5224,8 @@ function formServicio() {
     if (error && /nutri_fase/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 57 en Supabase.');
     if (error && /objetivo_pasos/.test(error.message || '')) { delete row.objetivo_pasos; ({ error } = await guardar(row)); toast('Para guardar el objetivo de pasos falta ejecutar el Bloque 10'); }
     if (error) return fallo(error);
-    if (cuotas.length) { let { error: ep } = await sb.from('pagos').insert(cuotas.map(c => ({ ...c, alumno_id: S.ficha.id, ...(tSel ? { tarifa: tSel.id } : {}) })));
-      if (ep && /tarifa/.test(ep.message || '')) ({ error: ep } = await sb.from('pagos').insert(cuotas.map(c => ({ ...c, alumno_id: S.ficha.id })))); toast(ep ? 'Servicio guardado, pero el plan de pagos no: ' + (ep.message || '') : `Plan de pagos creado: ${cuotas.length} cuota${cuotas.length === 1 ? '' : 's'}`); }
+    if (cuotas.length) { let { error: ep } = await sb.from('pagos').insert(cuotas.map(c => ({ ...c, concepto: conceptoDe(S.ficha.id, c.concepto), alumno_id: pagadorDe(S.ficha.id), ...(tSel ? { tarifa: tSel.id } : {}) })));
+      if (ep && /tarifa/.test(ep.message || '')) ({ error: ep } = await sb.from('pagos').insert(cuotas.map(c => ({ ...c, concepto: conceptoDe(S.ficha.id, c.concepto), alumno_id: pagadorDe(S.ficha.id) })))); toast(ep ? 'Servicio guardado, pero el plan de pagos no: ' + (ep.message || '') : `Plan de pagos creado: ${cuotas.length} cuota${cuotas.length === 1 ? '' : 's'}`); }
     /* Los entrenos del programa no se apuntan aquí: dependen de su planificación y de cada bloque */
     const np = !$('#sv-prev') || $('#sv-prev').value === '' ? null : Math.max(0, +$('#sv-prev').value || 0);
     if (np != null && np !== (S.ficha.previas || 0)) { const m = await fijarPrevias(S.ficha.id, row.inicio, np); if (m) toast(m); }
@@ -5928,7 +5941,7 @@ function formEntExtra() {
     const ext = [...extensionesDe(srv), { nombre: nomE || `${n} entrenamiento${n === 1 ? '' : 's'} · ${mot.toLowerCase()}`, tipo: 'bono', sesiones: n, fecha: fE, motivo: mot, ...(nota ? { nota } : {}) }];
     const { error } = await sb.from('servicios').update({ sesiones_incluidas: (srv.sesiones_incluidas || 0) + n, modulo_presencial: true, extensiones: ext }).eq('id', srv.id);
     if (error) { bt.disabled = false; return fallo(error, /extensiones/.test(error.message || '') ? 'Falta ejecutar el Bloque 50 en Supabase.' : undefined); }
-    if (imp) { const r = await sb.from('pagos').insert({ alumno_id: f.id, concepto: nomE || `${n} entrenamiento${n === 1 ? '' : 's'} personal${n === 1 ? '' : 'es'} sueltos`, importe: imp, vence: fE, ...($('#ee-cob').checked ? { pagado_at: fE + 'T12:00:00' } : {}) }); if (r.error) toast('Entrenamientos añadidos, pero la cuota no se ha creado'); }
+    if (imp) { const r = await sb.from('pagos').insert({ alumno_id: pagadorDe(f.id), concepto: conceptoDe(f.id, nomE || `${n} entrenamiento${n === 1 ? '' : 's'} personal${n === 1 ? '' : 'es'} sueltos`), importe: imp, vence: fE, ...($('#ee-cob').checked ? { pagado_at: fE + 'T12:00:00' } : {}) }); if (r.error) toast('Entrenamientos añadidos, pero la cuota no se ha creado'); }
     cerrarSheet(); toast(`+${n} entrenamiento${n === 1 ? '' : 's'} añadido${n === 1 ? '' : 's'}`); const sub = S.fichaSub; await cargarCoach(); await abrirFicha(f.id); if (sub) await abrirSub(sub);
   });
 }
@@ -5993,7 +6006,7 @@ function formSrvExtra() {
     const pr = numero($('#sx-p').value) || 0, n = Math.max(1, Math.min(24, +$('#sx-c').value || 1)), p0 = $('#sx-p0').value || desde;
     if ($('#sx-g').checked && pr > 0) {
       const base = Math.floor(pr / n * 100) / 100, cuotas = Array.from({ length: n }, (_, i) => { const v = sumaMeses(p0, i); return { alumno_id: f.id, concepto: `${nom}${n > 1 ? ` · cuota ${i + 1}/${n}` : ''}`, importe: i < n - 1 ? base : Math.round((pr - base * (n - 1)) * 100) / 100, vence: v, ...($('#sx-ya').checked ? { pagado_at: v } : {}) }; });
-      const r = await sb.from('pagos').insert(cuotas); if (r.error) toast('Servicio guardado, pero las cuotas no: ' + (r.error.message || ''));
+      const r = await sb.from('pagos').insert(cuotas.map(c => ({ ...c, concepto: conceptoDe(c.alumno_id, c.concepto), alumno_id: pagadorDe(c.alumno_id) }))); if (r.error) toast('Servicio guardado, pero las cuotas no: ' + (r.error.message || ''));
     }
     cerrarSheet(); toast('Servicio extra añadido'); const sub = S.fichaSub; await cargarCoach(); await abrirFicha(f.id); if (sub) await abrirSub(sub);
   });
@@ -6067,8 +6080,8 @@ function formExtension() {
     }
     const tX = tarAmp(), cuotasX = tX && $('#ex-genp').checked ? Tarifas.plan(tX, opPagoX()) : [];
     const xtra = Math.max(0, +$('#ex-xtra').value || 0), sesPT = (ex.tipo === 'pt' && ex.op ? sesionesDe(ex.op, 3) + (ex.forma === 'unico' ? tX?.bonusUnico || 0 : 0) : 0) + xtra;
-    if (cuotasX.length) { let { error: ep } = await sb.from('pagos').insert(cuotasX.map(c => ({ ...c, alumno_id: f.id, tarifa: tX.id })));
-      if (ep && /tarifa/.test(ep.message || '')) ({ error: ep } = await sb.from('pagos').insert(cuotasX.map(c => ({ ...c, alumno_id: f.id })))); if (ep) toast('Las cuotas no se han podido crear: ' + (ep.message || '')); }
+    if (cuotasX.length) { let { error: ep } = await sb.from('pagos').insert(cuotasX.map(c => ({ ...c, concepto: conceptoDe(f.id, c.concepto), alumno_id: pagadorDe(f.id), tarifa: tX.id })));
+      if (ep && /tarifa/.test(ep.message || '')) ({ error: ep } = await sb.from('pagos').insert(cuotasX.map(c => ({ ...c, concepto: conceptoDe(f.id, c.concepto), alumno_id: pagadorDe(f.id) })))); if (ep) toast('Las cuotas no se han podido crear: ' + (ep.message || '')); }
     const ext = [...extensionesDe(srv), { nombre, semanas: sem, desde, tipo: ex.tipo, ...(sesPT ? { sesiones: sesPT } : {}), ...(xtra ? { extra: xtra } : {}), ...(ex.tipo === 'pt' ? { frecuencia: ex.op, sesiones: sesPT } : {}), ...(ex.tipo === 'online' ? { meses: ex.op } : {}) }];
     const upd = { duracion_semanas: total + sem, extensiones: ext }; if (sesPT) Object.assign(upd, { sesiones_incluidas: (srv.sesiones_incluidas || 0) + sesPT, modulo_presencial: true });
     let { error } = await sb.from('servicios').update(upd).eq('id', srv.id);
@@ -7904,7 +7917,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v316';
+const APP_VER = 'v317';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8241,6 +8254,7 @@ document.addEventListener('click', async e => {
     case 'futSem': S.ficha.semFut = b.dataset.l; S.ficha.diaFut = null; render(); break;
     case 'futEquipo': formEquipo(b.dataset.al); break;
     case 'verRadar': Radar.ver(); break;
+    case 'pagaPor': break;
     case 'gcalToggle': { const v = b.checked ? '1' : '0', { error } = await sb.from('ajustes_privados').upsert({ clave: 'gcal_sync', valor: v }, { onConflict: 'clave' }); if (error) { b.checked = !b.checked; fallo(error); break; } (S.c.fiscal ||= {}).gcal_sync = v; toast(v === '1' ? 'Sincronización con Google Calendar activada' : 'Sincronización desactivada'); if (v === '1') { const fut = (S.c.presenciales || []).filter(p => p.fecha >= hoyISO() && p.estado !== 'cancelada' && !p.gcal_id).map(p => p.id); if (fut.length && confirm(`¿Paso ya a tu Google Calendar las ${fut.length} citas que tienes desde hoy? (sin enviar correos)`)) { toast('Pasando citas a Google Calendar…'); await gcalSync(fut, [], false); await cargarPresCoach(); toast('Citas pasadas a Google Calendar'); } } break; }
     case 'radarOk': await Radar.atendido(b.dataset.id); break;
     case 'radarAviso': await Radar.avisar([b.dataset.id], b.dataset.n); break;
