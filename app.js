@@ -2270,7 +2270,7 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
       <input type="date" id="pg-f" value="${fechaIni || hoyISO()}" required class="gc-in">
       <div class="row gc-horas" style="gap:8px;align-items:center"><span class="small muted">De</span>${inHora('pg-h', horaIni)}<span class="small muted">a</span><input type="text" id="pg-hf" data-hora inputmode="decimal" maxlength="5" placeholder="hh:mm" autocomplete="off"><span class="small muted grow" id="pg-dt"></span></div>
       <input type="hidden" id="pg-d" value="${durSesion()}">`)}
-    ${P0 ? (P0.serie ? fila('🔁', `<label class="row small" style="gap:8px"><input type="checkbox" id="pg-ser" style="width:20px;height:20px"> Aplicar hora, tipo, ubicación y descripción también a las siguientes de la serie</label>`) : '')
+    ${P0?.serie ? fila('🔁', `<label class="row small" style="gap:8px"><input type="checkbox" id="pg-ser" style="width:20px;height:20px"> Aplicar hora, tipo, ubicación y descripción también a las siguientes de la serie</label>`)
       : fila('🔁', `<select id="pg-rep" class="gc-in"><option value="">No se repite</option><option value="1">Cada día</option><option value="lab">Cada día laborable (L–V)</option><option value="7">Cada semana</option><option value="14">Cada 2 semanas</option><option value="mes">Cada mes</option></select><label class="row small" id="pg-hw" hidden style="gap:8px">hasta el<input type="date" id="pg-hasta" class="gc-in" value="${sumaDias(fechaIni || hoyISO(), 84)}"></label>`)}
     ${fila('👥', `<div class="stack" id="pg-mas" style="gap:6px"></div><button type="button" class="linkbtn" id="pg-mas-b" style="align-self:flex-start">Añadir otro alumno (sesión conjunta)</button>`, 'pg-inv')}
     ${fila('🎥', `<button type="button" class="linkbtn" id="pg-meet" style="align-self:flex-start">Crear enlace de Google Meet nuevo</button>`, 'pg-meetw')}
@@ -2341,6 +2341,11 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
       const idsE = X ? [null] : [...new Set([id, ...[...document.querySelectorAll('.pg-a2')].map(x => x.value).filter(Boolean)])];
       const com = { fecha: row.fecha, hora, tipo: row.tipo, nota: row.nota, lugar, duracion_min: X || dur !== durSesion() ? dur : null, persona: X ? quien : null, estado: $('#pg-e').value };
       if ($('#pg-ser')?.checked && P0.serie) { const { fecha: _f, estado: _e, ...cs } = com; const { error: es } = await sb.from('presenciales').update(cs).eq('serie', P0.serie).gt('fecha', P0.fecha); if (es) { cierraWin(); bt.disabled = false; bt.textContent = 'Guardar cambios'; return $('#pg-err').textContent = errCita(es); } }
+      /* Una cita ya creada que ahora «se repite»: se crean las siguientes copias y todas forman una serie */
+      const repE = $('#pg-rep')?.value || ''; if (repE && !P0.serie) { const fs2 = fechasRep(com.fecha, repE, $('#pg-hasta')?.value || com.fecha).slice(1), ser = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
+        if (fs2.length) { const filas = fs2.flatMap(f => { const gr = idsE.length > 1 ? (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + f) : null; return idsE.map(i => ({ ...com, fecha: f, estado: 'programada', alumno_id: i, ...(gr ? { grupo: gr } : {}), serie: ser })); });
+          const { error: er } = await sb.from('presenciales').insert(filas); if (er) { cierraWin(); bt.disabled = false; bt.textContent = 'Guardar cambios'; return $('#pg-err').textContent = /serie/.test(er.message || '') ? 'Para las citas que se repiten falta ejecutar el Bloque 101 en Supabase.' : errCita(er); }
+          com.serie = ser; toast(`Se repite: ${fs2.length} citas más hasta el ${fCorta(fs2[fs2.length - 1])}`); } }
       const err = await syncGrupo(P0, idsE, com); if (err) { cierraWin(); bt.disabled = false; bt.textContent = 'Guardar cambios'; return $('#pg-err').textContent = errCita(err); }
       await cargarPresCoach(); if (S.ficha) await cargarPres();
       if ($('#pg-g').checked) abreCal(gcalLink({ ...P0, ...com }, idsE.filter(Boolean).map(i => S.c.perfiles.find(x => x.id === i)?.nombre || 'Alumno').join(' + ') || quien || 'Cita'));
@@ -2386,19 +2391,34 @@ function agruparCitas(l) { const vis = {}, out = []; for (const p of l) { if (!p
 function agendaEvento(pid) {
   const p = (S.c.presenciales || []).find(x => x.id === pid); if (!p) return;
   const grp = p.grupo ? S.c.presenciales.filter(x => x.grupo === p.grupo) : [p], als = grp.map(x => x.alumno_id && S.c.perfiles.find(y => y.id === x.alumno_id)).filter(Boolean);
-  const a = als.length === 1 ? als[0] : null, nom = als.length ? als.map(x => x.nombre).join(' + ') : p.persona || 'Cita', pri = a ? a.nombre.split(' ')[0] : als.map(x => x.nombre.split(' ')[0]).join(' y '), mails = als.map(x => x.email).filter(Boolean);
-  const est = p.estado === 'programada' && p.fecha < hoyISO() ? 'Hecha' : (PRES_EST[p.estado] || p.estado);
-  abrirSheet(`<div class="stack"><h2>${esc(nom)}</h2>
-    <div class="card stack" style="gap:4px"><b>${esc(fLarga(p.fecha))}${p.hora ? ' · ' + hhmm(p.hora) + ' (' + (+p.duracion_min || durSesion()) + ' min)' : ' · sin hora'}</b>
-      <span class="small">${esc(p.tipo || 'Entrenamiento')} · ${esc(est)}</span>${vLugar(p)}${p.nota ? `<details class="small"><summary class="muted">Mensaje</summary><div style="white-space:pre-line">${esc(p.nota)}</div></details>` : ''}</div>
-    <button class="btn full" type="button" id="ae-ed">✏️ Editar cita (hora, tipo, alumnos, ubicación, mensaje)</button>
-    <button class="btn ghost full" type="button" id="ae-gc">📅 Añadir a mi Google Calendar</button>
-    ${mails.length ? `<button class="btn ghost full" type="button" id="ae-gci">✉️ Añadir e invitar a ${esc(pri)} (Google le envía un correo)</button>` : als.length ? '<p class="small muted">Sin email en su ficha: no se puede invitar.</p>' : '<p class="small muted">Para invitar a alguien, añádelo como invitado al guardar en Google Calendar.</p>'}
-    ${als.length ? als.map(x => `<button class="btn ghost full" type="button" data-fi="${x.id}">Abrir ficha de ${esc(x.nombre.split(' ')[0])}</button>`).join('') : `<button class="btn ghost full" type="button" id="ae-del" style="color:var(--bad)">Eliminar cita</button>`}
-    <button class="btn ghost full" type="button" id="ae-vv">← Volver a la agenda</button></div>`);
-  $('#ae-gc').onclick = () => window.open(gcalLink(p, nom), '_blank', 'noopener');
-  $('#ae-gci') && ($('#ae-gci').onclick = () => window.open(gcalLink(p, nom, mails.join(',')), '_blank', 'noopener'));
-  $('#ae-del') && ($('#ae-del').onclick = async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para eliminarla'; return; } const { error } = await sb.from('presenciales').delete().eq('id', p.id); if (error) return fallo(error, 'No se ha podido eliminar.'); S.c.presenciales = S.c.presenciales.filter(y => y.id !== p.id); toast('Cita eliminada'); verAgenda(); });
+  const nom = als.length ? als.map(x => x.nombre).join(' + ') : p.persona || 'Cita', mails = als.map(x => x.email).filter(Boolean);
+  const est = p.estado === 'programada' && p.fecha < hoyISO() ? 'Hecha' : (PRES_EST[p.estado] || p.estado), d = +p.duracion_min || durSesion();
+  const hF = p.hora ? (() => { const [a, b] = hhmm(p.hora).split(':').map(Number), m = a * 60 + b + d; return `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; })() : '';
+  const col = /valora/i.test(p.tipo || '') ? '#b8901e' : /revisi/i.test(p.tipo || '') ? '#7a4fd0' : /^tarea/i.test(p.tipo || '') ? '#0e7490' : esCitaPres(p) ? '#3d4a5c' : '#2563eb';
+  const fila = (ico, html) => `<div class="gc-row"><span class="gc-ic" aria-hidden="true">${ico}</span><div class="gc-c">${html}</div></div>`;
+  abrirSheet(`<div class="stack" style="gap:0">
+    <div class="row" style="gap:8px;justify-content:flex-end;margin-bottom:6px"><button class="btn sm" id="ae-ed">✏️ Editar</button>
+      <details class="gc-menu"><summary class="btn sm ghost" aria-label="Más opciones">⋯</summary><div class="gc-menu-l">
+        <button type="button" id="ae-dup">⧉ Duplicar</button><button type="button" id="ae-gc">📅 Pasar a mi Google Calendar</button>
+        ${mails.length ? `<button type="button" id="ae-gci">✉️ Invitar por correo (Google)</button>` : ''}
+        ${als.map(x => `<button type="button" data-fi="${x.id}">👤 Abrir ficha de ${esc(x.nombre.split(' ')[0])}</button>`).join('')}
+        <button type="button" id="ae-del" style="color:var(--bad)">🗑 Eliminar</button></div></details></div>
+    <div class="row" style="gap:12px;align-items:flex-start;margin-bottom:10px"><span style="width:16px;height:16px;border-radius:4px;background:${col};margin-top:8px;flex:none"></span>
+      <div class="stack" style="gap:2px"><h2 style="margin:0">${esc(nom)}</h2><span>${esc(fLarga(p.fecha))}${p.hora ? ` · ${hhmm(p.hora)} – ${hF}` : ' · todo el día'}</span><span class="small muted">${esc(p.tipo || 'Entrenamiento')} · ${esc(est)}${p.serie ? ' · 🔁 se repite' : ''}</span></div></div>
+    ${p.lugar ? fila(esEnlace(p.lugar) ? '🎥' : '📍', vLugar(p).replace(/^<span class="small">(📍|🎥) /, '<span>')) : ''}
+    ${als.length ? fila('👥', `<span>${als.length} ${als.length === 1 ? 'alumno' : 'alumnos'}</span>${als.map(x => `<span class="small">${esc(x.nombre)}${x.email ? ` <span class="muted">· ${esc(x.email)}</span>` : ''}</span>`).join('')}`) : ''}
+    ${p.nota ? fila('☰', `<div style="white-space:pre-line">${esc(p.nota)}</div>`) : ''}
+    <button class="btn ghost full" type="button" id="ae-vv" style="margin-top:10px">← Volver a la agenda</button></div>`);
+  const cerrarMenu = () => document.querySelector('.gc-menu')?.removeAttribute('open');
+  $('#ae-gc').onclick = () => { cerrarMenu(); window.open(gcalLink(p, nom), '_blank', 'noopener'); };
+  $('#ae-gci') && ($('#ae-gci').onclick = () => { cerrarMenu(); window.open(gcalLink(p, nom, mails.join(',')), '_blank', 'noopener'); });
+  $('#ae-dup').onclick = async () => { cerrarMenu(); const { id: _i, created_at: _c, serie: _s, ...base } = p, gr = grp.length > 1 ? (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())) : null;
+    const filas = grp.map(({ id: _x, created_at: _y, serie: _z, ...r }) => ({ ...r, estado: 'programada', ...(gr ? { grupo: gr } : {}) }));
+    const { data, error } = await sb.from('presenciales').insert(filas).select(); if (error) return fallo(error, 'No se ha podido duplicar.');
+    await cargarPresCoach(); toast('Duplicada: cámbiale el día o la hora'); formProgramar(null, null, null, (data || [])[0]?.id); };
+  $('#ae-del').onclick = async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = grp.length > 1 ? `Pulsa otra vez: se borra para los ${grp.length}` : 'Pulsa otra vez para eliminarla'; return; }
+    for (const r of grp) { const { error } = await sb.from('presenciales').delete().eq('id', r.id); if (error) return fallo(error); }
+    await cargarPresCoach(); if (S.ficha) await cargarPres(); toast('Cita eliminada'); verAgenda(); };
   document.querySelectorAll('[data-fi]').forEach(b => b.onclick = () => { const aid = b.dataset.fi, mid = grp.find(x => x.alumno_id === aid)?.id; cerrarSheet(); irA(aid, { tab: 'calendario', fn: () => { if ((S.ficha.pres || []).some(x => x.id === mid)) formPres(mid); } }); });
   $('#ae-vv').onclick = () => verAgenda(); $('#ae-ed').onclick = () => formProgramar(null, null, null, pid);
 }
@@ -2427,11 +2447,46 @@ function verAgenda(desplaza = 0) {
   const g = $('#ag-grid'); if (!g) return;
   const H = +g.dataset.h, h0 = +g.dataset.h0, hs = l.filter(p => p.hora).map(p => parseInt(p.hora));
   g.scrollTop = Math.max(0, ((hs.length ? Math.min(...hs) : 8) - h0 - 0.5) * H);
+  agendaArrastre(g, H, h0);
   g.addEventListener('click', ev => {
     if (ev.target.closest('[data-act]')) return; const col = ev.target.closest('.ag-col'); if (!col) return;
     const y = ev.clientY - col.getBoundingClientRect().top, m = Math.max(0, Math.floor(y / H * 2) * 30), hh = h0 + Math.floor(m / 60);
     formProgramar(null, col.dataset.f, `${String(hh).padStart(2, '0')}:${m % 60 ? '30' : '00'}`);
   });
+}
+/* Mantén pulsada una cita y arrástrala a otro día u hora (cada 15 min); al soltar confirmas y eliges si avisar al alumno */
+const AGD = { dr: null, H: 52, h0: 6, t: null };
+function agendaArrastre(g, H, h0) {
+  AGD.H = H; AGD.h0 = h0; const fin = () => { clearTimeout(AGD.t); AGD.t = null; };
+  g.addEventListener('pointerdown', ev => { const el = ev.target.closest('.ag-ev[data-p]'); if (!el || !+el.dataset.p || ev.button > 0) return; const x0 = ev.clientX, y0 = ev.clientY;
+    fin(); AGD.t = setTimeout(() => { const r = el.getBoundingClientRect(), gh = el.cloneNode(true), lab = document.createElement('div');
+      gh.classList.add('ag-drag'); Object.assign(gh.style, { position: 'fixed', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px', zIndex: 9999, pointerEvents: 'none', opacity: .9 });
+      lab.className = 'ag-drag-lab'; document.body.append(gh, lab); el.style.opacity = .35; navigator.vibrate?.(20); AGD.dr = { el, id: +el.dataset.p, dy: y0 - r.top, gh, lab }; }, 380);
+    const mv = e2 => { if (!AGD.dr && Math.hypot(e2.clientX - x0, e2.clientY - y0) > 8) fin(); };
+    el.addEventListener('pointermove', mv); el.addEventListener('pointerup', () => { fin(); el.removeEventListener('pointermove', mv); }, { once: true }); });
+  g.addEventListener('touchmove', e => { if (AGD.dr) e.preventDefault(); }, { passive: false });
+  if (AGD.ini) return; AGD.ini = true;   /* los oyentes del documento, una sola vez */
+  const DS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+  const donde = e => { const dr = AGD.dr, c = document.elementsFromPoint(e.clientX, e.clientY).find(x => x.classList?.contains('ag-col')); if (!c) return null; const top = c.getBoundingClientRect().top, y = e.clientY - top - dr.dy;
+    const m = Math.max(0, Math.round(y / AGD.H * 4) * 15) + AGD.h0 * 60; return { f: c.dataset.f, h: `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`, c, y: top + (m - AGD.h0 * 60) / 60 * AGD.H }; };
+  document.addEventListener('pointermove', e => { const dr = AGD.dr; if (!dr) return; e.preventDefault(); const w = donde(e); if (!w) return; dr.w = w; const r = w.c.getBoundingClientRect();
+    Object.assign(dr.gh.style, { left: r.left + 'px', top: w.y + 'px', width: r.width - 2 + 'px' }); dr.lab.textContent = `${DS[(fecha(w.f).getDay() + 6) % 7]} ${+w.f.slice(8)} · ${w.h}`;
+    Object.assign(dr.lab.style, { left: r.left + 'px', top: w.y - 26 + 'px' }); }, { passive: false });
+  const suelta = ok => { const d = AGD.dr; if (!d) return; AGD.dr = null; d.gh.remove(); d.lab.remove(); d.el.style.opacity = ''; S._agNoClick = Date.now(); if (ok && d.w) confirmarMover(d.id, d.w.f, d.w.h); };
+  document.addEventListener('pointerup', () => suelta(true)); document.addEventListener('pointercancel', () => suelta(false));
+}
+function confirmarMover(pid, f, h) {
+  const p = (S.c.presenciales || []).find(x => x.id === pid); if (!p || (p.fecha === f && hhmm(p.hora) === h)) return;
+  const grp = p.grupo ? S.c.presenciales.filter(x => x.grupo === p.grupo) : [p], als = grp.map(x => x.alumno_id && S.c.perfiles.find(y => y.id === x.alumno_id)).filter(Boolean);
+  abrirSheet(`<div class="stack"><h2>¿Mover la cita?</h2><p><b>${esc(als.map(x => x.nombre).join(' + ') || p.persona || 'Cita')}</b><br><span class="muted">${esc(fLarga(p.fecha))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</span> → <b>${esc(fLarga(f))} · ${h}</b></p>
+    ${als.length ? `<label class="row" style="gap:8px"><input type="checkbox" id="mv-av" checked style="width:22px;height:22px"> Avisar ${als.length > 1 ? 'a los alumnos' : 'a ' + esc(als[0].nombre.split(' ')[0])} del cambio (le llega a su app y al móvil)</label>` : ''}
+    <button class="btn full" id="mv-ok">Mover</button><button class="btn ghost full" id="mv-no">Cancelar</button></div>`);
+  $('#mv-no').onclick = () => verAgenda();
+  $('#mv-ok').onclick = async () => { const bt = $('#mv-ok'); bt.disabled = true;
+    for (const r of grp) { const { error } = await sb.from('presenciales').update({ fecha: f, hora: h }).eq('id', r.id); if (error) { bt.disabled = false; return fallo(error, 'No se ha podido mover.'); } }
+    if ($('#mv-av')?.checked) { const cuerpo = `Tu ${(p.tipo || 'entrenamiento').toLowerCase()} pasa al ${fLarga(f)} a las ${h}.`;
+      for (const a of als) { await sb.from('avisos').insert({ alumno_id: a.id, tipo: 'cita', titulo: 'Cambio de cita', cuerpo }).then(() => {}, () => {}); await sb.functions.invoke('enviar-aviso', { body: { alumno_ids: [a.id], titulo: 'Cambio de cita', cuerpo, url: './' } }).catch(() => {}); } }
+    await cargarPresCoach(); toast('Cita movida' + ($('#mv-av')?.checked ? ' y alumno avisado' : '')); verAgenda(); };
 }
 function agendaRejilla(dias, l, hoy, nom, EST) {
   const H = 52, dur = durSesion(), min = h => { const [a, b] = String(h || '').split(':'); return +a * 60 + (+b || 0); };
@@ -7822,7 +7877,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v313';
+const APP_VER = 'v314';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8124,7 +8179,7 @@ document.addEventListener('click', async e => {
     case 'agendaVista': { const v = b.dataset.v; try { localStorage.setItem('lof-ag-vista', v); } catch (e) { } S.agIni = v === '3dias' ? hoyISO() : lunesDe(S.agIni || hoyISO()); verAgenda(); break; }
     case 'agendaHoy': S.agIni = null; verAgenda(); break;
     case 'agendaSuscribir': await agendaSuscribir(); break;
-    case 'agendaIr': { if (+b.dataset.p && (S.c.presenciales || []).some(x => x.id === +b.dataset.p)) { agendaEvento(+b.dataset.p); break; } const id = b.dataset.id, pid = +b.dataset.p; await irA(id, { tab: 'calendario', fn: pid ? () => { if ((S.ficha.pres || []).some(x => x.id === pid)) formPres(pid); } : null }); break; }
+    case 'agendaIr': { if (Date.now() - (S._agNoClick || 0) < 600) break; if (+b.dataset.p && (S.c.presenciales || []).some(x => x.id === +b.dataset.p)) { agendaEvento(+b.dataset.p); break; } const id = b.dataset.id, pid = +b.dataset.p; await irA(id, { tab: 'calendario', fn: pid ? () => { if ((S.ficha.pres || []).some(x => x.id === pid)) formPres(pid); } : null }); break; }
     case 'nuevaPresVal': S.presVal = b.dataset.t; formPres(); break;
     case 'editarPres': formPres(+b.dataset.id); break;
     case 'presVerSesion': cerrarSheet(); await verSesion(+b.dataset.id); break;
