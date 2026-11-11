@@ -2867,7 +2867,7 @@ async function abrirFicha(id) {
   S.valEd = null;
   const [pr, ru] = await Promise.all([sb.from('presenciales').select('*').eq('alumno_id', id).order('fecha'), sb.from('hoja_ruta').select('*').eq('alumno_id', id).order('orden')]);
   S.ficha.pres = pr.data || []; S.ficha.ruta = ru.data || []; if (S.ficha.srv) S.ficha.srv._bloques = bloquesDe(S.ficha.ruta);
-  const f = S.ficha; await Promise.all([cargarValoraciones(), cargarProgramasFicha(f), Acomp.cargarFicha(f), IA.cargarFicha(f)]);
+  const f = S.ficha; await Promise.all([cargarValoraciones(), cargarProgramasFicha(f), Acomp.cargarFicha(f), IA.cargarFicha(f), S.c.servicios.find(x => x.alumno_id === f.id)?.modulo_nutricion ? Nutricion.cargarFicha(f).catch(() => {}) : null]);
   { const a = S.c?.perfiles?.find(x => x.id === id); if (a && S.ficha === f) { const it = estadoAlumno(a).items; f.recien = new Set(it.filter(x => x.nueva).map(x => x.k)); await Alertas.verTodas(id, it.map(x => x.m)); } }
   if (S.ficha === f && !S.verSes && !S.fichaSub) render();
 }
@@ -4211,7 +4211,11 @@ function vFicha() {
     ${e.control ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>Toca su revisión mensual ${e.control.n}</b> (${esc(fCorta(e.control.fecha))}): llamada o videollamada de 10-15 minutos para ver cómo se siente, sus objetivos y su composición corporal.</div><button class="btn sm gold" data-act="revision" data-n="${e.control.n}">Registrar revisión</button></div>` : ''}
   </div></section>`;
   const fb4 = `${srv?.modulo_futbol ? vSemanaEnCurso(f, a) + `<details class="card" style="margin:0 0 14px"><summary><b>Semana patrón</b> <span class="small muted">· su programa base</span></summary>${vBloqueActual(f, a)}</details>` : vBloqueActual(f, a)}<div style="padding:0 2px"><button class="btn ghost full" data-act="fichaSub" data-s="entreno">Programas, contextos y zonas de FC ›</button></div>${IA.vFicha(f, a)}`;
-  const fb5 = `<div class="card stack"><div class="small muted">${!midoCoach(a.id) ? `${esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || '')} · registro de observación: ${ing7.dias} de 7 días apuntados` : ing7.pct != null ? `Últimos 7 días: <b>${ing7.pct} %</b> de ingestas bien en ${ing7.dias} días registrados (${esc(evN[1] || '')})` : ing7.dias ? `${ing7.dias} de 7 días registrados · pocos para valorar` : esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || 'Plan de alimentación')}</div><button class="btn full" data-act="fichaSub" data-s="alimentacion">Abrir su nutrición ›</button></div>`;
+  /* Su diario de comidas (pestaña Nutrición, con fotos) también cuenta como días apuntados */
+  const com7 = (f.comidas || []).filter(x => !x.compartido && x.fecha >= ult7 && x.fecha <= hoy), diasCom = new Set([...com7.map(x => x.fecha), ...S.c.diario.filter(r => r.alumno_id === a.id && r.fecha >= ult7 && r.fecha <= hoy && (r.ingestas != null || (r.fotos || []).length)).map(r => r.fecha)]).size;
+  const fotos7 = com7.flatMap(x => fotosDe(x)); if (fotos7.length) pedirFotos(fotos7.slice(-6));
+  const miniCom = fotos7.length ? `<div class="row" style="gap:6px;flex-wrap:wrap">${fotos7.slice(-6).reverse().map(r => { const u = fotoUrl(r); return u ? `<button class="img" data-act="verImagenes" data-s="${esc(fotos7.map(fotoUrl).filter(Boolean).join('|'))}" style="width:56px;height:56px;border-radius:10px;overflow:hidden;padding:0;border:0"><img src="${esc(u)}" alt="Foto de comida" style="width:100%;height:100%;object-fit:cover"></button>` : ''; }).join('')}</div><span class="small muted">📷 ${fotos7.length} foto${fotos7.length > 1 ? 's' : ''} de comidas en 7 días · ${com7.length} comida${com7.length > 1 ? 's' : ''} apuntada${com7.length > 1 ? 's' : ''}</span>` : '';
+  const fb5 = `<div class="card stack"><div class="small muted">${!midoCoach(a.id) ? `${esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || '')} · registro de observación: ${diasCom} de 7 días apuntados` : ing7.pct != null ? `Últimos 7 días: <b>${ing7.pct} %</b> de ingestas bien en ${ing7.dias} días registrados (${esc(evN[1] || '')})` : ing7.dias ? `${ing7.dias} de 7 días registrados · pocos para valorar` : esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || 'Plan de alimentación')}</div>${miniCom}<button class="btn full" data-act="fichaSub" data-s="alimentacion">Abrir su nutrición ›</button></div>`;
   const fb6 = `${Temperamento.bloqueFicha(f, a)}${conPasos(srv) || srv?.modulo_habitos ? `<div style="padding:0 2px"><button class="btn ghost full" data-act="fichaSub" data-s="habitos">${srv?.modulo_habitos ? 'Hábitos y pasos' : 'Pasos'} ›</button></div>` : ''}`;
   const fb7 = `  <section class="section"><div class="section-head"><h2>Composición corporal</h2><div class="row" style="gap:6px"><button class="btn sm ghost" data-act="objetivoComp">🎯 Objetivo</button><button class="btn sm ghost" data-act="nuevaMedicion">＋ Medición</button></div></div>
     ${vGraficaComp(f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), a, f.medObj) || '<div class="card empty">Sin mediciones todavía.</div>'}
@@ -7754,7 +7758,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v308';
+const APP_VER = 'v309';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
