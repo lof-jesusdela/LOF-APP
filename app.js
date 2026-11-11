@@ -2229,12 +2229,20 @@ async function cargarCoach() {
 /* ---------- Agenda de sesiones presenciales (la app manda; Google Calendar las recibe) ---------- */
 const durSesion = () => Math.max(15, Math.min(240, parseInt(S.c?.fiscal?.agenda_min) || 60));
 /* Enlace para añadir una sesión a Google Calendar al momento */
+/* Qué número de entrenamiento del bono es esta sesión (cuenta las de antes de la app); null si no es un entreno con bono */
+function numSesion(p) {
+  if (!p?.alumno_id || noCuentaPres(p) || ['cancelada', 'falta'].includes(p.estado)) return null; const srv = srvDe(p.alumno_id); if (!srv) return null;
+  const D = datosPres(srv, (S.c?.presenciales || []).filter(x => x.alumno_id === p.alumno_id)), orden = [...D.hechas, ...D.prox], i = orden.findIndex(x => x.id === p.id);
+  return i < 0 ? null : { n: i + 1, total: D.total };
+}
+const txtNumSesion = (p, nombre) => { const g = p?.grupo ? (S.c?.presenciales || []).filter(x => x.grupo === p.grupo) : [p], l = g.map(x => [x, numSesion(x)]).filter(x => x[1]);
+  return l.map(([x, k]) => `${g.length > 1 ? (S.c.perfiles.find(a => a.id === x.alumno_id)?.nombre || '').split(' ')[0] + ': ' : ''}Entrenamiento ${k.n}${k.total ? ` de ${k.total}` : ''} de tu bono`).join('\n'); };
 function gcalLink(p, nombre, email) {
   const f = (p.fecha || hoyISO()).replace(/-/g, ''), h = hhmm(p.hora), dS = +p.duracion_min || durSesion();
   let dates;
   if (h) { const [H, M] = h.split(':').map(Number), fin = H * 60 + M + dS, hh = n => String(n).padStart(2, '0'); dates = `${f}T${hh(H)}${hh(M)}00/${f}T${hh(Math.floor(fin / 60) % 24)}${hh(fin % 60)}00`; }
   else { const d = fecha(p.fecha || hoyISO()); d.setDate(d.getDate() + 1); dates = `${f}/${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`; }
-  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(p.alumno_id || !p.persona ? `${nombre} · ${p.tipo || 'Entrenamiento'}` : `${p.tipo} · ${p.persona}`)}&dates=${dates}&ctz=Europe/Madrid&details=${encodeURIComponent([esEnlace(p.lugar) && 'Enlace de la videollamada: ' + p.lugar.trim(), p.nota, 'La Obra Fitness'].filter(Boolean).join('\n\n'))}${p.lugar ? '&location=' + encodeURIComponent(p.lugar) : ''}${email ? '&add=' + encodeURIComponent(email) : ''}`;
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(p.alumno_id || !p.persona ? `${nombre} · ${p.tipo || 'Entrenamiento'}` : `${p.tipo} · ${p.persona}`)}&dates=${dates}&ctz=Europe/Madrid&details=${encodeURIComponent([txtNumSesion(p) && '🏋️ ' + txtNumSesion(p), esEnlace(p.lugar) && 'Enlace de la videollamada: ' + p.lugar.trim(), p.nota, 'La Obra Fitness'].filter(Boolean).join('\n\n'))}${p.lugar ? '&location=' + encodeURIComponent(p.lugar) : ''}${email ? '&add=' + encodeURIComponent(email) : ''}`;
 }
 /* Programar una sesión sin entrar en la ficha: alumno, día, hora y tipo; dice lo que le queda del bono */
 /* Hora escrita a mano: «9», «930», «9:30», «9.30» → «09:30» */
@@ -2404,7 +2412,7 @@ function agendaEvento(pid) {
         ${als.map(x => `<button type="button" data-fi="${x.id}">👤 Abrir ficha de ${esc(x.nombre.split(' ')[0])}</button>`).join('')}
         <button type="button" id="ae-del" style="color:var(--bad)">🗑 Eliminar</button></div></details></div>
     <div class="row" style="gap:12px;align-items:flex-start;margin-bottom:10px"><span style="width:16px;height:16px;border-radius:4px;background:${col};margin-top:8px;flex:none"></span>
-      <div class="stack" style="gap:2px"><h2 style="margin:0">${esc(nom)}</h2><span>${esc(fLarga(p.fecha))}${p.hora ? ` · ${hhmm(p.hora)} – ${hF}` : ' · todo el día'}</span><span class="small muted">${esc(p.tipo || 'Entrenamiento')} · ${esc(est)}${p.serie ? ' · 🔁 se repite' : ''}</span></div></div>
+      <div class="stack" style="gap:2px"><h2 style="margin:0">${esc(nom)}</h2><span>${esc(fLarga(p.fecha))}${p.hora ? ` · ${hhmm(p.hora)} – ${hF}` : ' · todo el día'}</span><span class="small muted">${esc(p.tipo || 'Entrenamiento')} · ${esc(est)}${p.serie ? ' · 🔁 se repite' : ''}</span>${txtNumSesion(p) ? `<span class="small"><b>🏋️ ${esc(txtNumSesion(p).replace(/ de tu bono/g, ' del bono')).replace(/\n/g, '<br>')}</b></span>` : ''}</div></div>
     ${p.lugar ? fila(esEnlace(p.lugar) ? '🎥' : '📍', vLugar(p).replace(/^<span class="small">(📍|🎥) /, '<span>')) : ''}
     ${als.length ? fila('👥', `<span>${als.length} ${als.length === 1 ? 'alumno' : 'alumnos'}</span>${als.map(x => `<span class="small">${esc(x.nombre)}${x.email ? ` <span class="muted">· ${esc(x.email)}</span>` : ''}</span>`).join('')}`) : ''}
     ${p.nota ? fila('☰', `<div style="white-space:pre-line">${esc(p.nota)}</div>`) : ''}
@@ -7877,7 +7885,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v314';
+const APP_VER = 'v315';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}

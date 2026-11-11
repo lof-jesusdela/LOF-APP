@@ -27,6 +27,16 @@ Deno.serve(async (req) => {
     admin.from("presenciales").select("id,alumno_id,fecha,hora,estado,tipo,nota,persona,duracion_min,grupo,lugar").gte("fecha", desde).neq("estado", "cancelada").order("fecha"),
     admin.from("perfiles").select("id,nombre"),
   ]);
+  // Nº de entrenamiento del bono de cada sesión (como en la app): desde el inicio de su servicio, + las hechas antes de la app
+  const [{ data: todas }, { data: srvs }] = await Promise.all([
+    admin.from("presenciales").select("id,alumno_id,fecha,hora,estado,tipo").not("alumno_id", "is", null).order("fecha").order("hora"),
+    admin.from("servicios").select("*"),
+  ]);
+  const noCuenta = (x: any) => /valoraci|revisi|^pti|primera|entrevista|reuni|^tarea/i.test(x.tipo || "") || ["cancelada", "falta"].includes(x.estado);
+  const sv: Record<string, any> = Object.fromEntries((srvs || []).map((x: any) => [x.alumno_id, x])), num: Record<string, string> = {}, cuenta: Record<string, number> = {};
+  for (const x of todas || []) { const s = sv[x.alumno_id]; if (!s || noCuenta(x) || (s.inicio && x.fecha < s.inicio)) continue;
+    cuenta[x.alumno_id] ??= Math.max(0, +s.sesiones_previas || 0); const n = ++cuenta[x.alumno_id];
+    num[x.id] = `Entrenamiento ${n}${s.sesiones_incluidas ? ` de ${s.sesiones_incluidas}` : ""} de tu bono`; }
   const nom = Object.fromEntries((per || []).map((p: any) => [p.id, p.nombre || "Alumno"]));
   const ahora = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z";
   const L = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//La Obra Fitness//Sesiones//ES", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
@@ -42,7 +52,7 @@ Deno.serve(async (req) => {
     L.push("BEGIN:VEVENT", `UID:pres-${p.id}@laobrafitness`, `DTSTAMP:${ahora}`);
     if (p.hora) L.push(`DTSTART;TZID=Europe/Madrid:${f8(p.fecha)}T${hm(p.hora)}`, `DTEND;TZID=Europe/Madrid:${sumaMin(p.fecha, p.hora, dur)}`);
     else L.push(`DTSTART;VALUE=DATE:${f8(p.fecha)}`, `DTEND;VALUE=DATE:${diaSig(p.fecha)}`);
-    L.push(`SUMMARY:${esc(`${hecho ? "✓ " : ""}${p.alumno_id ? `${quien} · ${tipo}` : `${tipo}${quien ? " · " + quien : ""}`}`)}`, `DESCRIPTION:${esc([/^https?:\/\//i.test(p.lugar || "") && "Videollamada: " + p.lugar, p.nota, "Programada en la app de La Obra Fitness"].filter(Boolean).join("\n"))}`, ...(p.lugar ? [`LOCATION:${esc(p.lugar)}`] : []), "STATUS:CONFIRMED", "END:VEVENT");
+    L.push(`SUMMARY:${esc(`${hecho ? "✓ " : ""}${p.alumno_id ? `${quien} · ${tipo}` : `${tipo}${quien ? " · " + quien : ""}`}`)}`, `DESCRIPTION:${esc([(p.grupo ? (pres || []).filter((y: any) => y.grupo === p.grupo) : [p]).map((y: any) => num[y.id] && (p.grupo ? (nom[y.alumno_id] || "").split(" ")[0] + ": " : "") + num[y.id]).filter(Boolean).join("\n"), /^https?:\/\//i.test(p.lugar || "") && "Videollamada: " + p.lugar, p.nota, "Programada en la app de La Obra Fitness"].filter(Boolean).join("\n"))}`, ...(p.lugar ? [`LOCATION:${esc(p.lugar)}`] : []), "STATUS:CONFIRMED", "END:VEVENT");
   }
   L.push("END:VCALENDAR");
   return new Response(L.join("\r\n") + "\r\n", { headers: { "Content-Type": "text/calendar; charset=utf-8", "Cache-Control": "no-cache" } });
