@@ -2259,38 +2259,47 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
   const als = S.c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach').sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
   const conBono = id => { const v = srvDe(id); return !!(v && (v.modulo_presencial || v.sesiones_incluidas || modalidadSrv(v) !== 'online')); };
   const orden = [...als.filter(a => conBono(a.id)), ...als.filter(a => !conBono(a.id))];
-  abrirSheet(`<form class="stack" id="f-prog"><h2>${P0 ? 'Editar cita' : 'Programar sesión'}</h2>
-    <div class="chips" id="pg-t">${TIPOS_CITA.map(([t], i) => `<button type="button" class="pill ${i ? '' : 'blue'}" data-t="${t}">${t}</button>`).join('')}</div>
-    <div class="stack" id="pg-ext" hidden style="gap:8px"><label class="f">Con quién<input type="text" id="pg-q" placeholder="Ej. Laura (PTI Basic Fit) · Partner suplementos"></label></div>
-    <label class="f" id="pg-aw">Alumno<select id="pg-a"><option value="">Elige alumno…</option>${orden.map((a, i) => `${i === als.filter(x => conBono(x.id)).length && i ? '<option disabled>── Sin sesiones presenciales ──</option>' : ''}<option value="${a.id}" ${a.id === aid ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('')}</select></label>
-    <div class="stack" id="pg-mas" style="gap:6px"></div><button type="button" class="btn sm ghost" id="pg-mas-b" style="align-self:flex-start">＋ Añadir otro alumno (sesión conjunta)</button>
-    <p class="small" id="pg-bono" style="margin:-4px 0 0"></p>
-    <div style="display:grid;grid-template-columns:1fr 120px;gap:8px"><label class="f">Día<input type="date" id="pg-f" value="${fechaIni || hoyISO()}" required></label><label class="f">Hora${inHora('pg-h', horaIni)}</label></div>
-    <label class="f">Duración (minutos)<input type="number" id="pg-d" min="5" max="600" step="5" inputmode="numeric" value="${durSesion()}" list="pg-dl"><datalist id="pg-dl">${[30, 45, 60, 75, 90, 120].map(m => `<option value="${m}">`).join('')}</datalist></label>
-    <label class="f"><span id="pg-l-t">Ubicación (opcional)</span><input type="text" id="pg-l" placeholder="Ej. Basic Fit Torrejón · Calle Mayor 5, Alcalá"></label>
-    <button type="button" class="btn sm ghost" id="pg-meet" hidden style="align-self:flex-start">🎥 Crear enlace de Google Meet nuevo</button>
-    <label class="f">Mensaje (lo ve en su app y en el evento de Google Calendar)<textarea id="pg-n" rows="5" placeholder="Ej. Trae zapatillas, toalla y agua. Llega 5 minutos antes."></textarea></label>
-    ${P0 ? (P0.serie ? `<label class="row small" style="gap:8px"><input type="checkbox" id="pg-ser" style="width:20px;height:20px"> Aplicar hora, tipo, ubicación y mensaje también a las siguientes de la serie</label>` : '')
-      : `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="f">Se repite<select id="pg-rep"><option value="">No se repite</option><option value="1">Cada día</option><option value="lab">Cada día laborable (L–V)</option><option value="7">Cada semana</option><option value="14">Cada 2 semanas</option><option value="mes">Cada mes</option></select></label>
-        <label class="f" id="pg-hw" hidden>Hasta<input type="date" id="pg-hasta" value="${sumaDias(fechaIni || hoyISO(), 84)}"></label></div>`}
-    <label class="row small" style="gap:8px"><input type="checkbox" id="pg-def" style="width:20px;height:20px"> Guardar mensaje y ubicación por defecto para <b id="pg-def-t">Entrenamiento</b></label>
-    <label class="row small" style="gap:8px"><input type="checkbox" id="pg-g" style="width:20px;height:20px"> Abrir también Google Calendar para añadirla al momento</label>
-    ${P0 ? `<label class="f">Estado<select id="pg-e">${Object.entries(PRES_EST).map(([k, l]) => `<option value="${k}" ${P0.estado === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>` : ''}
-    <p class="err" id="pg-err"></p><button class="btn full" type="submit">${P0 ? 'Guardar cambios' : 'Guardar sesión'}</button>
+  /* Formulario con la estructura del evento de Google Calendar: título, tipo, cuándo, se repite, alumnos, videollamada/ubicación, descripción */
+  const fila = (ico, cont, id = '', extra = '') => `<div class="gc-row" ${id ? `id="${id}"` : ''} ${extra}><span class="gc-ic" aria-hidden="true">${ico}</span><div class="gc-c">${cont}</div></div>`;
+  abrirSheet(`<form class="stack gc-form" id="f-prog" style="gap:0"><div class="row" style="gap:8px;margin-bottom:6px"><h2 class="grow" style="margin:0">${P0 ? 'Editar cita' : 'Nueva cita'}</h2><button class="btn" type="submit">${P0 ? 'Guardar' : 'Guardar'}</button></div>
+    <div id="pg-ext" hidden><input type="text" id="pg-q" class="gc-tit" placeholder="Añade un título (con quién o qué)"></div>
+    <div id="pg-aw"><select id="pg-a" class="gc-tit"><option value="">Elige alumno…</option>${orden.map((a, i) => `${i === als.filter(x => conBono(x.id)).length && i ? '<option disabled>── Sin sesiones presenciales ──</option>' : ''}<option value="${a.id}" ${a.id === aid ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('')}</select></div>
+    <div class="chips" id="pg-t" style="margin:8px 0 4px">${TIPOS_CITA.map(([t], i) => `<button type="button" class="pill ${i ? '' : 'blue'}" data-t="${t}">${t}</button>`).join('')}</div>
+    <p class="small" id="pg-bono" style="margin:2px 0 6px"></p>
+    ${fila('🕒', `<label class="row" style="gap:10px;justify-content:space-between"><span>Todo el día</span><input type="checkbox" id="pg-td" class="gc-sw" ${P0 && !P0.hora ? 'checked' : ''}></label>
+      <input type="date" id="pg-f" value="${fechaIni || hoyISO()}" required class="gc-in">
+      <div class="row gc-horas" style="gap:8px;align-items:center"><span class="small muted">De</span>${inHora('pg-h', horaIni)}<span class="small muted">a</span><input type="text" id="pg-hf" data-hora inputmode="decimal" maxlength="5" placeholder="hh:mm" autocomplete="off"><span class="small muted grow" id="pg-dt"></span></div>
+      <input type="hidden" id="pg-d" value="${durSesion()}">`)}
+    ${P0 ? (P0.serie ? fila('🔁', `<label class="row small" style="gap:8px"><input type="checkbox" id="pg-ser" style="width:20px;height:20px"> Aplicar hora, tipo, ubicación y descripción también a las siguientes de la serie</label>`) : '')
+      : fila('🔁', `<select id="pg-rep" class="gc-in"><option value="">No se repite</option><option value="1">Cada día</option><option value="lab">Cada día laborable (L–V)</option><option value="7">Cada semana</option><option value="14">Cada 2 semanas</option><option value="mes">Cada mes</option></select><label class="row small" id="pg-hw" hidden style="gap:8px">hasta el<input type="date" id="pg-hasta" class="gc-in" value="${sumaDias(fechaIni || hoyISO(), 84)}"></label>`)}
+    ${fila('👥', `<div class="stack" id="pg-mas" style="gap:6px"></div><button type="button" class="linkbtn" id="pg-mas-b" style="align-self:flex-start">Añadir otro alumno (sesión conjunta)</button>`, 'pg-inv')}
+    ${fila('🎥', `<button type="button" class="linkbtn" id="pg-meet" style="align-self:flex-start">Crear enlace de Google Meet nuevo</button>`, 'pg-meetw')}
+    ${fila('📍', `<span class="small muted" id="pg-l-t">Ubicación</span><input type="text" id="pg-l" class="gc-in" placeholder="Añade una ubicación">`)}
+    ${fila('☰', `<textarea id="pg-n" rows="4" class="gc-in" placeholder="Añade una descripción (la ve en su app y en el evento de Google Calendar)"></textarea><label class="row small" style="gap:8px"><input type="checkbox" id="pg-def" style="width:18px;height:18px"> Guardar descripción y ubicación por defecto para <b id="pg-def-t">Entrenamiento</b></label>`)}
+    ${fila('📅', `<label class="row small" style="gap:8px"><input type="checkbox" id="pg-g" style="width:18px;height:18px"> Abrir también Google Calendar para añadirla al momento</label>`)}
+    ${P0 ? fila('✔', `<select id="pg-e" class="gc-in">${Object.entries(PRES_EST).map(([k, l]) => `<option value="${k}" ${P0.estado === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`) : ''}
+    <p class="err" id="pg-err"></p><button class="btn full" type="submit">${P0 ? 'Guardar cambios' : 'Guardar'}</button>
     ${P0 ? (P0.serie ? '<button class="btn ghost full" type="button" id="pg-dels" style="color:var(--bad)">Eliminar esta y las siguientes de la serie</button>' : '') + '<button class="btn ghost full" type="button" id="pg-del" style="color:var(--bad)">Eliminar cita</button><button class="btn ghost full" type="button" id="pg-vv">← Volver a la agenda</button>' : ''}
-    <p class="note">Se le resta del bono y le aparece en su calendario. Si estás suscrito al calendario «LOF · Sesiones», también llega sola a tu Google Calendar.</p></form>`);
+    <p class="note">Los entrenos se restan del bono y salen en el calendario del alumno. Si estás suscrito a «LOF · Sesiones», también llegan solos a tu Google Calendar.</p></form>`);
+  /* Hora de fin ⇄ duración, y «Todo el día» */
+  const minDe = v => { const h = normHora(v); return h ? +h.slice(0, 2) * 60 + +h.slice(3, 5) : null; }, hDe = m => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  const ponFin = () => { const a = minDe($('#pg-h').value), d = +$('#pg-d').value || durSesion(); $('#pg-hf').value = a != null ? hDe(a + d) : ''; $('#pg-dt').textContent = `${d} min`; };
+  const ponDur = () => { const a = minDe($('#pg-h').value), b = minDe($('#pg-hf').value); if (a != null && b != null && b > a) { $('#pg-d').value = b - a; $('#pg-dt').textContent = `${b - a} min`; } };
+  const ponTd = () => { const on = $('#pg-td').checked; document.querySelectorAll('.gc-horas').forEach(x => x.hidden = on); };
+  $('#pg-h').addEventListener('input', ponFin); $('#pg-hf').addEventListener('change', ponDur); $('#pg-hf').addEventListener('blur', ponDur); $('#pg-td').addEventListener('change', ponTd);
   let tipo = P0 ? (TIPOS_CITA.some(x => x[0] === P0.tipo) ? P0.tipo : P0.alumno_id ? 'Entrenamiento' : 'Reunión de negocio') : 'Entrenamiento';
   if (P0) { document.querySelectorAll('#pg-t .pill').forEach(x => x.classList.toggle('blue', x.dataset.t === tipo)); $('#pg-q').value = P0.persona || ''; $('#pg-d').value = P0.duracion_min || durSesion(); $('#pg-l').value = P0.lugar || ''; $('#pg-n').value = P0.nota || ''; }
+  ponFin(); ponTd();
   const ext = () => TIPOS_CITA.find(x => x[0] === tipo)?.[1] === 'ext';
-  const bono = () => { const id = $('#pg-a').value, v = srvDe(id); $('#pg-ext').hidden = !ext(); $('#pg-aw').hidden = ext(); $('#pg-mas').hidden = $('#pg-mas-b').hidden = ext(); if (ext()) return $('#pg-bono').innerHTML = '<span class="muted">Va a tu agenda y a tu Google Calendar. No es de ningún alumno.</span>'; if (!id) return $('#pg-bono').textContent = ''; if (/revisi/i.test(tipo)) return $('#pg-bono').innerHTML = '<span class="muted">Revisión por videollamada: no cuenta como entrenamiento ni gasta bono.</span>';
+  const bono = () => { const id = $('#pg-a').value, v = srvDe(id); $('#pg-ext').hidden = !ext(); $('#pg-aw').hidden = ext(); $('#pg-inv').hidden = ext(); if (ext()) return $('#pg-bono').innerHTML = '<span class="muted">Va a tu agenda y a tu Google Calendar. No es de ningún alumno.</span>'; if (!id) return $('#pg-bono').textContent = ''; if (/revisi/i.test(tipo)) return $('#pg-bono').innerHTML = '<span class="muted">Revisión por videollamada: no cuenta como entrenamiento ni gasta bono.</span>';
     const D = v?.sesiones_incluidas ? datosPres(v, (S.c.presenciales || []).filter(p => p.alumno_id === id)) : null;
     const dia = (S.c.presenciales || []).filter(p => p.alumno_id === id && p.fecha === $('#pg-f').value && p.estado !== 'cancelada');
     $('#pg-bono').innerHTML = (D ? `Le quedan <b>${D.quedan}</b> de ${D.total} sesiones${D.prox.length ? ` (${D.prox.length} ya reservada${D.prox.length > 1 ? 's' : ''})` : ''}.` : '<span class="muted">Sin bono de sesiones en su servicio: se apunta igual.</span>') + (dia.length ? ` <b style="color:var(--warn)">Ya tiene una sesión ese día${dia[0].hora ? ' a las ' + hhmm(dia[0].hora) : ''}.</b>` : '') + (D && D.quedan <= 0 && tipo === 'Entrenamiento' ? ' <b style="color:var(--bad)">No le quedan sesiones.</b>' : ''); };
   let defPrev = P0 ? { n: (agendaDef()[tipo] || {}).n || '', l: (agendaDef()[tipo] || {}).l || '' } : { n: '', l: '' };
   const ponDef = (rellena = true) => { const d = agendaDef()[tipo] || {}, n = $('#pg-n'), l = $('#pg-l');
     if (rellena) { if (!n.value.trim() || n.value === defPrev.n) n.value = d.n || ''; if (!l.value.trim() || l.value === defPrev.l || (esEnlace(l.value) && !esOnline(tipo) && !/reuni/i.test(tipo))) l.value = d.l || ''; } defPrev = { n: d.n || '', l: d.l || '' }; $('#pg-def-t').textContent = tipo;
-    const tar = tipo === 'Tarea'; $('#pg-ext label').firstChild.textContent = tar ? 'Qué tienes que hacer' : 'Con quién'; $('#pg-q').placeholder = tar ? 'Ej. Métricas de la semana · Entrega de servicio a Laura' : 'Ej. Laura (PTI Basic Fit) · Partner suplementos';
-    const on = esOnline(tipo), mix = /reuni/i.test(tipo); $('#pg-meet').hidden = !(on || mix);
+    const tar = tipo === 'Tarea'; $('#pg-q').placeholder = tar ? 'Añade un título (qué tienes que hacer)' : 'Añade un título (con quién: Laura · PTI, Partner…)';
+    const on = esOnline(tipo), mix = /reuni/i.test(tipo); $('#pg-meetw').hidden = !(on || mix);
     $('#pg-l-t').textContent = on ? 'Enlace de Google Meet' : mix ? 'Ubicación o enlace de Meet (opcional)' : 'Ubicación (opcional)';
     $('#pg-l').placeholder = on ? 'https://meet.google.com/abc-defg-hij' : 'Ej. Basic Fit Torrejón · Calle Mayor 5, Alcalá'; };
   $('#pg-meet').addEventListener('click', () => { window.open('https://meet.google.com/new', '_blank', 'noopener'); toast('Copia el enlace de la reunión y pégalo aquí'); });
@@ -2318,7 +2327,7 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
   $('#f-prog').addEventListener('submit', async e => {
     e.preventDefault(); const X = ext(), id = X ? null : $('#pg-a').value, quien = $('#pg-q').value.trim();
     if (!X && !id) return $('#pg-err').textContent = 'Elige el alumno'; if (X && !quien) return $('#pg-err').textContent = tipo === 'Tarea' ? 'Escribe qué tienes que hacer' : 'Escribe con quién es';
-    const hora = normHora($('#pg-h').value); if (hora === undefined) return $('#pg-err').textContent = 'Hora no válida: escríbela así, 9:30 o 18:00';
+    ponDur(); const hora = $('#pg-td').checked ? null : normHora($('#pg-h').value); if (hora === undefined) return $('#pg-err').textContent = 'Hora no válida: escríbela así, 9:30 o 18:00';
     /* El iPhone solo deja abrir otra pestaña en el mismo toque: se abre ya y se rellena al guardar */
     const win = $('#pg-g').checked ? window.open('', '_blank') : null;
     const abreCal = url => { if (win && !win.closed) { win.location.href = url; return; } toast('Pulsa para añadirla a Google Calendar'); abrirSheet(`<div class="stack"><h2>Añadir a Google Calendar</h2><a class="btn full" href="${esc(url)}" target="_blank" rel="noopener">📅 Abrir Google Calendar</a></div>`); };
@@ -7813,7 +7822,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v312';
+const APP_VER = 'v313';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
