@@ -3985,7 +3985,7 @@ function formAsignarPlantilla(alumnoId, plantillaId) {
 /* ---------- Valoración inicial dentro de la plantilla (se copia como test del alumno al asignarla) ---------- */
 const valDePlantilla = p => { const v = p?.valoracion; return v && Array.isArray(v.pruebas) ? v : null; };
 const resumenValPlantilla = p => { const v = valDePlantilla(p); return v ? `test inicial con ${v.pruebas.length} ${v.pruebas.length === 1 ? 'prueba' : 'pruebas'}` : 'sin test inicial'; };
-const pruebaPlantilla = tipo => { const t = PLANTILLAS[tipo] || PLANTILLAS.otra; return { tipo, titulo: t.titulo, protocolo: t.protocolo || '', datos: t.datos.map(n => t.cols === 'di' ? { nombre: n, d: '', i: '' } : { nombre: n, valor: '' }), valoracion: '', foco: '', video_url: '' }; };
+const pruebaPlantilla = tipo => { const t = PLANTILLAS[tipo] || PLANTILLAS.otra; return { tipo, titulo: t.titulo, protocolo: t.protocolo || '', datos: t.datos.map(n => ({ ...(t.cols === 'di' ? { nombre: n, d: '', i: '' } : { nombre: n, valor: '' }), ...fotoEjDe(n, tipo) })), valoracion: '', foco: '', video_url: '' }; };
 async function crearValoracionDesdePlantilla(aid, val) {
   const { data, error } = await sb.from('valoraciones').insert({ alumno_id: aid, nombre: val.nombre || 'Test inicial', fecha: hoyISO(), resumen: val.resumen || null }).select().single();
   if (error) throw error;
@@ -6626,7 +6626,23 @@ function formNuevoCiclo() {
   });
 }
 
-/* ---------- Tests y valoraciones (como el apartado CONTROL de las hojas) ---------- */
+/* ---------- Foto del ejercicio de cada test: se busca en la biblioteca de ejercicios (la foto va guardada en el propio test, así el alumno la ve sin más) ---------- */
+const TIPOS_FOTO_EJ = ['1rm', 'descompensacion'];
+function buscaEj(txt) {
+  const lib = (S.c?.ejercicios || []).filter(x => x.imagen_url && !x.privado && !/^cardio ·/i.test(x.nombre || '')); if (!lib.length) return null;
+  let q = normaliza(txt).replace(/dd/g, 'd'); if (!q) return null;
+  q = q.replace(/\bpectoral\b/, 'press pecho').replace(/\bjalon vertical\b/, 'jalon').replace(/\bempuje vertical\b/, 'press hombro').replace(/\babdomen\b/, 'abdominal');
+  const ex = lib.find(x => normaliza(x.nombre) === q); if (ex) return ex;
+  const toks = q.replace(/\(.*?\)/g, ' ').split(/[^a-z0-9]+/).filter(t => t.length >= 4).map(t => t.replace(/(es|s)$/, ''));
+  if (!toks.length) return null;
+  let mejor = null, ms = 0;
+  for (const x of lib) { const n = normaliza(x.nombre).replace(/dd/g, 'd'), sc = toks.filter(t => n.includes(t)).length / toks.length - n.length / 4000; if (sc > ms) { ms = sc; mejor = x; } }
+  return ms >= 0.6 ? mejor : null;
+}
+const imgEjDato = x => x?.ej_img || (x?.ejercicio ? (S.c?.ejercicios || []).find(z => normaliza(z.nombre) === normaliza(x.ejercicio))?.imagen_url : '') || '';
+const fotoEjDe = (nombre, tipo) => { if (!TIPOS_FOTO_EJ.includes(tipo)) return {}; const e = buscaEj(nombre); return e ? { ejercicio: e.nombre, ej_img: e.imagen_url } : {}; };
+const miniEj = x => { const u = imgEjDato(x); return u ? `<button type="button" class="img fmini" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver cómo se hace: ${esc(x.ejercicio || x.nombre)}" style="width:56px;height:56px;flex:none"><img src="${esc(u)}" alt="${esc(x.ejercicio || x.nombre)}" loading="lazy"></button>` : ''; };
+/* Tests y valoraciones (como el apartado CONTROL de las hojas) */
 const PLANTILLAS = {
   '1rm': { titulo: 'Test 1RM · fuerza máxima', cols: 'valor', datos: ['Cintura escapular', 'Bíceps', 'Jalón vertical', 'Pectoral', 'Tríceps', 'Empuje vertical', 'Adductores', 'Glúteos', 'Abdomen'],
     protocolo: 'Para valorar tu fuerza máxima a 1 sola repetición hace falta una buena aproximación en cada máquina.\n\nAproximación:\n1º Unas 8 repeticiones con un peso medio (exigente pero sin fatiga).\n2º Subes a un peso más exigente para hacer 5-6 repeticiones a RIR 2-3.\n3º 2-3 repeticiones con un peso aún mayor; en la última, bajada muy lenta.\n\nEl 1RM:\nDescansas 30 segundos, eliges un peso con el que creas que solo puedes hacer 1 repetición y lo intentas. Vas subiendo el peso, administrando el descanso, hasta que ya no puedas levantarlo. Se anota el último peso que pudiste.' },
@@ -6696,7 +6712,7 @@ function vResultados(p, ant) {
     return `<div class="stack" style="gap:12px">${ds.map(x => {
       const a = numDe(x.d), b = numDe(x.i), mx = Math.max(a || 0, b || 0) || 1, pc = difPct(x.d, x.i);
       const debil = pc ? (a < b ? 'derecho' : 'izquierdo') : null, col = pc == null ? 'var(--muted)' : pc >= 15 ? 'var(--bad)' : pc >= 8 ? 'var(--warn)' : 'var(--ok)';
-      return `<div class="stack" style="gap:5px"><div class="row small"><b class="grow">${esc(x.nombre)}</b>${pc != null ? `<span class="pill" style="color:${col}">${pc} %${debil ? ' · más débil el lado ' + debil : ''}</span>` : ''}</div>
+      return `<div class="stack" style="gap:5px"><div class="row small" style="align-items:center;gap:10px">${miniEj(x)}<b class="grow">${esc(x.nombre)}${x.ejercicio && normT(x.ejercicio) !== normT(x.nombre) ? `<div class="small muted" style="font-weight:400">${esc(x.ejercicio)}</div>` : ''}</b>${pc != null ? `<span class="pill" style="color:${col}">${pc} %${debil ? ' · más débil el lado ' + debil : ''}</span>` : ''}</div>
         <div class="lado"><span class="small muted">Dcha.</span><div class="track"><i style="width:${(a || 0) / mx * 100}%;background:var(--blue)"></i></div><b class="small num">${esc(x.d || '—')}</b></div>
         <div class="lado"><span class="small muted">Izda.</span><div class="track"><i style="width:${(b || 0) / mx * 100}%;background:var(--gold)"></i></div><b class="small num">${esc(x.i || '—')}</b></div>${x.obs ? `<span class="small muted">⚙ ${esc(x.obs)}</span>` : ''}${(() => { const y = ant && (ant.datos || []).find(z => z.nombre === x.nombre); if (!y || (!y.d && !y.i)) return ''; const dd = numDe(x.d) - numDe(y.d), di = numDe(x.i) - numDe(y.i), a0 = difPct(y.d, y.i); const f = n => isNaN(n) || !n ? '' : `<b style="color:var(--${n > 0 ? 'ok' : 'bad'})">${n > 0 ? '+' : ''}${fmtNum(n)}</b>`; return `<div class="small muted">Antes: dcha. ${esc(y.d || '—')} ${f(dd)} · izda. ${esc(y.i || '—')} ${f(di)}${a0 != null ? ' · diferencia ' + a0 + ' % → ' + (pc ?? '—') + ' %' : ''}</div>`; })()}</div>`;
     }).join('')}<p class="note">Diferencia por encima del 15 %: desequilibrio a trabajar. Entre 8 y 15 %: a vigilar.</p></div>`;
@@ -6704,7 +6720,7 @@ function vResultados(p, ant) {
   const nums = ds.map(x => numDe(x.valor)), mx = Math.max(1, ...nums.filter(n => n != null)), barras = p.tipo === '1rm';
   return `<div class="stack" style="gap:8px">${ds.map((x, k) => {
     const prev = ant && (ant.datos || []).find(y => y.nombre === x.nombre), dv = prev && nums[k] != null && numDe(prev.valor) != null ? nums[k] - numDe(prev.valor) : null;
-    return `<div class="stack" style="gap:4px"><div class="row small"><span class="grow">${esc(x.nombre)}</span><b class="num">${esc(x.valor || '—')}</b>${dv ? `<span class="pill ${dv > 0 ? 'ok' : 'bad'} num">${dv > 0 ? '+' : ''}${fmtNum(dv)}</span>` : ''}</div>${barras && nums[k] != null ? `<div class="track"><i style="width:${nums[k] / mx * 100}%;background:var(--blue)"></i></div>` : ''}${x.obs ? `<span class="small muted">⚙ ${esc(x.obs)}</span>` : ''}</div>`;
+    return `<div class="stack" style="gap:4px"><div class="row small" style="align-items:center;gap:10px">${miniEj(x)}<span class="grow">${esc(x.nombre)}${x.ejercicio && normT(x.ejercicio) !== normT(x.nombre) ? `<div class="muted">${esc(x.ejercicio)}</div>` : ''}</span><b class="num">${esc(x.valor || '—')}</b>${dv ? `<span class="pill ${dv > 0 ? 'ok' : 'bad'} num">${dv > 0 ? '+' : ''}${fmtNum(dv)}</span>` : ''}</div>${barras && nums[k] != null ? `<div class="track"><i style="width:${nums[k] / mx * 100}%;background:var(--blue)"></i></div>` : ''}${x.obs ? `<span class="small muted">⚙ ${esc(x.obs)}</span>` : ''}</div>`;
   }).join('')}</div>`;
 }
 /* Resultados que el alumno ha ido añadiendo de esta prueba después de este informe (más reciente primero) */
@@ -6749,7 +6765,7 @@ function vPrueba(p, lista, val, coach) {
     ${p.foco ? `<div class="aprox stack" style="gap:4px"><span class="eyebrow">Foco de trabajo</span><div class="small pre">${esc(p.foco)}</div></div>` : ''}
     ${p.protocolo ? `<details class="como"><summary class="small"><b>Cómo se hace la prueba</b></summary><div class="small pre muted" style="margin-top:8px">${esc(p.protocolo)}</div></details>` : ''}
     ${p.video_url ? `<a class="btn sm" style="align-self:flex-start" href="${esc(p.video_url)}" target="_blank" rel="noopener">▶ Vídeo</a>` : ''}
-    ${coach ? `<div class="row" style="gap:8px"><button class="btn sm" data-act="editarPrueba" data-id="${p.id}">✎ Editar prueba</button>${val.origen === 'alumno' && ['1rm', 'descompensacion', 'otra', 'ritmos', 'policia', 'movilidad'].includes(p.tipo) ? `<button class="btn sm ghost" data-act="conectarPrueba" data-id="${p.id}">🔗 ${p.titulo === 'Test propio' ? 'Conectar con su valoración' : 'Cambiar conexión'}</button>` : ''}</div>` : !S.obj && S.d && p.tipo !== 'fc' ? `<button class="btn sm ghost" data-act="nuevoResultado" data-id="${p.id}" style="align-self:flex-start">＋ Añadir un nuevo resultado</button>` : ''}
+    ${coach ? `<div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="editarPrueba" data-id="${p.id}">✎ Editar prueba</button>${TIPOS_FOTO_EJ.includes(p.tipo) && (p.datos || []).some(x => x.nombre && !imgEjDato(x)) ? `<button class="btn sm gold" data-act="fotosPrueba" data-id="${p.id}">🖼 Poner foto de cada ejercicio</button>` : ''}${val.origen === 'alumno' && ['1rm', 'descompensacion', 'otra', 'ritmos', 'policia', 'movilidad'].includes(p.tipo) ? `<button class="btn sm ghost" data-act="conectarPrueba" data-id="${p.id}">🔗 ${p.titulo === 'Test propio' ? 'Conectar con su valoración' : 'Cambiar conexión'}</button>` : ''}</div>` : !S.obj && S.d && p.tipo !== 'fc' ? `<button class="btn sm ghost" data-act="nuevoResultado" data-id="${p.id}" style="align-self:flex-start">＋ Añadir un nuevo resultado</button>` : ''}
     </div></details>`;
 }
 /* ---- Evolución: cada prueba comparada con el test anterior → mejoras y puntos a mejorar ---- */
@@ -7007,7 +7023,7 @@ function formValoracion(id) {
   });
   $('#v-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para borrar el test y sus pruebas'; return; } const { error } = await sb.from('valoraciones').delete().eq('id', v.id); if (error) return fallo(error); cerrarSheet(); S.valEd = null; toast('Test eliminado'); await cargarValoraciones(); });
 }
-const nuevaPruebaRow = (tipo, valId, orden) => { const t = PLANTILLAS[tipo] || PLANTILLAS.otra; return { valoracion_id: valId, alumno_id: S.ficha.id, orden, tipo, titulo: t.titulo, protocolo: t.protocolo || null, datos: t.cols === 'pisada' ? datosPisada([]) : t.datos.map(n => t.cols === 'di' ? { nombre: n, d: '', i: '' } : { nombre: n, valor: '' }) }; };
+const nuevaPruebaRow = (tipo, valId, orden) => { const t = PLANTILLAS[tipo] || PLANTILLAS.otra; return { valoracion_id: valId, alumno_id: S.ficha.id, orden, tipo, titulo: t.titulo, protocolo: t.protocolo || null, datos: t.cols === 'pisada' ? datosPisada([]) : t.datos.map(n => ({ ...(t.cols === 'di' ? { nombre: n, d: '', i: '' } : { nombre: n, valor: '' }), ...fotoEjDe(n, tipo) })) }; };
 /* Pisada y biomecánica en cinta: caminata 6 km/h y carrera 12 km/h × (frente, lateral, espaldas), con observación y foto derecha/izquierda,
    más una valoración del coach para todo el caminar y otra para todo el correr. Convierte el formato antiguo (dos resultados) sin perder nada */
 const PISADA = [['caminata', 'Caminata · 6 km/h', /camin/i], ['carrera', 'Carrera · 12 km/h', /carrera|corr/i]], VISTAS = [['frente', 'De frente'], ['lateral', 'De lateral'], ['espaldas', 'De espaldas']];
@@ -7044,7 +7060,7 @@ function slotFoto(campo, ruta, txt) {
     <span class="small">${esc(txt)}</span><label class="btn sm ghost"><input type="file" accept="image/*" hidden data-fsel>${ruta ? 'Cambiar' : 'Añadir foto'}</label>${ruta ? '<button type="button" class="linkbtn small" data-fdel>Quitar</button>' : ''}</div>`;
 }
 function filaDato(x, di, tipo) {
-  const obs = tipo === '1rm' || tipo === 'descompensacion' || di, mov = tipo === 'movilidad';
+  const obs = tipo === '1rm' || tipo === 'descompensacion' || di, mov = tipo === 'movilidad', conEj = !mov && (TIPOS_FOTO_EJ.includes(tipo) || di || !!x.ejercicio);
   const opc = mov ? [...OPC_MOV, ...(x.valor && !OPC_MOV.includes(x.valor) ? [x.valor] : [])] : [];
   return `<div class="dato" data-dato><div style="display:grid;grid-template-columns:${di ? '1.4fr 1fr 1fr' : '1.4fr 1fr'} 32px;gap:6px;align-items:end">
     <label class="f">Prueba<input type="text" data-k="nombre" value="${esc(x.nombre || '')}"></label>
@@ -7052,6 +7068,7 @@ function filaDato(x, di, tipo) {
       : mov ? `<label class="f">Resultado<select data-k="valor"><option value="">—</option>${opc.map(o => `<option ${o === x.valor ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></label>`
       : `<label class="f">Resultado<input type="text" data-k="valor" value="${esc(x.valor || '')}"></label>`}
     <button type="button" class="btn sm ghost" data-quitar aria-label="Quitar" style="padding:8px 0">✕</button></div>
+    ${conEj ? `<div class="row" style="gap:8px;align-items:flex-end;margin-top:6px">${miniEj(x)}<label class="f grow" style="margin:0">Ejercicio (sale su foto al alumno)<input type="text" list="dl-ej" data-k="ejercicio" value="${esc(x.ejercicio || '')}" placeholder="Escribe y elige de tu biblioteca"></label></div>` : ''}
     ${obs ? `<label class="f" style="margin-top:6px">Ajustes de máquina u observaciones<input type="text" data-k="obs" value="${esc(x.obs || '')}" placeholder="Ej. asiento 4, respaldo 2 · compensa con la espalda"></label>` : ''}
     ${mov ? `<div class="fslots" style="margin-top:6px">${slotFoto('foto', x.foto, 'Foto de la prueba')}</div>` : ''}</div>`;
 }
@@ -7068,6 +7085,7 @@ function formPrueba(id) {
   abrirSheet(`<form class="stack" id="f-pr"><h2>Editar prueba</h2>
     <label class="f">Título<input type="text" id="p-t" value="${esc(p.titulo)}"></label>
     ${p.tipo === 'fc' ? `<div class="row" style="gap:8px;align-items:end"><label class="f grow">Edad<input type="number" id="p-edad" min="10" max="90" placeholder="Ej. 38"></label><button type="button" class="btn sm" id="p-calc">Calcular zonas</button></div>` : ''}
+    <datalist id="dl-ej">${(S.c?.ejercicios || []).filter(z => z.imagen_url && !z.privado && !/^cardio ·/i.test(z.nombre || '')).map(z => `<option value="${esc(z.nombre)}">`).join('')}</datalist>
     <div class="stack" id="p-datos" style="gap:8px">${pis ? filasPisada(dsP) : (p.datos || []).map(x => filaDato(x, di, p.tipo)).join('')}</div>
     ${pis ? '' : '<button type="button" class="btn sm ghost" id="p-add" style="align-self:flex-start">＋ Añadir resultado</button>'}
     <label class="f">Valoración del coach<textarea id="p-v" rows="5">${esc(p.valoracion || '')}</textarea></label>
@@ -7111,6 +7129,7 @@ function formPrueba(id) {
           else if (sl.dataset.del === '1') { x[campo] = null; if (viejo) quitar.push(viejo); }
           else x[campo] = viejo;
         }
+        if (x.ejercicio !== undefined) { const e = x.ejercicio ? (S.c?.ejercicios || []).find(z => normaliza(z.nombre) === normaliza(x.ejercicio)) : null; x.ej_img = e?.imagen_url || ''; }
         if (x.nombre) datos.push(x);
       }
     } catch (err) { console.error(err); return mal('No se ha podido subir una foto. ' + (/bucket|row-level|security/i.test(err.message || '') ? 'Revisa los permisos de Supabase (Bloque 17 y 40).' : 'Prueba con otra foto o revisa la conexión.')); }
@@ -7942,7 +7961,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v321';
+const APP_VER = 'v322';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8162,6 +8181,11 @@ document.addEventListener('click', async e => {
     case 'nuevaPrueba': formNuevaPrueba(+b.dataset.id); break;
     case 'crearPrueba': await crearPrueba(b.dataset.t, +b.dataset.v); break;
     case 'editarPrueba': formPrueba(+b.dataset.id); break;
+    case 'fotosPrueba': { const pr = S.ficha?.val?.flatMap(v => v.pruebas || []).find(x => x.id === +b.dataset.id); if (!pr) break;
+      let n = 0; const datos = (pr.datos || []).map(x => { if (!x.nombre || imgEjDato(x)) return x; const f = fotoEjDe(x.nombre, pr.tipo); if (f.ej_img) { n++; return { ...x, ...f }; } return x; });
+      if (!n) { toast('No encuentro esos ejercicios con foto en tu biblioteca: elígelos a mano en ✎ Editar prueba'); break; }
+      const { error } = await sb.from('pruebas').update({ datos }).eq('id', pr.id); if (error) return fallo(error, 'No se han podido guardar las fotos.');
+      toast(`Fotos puestas en ${n} de ${datos.filter(x => x.nombre).length} ejercicios. Revisa cuáles son en ✎ Editar prueba`); await cargarValoraciones(); break; }
     case 'omitir': formOmitir(+b.dataset.es, b.dataset.n); break;
     case 'deshacerOmitir': await deshacerOmitir(+b.dataset.es); break;
     case 'fTab': (S.fTab ||= {})[S.ficha.id] = b.dataset.t; render(); document.querySelector('.ft-tabs')?.scrollIntoView({ block: 'nearest' }); break;
