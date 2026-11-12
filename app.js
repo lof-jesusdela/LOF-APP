@@ -1463,6 +1463,24 @@ function detectarEntrenoEnCurso() {
   if (mejor && mejor.alumnoId === S.user.id) { const ya = (S.d?.sesiones || []).find(x => x.dia_id === mejor.diaId && x.fecha === mejor.fecha && x.inicio_at && x.duracion_min); if (ya) { try { localStorage.removeItem(`lof-ini-${mejor.alumnoId}-${mejor.diaId}-${mejor.fecha}`); } catch (e) { } mejor = null; } }
   S.reanudar = mejor;
 }
+/* Entreno empezado por error (o que ya no se va a hacer): se descarta, se borra lo apuntado y NO cuenta como hecho */
+async function descartarEntreno() {
+  const dentro = !!(S.dia && S.sesion), x = dentro ? { alumnoId: uidSes(), diaId: S.dia.id, fecha: S.sesion.fecha || hoyISO() } : S.reanudar; if (!x) return;
+  const nom = x.alumnoId !== S.user.id ? (S.c?.perfiles.find(p => p.id === x.alumnoId)?.nombre || '').split(' ')[0] : '';
+  const series = dentro ? Object.keys(S.sesion.valores || {}).length : 0;
+  if (!confirm(`¿Descartar este entreno${nom ? ' de ' + nom : ''}?${series ? ' Se borra lo que llevas apuntado.' : ''} No contará como hecho.`)) return;
+  try { localStorage.removeItem(`lof-ini-${x.alumnoId}-${x.diaId}-${x.fecha}`); localStorage.removeItem(`lof-pres-${x.alumnoId}-${x.fecha}`); } catch (e) { }
+  try {   /* si llegó a guardarse una sesión a medias de ese día, se borra con sus series; una terminada no se toca */
+    const r = await sb.from('sesiones_hechas').select('id,estado').eq('alumno_id', x.alumnoId).eq('dia_id', x.diaId).eq('fecha', x.fecha);
+    const ids = (r.data || []).filter(z => !esCompleta(z)).map(z => z.id);
+    if (S.sesion?.id && dentro && !ids.includes(S.sesion.id) && !esCompleta((S.d?.sesiones || []).find(z => z.id === S.sesion.id))) ids.push(S.sesion.id);
+    if (ids.length) { const a = await sb.from('registros_series').delete().in('sesion_id', ids); if (a.error) throw a.error; const b = await sb.from('sesiones_hechas').delete().in('id', ids); if (b.error) throw b.error;
+      if (S.d?.sesiones) S.d.sesiones = S.d.sesiones.filter(z => !ids.includes(z.id)); }
+  } catch (err) { console.error(err); toast('Descartado, pero no he podido borrar lo guardado: revísalo en su ficha'); }
+  S.reanudar = null;
+  if (dentro) { stopTimer(); if (S.obj) { await salirComo(); } else { S.dia = null; S.sesion = null; } }
+  detectarEntrenoEnCurso(); toast('Entreno descartado: no cuenta como hecho'); render();
+}
 async function reanudarEntreno() {
   const x = S.reanudar; if (!x) return;
   const propio = x.alumnoId === S.user.id;
@@ -1484,7 +1502,7 @@ async function volverEntreno() {
 function vBarraEntreno() {
   if (S.vista || S.prueba) return '';
   let t = '';
-  if (S.reanudar && !S.dia && !S.aparcado && !S.obj) return `<div id="entreno-barra"><span class="grow">🏋️ Entreno sin terminar${S.reanudar.alumnoId !== S.user.id ? ' · ' + esc((S.c?.perfiles.find(p => p.id === S.reanudar.alumnoId)?.nombre || '').split(' ')[0]) : ''}</span><button type="button" data-act="reanudarEntreno">Reanudar ▶</button></div>`;
+  if (S.reanudar && !S.dia && !S.aparcado && !S.obj) return `<div id="entreno-barra"><span class="grow">🏋️ Entreno sin terminar${S.reanudar.alumnoId !== S.user.id ? ' · ' + esc((S.c?.perfiles.find(p => p.id === S.reanudar.alumnoId)?.nombre || '').split(' ')[0]) : ''}</span><button type="button" data-act="descartarEntreno" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.6)">Descartar</button><button type="button" data-act="reanudarEntreno">Reanudar ▶</button></div>`;
   if (S.aparcado && !S.obj) t = `🏋️ Entrenando con <b>${esc(S.aparcado.obj.nombre.split(' ')[0])}</b> · ${esc(S.aparcado.dia?.titulo || S.aparcado.dia?.nombre || '')}`;
   else if (!S.obj && S.dia && !S.sesion?.editar && ((S.modo === 'coach') || (S.modo === 'alumno' && S.tab !== 'entreno'))) t = `🏋️ ${S.modo === 'coach' ? 'Tu entreno' : 'Entreno'} en curso · ${esc(S.dia.titulo || S.dia.nombre || '')}`;
   return t ? `<div id="entreno-barra"><span class="grow">${t}</span><button type="button" data-act="volverEntreno">Volver al entreno ▶</button></div>` : '';
@@ -1733,7 +1751,7 @@ function vSesion() {
   <section class="section">${vBloquesDia(d, cont)}
   <button class="btn full dark" data-act="terminar">Listo, ver sesión</button></section>`;
   return como + `<div class="crono" id="crono">${ini ? `<span class="crono-t num" id="crono-t">${fmtCrono(Date.now() - ini)}</span><span class="small">Entrenamiento en curso</span>` : S.sesion?.finMin ? `<span class="small">✓ Entrenamiento terminado · ${S.sesion.finMin} min</span>` : `<button class="btn sm" data-act="empezarCrono">⏱ Empezar entrenamiento</button><span class="small muted">El cronómetro mide tu sesión completa</span>`}</div>
-  <section class="stack"><button class="btn sm ghost" data-act="cerrarDia" style="align-self:flex-start">← Semana</button>
+  <section class="stack"><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm ghost" data-act="cerrarDia" style="align-self:flex-start">← Semana</button>${!S.sesion?.editar && !S.sesion?.finMin ? `<button class="btn sm ghost" data-act="descartarEntreno" style="color:var(--bad)">✕ No era un entreno: descartar</button>` : ''}</div>
     <span class="eyebrow">${esc(S.d.programa?.nombre || '')} · ${esc(d.nombre)}</span><h1>${esc(d.titulo || d.foco || d.nombre)}</h1>
     ${cicloSesion()}
     ${conPartido(d) ? (() => { const pt = (S.d.partidos || []).find(x => x.fecha === S.sesion?.fecha) || partidoDelDia(d, S.d.partidos); return pt ? `<div class="card stack md-card"><span class="eyebrow">🏟️ Día de partido</span>${vPartidoMini(pt)}${pt.descripcion ? `<p class="small" style="margin:0">${esc(pt.descripcion)}</p>` : ''}${pt.imagen_url ? `<button class="img" data-act="verImagen" data-src="${esc(pt.imagen_url)}" aria-label="Ver imagen del partido" style="align-self:flex-start"><img src="${esc(pt.imagen_url)}" alt="" style="max-height:160px;border-radius:12px"></button>` : ''}</div>` : ''; })() : ''}
@@ -7961,7 +7979,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v322';
+const APP_VER = 'v323';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8161,6 +8179,7 @@ document.addEventListener('click', async e => {
     case 'abrirDia': await abrirDia(+b.dataset.id); break;
     case 'cerrarDia': if (enCurso()) { S.tab = 'hoy'; toast('Tu entreno sigue en curso: vuelve desde la barra azul'); } else { S.dia = null; S.sesion = null; } render(); break;
     case 'reanudarEntreno': await reanudarEntreno(); break;
+    case 'descartarEntreno': await descartarEntreno(); break;
     case 'salirComo': await salirComo(); break;
     case 'volverEntreno': await volverEntreno(); break;
     case 'recNuevo': Negocio.formRec(b.dataset.id ? +b.dataset.id : null, b.dataset.al || S.ficha?.id || null); break;
