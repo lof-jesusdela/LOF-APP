@@ -6659,7 +6659,7 @@ function buscaEj(txt) {
 }
 const imgEjDato = x => x?.ej_img || (x?.ejercicio ? (S.c?.ejercicios || []).find(z => normaliza(z.nombre) === normaliza(x.ejercicio))?.imagen_url : '') || '';
 const fotoEjDe = (nombre, tipo) => { if (!TIPOS_FOTO_EJ.includes(tipo)) return {}; const e = buscaEj(nombre); return e ? { ejercicio: e.nombre, ej_img: e.imagen_url } : {}; };
-const miniEj = x => { const u = imgEjDato(x); return u ? `<button type="button" class="img fmini" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver cómo se hace: ${esc(x.ejercicio || x.nombre)}" style="width:56px;height:56px;flex:none"><img src="${esc(u)}" alt="${esc(x.ejercicio || x.nombre)}" loading="lazy"></button>` : ''; };
+const miniEj = (x, plano) => { const u = imgEjDato(x); if (u && plano) return `<img src="${esc(u)}" alt="${esc(x.ejercicio || x.nombre)}" loading="lazy" style="width:64px;height:64px;border-radius:10px;object-fit:cover;flex:none;background:#eee">`; return u ? `<button type="button" class="img fmini" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver cómo se hace: ${esc(x.ejercicio || x.nombre)}" style="width:56px;height:56px;flex:none"><img src="${esc(u)}" alt="${esc(x.ejercicio || x.nombre)}" loading="lazy"></button>` : ''; };
 /* Tests y valoraciones (como el apartado CONTROL de las hojas) */
 const PLANTILLAS = {
   '1rm': { titulo: 'Test 1RM · fuerza máxima', cols: 'valor', datos: ['Cintura escapular', 'Bíceps', 'Jalón vertical', 'Pectoral', 'Tríceps', 'Empuje vertical', 'Adductores', 'Glúteos', 'Abdomen'],
@@ -6771,7 +6771,15 @@ function vImgPrueba(p) {
   pedirImgPrueba(p.imagen_url); const u = IMG_PRUEBA[p.imagen_url];
   return u ? `<button class="img prueba-img" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver resumen visual"><img src="${esc(u)}" alt="Resumen visual de ${esc(p.titulo)}" loading="lazy" onerror="this.parentNode.hidden=true"><span>Resumen visual · toca para ampliar</span></button>` : '<div class="small muted">Cargando imagen…</div>';
 }
+/* El coach ve una prueba sin fotos de ejercicio: se buscan en su biblioteca y se guardan en la prueba (una vez); luego las ve el alumno */
+const AUTOF = new Set();
+function autoFotosPrueba(p) {
+  if (!TIPOS_FOTO_EJ.includes(p.tipo) || S.perfil?.rol !== 'coach' || !(S.c?.ejercicios || []).length || !(p.datos || []).some(x => x.nombre && !imgEjDato(x))) return;
+  let n = 0; p.datos = p.datos.map(x => { if (!x.nombre || imgEjDato(x)) return x; const f = fotoEjDe(x.nombre, p.tipo); if (!f.ej_img) return x; n++; return { ...x, ...f }; });
+  if (n && p.id && !AUTOF.has(p.id)) { AUTOF.add(p.id); sb.from('pruebas').update({ datos: p.datos }).eq('id', p.id).then(r => { if (r.error) console.error(r.error); }); }
+}
 function vPrueba(p, lista, val, coach) {
+  autoFotosPrueba(p);
   const ant = anteriorDe(lista.filter(v => v.origen !== 'alumno'), val, p), regs = val.origen === 'alumno' ? [] : registrosDe(lista, val, p);
   return `<details class="card prueba" ${coach || S.pruebaAbierta === p.id ? 'open' : ''}><summary><div class="row"><div class="grow"><h3>${esc(p.titulo)}</h3><div class="small muted">${esc(resumenPrueba(p))}${regs.length ? ` · último resultado ${esc(fCorta(regs[0].v.fecha))}` : ''}</div></div><span class="mas">＋</span></div></summary>
     <div class="stack" style="margin-top:12px">
@@ -6880,8 +6888,8 @@ function formResultado(pid) {
   const ds = (p.datos || []).filter(x => x.nombre), di = p.tipo === 'descompensacion';
   abrirSheet(`<form class="stack" id="f-res"><h2>Nuevo resultado</h2><p class="small muted">${esc(p.titulo)}. Apunta lo que has hecho hoy; se compara con tu resultado anterior.</p>
     <label class="f">Fecha<input type="date" id="rs-f" value="${hoyISO()}" max="${hoyISO()}"></label>
-    ${ds.map((x, k) => di ? `<div style="display:grid;grid-template-columns:1fr 90px 90px;gap:8px;align-items:end"><span class="small"><b>${esc(x.nombre)}</b></span><label class="f">Dcha.<input type="text" inputmode="decimal" data-rd="${k}"></label><label class="f">Izda.<input type="text" inputmode="decimal" data-ri="${k}"></label></div>`
-      : `<label class="f">${esc(x.nombre)}${x.valor ? ` <span class="muted">(antes ${esc(x.valor)})</span>` : ''}<input type="text" data-rv="${k}" placeholder="Déjalo vacío si no lo has hecho"></label>`).join('')}
+    ${ds.map((x, k) => di ? `<div style="display:grid;grid-template-columns:1fr 90px 90px;gap:8px;align-items:end"><span class="row small" style="gap:10px;align-items:center">${miniEj(x, true)}<b>${esc(x.nombre)}</b></span><label class="f">Dcha.<input type="text" inputmode="decimal" data-rd="${k}"></label><label class="f">Izda.<input type="text" inputmode="decimal" data-ri="${k}"></label></div>`
+      : `<div class="row" style="gap:10px;align-items:flex-end">${miniEj(x, true)}<label class="f grow" style="margin:0">${esc(x.nombre)}${x.valor ? ` <span class="muted">(antes ${esc(x.valor)})</span>` : ''}<input type="text" data-rv="${k}" placeholder="Déjalo vacío si no lo has hecho"></label></div>`).join('')}
     <p class="small" id="rs-err" style="color:var(--bad)"></p>
     <button class="btn full" type="submit">Guardar resultado</button></form>`);
   if (p.tipo === 'ritmos') ritmosEnVivo($('#f-res'), () => ds.map((x, k) => ({ nombre: x.nombre, input: document.querySelector(`[data-rv="${k}"]`) })).filter(x => x.input));
@@ -7979,7 +7987,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v323';
+const APP_VER = 'v324';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
