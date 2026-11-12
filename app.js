@@ -3931,7 +3931,7 @@ const nEjs = p => (p.dias || []).reduce((t, d) => t + d.bloques_sesion.reduce((u
 function vPlantillas() {
   const l = S.c.plantillas || [], porCat = c => l.filter(p => (p.categoria || 'Otras') === c || (c === 'Otras' && !CATEGORIAS.includes(p.categoria)));
   return `<section class="stack"><span class="eyebrow">Tu método, listo para asignar</span><h1>Plantillas</h1><p class="small muted">Un programa base por tipo de alumno. Al asignarlo se crea una copia en su perfil que personalizas (pesos, ajustes de máquina, cambios de ejercicio) sin tocar la plantilla. Los alumnos no ven esta sección.</p>
-    <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" data-act="nuevaPlantilla">＋ Nueva plantilla</button></div></section>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" data-act="nuevaPlantilla">＋ Nueva plantilla</button><button class="btn ghost" data-act="fotosTests">🖼 Fotos de los tests</button></div></section>
   ${CATEGORIAS.map(c => { const ps = porCat(c); if (!ps.length && c === 'Otras') return ''; return `<section class="section"><h2>${esc(c)}</h2>${ps.map(p => `<div class="card stack">
       <div class="row"><div class="grow"><h3>${esc(p.nombre)}</h3><div class="small muted">${(p.dias || []).length} ${(p.dias || []).length === 1 ? 'día' : 'días'} · ${nEjs(p)} ejercicios${p.dias_semana ? ` · ${p.dias_semana} por semana` : ''} · ${resumenValPlantilla(p)}</div></div></div>
       ${(p.dias || []).length ? `<div class="chips">${p.dias.map(d => `<span class="pill">${esc(nomDia(d) || 'Día ' + d.numero)}${d.foco ? ' · ' + esc(d.foco) : ''}</span>`).join('')}</div>` : '<p class="small muted">Vacía: entra en "Editar" para añadir sus días, o pásame tu Excel y la monto.</p>'}
@@ -6658,7 +6658,9 @@ function buscaEj(txt) {
   return ms >= 0.6 ? mejor : null;
 }
 const imgEjDato = x => x?.ej_img || (x?.ejercicio ? (S.c?.ejercicios || []).find(z => normaliza(z.nombre) === normaliza(x.ejercicio))?.imagen_url : '') || '';
-const fotoEjDe = (nombre, tipo) => { if (!TIPOS_FOTO_EJ.includes(tipo)) return {}; const e = buscaEj(nombre); return e ? { ejercicio: e.nombre, ej_img: e.imagen_url } : {}; };
+const fotosTests = () => { try { return JSON.parse(S.c?.fiscal?.fotos_tests || '{}') || {}; } catch (e) { return {}; } };   /* { 'tipo|nombre de la prueba': 'nombre del ejercicio' } · lo que eliges tú manda sobre la búsqueda automática */
+const ejDeTest = (nombre, tipo) => { const c = fotosTests(), k = tipo + '|' + nombre; if (k in c) return c[k] ? (S.c?.ejercicios || []).find(z => normaliza(z.nombre) === normaliza(c[k])) || null : null; return buscaEj(nombre); };
+const fotoEjDe = (nombre, tipo) => { if (!TIPOS_FOTO_EJ.includes(tipo)) return {}; const e = ejDeTest(nombre, tipo); return e ? { ejercicio: e.nombre, ej_img: e.imagen_url } : {}; };
 const miniEj = (x, plano) => { const u = imgEjDato(x); if (u && plano) return `<img src="${esc(u)}" alt="${esc(x.ejercicio || x.nombre)}" loading="lazy" style="width:64px;height:64px;border-radius:10px;object-fit:cover;flex:none;background:#eee">`; return u ? `<button type="button" class="img fmini" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver cómo se hace: ${esc(x.ejercicio || x.nombre)}" style="width:56px;height:56px;flex:none"><img src="${esc(u)}" alt="${esc(x.ejercicio || x.nombre)}" loading="lazy"></button>` : ''; };
 /* Tests y valoraciones (como el apartado CONTROL de las hojas) */
 const PLANTILLAS = {
@@ -6770,6 +6772,37 @@ function vImgPrueba(p) {
   if (!p.imagen_url) return '';
   pedirImgPrueba(p.imagen_url); const u = IMG_PRUEBA[p.imagen_url];
   return u ? `<button class="img prueba-img" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver resumen visual"><img src="${esc(u)}" alt="Resumen visual de ${esc(p.titulo)}" loading="lazy" onerror="this.parentNode.hidden=true"><span>Resumen visual · toca para ampliar</span></button>` : '<div class="small muted">Cargando imagen…</div>';
+}
+/* Foto de cada prueba de los tests (1RM y descompensaciones): se elige una vez y se aplica a TODOS los alumnos (los tests que ya tienen y los nuevos) */
+function formFotosTests() {
+  const filas = TIPOS_FOTO_EJ.map(t => ({ t, tit: PLANTILLAS[t].titulo, ds: PLANTILLAS[t].datos })), cat = fotosTests();
+  abrirSheet(`<form class="stack" id="f-ft"><h2>Fotos de los tests</h2><p class="small muted">Elige el ejercicio de cada prueba. Al guardar, la foto cambia en los tests de <b>todos los alumnos</b> y en los que hagas a partir de ahora.</p>
+    <datalist id="dl-ej2">${(S.c?.ejercicios || []).filter(z => z.imagen_url && !z.privado && !/^cardio ·/i.test(z.nombre || '')).map(z => `<option value="${esc(z.nombre)}">`).join('')}</datalist>
+    ${filas.map(f => `<div class="stack" style="gap:8px"><span class="eyebrow">${esc(f.tit)}</span>${f.ds.map(n => { const e = ejDeTest(n, f.t), k = f.t + '|' + n;
+      return `<div class="row" style="gap:10px;align-items:flex-end"><span data-ft-img="${esc(k)}">${e ? miniEj({ ejercicio: e.nombre, ej_img: e.imagen_url, nombre: n }, true) : '<span style="width:64px;height:64px;border-radius:10px;background:#eee;display:inline-block;flex:none"></span>'}</span><label class="f grow" style="margin:0">${esc(n)}<input type="text" list="dl-ej2" data-ft="${esc(k)}" value="${esc(e?.nombre || '')}" placeholder="Sin foto"></label></div>`; }).join('')}</div>`).join('')}
+    <p class="err" id="ft-err"></p><button class="btn full" type="submit" id="ft-b">Guardar y aplicar a todos</button></form>`);
+  $('#f-ft').addEventListener('input', ev => { const i = ev.target.closest('[data-ft]'); if (!i) return; const e = (S.c.ejercicios || []).find(z => normaliza(z.nombre) === normaliza(i.value) && z.imagen_url), c = document.querySelector(`[data-ft-img="${CSS.escape(i.dataset.ft)}"]`);
+    if (c) c.innerHTML = e ? miniEj({ ejercicio: e.nombre, ej_img: e.imagen_url, nombre: i.dataset.ft }, true) : '<span style="width:64px;height:64px;border-radius:10px;background:#eee;display:inline-block;flex:none"></span>'; });
+  $('#f-ft').addEventListener('submit', async ev => {
+    ev.preventDefault(); const btn = $('#ft-b'); btn.disabled = true; btn.textContent = 'Aplicando…';
+    const nuevo = {}, malos = [];
+    document.querySelectorAll('#f-ft [data-ft]').forEach(i => { const v = i.value.trim(); if (!v) { nuevo[i.dataset.ft] = ''; return; } const e = (S.c.ejercicios || []).find(z => normaliza(z.nombre) === normaliza(v) && z.imagen_url); if (e) nuevo[i.dataset.ft] = e.nombre; else malos.push(v); });
+    if (malos.length) { btn.disabled = false; btn.textContent = 'Guardar y aplicar a todos'; $('#ft-err').textContent = 'Estos no están en tu biblioteca con foto: ' + malos.slice(0, 3).join(', ') + '. Elígelos de la lista.'; return; }
+    try {
+      const valor = JSON.stringify(nuevo), r1 = await sb.from('ajustes_privados').upsert([{ clave: 'fotos_tests', valor }], { onConflict: 'clave' }); if (r1.error) throw r1.error;
+      S.c.fiscal = { ...(S.c.fiscal || {}), fotos_tests: valor };
+      const r2 = await sb.from('pruebas').select('id,tipo,datos').in('tipo', TIPOS_FOTO_EJ); if (r2.error) throw r2.error;
+      let n = 0;
+      for (const pr of r2.data || []) {
+        let cambia = false;
+        const datos = (pr.datos || []).map(x => { const k = pr.tipo + '|' + x.nombre; if (!(k in nuevo)) return x; const e = nuevo[k] ? S.c.ejercicios.find(z => normaliza(z.nombre) === normaliza(nuevo[k])) : null, ej = e?.nombre || '', im = e?.imagen_url || '';
+          if ((x.ejercicio || '') === ej && (x.ej_img || '') === im) return x; cambia = true; return { ...x, ejercicio: ej, ej_img: im }; });
+        if (cambia) { const u = await sb.from('pruebas').update({ datos }).eq('id', pr.id); if (u.error) throw u.error; n++; }
+      }
+      cerrarSheet(); toast(`Guardado: foto cambiada en ${n} ${n === 1 ? 'test' : 'tests'} de tus alumnos`);
+      if (S.ficha?.id) await cargarValoraciones(); else render();
+    } catch (err) { console.error(err); toast('No se ha podido terminar de aplicar. Revisa la conexión y vuelve a guardar'); if (btn.isConnected) { btn.disabled = false; btn.textContent = 'Guardar y aplicar a todos'; } }
+  });
 }
 /* El coach ve una prueba sin fotos de ejercicio: se buscan en su biblioteca y se guardan en la prueba (una vez); luego las ve el alumno */
 const AUTOF = new Set();
@@ -7987,7 +8020,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v324';
+const APP_VER = 'v325';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8350,6 +8383,7 @@ document.addEventListener('click', async e => {
     case 'verPlan': verPlan(+b.dataset.p, +b.dataset.d); break;
     case 'editarPlantilla': await abrirEditor(null, +b.dataset.id); break;
     case 'nuevaPlantilla': formNuevaPlantilla(); break;
+    case 'fotosTests': formFotosTests(); break;
     case 'valPlantilla': formValPlantilla(+b.dataset.id); break;
     case 'regDia': S.regDia = b.dataset.f; render(); break;
     case 'zonaFC': zonaFC(+b.dataset.z, b.dataset.f === '1', +b.dataset.mx || null); break;
