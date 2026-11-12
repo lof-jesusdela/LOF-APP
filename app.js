@@ -1816,6 +1816,15 @@ function marcar(b, fila, on) {
 }
 async function asegurarSesion() {
   if (S.sesion.id) return S.sesion.id;
+  /* Dos guardados seguidos no crean dos filas: se espera a la misma creación, y si ya hay una sesión sin terminar de ese día se reutiliza */
+  if (S.sesion._crea) return S.sesion._crea;
+  const ya = (S.d?.sesiones || []).find(x => x.dia_id === S.dia.id && x.fecha === (S.sesion.fecha || hoyISO()) && !x.previa && !esCompleta(x));
+  if (ya) { S.sesion.id = ya.id; return ya.id; }
+  const ses0 = S.sesion;
+  ses0._crea = crearSesionFila().finally(() => { delete ses0._crea; });
+  return ses0._crea;
+}
+async function crearSesionFila() {
   const fila = { alumno_id: uidSes(), dia_id: S.dia.id, fecha: S.sesion.fecha || hoyISO(), estado: 'parcial', series_hechas: 0, series_total: conteoSeries(S.dia, S.sesion).total };
   if (S.sesion.inicio) fila.inicio_at = new Date(S.sesion.inicio).toISOString();
   const { data, error } = await conRespaldo(() => sb.from('sesiones_hechas').insert(fila).select().single(),
@@ -2988,6 +2997,7 @@ async function abrirFicha(id) {
   S.ficha.previas = S.ficha.todas.filter(x => x.previa).length;
   S.valEd = null;
   const [pr, ru] = await Promise.all([sb.from('presenciales').select('*').eq('alumno_id', id).order('fecha'), sb.from('hoja_ruta').select('*').eq('alumno_id', id).order('orden')]);
+  { const r = await sb.from('plan_semana').select('*').eq('alumno_id', id).gte('semana_inicio', sumaDias(lunesDe(hoyISO()), -56)); S.ficha.planes = r.error ? [] : (r.data || []); }
   S.ficha.pres = pr.data || []; S.ficha.ruta = ru.data || []; if (S.ficha.srv) S.ficha.srv._bloques = bloquesDe(S.ficha.ruta);
   const f = S.ficha; await Promise.all([cargarValoraciones(), cargarProgramasFicha(f), Acomp.cargarFicha(f), IA.cargarFicha(f), S.c.servicios.find(x => x.alumno_id === f.id)?.modulo_nutricion ? Nutricion.cargarFicha(f).catch(() => {}) : null]);
   { const a = S.c?.perfiles?.find(x => x.id === id); if (a && S.ficha === f) { const it = estadoAlumno(a).items; f.recien = new Set(it.filter(x => x.nueva).map(x => x.k)); await Alertas.verTodas(id, it.map(x => x.m)); } }
@@ -3639,16 +3649,30 @@ function vCalFutAlumno() {
     DP: (pr?.dias || []).filter(d => !d.oculto).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0)), H: h.eq, PS: h.plan, lunes, alumno: true });
 }
 /* Alumnos que no son futbolistas: su semana con lo que planificó (plan_semana) o, si el programa va por días de la semana, por esos días */
-function vCalPlanAlumno() {
-  const D = S.d, pr = D.programa; if (!pr?.dias?.length) return '';
-  const lunes = S.semFutA || lunesDe(hoyISO()), fin = sumaDias(lunes, 6), DP = pr.dias.filter(d => !d.oculto).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0));
-  const todos = [D.programa, D.programaBase, ...(D.contextos || []), ...(D.alternativos || [])].filter(Boolean).flatMap(q => q.dias || []), dDe = id => todos.find(d => d.id === id);
-  const ses = (D.sesiones || []).filter(x => !x.previa), ix = d => [0, 1, 2, 3, 4, 5, 6].find(k => esDia(d, norm(DSEM_L[k])));
-  const PS = {};
-  if (DP.every(d => ix(d) != null)) DP.forEach(d => { PS[d.numero] = ix(d); });
-  else { const pl = (planDe(lunes)?.dias || []).slice().sort((a, b) => a - b), hechoN = new Set(ses.filter(x => x.fecha >= lunes && x.fecha <= fin).map(x => dDe(x.dia_id)?.numero));
+/* Qué día de la semana le toca cada día del programa: por el nombre del día, o por los días que marcó en su check-in (plan_semana), sin contar los que ya hizo */
+function psDePlan(DP, lunes, ses, dDe, planDias) {
+  const fin = sumaDias(lunes, 6), ix = d => [0, 1, 2, 3, 4, 5, 6].find(k => esDia(d, norm(DSEM_L[k]))), PS = {};
+  if (DP.length && DP.every(d => ix(d) != null)) DP.forEach(d => { PS[d.numero] = ix(d); });
+  else { const pl = (planDias || []).slice().sort((a, b) => a - b), hechoN = new Set(ses.filter(x => x.fecha >= lunes && x.fecha <= fin).map(x => dDe(x.dia_id)?.numero));
     const conSes = new Set(ses.filter(x => x.fecha >= lunes && x.fecha <= fin).map(x => (fecha(x.fecha).getDay() + 6) % 7)), libres = pl.filter(k => !conSes.has(k));
     DP.filter(d => !hechoN.has(d.numero) && d.tipo_dia !== 'descanso').forEach((d, k) => { if (libres[k] != null) PS[d.numero] = libres[k]; }); }
+  return PS;
+}
+/* El coach ve el calendario de la semana de quien marcó en su check-in los días que va a entrenar */
+function vCalPlanCoach(f, a) {
+  if (!(f.planes || []).length) return '';
+  const lunes = f.semFut || lunesDe(hoyISO()), pr = ctxEnSemana(f.contextos || [], lunes) || f.progFull; if (!pr?.dias?.length) return '';
+  const DP = pr.dias.filter(d => !d.oculto).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0)), todos = [f.progFull, ...(f.contextos || []), ...(f.guardados || [])].filter(Boolean).flatMap(q => q.dias || []), dDe = id => todos.find(d => d.id === id);
+  const ses = (f.ses || []).filter(x => !x.previa), pl = f.planes.find(x => x.semana_inicio === lunes);
+  const PS = psDePlan(DP, lunes, ses, dDe, pl?.dias);
+  return vCalSemana({ w: [], p: [], ses, pres: f.pres || [], todos, DP, H: {}, PS, lunes, aid: a.id, alumno: false, fut: false })
+    .replace('</div></section>', !pl && !Object.keys(PS).length ? `<div class="small muted">No ha marcado en su check-in qué días entrena esta semana.</div></div></section>` : '</div></section>');
+}
+function vCalPlanAlumno() {
+  const D = S.d, lunes = S.semFutA || lunesDe(hoyISO()), pr = ctxEnSemana(D.contextos || [], lunes) || D.programa; if (!pr?.dias?.length) return '';
+  const DP = pr.dias.filter(d => !d.oculto).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0));
+  const todos = [D.programa, D.programaBase, ...(D.contextos || []), ...(D.alternativos || [])].filter(Boolean).flatMap(q => q.dias || []), dDe = id => todos.find(d => d.id === id);
+  const ses = (D.sesiones || []).filter(x => !x.previa), PS = psDePlan(DP, lunes, ses, dDe, planDe(lunes)?.dias);
   const sinPlan = !Object.keys(PS).length && lunes >= lunesDe(hoyISO());
   return vCalSemana({ w: [], p: [], ses, pres: D.presenciales || [], todos, DP, H: {}, PS, lunes, alumno: true, fut: false })
     .replace('</div></section>', sinPlan && usaPlan() ? `<div class="small muted">Planifica tus días de entreno de esta semana y aquí verás qué te toca cada día.</div></div></section>` : '</div></section>');
@@ -3674,7 +3698,7 @@ function vCalSemana({ w, p, ses = [], pres = [], todos, DP, H, PS, lunes, aid, a
     return `<div class="stack" style="gap:5px;min-width:0;padding:6px;border-radius:10px;background:${d === hoy ? 'var(--surface-2, #eef3ff)' : 'transparent'};border:1px solid var(--line)">
       <div style="text-align:center"><b class="small">${L[i]} ${+d.slice(8)}</b>${fut && M.md ? `<div class="small" style="font-weight:700;color:${M.md === 'MD' ? '#0f766e' : 'var(--muted)'}">${M.md}</div>` : ''}</div>${out.join('') || '<span class="small muted" style="text-align:center">—</span>'}</div>`; }).join('');
   const nav = k => `data-act="${alumno ? 'futSemA' : 'futSem'}" data-l="${sumaDias(lunes, k)}"`;
-  return `<section class="section" style="grid-column:1/-1;column-span:all;-webkit-column-span:all"><div class="section-head"><h2>${alumno ? 'Tu semana' : 'Calendario de la semana'}</h2><span class="row" style="gap:6px">${alumno ? '' : `<button class="btn sm ghost" data-act="partido" data-al="${aid}">＋ Partido</button><button class="btn sm ghost" data-act="futEquipo" data-al="${aid}">🗓 Horario de la semana</button>`}<button class="btn sm ghost" ${nav(-7)} aria-label="Semana anterior">◀</button><button class="btn sm ghost" ${nav(7)} aria-label="Semana siguiente">▶</button></span></div>
+  return `<section class="section" style="grid-column:1/-1;column-span:all;-webkit-column-span:all"><div class="section-head"><h2>${alumno ? 'Tu semana' : 'Calendario de la semana'}</h2><span class="row" style="gap:6px">${alumno || !fut ? '' : `<button class="btn sm ghost" data-act="partido" data-al="${aid}">＋ Partido</button><button class="btn sm ghost" data-act="futEquipo" data-al="${aid}">🗓 Horario de la semana</button>`}<button class="btn sm ghost" ${nav(-7)} aria-label="Semana anterior">◀</button><button class="btn sm ghost" ${nav(7)} aria-label="Semana siguiente">▶</button></span></div>
     <div class="card stack"><div class="small muted">Del ${esc(fCorta(lunes))} al ${esc(fCorta(sumaDias(lunes, 6)))}${lunes === lunesDe(hoy) ? ' · esta semana' : ''} · claro = previsto, fuerte = hecho${alumno ? ' · toca tu sesión para abrirla' : ''}</div>
       <div style="overflow-x:auto"><div style="display:grid;grid-template-columns:repeat(7,minmax(92px,1fr));gap:6px">${col}</div></div>
       <div class="row small" style="gap:12px;flex-wrap:wrap">${fut ? '<span>⚽ Partido</span><span>🏟 Equipo</span>' : ''}<span>💪 ${alumno ? 'Tu sesión' : 'Tu sesión (online)'}</span><span>📍 ${alumno ? 'Con Jesús' : 'Sesión contigo'}</span></div></div></section>`;
@@ -4333,7 +4357,7 @@ function vFicha() {
     ${srv?.modulo_futbol ? '' : (() => { const B = (f.contextos || []).filter(esBloqueP), c = ctxEnSemana(B, lunesDe(hoyISO())); return `<div class="row small" style="gap:8px;flex-wrap:wrap"><span class="grow">🧱 ${c ? `<b>${esc(c.contexto_nombre)}</b> · ${esc(fCtx(c))}` : B.length ? 'Ahora sin bloque con fechas (programa base)' : 'Sin bloques con fechas'}</span>${c ? `<button class="btn sm gold" data-act="bloqueSig" data-id="${c.id}">Terminar y empezar el siguiente</button>` : ''}<button class="btn sm ghost" data-act="bloqueEnt">＋ Nuevo bloque</button></div>`; })()}
     ${e.control ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>Toca su revisión mensual ${e.control.n}</b> (${esc(fCorta(e.control.fecha))}): llamada o videollamada de 10-15 minutos para ver cómo se siente, sus objetivos y su composición corporal.</div><button class="btn sm gold" data-act="revision" data-n="${e.control.n}">Registrar revisión</button></div>` : ''}
   </div></section>`;
-  const fb4 = `${srv?.modulo_futbol ? vSemanaEnCurso(f, a) + `<details class="card" style="margin:0 0 14px"><summary><b>Semana patrón</b> <span class="small muted">· su programa base</span></summary>${vBloqueActual(f, a)}</details>` : vBloqueActual(f, a)}<div style="padding:0 2px"><button class="btn ghost full" data-act="fichaSub" data-s="entreno">Programas, contextos y zonas de FC ›</button></div>${IA.vFicha(f, a)}`;
+  const fb4 = `${srv?.modulo_futbol ? vSemanaEnCurso(f, a) + `<details class="card" style="margin:0 0 14px"><summary><b>Semana patrón</b> <span class="small muted">· su programa base</span></summary>${vBloqueActual(f, a)}</details>` : vCalPlanCoach(f, a) + vBloqueActual(f, a)}<div style="padding:0 2px"><button class="btn ghost full" data-act="fichaSub" data-s="entreno">Programas, contextos y zonas de FC ›</button></div>${IA.vFicha(f, a)}`;
   /* Su diario de comidas (pestaña Nutrición, con fotos) también cuenta como días apuntados */
   const com7 = (f.comidas || []).filter(x => !x.compartido && x.fecha >= ult7 && x.fecha <= hoy), diasCom = new Set([...com7.map(x => x.fecha), ...S.c.diario.filter(r => r.alumno_id === a.id && r.fecha >= ult7 && r.fecha <= hoy && (r.ingestas != null || (r.fotos || []).length)).map(r => r.fecha)]).size;
   const fotos7 = com7.flatMap(x => fotosDe(x)); if (fotos7.length) pedirFotos(fotos7.slice(-6));
@@ -7918,7 +7942,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v320';
+const APP_VER = 'v321';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
