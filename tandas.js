@@ -251,7 +251,7 @@ const Tandas = {
     const z = S.sesion, id = `${fila}-${x.p}`, u = z.ultimos[id], v = z.valores[id], bor = z.borr || {}, o = this.objetivo(x), kgP = this.kgPlan(x, sp), bajada = !sp && x.kg === '' && x.p > 0;
     const val = (c, f) => v && v[f] != null ? fmtNum(v[f], 2) : (bor[`${c}-${id}`] ?? '');
     // En gris: lo pautado y, si no hay pauta, lo de la última vez
-    const phKg = kgP ? fmtNum(numero(kgP), 2) : (u?.kg != null ? fmtNum(u.kg, 2) : '—'), phRp = o.iso ? (o.num ?? (u?.repeticiones ?? '—')) : (o.ph || (x.myo ? '—' : (u?.repeticiones ?? '—')));
+    const phKg = kgP ? fmtNum(numero(kgP), 2) : (bajada ? 'baja un 20–30 %' : u?.kg != null ? fmtNum(u.kg, 2) : '—'), phRp = o.iso ? (o.num ?? (u?.repeticiones ?? '—')) : (o.ph || (x.myo ? '—' : (u?.repeticiones ?? '—')));
     const nom = this.nomParte(x), lblR = o.iso ? 'Segundos' : 'Reps realizadas';
     return `<div class="rp-parte${una ? ' una' : ''}">
       ${una ? '' : `<div class="rp-pt">${x.lado && !t.lado ? this.chipLado(x.lado) : ''}${x.vuelta ? `<b>${x.vuelta}ª vuelta</b>` : ''}${x.tipo ? `<b>${esc(this.TIPO[x.tipo])}</b>` : ''}<span class="muted">Objetivo: ${esc(o.txt)}</span>${rirUnico === undefined && x.rir != null && x.rir !== '' ? `<span class="rp-rir-chip">RIR ${esc(String(x.rir))}</span>` : ''}${x.rg ? `<span class="rp-rg">📐 ${esc(x.rg)}</span>` : ''}</div>`}
@@ -336,12 +336,57 @@ const Tandas = {
     else if (b.dataset.ss) toast(`Sin descanso: ${b.dataset.ss}`);
     else toast(tipo === 'tandas' ? `Sin descanso: ${b.dataset.lbl.split('·').pop().trim()}` : 'Sin descanso: sigue con la siguiente serie');
   },
+  /* ---------- Pesos enlazados entre las tandas de una serie ----------
+     Dropset (y back-off en dropset): cada tanda baja entre un 20 y un 30 % respecto a la anterior.
+     Rest-pause, cluster, myo reps (y back-off en rest-pause): todas las tandas con el mismo peso.
+     Top set: los back-off van un 15 % por debajo del top set.
+     Si el alumno cambia el peso de UNA tanda, las demás (las que aún no ha hecho) se ajustan solas en consecuencia. */
+  enlace(e, s, fila) {
+    if (s.tandas.length < 2 || !s.tandas.every(t => t.partes.length === 1 && !t.lado)) return null;
+    const M = s.M || this.met(e) || {}; let modo = null;
+    if (M.tipo === 'drop') modo = 'drop'; else if (M.tipo === 'pausa') modo = 'igual';
+    else if (M.tipo === 'top' && /^Back-off/.test(s.etq || '')) modo = /dropset/i.test(s.etq) ? 'drop' : /rest-pause/i.test(s.etq) ? 'igual' : null;
+    if (!modo) return null;
+    let p = 0.2;
+    if (modo === 'drop') { const pl = s.tandas.map(t => numero(document.getElementById(`kg-${fila}-${t.partes[0].p}`)?.dataset.plan)); if (pl[0] > 0 && pl[1] > 0) p = Math.min(0.3, Math.max(0.2, 1 - pl[1] / pl[0])); }
+    return { modo, p };
+  },
+  ponKg(es, n, p, v) {
+    const z = S.sesion, i = document.getElementById(`kg-${es}-${n}-${p}`); if (!i || this.hecha(z, `${es}-${n}`, p) || !(v > 0)) return;
+    i.value = fmtNum(v, 2); (z.borr ||= {})[i.id] = i.value;
+  },
+  /* Reparte el peso w (el de la tanda en la posición i) por el resto de tandas aún sin hacer de la serie; desde = solo las siguientes */
+  repartir(es, n, s, L, i, w, desde) {
+    const ps = s.tandas.map(t => t.partes[0].p), z = S.sesion, fila = `${es}-${n}`;
+    ps.forEach((p, j) => { if (j === i || (desde && j < i) || this.hecha(z, fila, p) || (desde && z.man?.[`kg-${es}-${n}-${p}`])) return;
+      this.ponKg(es, n, p, this.red(L.modo === 'drop' ? w * Math.pow(1 - L.p, j - i) : w)); });
+  },
+  reenlazar(inp) {
+    const m = /^kg-(\d+)-(\d+)-(\d+)$/.exec(inp.id || ''); if (!m || !S.sesion) return;
+    const es = m[1], n = +m[2], p = +m[3], fila = `${es}-${n}`, z = S.sesion, e = this.ejercicio(es); if (!e) return;
+    const SER = this.estructura(e), s = SER[n - 1], v = numero(inp.value); if (!s || !(v > 0) || this.hecha(z, fila, p)) return;
+    (z.man ||= {})[inp.id] = true;
+    const M = s.M || this.met(e) || {};
+    if (M.tipo === 'top' && s.etq === 'Top set') {   // los back-off salen un 15 % por debajo del top set
+      SER.forEach((s2, k2) => { if (!/^Back-off/.test(s2.etq || '') || s2.tandas[0].partes[0].lado || s2.tandas[0].lado) return;
+        const n2 = k2 + 1, f2 = `${es}-${n2}`, w0 = this.red(v * 0.85), L2 = this.enlace(e, s2, f2);
+        this.ponKg(es, n2, s2.tandas[0].partes[0].p, w0); if (L2) this.repartir(es, n2, s2, L2, 0, w0, false); });
+      return;
+    }
+    const L = this.enlace(e, s, fila); if (!L) return;
+    const ps = s.tandas.map(t => t.partes[0].p), i = ps.indexOf(p); if (i < 0) return;
+    let w = v;
+    if (L.modo === 'drop') {   // nunca menos de un 20 % de bajada respecto a la última tanda ya hecha
+      for (let j = i - 1; j >= 0; j--) { const a = numero(z.valores[`${fila}-${ps[j]}`]?.kg); if (a > 0) { const tope = this.red(a * Math.pow(0.8, i - j)); if (w > tope) { w = tope; inp.value = fmtNum(w, 2); z.borr[inp.id] = inp.value; toast(`En un dropset bajas un 20–30 % cada tanda: lo he ajustado a ${fmtNum(w, 2)} kg`); } break; } }
+    }
+    this.repartir(es, n, s, L, i, w, false);
+  },
   trasGuardar(e, n, k, sid, L) {
     const z = S.sesion, es = e.id, SER = this.estructura(e), s = SER[n - 1], fila = `${es}-${n}`;
     // El peso realizado pasa a la misma parte de la siguiente tanda o serie (si la pauta es la misma), como valor editable; las reps nunca se copian
     L.forEach(q => {
       const dest = [];
-      const t2 = s.tandas[k + 1]; if (t2) { const m = t2.partes.find(x => x.tipo === q.x.tipo && (x.lado === q.x.lado || !!t2.lado)); if (m) dest.push(`${fila}-${m.p}`); }
+      const Ld = this.enlace(e, s, fila), t2 = Ld?.modo === 'drop' ? null : s.tandas[k + 1]; if (t2) { const m = t2.partes.find(x => x.tipo === q.x.tipo && (x.lado === q.x.lado || !!t2.lado)); if (m) dest.push(`${fila}-${m.p}`); }
       const s2 = SER[n]; if (s2 && k === s.tandas.length - 1) s.tandas.flatMap(t => t.partes).forEach(x => { const m = s2.tandas.flatMap(t => t.partes).find(y => y.p === x.p); if (m) dest.push(`${es}-${n + 1}-${m.p}`); });
       dest.forEach(did => {
         const sk = document.getElementById('kg-' + did); if (!sk || sk.value || sk.dataset.bajada) return;
@@ -350,6 +395,8 @@ const Tandas = {
         if (src.kg !== planS && (planD == null || planD === planS)) { sk.value = fmtNum(src.kg, 2); (z.borr ||= {})['kg-' + did] = sk.value; }
       });
     });
+    { const Ld = this.enlace(e, s, fila), q0 = L[0], kg0 = numero(z.valores[q0?.pid]?.kg);   // dropset: las tandas siguientes bajan desde el peso realmente usado
+      if (Ld?.modo === 'drop' && kg0 > 0) { const i = s.tandas.findIndex(t => t.partes.some(x => x.p === q0.x.p)); if (i >= 0) this.repartir(es, n, s, Ld, i, kg0, true); } }
     if (this.estadoSerie(z, s, fila).est === 'on') this.serieHecha(e, n, sid);
     else if (sid && !z.editar) actualizarConteo(sid);
     this.pintar(es); setTimeout(() => Guia.pintar(), 0);
@@ -561,7 +608,7 @@ Tandas.ed = {
     switch (M.tipo) {
       case 'pausa': { const N = cnt('n'), p = n('pausa') ?? M.pausa;
         return [...Array(N)].map((_, k) => T({ s: k ? undefined : s, r: M.myo ? (k ? 'Las que puedas' : 'Hasta 1 del fallo') : a('r' + k) || a('r0') || '8', rir: k ? undefined : rir, kg: this.kg(kg), d: k < N - 1 ? p : d })); }
-      case 'drop': { const N = cnt('n'), b = (n('baja') ?? 20) / 100;
+      case 'drop': { const N = cnt('n'), b = Math.min(30, Math.max(20, n('baja') ?? 20)) / 100;   // siempre entre un 20 y un 30 %
         return [...Array(N)].map((_, k) => T({ s: k ? undefined : s, r: a('r') || '10', rir: k ? undefined : rir, kg: kg ? this.kg(kg * Math.pow(1 - b, k)) : undefined, d: k < N - 1 ? 0 : d })); }
       case 'top': { const rm = n('rm'), top = kg || (rm ? rm * 0.9 : null), bk = top ? top * 0.85 : null, v = a('var'), bn = cnt('bn'), bs = Math.max(1, n('bs') || 2), brir = R(a('brir'));
         const L = a('lados') || '2', BL = a('blados') || L, xt = L === '2' ? '' : ' x lado', xl = BL === '2' ? '' : ' x lado';
@@ -640,3 +687,6 @@ Tandas.ed = {
     pintar();
   }
 };
+
+/* Si el alumno cambia el peso de una tanda, las demás de esa serie se ajustan en consecuencia */
+document.addEventListener('change', ev => { const i = ev.target; if (i?.dataset?.tanda && /^kg-/.test(i.id || '') && S.sesion && S.dia) Tandas.reenlazar(i); });
