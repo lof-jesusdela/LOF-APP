@@ -3627,16 +3627,16 @@ const horarioDe = id => { const sv = id === S.d?.uid ? S.d?.servicio : S.c?.serv
   const js = k => { try { return JSON.parse(S.c?.fiscal?.[k + id] || 'null'); } catch (e) { return null; } };
   return { eq: h?.eq || js('equipo_') || {}, plan: h?.plan || js('plansem_') || {} }; };
 const planSem = id => horarioDe(id).plan, horarioEq = id => horarioDe(id).eq;
-const diasProg = f => { const pr = ctxEnSemana(f.contextos || [], lunesDe(hoyISO())) || f.progFull || f.prog; return (pr?.dias || []).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0)); };
+const diasProg = (f, lunes) => { const pr = ctxEnSemana(f.contextos || [], lunes || lunesDe(hoyISO())) || f.progFull || f.prog; return (pr?.dias || []).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0)); };
 function vCalFut(a) {
   const f = S.ficha, { w, p } = futDe(a.id);
-  return vCalSemana({ w, p, ses: f.ses, pres: f.pres, todos: [f.progFull, f.prog, ...(f.contextos || [])].flatMap(x => x?.dias || []), DP: diasProg(f), H: horarioEq(a.id), PS: planSem(a.id), lunes: f.semFut || lunesDe(hoyISO()), aid: a.id });
+  return vCalSemana({ w, p, ses: f.ses, pres: f.pres, todos: [f.progFull, f.prog, ...(f.contextos || [])].flatMap(x => x?.dias || []), DP: diasProg(f, f.semFut || lunesDe(hoyISO())), H: horarioEq(a.id), PS: planSem(a.id), lunes: f.semFut || lunesDe(hoyISO()), aid: a.id });
 }
 /* Lo mismo en la app del futbolista, arriba de «Hoy»: toca una sesión tuya para abrirla */
 function vCalFutAlumno() {
-  const D = S.d, h = horarioDe(D.uid), pr = D.programa;
+  const D = S.d, h = horarioDe(D.uid), lunes = S.semFutA || lunesDe(hoyISO()), pr = ctxEnSemana(D.contextos || [], lunes) || D.programa;   /* la semana ajustada de ESA semana, como la ve el coach */
   return vCalSemana({ w: D.wellness || [], p: D.partidos || [], ses: D.sesiones || [], pres: D.presenciales || [], todos: [D.programa, D.programaBase, ...(D.contextos || []), ...(D.alternativos || [])].filter(Boolean).flatMap(q => q.dias || []),
-    DP: (pr?.dias || []).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0)), H: h.eq, PS: h.plan, lunes: S.semFutA || lunesDe(hoyISO()), alumno: true });
+    DP: (pr?.dias || []).filter(d => !d.oculto).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0)), H: h.eq, PS: h.plan, lunes, alumno: true });
 }
 /* Alumnos que no son futbolistas: su semana con lo que planificó (plan_semana) o, si el programa va por días de la semana, por esos días */
 function vCalPlanAlumno() {
@@ -3657,6 +3657,7 @@ function vCalSemana({ w, p, ses = [], pres = [], todos, DP, H, PS, lunes, aid, a
   const hoy = hoyISO(), L = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'], dDe = id => todos.find(d => d.id === id);
   const lab = d => { const t = d.titulo || (/^d[ií]a \d+$/i.test(d.nombre || '') ? '' : d.nombre); return `Día ${d.numero || ''}${t ? ' · ' + t : ''}`; };
   const nomDia = id => { const d = dDe(id); return d ? lab(d) : 'Sesión'; };
+  { const vistos = new Set(); ses = ses.filter(x => { const k = x.fecha + '|' + (x.previa ? 'p' : '') + (dDe(x.dia_id)?.numero ?? 'i' + x.dia_id); if (vistos.has(k)) return false; vistos.add(k); return true; }); }   /* el mismo día de entreno registrado dos veces en una fecha sale una sola */
   const chipP = x => alumno ? chip('#0f766e', '⚽ Partido', esc([hhmm(x.hora), x.rival].filter(Boolean).join(' · ')))
     : `<button type="button" data-act="partido" data-al="${aid}" data-id="${x.id}" style="display:block;width:100%;text-align:left;border:0;border-radius:8px;padding:5px 7px;background:#0f766e;color:#fff;font-size:12px;line-height:1.25;cursor:pointer"><b>⚽ Partido</b><div style="opacity:.9">${esc([hhmm(x.hora), x.rival].filter(Boolean).join(' · '))}</div><div style="opacity:.9;font-weight:700">Editar ›</div></button>`;
   const chip = (c, t, sub, op, id) => `<${id && alumno ? `button type="button" data-act="abrirDia" data-id="${id}"` : 'div'} style="display:block;width:100%;text-align:left;border:0;border-radius:8px;padding:5px 7px;background:${c};color:#fff;opacity:${op ? .55 : 1};font-size:12px;line-height:1.25${id && alumno ? ';cursor:pointer' : ''}"><b>${t}</b>${sub ? `<div style="opacity:.9">${sub}</div>` : ''}${id && alumno ? '<div style="opacity:.9;font-weight:700">Abrir ›</div>' : ''}</${id && alumno ? 'button' : 'div'}>`;
@@ -7917,7 +7918,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v319';
+const APP_VER = 'v320';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
