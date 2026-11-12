@@ -3450,9 +3450,10 @@ function formAvisos(aid) {
     <div class="card stack" style="gap:8px"><b>Silenciar sus avisos</b><span class="small muted">No te sale nada de ${esc(nom)} en alumnos, Tu día ni su ficha. Útil en vacaciones, lesión o pausa.</span>
       <div class="chips" id="av-sil">${opS.map(([v, t]) => `<button type="button" class="pill ${(!sil && !v) || (sil && v === 'siempre' && sil >= '9999') ? 'blue' : ''}" data-v="${v}" aria-pressed="false">${t}</button>`).join('')}</div>
       ${sil ? `<span class="small">🔕 Ahora: silenciado ${sil >= '9999' ? 'hasta que lo reactives' : 'hasta el ' + esc(fLarga(sil))}</span>` : ''}</div>
-    <div class="card stack" style="gap:0"><b style="margin-bottom:6px">Qué avisos de ${esc(nom)} te llegan a ti</b>${TIPOS_AL.filter(t => t[0] !== 'otros').map(([k, t]) => chk(`data-avc="${k}"`, !off.includes(k), t)).join('')}</div>
-    <div class="card stack" style="gap:0"><b style="margin-bottom:6px">Qué le sale a ${esc(nom)} en su app</b>${AVISOS_ALUMNO.map(([k, t, d]) => chk(`data-ava="${k}"`, va[k] !== false, t, d)).join('')}</div>
+    <div class="card stack" style="gap:0"><div class="row" style="margin-bottom:6px;gap:8px"><b class="grow">Qué avisos de ${esc(nom)} te llegan a ti</b><button type="button" class="btn sm ghost" data-todos="avc">Quitar todos</button></div>${TIPOS_AL.filter(t => t[0] !== 'otros').map(([k, t]) => chk(`data-avc="${k}"`, !off.includes(k), t)).join('')}</div>
+    <div class="card stack" style="gap:0"><div class="row" style="margin-bottom:6px;gap:8px"><b class="grow">Qué le sale a ${esc(nom)} en su app</b><button type="button" class="btn sm ghost" data-todos="ava">Quitar todos</button></div>${AVISOS_ALUMNO.map(([k, t, d]) => chk(`data-ava="${k}"`, va[k] !== false, t, d)).join('')}</div>
     <p class="err" id="av-err"></p><button class="btn full" id="av-b">Guardar</button></div>`);
+  document.querySelectorAll('[data-todos]').forEach(bt => bt.addEventListener('click', () => { const g = bt.dataset.todos, cs = [...document.querySelectorAll(`[data-${g}]`)], quitar = cs.some(c => c.checked); cs.forEach(c => { c.checked = !quitar; }); bt.textContent = quitar ? 'Marcar todos' : 'Quitar todos'; }));
   let silV = null;
   $('#av-sil').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; silV = b.dataset.v; document.querySelectorAll('#av-sil .pill').forEach(x => x.classList.toggle('blue', x === b)); });
   $('#av-b').addEventListener('click', async () => {
@@ -8035,7 +8036,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v326';
+const APP_VER = 'v327';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
