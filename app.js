@@ -4473,7 +4473,7 @@ function formTarea(id, alumnoId, texto0) {
   const t = id ? (S.c.tareas || []).find(x => x.id === id) : null, aid = t ? t.alumno_id : alumnoId, libre = !t && (alumnoId === undefined || alumnoId === '');
   const als = S.c.perfiles.filter(x => esCliente(x)).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
   abrirSheet(`<form class="stack" id="f-tar"><h2>${t ? 'Editar tarea' : 'Nueva tarea'}</h2>
-    ${libre || (t && !t.alumno_id) ? `<label class="f">¿De qué es?<select id="ta-a"><option value="">Del negocio</option>${als.map(x => `<option value="${x.id}" ${x.id === aid ? 'selected' : ''}>De ${esc(x.nombre)}</option>`).join('')}</select></label>` : `<p class="small muted" style="margin-top:-8px">${esc(S.c.perfiles.find(x => x.id === aid)?.nombre || '')} · solo la ves tú</p>`}
+    ${libre || !aid || (t && !t.alumno_id) ? `<label class="f">¿De qué es?<select id="ta-a"><option value="">Del negocio</option>${als.map(x => `<option value="${x.id}" ${x.id === aid ? 'selected' : ''}>De ${esc(x.nombre)}</option>`).join('')}</select></label>` : `<p class="small muted" style="margin-top:-8px">${esc(S.c.perfiles.find(x => x.id === aid)?.nombre || '')} · solo la ves tú</p>`}
     <label class="f">Qué tienes que hacer<textarea id="ta-t" rows="3" required placeholder="Ej. Cambiarle el bloque de pierna, revisar su técnica de sentadilla…">${esc(t?.texto ?? texto0 ?? '')}</textarea></label>
     <div style="display:grid;grid-template-columns:1fr 110px;gap:8px"><label class="f">Fecha<input type="date" id="ta-v" value="${esc(t?.vence || hoyISO())}"></label><label class="f">Hora${inHora('ta-h', t?.hora)}</label></div>
     <label class="f">Prioridad<select id="ta-n"><option value="">Automática (según la fecha)</option>${Object.entries(TD_NIV).map(([k, v]) => `<option value="${k}" ${t?.nivel === k ? 'selected' : ''}>${v[0]}</option>`).join('')}</select></label>
@@ -4485,7 +4485,7 @@ function formTarea(id, alumnoId, texto0) {
     const guarda = r => t ? sb.from('tareas_coach').update(r).eq('id', t.id).select().single() : sb.from('tareas_coach').insert(r).select().single();
     let r = await guarda(row);
     if (r.error && /hora|nivel|column/i.test(r.error.message || '') && !/null value/i.test(r.error.message || '')) { const { hora, nivel, ...b } = row; r = await guarda(b); if (!r.error) toast('Guardada sin hora ni prioridad: ejecuta el Bloque 105 en Supabase'); }
-    if (r.error) return fallo(r.error, /null value|alumno_id/i.test(r.error.message || '') ? 'Para tareas del negocio ejecuta el Bloque 105 en Supabase.' : 'Falta ejecutar el Bloque 75 en Supabase.');
+    if (r.error) return fallo(r.error, /null value|alumno_id/i.test(r.error.message || '') ? 'Para tareas del negocio ejecuta el Bloque 105 en Supabase.' : 'No se ha podido guardar la tarea (' + (r.error.message || 'error') + '). Si no has ejecutado el Bloque 105 en Supabase, hazlo.');
     S.c.tareas = [...(S.c.tareas || []).filter(x => x.id !== r.data.id), r.data]; cerrarSheet(); toast('Tarea guardada'); render(); });
   $('#ta-del')?.addEventListener('click', async () => { const { error } = await sb.from('tareas_coach').delete().eq('id', t.id); if (error) return fallo(error); S.c.tareas = S.c.tareas.filter(x => x.id !== t.id); cerrarSheet(); render(); });
 }
@@ -8254,7 +8254,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v345';
+const APP_VER = 'v346';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
