@@ -2523,6 +2523,7 @@ function verAgenda(desplaza = 0) {
     formProgramar(null, col.dataset.f, hh2);
   });
 }
+const ctl0 = aid => { const c = estadoAlumno(S.c.perfiles.find(x => x.id === aid) || {}).control; return c && c.fecha >= hoyISO() ? c.fecha : sumaDias(hoyISO(), 7); };
 /* Proponer hora: eliges el hueco en la agenda → mensaje listo en WhatsApp (tú lo envías) y la cita queda reservada hasta que confirme */
 const waNum = aid => String(S.c?.fiscal?.['wa_' + aid] || '').replace(/\D/g, '');
 function propuestaHora(aid, f, h) {
@@ -3233,8 +3234,11 @@ function formRevision(n, id) {
 }
 function vRevisionesFicha(a) {
   const l = (S.c.revisiones || []).filter(r => r.alumno_id === a.id);
-  if (!l.length) return '';
-  return `<section class="section"><div class="section-head"><h2>Revisiones mensuales</h2><button class="btn sm ghost" data-act="revision">＋ Revisión</button></div><div class="card">${l.map(r => `<div class="line" data-act="revision" data-id="${r.id}" style="align-items:flex-start;cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(r.fecha))}</span><div class="grow small"><b>${r.control_n ? 'Revisión ' + r.control_n : 'Revisión'}</b>${r.estado === 'borrador' ? ' <span class="pill gold">Borrador · no la ve</span>' : ''} · ${esc(r.formato || '')}${r.sensacion ? ` · se siente <b>${r.sensacion}/10</b>` : ''}${r.prioridad ? `<div><b>Prioridad:</b> ${esc(r.prioridad)}</div>` : ''}${r.resumen ? `<div class="muted">${esc(r.resumen)}</div>` : ''}</div></div>`).join('')}</div></section>`;
+  const cita = citaRev(a.id), ctl = estadoAlumno(a).control;
+  const fijar = `<div class="card stack" style="gap:8px"><div class="small">${cita ? `📅 <b>Revisión reservada:</b> ${esc(fLarga(cita.fecha))}${cita.hora ? ' a las ' + esc(hhmm(cita.hora)) : ''}${/Propuesta/.test(cita.nota || '') ? ' · esperando que confirme' : ''}` : ctl ? `Toca la <b>revisión mensual ${ctl.n}</b>${ctl.atrasada ? ` (desde el ${esc(fCorta(ctl.fecha))})` : ` (${esc(fCorta(ctl.fecha))})`}. Todavía no tiene fecha reservada.` : 'Sin revisión pendiente ahora mismo.'}</div>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="cmProponer" data-aid="${a.id}">💬 Proponer hora por WhatsApp</button><button class="btn sm ghost" data-act="agendarRev" data-aid="${a.id}">📅 Fijar en la agenda</button></div></div>`;
+  if (!l.length) return `<section class="section"><div class="section-head"><h2>Revisiones mensuales</h2><button class="btn sm ghost" data-act="revision">＋ Revisión</button></div>${fijar}</section>`;
+  return `<section class="section"><div class="section-head"><h2>Revisiones mensuales</h2><button class="btn sm ghost" data-act="revision">＋ Revisión</button></div>${fijar}<div class="card">${l.map(r => `<div class="line" data-act="revision" data-id="${r.id}" style="align-items:flex-start;cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(r.fecha))}</span><div class="grow small"><b>${r.control_n ? 'Revisión ' + r.control_n : 'Revisión'}</b>${r.estado === 'borrador' ? ' <span class="pill gold">Borrador · no la ve</span>' : ''} · ${esc(r.formato || '')}${r.sensacion ? ` · se siente <b>${r.sensacion}/10</b>` : ''}${r.prioridad ? `<div><b>Prioridad:</b> ${esc(r.prioridad)}</div>` : ''}${r.resumen ? `<div class="muted">${esc(r.resumen)}</div>` : ''}</div></div>`).join('')}</div></section>`;
 }
 /* ======================= ELITE PLAYER · futbolistas: partidos, wellness y carga ======================= */
 const ZONAS = ['Isquiotibiales', 'Aductor', 'Cuádriceps', 'Gemelo', 'Tobillo', 'Rodilla', 'Cadera / pubis', 'Espalda', 'Otra'];
@@ -8141,7 +8145,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v334';
+const APP_VER = 'v335';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8430,6 +8434,7 @@ document.addEventListener('click', async e => {
     case 'cmIr': cerrarSheet(); await Compromisos.ir(b.dataset.id, !!S.bloque); break;
     case 'cmHoy': await Compromisos.elegirHoy([b.dataset.id], true); toast('Elegido para hoy'); break;
     case 'cmProg': Compromisos.formReprogramar(b.dataset.id); break;
+    case 'agendarRev': formProgramar(b.dataset.aid, ctl0(b.dataset.aid)); document.querySelector('#pg-t [data-t="Revisión (videollamada)"]')?.click(); break;
     case 'cmProponer': S.proponer = { aid: b.dataset.aid }; cerrarSheet(); verAgenda(); break;
     case 'agendaPropCancelar': S.proponer = null; verAgenda(); break;
     case 'cmSolv': await Compromisos.solventar(b.dataset.id); break;
