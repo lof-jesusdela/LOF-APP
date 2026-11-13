@@ -45,7 +45,7 @@ const Compromisos = (() => {
     if (!pausa && !c.revisionesErr && !avisoFin(srv)?.terminado) {
       const revs = (c.revisiones || []).filter(r => r.alumno_id === aid), hecha = x => revs.some(r => r.estado !== 'borrador' && (r.control_n === x.n || (r.fecha >= sumaDias(x.fecha, -10) && r.fecha <= sumaDias(x.fecha, 25))));
       const cs = controlesMensuales(srv, sumaDias(hoy, 7)).filter(x => x.fecha >= sumaDias(hoy, -35) && !hecha(x));
-      const x = cs[0]; if (x) add('rev', x.n, { t: 'revision', vence: x.fecha, titulo: `Revisión mensual ${x.n}`, m: `Revisión mensual ${x.n} pendiente desde el ${fCorta(x.fecha)}`, n: x.n });
+      const x = cs[0]; if (x) add('rev', x.n, { cita: citaRev(aid)?.fecha || null, t: 'revision', vence: x.fecha, titulo: `Revisión mensual ${x.n}`, m: `Revisión mensual ${x.n} pendiente desde el ${fCorta(x.fecha)}`, n: x.n });
     }
     // Próxima acción que te apuntaste con fecha
     const s = c.seguimiento?.[aid]; if (s?.proxima_accion && s.proxima_fecha) add('acc', s.proxima_fecha, { t: 'proxima', vence: s.proxima_fecha, titulo: s.proxima_accion, m: `Próxima acción: ${s.proxima_accion}` });
@@ -67,10 +67,11 @@ const Compromisos = (() => {
     if (r?.estado === 'esperando') estado = 'esperando';
     else if (r?.estado === 'en_curso') estado = 'en_curso';
     else if (r && r.fecha > hoy) estado = 'programado';
+    else if (!r && x.cita) estado = 'programado';
     else if (r && r.fecha === hoy) estado = 'hoy';
     const futuro = estado === 'pendiente' && x.vence && x.vence > hoy;
     const dias = x.vence ? Math.round((fecha(hoy) - fecha(x.vence)) / 864e5) : 0;
-    return { ...x, fila: r || null, estado, futuro, atraso: dias > 0 ? dias : 0, para: r?.fecha || null, min: r?.minutos ?? T[x.tipo].min, resp: resp(x.aid), reprog: filas(x.id).filter(f => f.estado === 'reprogramada').length };
+    return { ...x, fila: r || null, estado, futuro, atraso: dias > 0 ? dias : 0, para: r?.fecha || x.cita || null, min: r?.minutos ?? T[x.tipo].min, resp: resp(x.aid), reprog: filas(x.id).filter(f => f.estado === 'reprogramada').length };
   }
   let cache = null, cacheT = 0;
   function todos() {
@@ -184,6 +185,7 @@ const Compromisos = (() => {
           ${x.estado === 'hoy' || x.estado === 'en_curso' ? '' : `<button class="btn sm ghost" data-act="cmHoy" data-id="${esc(x.id)}">Para hoy</button>`}
           <button class="btn sm ghost" data-act="cmProg" data-id="${esc(x.id)}">📅 Programar</button>
           ${x.estado === 'esperando' ? `<button class="btn sm ghost" data-act="cmEstado" data-id="${esc(x.id)}" data-v="pendiente">Ya no espero</button>` : `<button class="btn sm ghost" data-act="cmEstado" data-id="${esc(x.id)}" data-v="esperando" title="Le has escrito y esperas su respuesta">⏳ Espero respuesta</button>`}
+          ${x.tipo === 'rev' && x.aid ? `<button class="btn sm ghost" data-act="cmProponer" data-aid="${esc(x.aid)}">💬 Proponer hora</button>` : ''}
           ${x.tipo === 'tarea' ? `<button class="btn sm ghost" data-act="tareaHecha" data-id="${x.tareaId}">✓ Hecha</button>` : x.tipo === 'gasto' ? '' : `<button class="btn sm" data-act="cmSolv" data-id="${esc(x.id)}" title="Ya está atendido: sale de tus pendientes">✓ Solventado</button>`}</span>`}</div>
       ${compacta ? chip(x) : ''}</div>`;
   }

@@ -2304,10 +2304,14 @@ document.addEventListener('input', e => { const el = e.target; if (!el.matches?.
 /* Mensaje y ubicación por defecto de cada tipo de cita (ajustes_privados «agenda_def») */
 const DEF_CITAS = {"Reunión de negocio": {"n": "Gracias por reservar este espacio.\n\nMi propósito es ayudar a cada vez más personas a construir un cuerpo, una salud y un estilo de vida que puedan sostener toda la vida. Y eso no se hace solo: se hace rodeándose de personas y proyectos que comparten esa misma exigencia.\n\nEn esta reunión quiero conocerte a ti y a tu proyecto, entender qué buscas y ver con claridad si podemos sumar el uno al otro. Vengo con la mente abierta, con propuestas concretas y con ganas de construir algo que tenga sentido para los dos y, sobre todo, para las personas a las que servimos.\n\nSi quieres que repasemos algo en concreto, mándamelo antes y lo traigo preparado. Así aprovechamos el tiempo al máximo y salimos con próximos pasos claros.\n\nNos vemos,\nJesús de la Obra\nLa Obra Fitness"}, "PTI / primera sesión": {"n": "Hoy no vienes a una clase de prueba. Vienes a descubrir cómo se construye un cuerpo y una salud que duran toda la vida.\n\nDurante 30 minutos te explico mi metodología: cómo entreno, cómo planteo la alimentación y por qué la mayoría de procesos fracasan antes de empezar. Los otros 30 minutos los pasamos entrenando, para que sientas en tu propio cuerpo lo que significa entrenar con intención.\n\nAl terminar sabrás exactamente dónde estás, hacia dónde puedes ir y qué necesitas para llegar. Y tendrás la oportunidad de empezar un acompañamiento conmigo, si sientes que es tu momento.\n\nNo te pido que lo tengas todo claro. Solo que vengas con la mente abierta y con ganas de escuchar a tu mejor versión.\n\nTrae ropa cómoda, agua y toalla. El primer ladrillo lo ponemos juntos.\n\nNos vemos,\nJesús", "l": "Basic-Fit, C. Hilados, 23, 28850 Torrejón de Ardoz, Madrid, España"}, "Entrevista online": {"n": "Esta videollamada puede ser el punto de inflexión que llevas tiempo buscando.\n\nTe cuento cómo trabajo: cómo entreno, cómo planteo la alimentación y los hábitos, y por qué mis alumnos no solo cambian su cuerpo, sino su forma de vivir. Pero, sobre todo, quiero conocerte a ti: de dónde partes, qué has intentado hasta ahora y qué quieres conseguir de verdad.\n\nAl terminar tendrás claro qué te ha frenado, qué camino tiene sentido para ti y si quieres que lo recorramos juntos en un acompañamiento.\n\nNo necesitas preparar nada. Busca un sitio tranquilo, con buena conexión, y regálate este tiempo sin interrupciones. Es tiempo para ti.\n\nVen con preguntas, con dudas y con ganas. Del resto me encargo yo.\n\nNos vemos al otro lado de la pantalla,\nJesús"}, "Entrenamiento": {"n": "Esto no es solo una sesión de entrenamiento.\n\nCada vez que vienes entrenas algo más importante que un músculo: construyes el hábito. Te estás convirtiendo en la persona capaz de sostener el cuerpo y la salud que quieres, no durante unas semanas, sino para siempre.\n\nEsta hora es tuya. Es el momento en el que dejas fuera el trabajo, las prisas y las excusas, y te dedicas tiempo a ti. Y no lo haces solo: lo haces con alguien obsesionado con tus resultados y tus objetivos.\n\nVen descansado, hidratado y con la cabeza puesta en lo que vamos a hacer. Cada repetición bien hecha es un ladrillo más en tu construcción.\n\nTrae ropa cómoda, agua y toalla. Si no puedes venir, avísame con al menos 24 horas.\n\nA por ello,\nJesús", "l": "Basic-Fit, C. Hilados, 23, 28850 Torrejón de Ardoz, Madrid, España"}, "Revisión (videollamada)": {"n": "Esta no es una llamada para ver qué tal vas.\n\nEs una llamada para marcar estándares. Para fijar objetivos y revisar con honestidad lo que ha funcionado y lo que no. Celebraremos lo que estás consiguiendo y ajustaremos lo que haga falta, sin juicios y sin excusas.\n\nQuiero que salgas sintiéndote acompañado, visto y entendido. Porque un proceso no se sostiene solo con un plan: se sostiene cuando alguien conoce tu contexto y camina a tu lado.\n\nA partir de aquí seguimos poniendo ladrillos en esa megaconstrucción que es tu salud y el estilo de vida que quieres sostener.\n\nAntes de la llamada, rellena tu check-in en la app y apunta lo que quieras comentarme: dudas, dificultades o logros. Busca un sitio tranquilo y con buena conexión.\n\nHablamos pronto,\nJesús"}, "Valoración inicial": {"n": "Hoy empieza todo.\n\nLa valoración inicial es tu punto de partida: toma de datos y puro análisis. Medimos, evaluamos y entendemos en qué punto exacto te encuentras.\n\nEsto es lo que diferencia un proceso individualizado de engañarte con una pauta genérica. Nadie puede llevarte a ningún sitio si no sabe de dónde partes. Es como Google Maps: antes de darte la ruta, necesita saber dónde estás.\n\nCon estos datos diseño tu camino: tu entrenamiento, tu alimentación y tus hábitos, pensados para ti y para nadie más. Y dentro de unos meses volveremos a ellos para demostrar todo lo que has avanzado.\n\nNo vengas a impresionarme: ven a ser honesto contigo. Los números no te juzgan, te orientan.\n\nTrae ropa cómoda, agua y toalla.\n\nEmpezamos a construir,\nJesús", "l": "Basic-Fit, C. Hilados, 23, 28850 Torrejón de Ardoz, Madrid, España"}, "Valoración final": {"n": "Hoy toca mirar atrás para ver todo lo que has construido.\n\nRepetimos las mismas mediciones que el primer día y las comparamos con tu punto de partida. Aquí no hay opiniones: hay datos. Vamos a demostrar cada mejora, cada cambio y cada esfuerzo que ha merecido la pena.\n\nY, como en todo proceso honesto, también veremos los puntos que aún puedes seguir mejorando. No como un fallo, sino como tu siguiente objetivo. Tu salud no es una meta a la que se llega: es una construcción que se sostiene.\n\nSiéntete orgulloso de haber llegado hasta aquí. Pocas personas son constantes el tiempo suficiente para ver resultados reales.\n\nTrae ropa cómoda, agua y toalla. Después hablaremos de tus próximos pasos.\n\nNos vemos para celebrarlo,\nJesús", "l": "Basic-Fit, C. Hilados, 23, 28850 Torrejón de Ardoz, Madrid, España"}, "Revisión presencial": {"n": "Esta no es una revisión para ver qué tal vas.\n\nEs un encuentro para marcar estándares. Para fijar objetivos y revisar con honestidad lo que ha funcionado y lo que no. Celebraremos lo que estás consiguiendo y ajustaremos lo que haga falta, sin juicios y sin excusas.\n\nQuiero que salgas sintiéndote acompañado, visto y entendido. Porque un proceso no se sostiene solo con un plan: se sostiene cuando alguien conoce tu contexto y camina a tu lado.\n\nA partir de aquí seguimos poniendo ladrillos en esa megaconstrucción que es tu salud y el estilo de vida que quieres sostener.\n\nAntes de vernos, rellena tu check-in en la app y apunta lo que quieras comentarme: dudas, dificultades o logros.\n\nNos vemos,\nJesús", "l": "Basic-Fit, C. Hilados, 23, 28850 Torrejón de Ardoz, Madrid, España"}};
 const agendaDef = () => { let g = {}; try { g = JSON.parse(S.c?.fiscal?.agenda_def || '{}') || {}; } catch (e) { } return { ...DEF_CITAS, ...g }; };
+/* Una cita puede ser varias cosas a la vez: el título lleva «+ Revisión mensual» / «+ Valoración» (sin columnas nuevas) */
+const SUF_CITA = / \+ (Revisión mensual|Valoración)/g, sinSuf = t => String(t || '').replace(SUF_CITA, '').trim();
+const conSuf = (base, rev, val) => { const b = sinSuf(base), p = [b]; if (rev && !/revisi/i.test(b)) p.push('Revisión mensual'); if (val && !/valora/i.test(b)) p.push('Valoración'); return p.filter(Boolean).join(' + ') || null; };
+const citaRev = aid => (S.c?.presenciales || []).find(p => p.alumno_id === aid && p.estado === 'programada' && p.fecha >= hoyISO() && p.fecha <= sumaDias(hoyISO(), 45) && /revisi/i.test(p.tipo || ''));
 const TIPOS_CITA = [['Entrenamiento', 'al'], ['Valoración inicial', 'al'], ['Valoración final', 'al'], ['Revisión presencial', 'al'], ['Revisión (videollamada)', 'al'], ['PTI / primera sesión', 'ext'], ['Entrevista online', 'ext'], ['Reunión de negocio', 'ext'], ['Tarea', 'ext']];
 function formProgramar(aid, fechaIni, horaIni, pid) {
   const P0 = pid ? (S.c.presenciales || []).find(x => x.id === pid) : null, G0 = P0?.grupo ? S.c.presenciales.filter(x => x.grupo === P0.grupo) : P0 ? [P0] : [];
-  const keepT = P0?.tipo && !TIPOS_CITA.some(x => x[0] === P0.tipo) ? P0.tipo : null; if (P0) { aid = G0[0].alumno_id; fechaIni = P0.fecha; horaIni = P0.hora; }
+  const keepT = P0?.tipo && !TIPOS_CITA.some(x => x[0] === sinSuf(P0.tipo)) ? sinSuf(P0.tipo) : null; if (P0) { aid = G0[0].alumno_id; fechaIni = P0.fecha; horaIni = P0.hora; }
   const als = S.c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach').sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
   const conBono = id => { const v = srvDe(id); return !!(v && (v.modulo_presencial || v.sesiones_incluidas || modalidadSrv(v) !== 'online')); };
   const orden = [...als.filter(a => conBono(a.id)), ...als.filter(a => !conBono(a.id))];
@@ -2317,6 +2321,7 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
     <div id="pg-ext" hidden><input type="text" id="pg-q" class="gc-tit" placeholder="Añade un título (con quién o qué)"></div>
     <div id="pg-aw"><select id="pg-a" class="gc-tit"><option value="">Elige alumno…</option>${orden.map((a, i) => `${i === als.filter(x => conBono(x.id)).length && i ? '<option disabled>── Sin sesiones presenciales ──</option>' : ''}<option value="${a.id}" ${a.id === aid ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('')}</select></div>
     <div class="chips" id="pg-t" style="margin:8px 0 4px">${TIPOS_CITA.map(([t], i) => `<button type="button" class="pill ${i ? '' : 'blue'}" data-t="${t}">${t}</button>`).join('')}</div>
+    <div class="row small" id="pg-tam" style="gap:14px;flex-wrap:wrap;margin:2px 0 4px"><span class="muted">También:</span><label class="row" style="gap:6px"><input type="checkbox" id="pg-xr" ${/\+ Revisión mensual/.test(P0?.tipo || '') ? 'checked' : ''} style="width:20px;height:20px"> Revisión mensual</label><label class="row" style="gap:6px"><input type="checkbox" id="pg-xv" ${/\+ Valoración/.test(P0?.tipo || '') ? 'checked' : ''} style="width:20px;height:20px"> Valoración</label></div>
     <p class="small" id="pg-bono" style="margin:2px 0 6px"></p>
     ${fila('🕒', `<label class="row" style="gap:10px;justify-content:space-between"><span>Todo el día</span><input type="checkbox" id="pg-td" class="gc-sw" ${P0 && !P0.hora ? 'checked' : ''}></label>
       <input type="date" id="pg-f" value="${fechaIni || hoyISO()}" required class="gc-in">
@@ -2340,10 +2345,11 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
   const ponDur = () => { const a = minDe($('#pg-h').value), b = minDe($('#pg-hf').value); if (a != null && b != null && b > a) { $('#pg-d').value = b - a; $('#pg-dt').textContent = `${b - a} min`; } };
   const ponTd = () => { const on = $('#pg-td').checked; document.querySelectorAll('.gc-horas').forEach(x => x.hidden = on); };
   $('#pg-h').addEventListener('input', ponFin); $('#pg-hf').addEventListener('change', ponDur); $('#pg-hf').addEventListener('blur', ponDur); $('#pg-td').addEventListener('change', ponTd);
-  let tipo = P0 ? (TIPOS_CITA.some(x => x[0] === P0.tipo) ? P0.tipo : P0.alumno_id ? 'Entrenamiento' : 'Reunión de negocio') : 'Entrenamiento';
+  let tipo = P0 ? (TIPOS_CITA.some(x => x[0] === sinSuf(P0.tipo)) ? sinSuf(P0.tipo) : P0.alumno_id ? 'Entrenamiento' : 'Reunión de negocio') : 'Entrenamiento';
   if (P0) { document.querySelectorAll('#pg-t .pill').forEach(x => x.classList.toggle('blue', x.dataset.t === tipo)); $('#pg-q').value = P0.persona || ''; $('#pg-d').value = P0.duracion_min || durSesion(); $('#pg-l').value = P0.lugar || ''; $('#pg-n').value = P0.nota || ''; }
   ponFin(); ponTd();
   const ext = () => TIPOS_CITA.find(x => x[0] === tipo)?.[1] === 'ext';
+  const tamV = () => { $('#pg-tam').hidden = ext(); }; setTimeout(tamV, 0); $('#pg-t')?.addEventListener('click', () => setTimeout(tamV, 0));
   const bono = () => { const id = $('#pg-a').value, v = srvDe(id); $('#pg-ext').hidden = !ext(); $('#pg-aw').hidden = ext(); $('#pg-inv').hidden = ext(); if (ext()) return $('#pg-bono').innerHTML = '<span class="muted">Va a tu agenda y a tu Google Calendar. No es de ningún alumno.</span>'; if (!id) return $('#pg-bono').textContent = ''; if (/revisi/i.test(tipo)) return $('#pg-bono').innerHTML = '<span class="muted">Revisión por videollamada: no cuenta como entrenamiento ni gasta bono.</span>';
     const D = v?.sesiones_incluidas ? datosPres(v, (S.c.presenciales || []).filter(p => p.alumno_id === id)) : null;
     const dia = (S.c.presenciales || []).filter(p => p.alumno_id === id && p.fecha === $('#pg-f').value && p.estado !== 'cancelada');
@@ -2390,7 +2396,7 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
     const bt = e.target.querySelector('[type=submit]'); bt.disabled = true; bt.textContent = 'Guardando…';
     if ($('#pg-def').checked) { const D = agendaDef(); D[tipo] = { n: $('#pg-n').value.trim(), l: $('#pg-l').value.trim() }; const v = JSON.stringify(D);
       const { error: eD } = await sb.from('ajustes_privados').upsert({ clave: 'agenda_def', valor: v }, { onConflict: 'clave' }); if (!eD) (S.c.fiscal ||= {}).agenda_def = v; }
-    const row = { alumno_id: id, fecha: $('#pg-f').value || hoyISO(), hora, estado: 'programada', tipo: tipo === 'Entrenamiento' ? keepT : tipo, nota: $('#pg-n').value.trim() || null };
+    const row = { alumno_id: id, fecha: $('#pg-f').value || hoyISO(), hora, estado: 'programada', tipo: X ? tipo : conSuf(tipo === 'Entrenamiento' ? keepT : tipo, $('#pg-xr').checked, $('#pg-xv').checked), nota: $('#pg-n').value.trim() || null };
     if (P0) { /* Edición: mismos datos para todos los del grupo; añade o quita alumnos */
       const idsE = X ? [null] : [...new Set([id, ...[...document.querySelectorAll('.pg-a2')].map(x => x.value).filter(Boolean)])];
       const com = { fecha: row.fecha, hora, tipo: row.tipo, nota: row.nota, lugar, duracion_min: X || dur !== durSesion() ? dur : null, persona: X ? quien : null, estado: $('#pg-e').value };
@@ -2504,6 +2510,7 @@ function verAgenda(desplaza = 0) {
     ${cuerpo}
     <div class="card stack" style="gap:6px"><b class="small">📲 Tus sesiones en Google Calendar</b><span class="small muted">${S.c.fiscal?.agenda_token ? 'Ya tienes tu enlace de suscripción.' : 'Suscríbete una vez y te llegan solas todas las sesiones (las tuyas y las de Calendly).'}</span><button class="btn sm ghost" data-act="agendaSuscribir" style="align-self:flex-start">${S.c.fiscal?.agenda_token ? 'Ver enlace y pasos' : 'Configurar'}</button>
       <label class="row small" style="gap:8px;margin-top:6px"><input type="checkbox" data-act="gcalToggle" ${gcalOn() ? 'checked' : ''} style="width:20px;height:20px"> <span><b>Sincronizar al instante con mi Google Calendar</b> (crear, mover y borrar se ve en segundos; necesita la función gcal-sync)</span></label></div></div>`);
+  if (S.proponer) document.querySelector('.ag-vistas')?.insertAdjacentHTML('beforebegin', `<div class="aprox row small" style="gap:8px;flex-wrap:wrap;align-items:center"><span class="grow">📅 <b>Elige el hueco</b> para la revisión de <b>${esc((S.c.perfiles.find(x => x.id === S.proponer.aid)?.nombre || '').split(' ')[0])}</b>: toca un día y una hora libres.</span><button class="btn sm ghost" data-act="agendaPropCancelar">Cancelar</button></div>`);
   const g = $('#ag-grid'); if (!g) return;
   const H = +g.dataset.h, h0 = +g.dataset.h0, hs = l.filter(p => p.hora).map(p => parseInt(p.hora));
   g.scrollTop = Math.max(0, ((hs.length ? Math.min(...hs) : 8) - h0 - 0.5) * H);
@@ -2511,7 +2518,37 @@ function verAgenda(desplaza = 0) {
   g.addEventListener('click', ev => {
     if (ev.target.closest('[data-act]')) return; const col = ev.target.closest('.ag-col'); if (!col) return;
     const y = ev.clientY - col.getBoundingClientRect().top, m = Math.max(0, Math.floor(y / H * 2) * 30), hh = h0 + Math.floor(m / 60);
-    formProgramar(null, col.dataset.f, `${String(hh).padStart(2, '0')}:${m % 60 ? '30' : '00'}`);
+    const hh2 = `${String(hh).padStart(2, '0')}:${m % 60 ? '30' : '00'}`;
+    if (S.proponer) return propuestaHora(S.proponer.aid, col.dataset.f, hh2);
+    formProgramar(null, col.dataset.f, hh2);
+  });
+}
+/* Proponer hora: eliges el hueco en la agenda → mensaje listo en WhatsApp (tú lo envías) y la cita queda reservada hasta que confirme */
+const waNum = aid => String(S.c?.fiscal?.['wa_' + aid] || '').replace(/\D/g, '');
+function propuestaHora(aid, f, h) {
+  const a = S.c.perfiles.find(x => x.id === aid); if (!a) return;
+  const nom = (a.nombre || '').split(' ')[0], msg = (f2, h2) => `Hola ${nom} 😊 Estaba mirando disponibilidad para que tengamos nuestra revisión mensual. ¿Te cuadraría el ${fLarga(f2)} a las ${h2}?`;
+  abrirSheet(`<div class="stack"><h2>Proponer hora a ${esc(nom)}</h2>
+    <div style="display:grid;grid-template-columns:1fr 110px;gap:8px"><label class="f">Día<input type="date" id="pp-f" value="${esc(f)}"></label><label class="f">Hora${inHora('pp-h', h)}</label></div>
+    <label class="f">Mensaje (puedes retocarlo)<textarea id="pp-m" rows="4">${esc(msg(f, h))}</textarea></label>
+    <label class="f">WhatsApp de ${esc(nom)} (con prefijo, una sola vez)<input type="tel" id="pp-n" inputmode="tel" value="${esc(waNum(aid))}" placeholder="34600111222"></label>
+    <a class="btn full" id="pp-wa" target="_blank" rel="noopener" href="#">💬 Abrir WhatsApp con el mensaje</a>
+    <p class="small muted">Se reserva ya en tu agenda (30 min, videollamada). Si te dice que no, muévela o bórrala desde la agenda.</p>
+    <button class="btn ghost full" id="pp-no">Cancelar</button></div>`);
+  const url = () => { const n = $('#pp-n').value.replace(/\D/g, ''); return `https://wa.me/${n}?text=${encodeURIComponent($('#pp-m').value)}`; };
+  const fija = () => { $('#pp-wa').href = url(); };
+  fija(); ['pp-m', 'pp-n'].forEach(i => $('#' + i).addEventListener('input', fija));
+  let pm = $('#pp-m').value; $('#pp-f').addEventListener('change', () => { if ($('#pp-m').value === pm) { $('#pp-m').value = pm = msg($('#pp-f').value, normHora($('#pp-h').value) || h); fija(); } });
+  $('#pp-no').onclick = () => verAgenda();
+  $('#pp-wa').addEventListener('click', () => {   // sin await antes de abrir WhatsApp: el iPhone bloquearía la ventana
+    const fd = $('#pp-f').value || f, hd = normHora($('#pp-h').value) || h, num = $('#pp-n').value.replace(/\D/g, '');
+    S.proponer = null;
+    (async () => {
+      if (num && num !== waNum(aid)) { (S.c.fiscal ||= {})['wa_' + aid] = num; await sb.from('ajustes_privados').upsert({ clave: 'wa_' + aid, valor: num }, { onConflict: 'clave' }); }
+      const { error } = await sb.from('presenciales').insert({ alumno_id: aid, fecha: fd, hora: hd, estado: 'programada', tipo: 'Revisión (videollamada)', duracion_min: 30, nota: 'Propuesta por WhatsApp: pendiente de que confirme' }).select().single();
+      if (error) return fallo(error, errCita(error));
+      await cargarPresCoach(); Compromisos.invalidar(); toast('Reservada en tu agenda: falta que confirme'); verAgenda();
+    })();
   });
 }
 /* Mantén pulsada una cita y arrástrala a otro día u hora (cada 15 min); al soltar confirmas y eliges si avisar al alumno */
@@ -2861,7 +2898,7 @@ function estadoAlumno(a) {
   const seg = conSeguimiento(srv);
   const control = !seg ? null : revisionPendiente(srv, (c.revisiones || []).filter(r => r.alumno_id === a.id), c.revisionesErr) || (c.revisionesErr ? controlEnSemana(srv, lunes) : null);
   { const bn = bonoDe(a.id, srv); if (bn && bn.total) { const usadas = bn.hechas.length; if (usadas >= bn.total && !bn.prox.length) { sube('warn'); const ci = cierreBono(srv, S.c.presenciales.filter(p => p.alumno_id === a.id)); motivos.push(`Bono agotado: ha usado las ${bn.total} sesiones${ci ? ` · tiene su resumen y la oferta en la app; se archiva el ${fCorta(ci.limite)}` : ''}`); } else if (bn.quedan <= 2 && usadas > 0) { sube('warn'); motivos.push(`Le ${bn.quedan === 1 ? 'queda 1 sesión' : `quedan ${bn.quedan} sesiones`} del bono (de ${bn.total})`); } } }
-  if (control?.atrasada && !pausa) { sube('warn'); motivos.push(`Revisión mensual ${control.n} pendiente desde el ${fCorta(control.fecha)}`); }
+  if (control?.atrasada && !pausa && !citaRev(a.id)) { sube('warn'); motivos.push(`Revisión mensual ${control.n} pendiente desde el ${fCorta(control.fecha)}`); }
   const st = Alertas.de(a.id), items = esFamilia(a.id) ? [] : motivos.map((m, i) => ({ m, n: niveles[i], k: Alertas.clave(m), t: tipoAlerta(m) })).map(x => ({ ...x, comp: T_COMPROMISO.includes(x.t) })).filter(x => (seg || ['pago', 'bono', 'salud', 'foco'].includes(x.t)) && (x.comp ? !(Alertas.cfg(a.id).off || []).includes(x.t) : Alertas.activa(a.id, x.m))).map(x => ({ ...x, ok: !x.comp && st.resueltas.includes(x.k), nueva: !st.vistas.includes(x.k) }));
   const pend = items.filter(x => !x.ok);
   pend.forEach(x => { const n = est.k === 'regreso' && x.n === 'bad' ? 'warn' : x.n; if (n === 'bad' || nivel === 'ok') nivel = n; });
@@ -6355,7 +6392,7 @@ function motivoPres(err) {
 }
 async function formPres(id) {
   const p = id ? S.ficha.pres.find(x => x.id === id) : null, alF = S.c?.perfiles?.find(x => x.id === S.ficha.id);
-  const tipo0 = TIPOS_CITA.some(x => x[0] === (p?.tipo || S.presVal)) ? (p?.tipo || S.presVal) : 'Entrenamiento', d0 = p ? {} : agendaDef()[tipo0] || {};
+  const tipo0 = TIPOS_CITA.some(x => x[0] === sinSuf(p?.tipo || S.presVal)) ? sinSuf(p?.tipo || S.presVal) : 'Entrenamiento', d0 = p ? {} : agendaDef()[tipo0] || {};
   const otros = p?.grupo ? ((await sb.from('presenciales').select('id,alumno_id').eq('grupo', p.grupo)).data || []).filter(x => x.alumno_id && x.alumno_id !== S.ficha.id).map(x => x.alumno_id) : [];
   const sesDia = f => S.ficha.ses.filter(s => s.fecha === f);
   let dias = S.ficha.prog?.dias || (S.ficha.programas || []).find(x => x.activo)?.dias || [];
@@ -6363,9 +6400,10 @@ async function formPres(id) {
   abrirSheet(`<form class="stack" id="f-pres"><h2>${p ? 'Editar sesión presencial' : 'Sesión presencial'}</h2>
     <div style="display:grid;grid-template-columns:1fr 110px;gap:8px"><label class="f">Fecha<input type="date" id="pr-f" value="${p?.fecha || hoyISO()}"></label><label class="f">Hora${inHora('pr-h', p?.hora)}</label></div>
     <div class="chips" id="pr-tipo-r"><span class="small muted">Es:</span>${TIPOS_CITA.filter(x => x[1] === 'al').map(([t]) => `<button type="button" class="pill ${t === tipo0 ? 'blue' : ''}" data-t="${t}">${t}</button>`).join('')}</div>
+    <div class="row small" style="gap:14px;flex-wrap:wrap"><span class="muted">También:</span><label class="row" style="gap:6px"><input type="checkbox" id="pr-xr" ${/\+ Revisión mensual/.test(p?.tipo || '') ? 'checked' : ''} style="width:20px;height:20px"> Revisión mensual</label><label class="row" style="gap:6px"><input type="checkbox" id="pr-xv" ${/\+ Valoración/.test(p?.tipo || '') ? 'checked' : ''} style="width:20px;height:20px"> Valoración</label></div>
     <label class="f">Estado<select id="pr-e">${Object.entries(PRES_EST).map(([k, l]) => `<option value="${k}" ${(p?.estado || 'programada') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
     ${dias.length ? `<label class="f">Entrenamiento de su programa<select id="pr-dia"><option value="">— Otro (escríbelo abajo) —</option>${dias.map(d => `<option value="${d.id}" ${p?.dia_id === d.id || (!p?.dia_id && p?.tipo === etiquetaDia(d)) ? 'selected' : ''}>${esc(etiquetaDia(d))}</option>`).join('')}</select></label>` : ''}
-    <label class="f">Título del entrenamiento<input type="text" id="pr-tt" list="pr-dl" value="${esc(p?.tipo || '')}" placeholder="Escríbelo tú, p. ej. Complementario: core y movilidad"><datalist id="pr-dl">${dias.map(d => `<option value="${esc(etiquetaDia(d))}"></option>`).join('')}</datalist></label>
+    <label class="f">Título del entrenamiento<input type="text" id="pr-tt" list="pr-dl" value="${esc(sinSuf(p?.tipo))}" placeholder="Escríbelo tú, p. ej. Complementario: core y movilidad"><datalist id="pr-dl">${dias.map(d => `<option value="${esc(etiquetaDia(d))}"></option>`).join('')}</datalist></label>
     <label class="f">Sesión hecha ese día (opcional, para vincularla)<select id="pr-s"><option value="">— Ninguna —</option></select></label>
     <label class="f">Duración (minutos)<input type="number" id="pr-d" min="5" max="600" step="5" inputmode="numeric" value="${p?.duracion_min || durSesion()}" list="pg-dl2"><datalist id="pg-dl2">${[30, 45, 60, 75, 90, 120].map(m => `<option value="${m}">`).join('')}</datalist></label>
     <label class="f"><span id="pr-l-t">Ubicación</span><input type="text" id="pr-l" value="${esc(p ? p.lugar || '' : d0.l || '')}" placeholder="Ej. Basic-Fit Torrejón"></label>
@@ -6393,7 +6431,7 @@ async function formPres(id) {
     e.preventDefault();
     const hP = normHora($('#pr-h').value); if (hP === undefined) return toast('Hora no válida: escríbela así, 9:30 o 18:00');
     const durP = Math.max(5, Math.min(600, Math.round(+$('#pr-d').value) || durSesion())), lugP = $('#pr-l').value.trim() || null;
-    const row = { fecha: $('#pr-f').value || hoyISO(), hora: hP, estado: $('#pr-e').value, sesion_id: +$('#pr-s').value || null, nota: $('#pr-n').value.trim() || null, tipo: $('#pr-tt').value.trim() || null };
+    const row = { fecha: $('#pr-f').value || hoyISO(), hora: hP, estado: $('#pr-e').value, sesion_id: +$('#pr-s').value || null, nota: $('#pr-n').value.trim() || null, tipo: conSuf($('#pr-tt').value.trim(), $('#pr-xr').checked, $('#pr-xv').checked) };
     if (lugP || p?.lugar) row.lugar = lugP; if (durP !== durSesion() || p?.duracion_min) row.duracion_min = durP !== durSesion() ? durP : null;
     const masIds = [...document.querySelectorAll('.pr-a2')].map(x => x.value).filter(v => v && v !== S.ficha.id);
     if ($('#pr-dia')?.value || p?.dia_id) row.dia_id = +$('#pr-dia').value || null;
@@ -8103,7 +8141,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v333';
+const APP_VER = 'v334';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8392,6 +8430,8 @@ document.addEventListener('click', async e => {
     case 'cmIr': cerrarSheet(); await Compromisos.ir(b.dataset.id, !!S.bloque); break;
     case 'cmHoy': await Compromisos.elegirHoy([b.dataset.id], true); toast('Elegido para hoy'); break;
     case 'cmProg': Compromisos.formReprogramar(b.dataset.id); break;
+    case 'cmProponer': S.proponer = { aid: b.dataset.aid }; cerrarSheet(); verAgenda(); break;
+    case 'agendaPropCancelar': S.proponer = null; verAgenda(); break;
     case 'cmSolv': await Compromisos.solventar(b.dataset.id); break;
     case 'cmEstado': await Compromisos.marcar(b.dataset.id, b.dataset.v); break;
     case 'cmElegir': Negocio.formElegir(b.dataset.t); break;
