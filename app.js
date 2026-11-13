@@ -3642,7 +3642,7 @@ function tdTareas() {
   const col = (tit, ico, filtro, aid) => { const xs = L.filter(filtro);
     return `<div class="stack" style="gap:8px"><div class="row"><b class="grow">${ico} ${tit} <span class="muted small">· ${xs.length}</span></b><button class="btn sm ghost" data-act="tareaEditar" data-al="${aid}">＋ Tarea</button></div>
       ${Object.entries(TD_NIV).map(([k, [nl]]) => { const g = xs.filter(x => x.niv === k).sort((a, b) => (a.t.vence || '9999').localeCompare(b.t.vence || '9999') || String(a.t.hora || '99').localeCompare(String(b.t.hora || '99'))); return `<div class="stack" style="gap:2px"><span class="eyebrow">${nl}</span>${g.map(tdFilaTarea).join('') || '<span class="small muted">Nada</span>'}</div>`; }).join('')}</div>`; };
-  return `<section class="section"><div class="section-head"><h2>Tus tareas</h2></div><div class="card" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:20px">${col('De alumnos', '👥', x => !!x.t.alumno_id, 'alumno')}${col('Del negocio', '🏢', x => !x.t.alumno_id, '')}</div></section>`;
+  return `<section class="section"><div class="section-head"><h2>Tus tareas</h2></div><div class="card" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:20px">${col('De alumnos', '👥', x => !!x.t.alumno_id || /^👤/.test(x.t.texto || ''), 'alumno')}${col('Del negocio', '🏢', x => !x.t.alumno_id && !/^👤/.test(x.t.texto || ''), '')}</div></section>`;
 }
 function tdAlertasAlumnos() {
   const cl = (S.c.perfiles || []).filter(esCliente), out = [];
@@ -4474,15 +4474,17 @@ function formTarea(id, alumnoId, texto0) {
   const t = id ? (S.c.tareas || []).find(x => x.id === id) : null, aid = t ? t.alumno_id : alumnoId, libre = !t && (alumnoId === undefined || alumnoId === '');
   const als = S.c.perfiles.filter(x => esCliente(x)).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
   abrirSheet(`<form class="stack" id="f-tar"><h2>${t ? 'Editar tarea' : 'Nueva tarea'}</h2>
-    ${libre || !aid || (t && !t.alumno_id) ? `<label class="f">¿De qué es?<select id="ta-a"><option value="">${pideAl ? 'Elige alumno…' : 'Del negocio'}</option>${als.map(x => `<option value="${x.id}" ${x.id === aid ? 'selected' : ''}>De ${esc(x.nombre)}</option>`).join('')}</select></label>` : `<p class="small muted" style="margin-top:-8px">${esc(S.c.perfiles.find(x => x.id === aid)?.nombre || '')} · solo la ves tú</p>`}
+    ${libre || !aid || (t && !t.alumno_id) ? `<label class="f">¿De qué es?<select id="ta-a"><option value="">${pideAl ? 'Elige alumno…' : 'Del negocio'}</option><option value="__fuera">Otro alumno (fuera de la app)</option>${als.map(x => `<option value="${x.id}" ${x.id === aid ? 'selected' : ''}>De ${esc(x.nombre)}</option>`).join('')}</select></label><label class="f" id="ta-fw" hidden>Nombre del alumno<input type="text" id="ta-fn" placeholder="Ej. Marta (la de Alcalá)"></label>` : `<p class="small muted" style="margin-top:-8px">${esc(S.c.perfiles.find(x => x.id === aid)?.nombre || '')} · solo la ves tú</p>`}
     <label class="f">Qué tienes que hacer<textarea id="ta-t" rows="3" required placeholder="Ej. Cambiarle el bloque de pierna, revisar su técnica de sentadilla…">${esc(t?.texto ?? texto0 ?? '')}</textarea></label>
     <div style="display:grid;grid-template-columns:1fr 110px;gap:8px"><label class="f">Fecha<input type="date" id="ta-v" value="${esc(t?.vence || hoyISO())}"></label><label class="f">Hora${inHora('ta-h', t?.hora)}</label></div>
     <label class="f">Prioridad<select id="ta-n"><option value="">Automática (según la fecha)</option>${Object.entries(TD_NIV).map(([k, v]) => `<option value="${k}" ${t?.nivel === k ? 'selected' : ''}>${v[0]}</option>`).join('')}</select></label>
     <button class="btn full">Guardar</button>${t ? '<button type="button" class="btn ghost full" id="ta-del" style="color:var(--bad)">Borrar tarea</button>' : ''}</form>`);
+  $('#ta-a')?.addEventListener('change', () => { $('#ta-fw').hidden = $('#ta-a').value !== '__fuera'; });
   $('#f-tar').addEventListener('submit', async e => { e.preventDefault();
     const h = normHora($('#ta-h').value); if (h === undefined) return toast('Hora no válida: escríbela así, 9:30 o 18:00');
-    const al = $('#ta-a') ? ($('#ta-a').value || null) : aid; if (pideAl && !al) return toast('Elige de qué alumno es');
-    const row = { texto: $('#ta-t').value.trim(), vence: $('#ta-v').value || null, hora: h || null, nivel: $('#ta-n').value || null, prioridad: t?.prioridad || 'media', alumno_id: al }; if (!row.texto) return;
+    let al = $('#ta-a') ? ($('#ta-a').value || null) : aid; if (pideAl && !al) return toast('Elige de qué alumno es');
+    let tx = $('#ta-t').value.trim(); if (al === '__fuera') { const nf = $('#ta-fn').value.trim(); if (!nf) return toast('Escribe el nombre del alumno'); tx = '👤 ' + nf + ': ' + tx; al = null; }
+    const row = { texto: tx, vence: $('#ta-v').value || null, hora: h || null, nivel: $('#ta-n').value || null, prioridad: t?.prioridad || 'media', alumno_id: al }; if (!row.texto) return;
     const guarda = r => t ? sb.from('tareas_coach').update(r).eq('id', t.id).select().single() : sb.from('tareas_coach').insert(r).select().single();
     let r = await guarda(row);
     if (r.error && /hora|nivel|column/i.test(r.error.message || '') && !/null value/i.test(r.error.message || '')) { const { hora, nivel, ...b } = row; r = await guarda(b); if (!r.error) toast('Guardada sin hora ni prioridad: ejecuta el Bloque 105 en Supabase'); }
@@ -8255,7 +8257,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v347';
+const APP_VER = 'v348';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
