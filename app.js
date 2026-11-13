@@ -4730,7 +4730,16 @@ function formMedicion(editId) {
     if (error) { bt.disabled = false; return fallo(error, 'No se ha podido guardar la medición: ' + (error.message || 'revisa la conexión')); }
     const cmp = compara(); cerrarSheet(); toast(`${ed ? 'Medición actualizada' : 'Medición guardada'}${cmp.mej.length ? ` · ✅ ${cmp.mej.length} ${cmp.mej.length === 1 ? 'mejora' : 'mejoras'}` : ''}`); await abrirFicha(S.ficha.id); abrirSub('composicion');
     if (primera && !S.ficha.medObj) { toast('Valoración inicial guardada: ahora fija su objetivo'); formObjetivoComp(); }
+    else if (!ed && !primera) preguntaRevisionTrasMedicion();
   });
+}
+/* Medición nueva hecha por el coach: ¿es la revisión mensual? Si sí, se pasa directo a la revisión guiada */
+function preguntaRevisionTrasMedicion() {
+  const f = S.ficha; if (!f) return;
+  const pend = revisionPendiente(f.srv, (S.c.revisiones || []).filter(r => r.alumno_id === f.id), false), nom = (S.c.perfiles.find(p => p.id === f.id)?.nombre || '').split(' ')[0];
+  abrirSheet(`<div class="stack"><h2>¿Es la revisión mensual de ${esc(nom)}?</h2><p class="small muted">${pend ? `Tiene pendiente la revisión mensual ${pend.n}.` : 'La medición ya está guardada.'} Si la haces ahora, la tienes guiada paso a paso y nada se envía al alumno hasta que lo publiques.</p>
+    <button class="btn full" data-act="revisionGuiada" data-n="${pend?.n || ''}">Sí, hacer la revisión ahora</button>
+    <button class="btn ghost full" data-act="cerrarSheet">No, solo era una medición</button></div>`);
 }
 /* Datos del alumno: nombre visible, nombre completo para facturas, NIF y datos físicos */
 /* ---------- Acceso a la app sin entrar en Supabase (función «gestion-acceso») ---------- */
@@ -8036,7 +8045,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v328';
+const APP_VER = 'v329';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
