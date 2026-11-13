@@ -8103,7 +8103,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v332';
+const APP_VER = 'v333';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8392,6 +8392,7 @@ document.addEventListener('click', async e => {
     case 'cmIr': cerrarSheet(); await Compromisos.ir(b.dataset.id, !!S.bloque); break;
     case 'cmHoy': await Compromisos.elegirHoy([b.dataset.id], true); toast('Elegido para hoy'); break;
     case 'cmProg': Compromisos.formReprogramar(b.dataset.id); break;
+    case 'cmSolv': await Compromisos.solventar(b.dataset.id); break;
     case 'cmEstado': await Compromisos.marcar(b.dataset.id, b.dataset.v); break;
     case 'cmElegir': Negocio.formElegir(b.dataset.t); break;
     case 'cmSiguiente': Negocio.siguiente(b.dataset.t); break;
@@ -8458,7 +8459,7 @@ document.addEventListener('click', async e => {
     case 'bvIr': Bienvenida.abrir(+b.dataset.i); break;
     case 'bvFin': Bienvenida.fin(); break;
     case 'bvVer': Bienvenida.abrir(0); break;
-    case 'alResolver': { const enSheet = !!b.closest('#sheet'), on = b.dataset.on === '1', nota = on ? prompt('¿Cómo lo has atendido? (opcional, ej. «hablado por WhatsApp»)', 'Hablado por WhatsApp') : null; if (on && nota === null) break; const ms = b.dataset.m.split('\n'); for (const m of ms) await Alertas.resolver(b.dataset.id, m, on, nota); if (on && ms.some(m => /ha cambiado su peso/i.test(m))) await pesoVisto(b.dataset.id); toast(on ? (ms.length > 1 ? `${ms.length} avisos solventados` : 'Marcado como solventado') : 'Vuelve a estar pendiente'); render(); if (enSheet) verAlertas(b.dataset.id); break; }
+    case 'alResolver': { const enSheet = !!b.closest('#sheet'), on = b.dataset.on === '1', nota = null; if (on && !confirm('¿Seguro que ya está solventado?')) break; const ms = b.dataset.m.split('\n'); for (const m of ms) await Alertas.resolver(b.dataset.id, m, on, nota); if (on && ms.some(m => /ha cambiado su peso/i.test(m))) await pesoVisto(b.dataset.id); toast(on ? (ms.length > 1 ? `${ms.length} avisos solventados` : 'Marcado como solventado') : 'Vuelve a estar pendiente'); render(); if (enSheet) verAlertas(b.dataset.id); break; }
     case 'alFiltro': S.alF.k = S.alF.k === b.dataset.k ? '' : b.dataset.k; if (S.obj) await aparcarOSalir(); S.ficha = null; S.reporte = null; S.factura = null; S.editor = null; S.ctab = 'alumnos'; render(); if (S.alF.k) $('#al-lista')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
     case 'inicio': if (S.modo === 'coach') { if (S.obj) await aparcarOSalir(); Object.assign(S, { iaCoach: false, reporte: null, factura: null, ficha: null, editor: null, verSes: null, verPlan: null, valEd: null, fichaSub: null, ctab: 'inicio' }); } else { S.ia = false; if (!S.dia) S.tab = 'hoy'; } cerrarSheet(); render(); window.scrollTo(0, 0); break;
     case 'cerrarFicha': S.ficha = null; S.verSes = null; S.verPlan = null; S.valEd = null; render(); break;

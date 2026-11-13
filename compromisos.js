@@ -112,6 +112,12 @@ const Compromisos = (() => {
     S.c.agenda = [...(S.c.agenda || []).filter(f => f.id !== r.data.id), r.data]; invalidar(); return true;
   }
   const buscar = id => todos().find(x => x.id === id);
+  /* Solventado: lo das por atendido (sin preguntar cómo); sale de tus pendientes */
+  async function solventar(id) {
+    const x = buscar(id); if (!x) return toast('Ya está resuelto');
+    if (!confirm('¿Seguro que ya está solventado?')) return;
+    if (await guardar(x, { estado: 'descartada', nota: 'Solventado', fecha: hoyISO() }, !x.fila)) { toast('Marcado como solventado'); render(); }
+  }
   async function elegirHoy(ids, on = true) {
     for (const id of ids) { const x = buscar(id); if (!x) continue;
       if (on && x.estado !== 'hoy' && x.estado !== 'en_curso') await guardar(x, { fecha: hoyISO(), estado: 'pendiente' }, !x.fila || x.fila.fecha !== hoyISO());
@@ -178,7 +184,7 @@ const Compromisos = (() => {
           ${x.estado === 'hoy' || x.estado === 'en_curso' ? '' : `<button class="btn sm ghost" data-act="cmHoy" data-id="${esc(x.id)}">Para hoy</button>`}
           <button class="btn sm ghost" data-act="cmProg" data-id="${esc(x.id)}">📅 Programar</button>
           ${x.estado === 'esperando' ? `<button class="btn sm ghost" data-act="cmEstado" data-id="${esc(x.id)}" data-v="pendiente">Ya no espero</button>` : `<button class="btn sm ghost" data-act="cmEstado" data-id="${esc(x.id)}" data-v="esperando" title="Le has escrito y esperas su respuesta">⏳ Espero respuesta</button>`}
-          ${x.tipo === 'tarea' ? `<button class="btn sm ghost" data-act="tareaHecha" data-id="${x.tareaId}">✓ Hecha</button>` : ''}</span>`}</div>
+          ${x.tipo === 'tarea' ? `<button class="btn sm ghost" data-act="tareaHecha" data-id="${x.tareaId}">✓ Hecha</button>` : x.tipo === 'gasto' ? '' : `<button class="btn sm" data-act="cmSolv" data-id="${esc(x.id)}" title="Ya está atendido: sale de tus pendientes">✓ Solventado</button>`}</span>`}</div>
       ${compacta ? chip(x) : ''}</div>`;
   }
   /* Ficha: lo que el profesional debe hacer con este alumno (no se oculta con «todo al día» mientras quede algo) */
@@ -188,5 +194,5 @@ const Compromisos = (() => {
     if (!l.length) return `<div class="fx-vacio">✓ Nada pendiente de ti con este alumno</div>`;
     return `<div class="fx-lista">${ya.map(x => fila(x, false, compacta)).join('')}${fut.length ? `<div class="small muted" style="margin-top:6px">Más adelante: ${fut.map(x => `${esc(T[x.tipo].uno)} (${esc(fCorta(x.vence))})`).join(' · ')}</div>` : ''}</div>`;
   }
-  return { T, ORDEN, EST, todos, deAlumno, abiertos, proximos, resueltosHoy, sincronizar, invalidar, elegirHoy, marcar, formReprogramar, ir, siguiente, progreso, ordenar, fila, vFicha, chip, venceTxt, buscar, tipoDe, esId, nom, corto };
+  return { T, ORDEN, EST, todos, deAlumno, abiertos, proximos, resueltosHoy, sincronizar, invalidar, elegirHoy, marcar, solventar, formReprogramar, ir, siguiente, progreso, ordenar, fila, vFicha, chip, venceTxt, buscar, tipoDe, esId, nom, corto };
 })();
