@@ -515,7 +515,7 @@ function render() {
   const tabs = coach ? [['inicio', 'Tu día'], ['alumnos', 'Alumnos'], ['metodologia', 'Metodología'], ['pagos', 'Negocio']] : tabsAlumno();
   const actual = coach ? S.ctab : (cierreAlumno() && !tabs.some(t => t[0] === S.tab) ? 'hoy' : S.tab);
   const esCoach = S.perfil.rol === 'coach';
-  const vistas = { futbol: () => `<section class="stack"><span class="eyebrow">Élite Player</span><h1>Futbolistas</h1></section>${vFutbolCoach() || '<div class="card empty">Sin futbolistas activos.</div>'}`, hoy: vHoy, entreno: vEntreno, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, tests: vProgreso, coach: Acomp.vTuCoach, inicio: Negocio.vInicio, habitos: Habitos.vista, alumnos: vAlumnos, pagos: vEconomiaTabs, ejercicios: vEjercicios, plantillas: vPlantillas, metodologia: () => `<div class="seg" role="group" aria-label="Metodología" style="margin-bottom:12px"><button data-act="metSub" data-v="plantillas" aria-pressed="${S.metSub !== 'ejercicios'}">Plantillas</button><button data-act="metSub" data-v="ejercicios" aria-pressed="${S.metSub === 'ejercicios'}">Ejercicios</button></div>` + (S.metSub === 'ejercicios' ? vEjercicios() : vPlantillas()) };
+  const vistas = { futbol: () => `<section class="stack"><span class="eyebrow">Élite Player</span><h1>Futbolistas</h1></section>${vFutbolCoach() || '<div class="card empty">Sin futbolistas activos.</div>'}`, hoy: vHoy, entreno: vEntreno, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, tests: vProgreso, coach: Acomp.vTuCoach, inicio: vTuDia, habitos: Habitos.vista, alumnos: vAlumnos, pagos: vEconomiaTabs, ejercicios: vEjercicios, plantillas: vPlantillas, metodologia: () => `<div class="seg" role="group" aria-label="Metodología" style="margin-bottom:12px"><button data-act="metSub" data-v="plantillas" aria-pressed="${S.metSub !== 'ejercicios'}">Plantillas</button><button data-act="metSub" data-v="ejercicios" aria-pressed="${S.metSub === 'ejercicios'}">Ejercicios</button></div>` + (S.metSub === 'ejercicios' ? vEjercicios() : vPlantillas()) };
   $('#app').innerHTML = `<header class="top">
       <button type="button" class="badge" data-act="inicio" aria-label="Ir al inicio" style="background:none;border:0;padding:0;cursor:pointer;text-align:left;color:inherit;font:inherit"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : esc(S.perfil.metodologia || 'Tu proceso')}</strong></div></button>
       <div class="row" style="gap:8px">${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
@@ -3590,6 +3590,8 @@ function resaltar(id) {
 /* Cada aviso lleva a su sitio (por el texto del aviso): si no se reconoce, a la ficha */
 function alIr(aid, m) {
   cerrarSheet(); m = m || '';
+  if (/Revisión mensual \d+ pendiente/.test(m)) { S.proponer = { aid }; return verAgenda(); }   // revisión pendiente: directo a agendarla
+  if (/^🎯/.test(m)) return irA(aid, { tab: 'resumen' });
   const rv = /Revisión mensual (\d+)/.exec(m); if (rv) return irA(aid, { fn: () => formRevision(+rv[1], null) });
   if (/revisi[oó]n(es)? mensual/i.test(m)) { const c = estadoAlumno(S.c.perfiles.find(x => x.id === aid) || {}).control; return irA(aid, c ? { fn: () => formRevision(c.n, null) } : { tab: 'calendario' }); }
   if (/fatiga|molestia|pico de carga|cuestionario del lunes|planificación del equipo/i.test(m)) return checkinSheet(aid);
@@ -3605,6 +3607,46 @@ function alIr(aid, m) {
   if (/entrenos|entrenamiento/i.test(m)) return irA(aid, { sub: 'entreno' });
   if (/pausa|proceso termin|queda menos de un mes|extensi[oó]n/i.test(m)) return irA(aid, { tab: 'plan' });
   return irA(aid);
+}
+/* ======================= TU DÍA: calendario de la semana, tareas por prioridad, alertas rojas y alertas del negocio ======================= */
+const nivelTarea = t => { const h = hoyISO(); return t.nivel || (!t.vence || t.vence > sumaDias(h, 3) ? 'semana' : t.vence <= h ? 'hoy' : '3dias'); };
+const tareaVencida = t => { const h = hoyISO(), n = new Date(), ahora = `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`; return !!t.vence && (t.vence < h || (t.vence === h && !!t.hora && String(t.hora).slice(0, 5) < ahora)); };
+function tdCalendario() {
+  const hoy = hoyISO(), ini = lunesDe(hoy), dias = [...Array(7)].map((_, i) => sumaDias(ini, i));
+  const l = agruparCitas((S.c.presenciales || []).filter(p => p.fecha && p.fecha >= ini && p.fecha <= sumaDias(ini, 6) && p.estado !== 'cancelada').sort(ordPres));
+  const nom = x => x?._g?.length > 1 ? x._g.map(y => (S.c.perfiles.find(p => p.id === y.alumno_id)?.nombre || 'Alumno').split(' ')[0]).join(' + ') : x?.alumno_id ? S.c.perfiles.find(p => p.id === x.alumno_id)?.nombre || 'Alumno' : x?.persona || x?.tipo || 'Cita';
+  const EST = { programada: ['blue', 'Reservada'], dada: ['ok', 'Hecha'], tarde: ['warn', 'Aviso < 24 h'], falta: ['bad', 'No vino'] };
+  let grid = ''; try { grid = agendaRejilla(dias, l, hoy, nom, EST).replace('<span>Toca un hueco para programar</span>', ''); } catch (e) { console.warn(e); }
+  return `<section class="section"><div class="section-head"><h2>Tu semana · ${esc(fCorta(ini))} – ${esc(fCorta(sumaDias(ini, 6)))}</h2><div class="row" style="gap:6px"><button class="btn sm ghost" data-act="verAgenda">Agenda completa</button><button class="btn sm" data-act="programarSes">＋ Cita</button></div></div><div class="card" style="padding:8px">${grid || '<div class="empty">Sin citas esta semana.</div>'}</div></section>`;
+}
+function tdFilaTarea(x) {
+  const t = x.t, venc = tareaVencida(t), al = t.alumno_id ? S.c.perfiles.find(p => p.id === t.alumno_id)?.nombre : null;
+  return `<div class="line tarea" style="align-items:flex-start;gap:10px;${venc ? 'background:color-mix(in srgb,var(--bad) 10%,transparent);border-radius:10px;padding:6px' : ''}"><button class="ag-chk" data-act="${x.rec ? 'recHecho' : 'tareaHecha'}" data-id="${t.id}" aria-label="Marcar como hecha"></button><div class="grow stack" style="gap:2px;cursor:pointer" data-act="${x.rec ? 'recNuevo' : 'tareaEditar'}" data-id="${t.id}" data-al="${t.alumno_id || ''}"><span class="small">${al ? `<b>${esc(al.split(' ')[0])}</b> · ` : ''}${esc(t.texto)}</span><span class="small ${venc ? '' : 'muted'}" style="${venc ? 'color:var(--bad);font-weight:700' : ''}">${venc ? '⚠ No realizada · ' : ''}${t.vence ? esc(fCorta(t.vence)) : 'Sin fecha'}${t.hora ? ' · ' + esc(String(t.hora).slice(0, 5)) : ''}</span></div></div>`;
+}
+function tdTareas() {
+  const L = (S.c.tareas || []).map(t => ({ t, niv: nivelTarea(t) })).concat((S.c.recordatorios || []).filter(r => !r.hecho_at).map(r => ({ t: { id: r.id, texto: r.texto, alumno_id: r.alumno_id, vence: null }, niv: 'semana', rec: true })));
+  const col = (tit, ico, filtro, aid) => { const xs = L.filter(filtro);
+    return `<div class="stack" style="gap:8px"><div class="row"><b class="grow">${ico} ${tit} <span class="muted small">· ${xs.length}</span></b><button class="btn sm ghost" data-act="tareaEditar" data-al="${aid}">＋ Tarea</button></div>
+      ${Object.entries(TD_NIV).map(([k, [nl]]) => { const g = xs.filter(x => x.niv === k).sort((a, b) => (a.t.vence || '9999').localeCompare(b.t.vence || '9999') || String(a.t.hora || '99').localeCompare(String(b.t.hora || '99'))); return `<div class="stack" style="gap:2px"><span class="eyebrow">${nl}</span>${g.map(tdFilaTarea).join('') || '<span class="small muted">Nada</span>'}</div>`; }).join('')}</div>`; };
+  return `<section class="section"><div class="section-head"><h2>Tus tareas</h2></div><div class="card" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:20px">${col('De alumnos', '👥', x => !!x.t.alumno_id, 'alumno')}${col('Del negocio', '🏢', x => !x.t.alumno_id, '')}</div></section>`;
+}
+function tdAlertasAlumnos() {
+  const cl = (S.c.perfiles || []).filter(esCliente), out = [];
+  cl.forEach(a => { try { estadoAlumno(a).items.filter(x => !x.ok && x.n === 'bad').forEach(x => out.push({ a, x })); } catch (e) { } });
+  const pri = o => /^🎯|^🩹/.test(o.x.m) ? 0 : 1; out.sort((p, q) => pri(p) - pri(q));
+  const fila = ({ a, x }) => `<div class="line" style="align-items:flex-start;gap:8px;flex-wrap:wrap"><span class="al-dot-s" style="background:var(--bad);margin-top:6px"></span><div class="grow stack" style="gap:2px;min-width:200px"><b class="small">${esc(a.nombre)}</b><span class="small">${esc(x.m)}</span></div>
+    <span class="row" style="gap:6px;flex-wrap:wrap"><button class="btn sm" data-act="alIr" data-id="${a.id}" data-m="${esc(x.m)}">Ir ›</button>${/motivaci|emocional|mental/i.test(x.m) ? `<button class="btn sm ghost" data-act="alWa" data-id="${a.id}">💬 WhatsApp</button>` : ''}<button class="btn sm ghost" data-act="alTarea" data-id="${a.id}" data-m="${esc(x.m.slice(0, 80))}">＋ Tarea</button>${x.comp ? '' : `<button class="btn sm ghost" data-act="alResolver" data-id="${a.id}" data-m="${esc(x.m)}" data-on="1">✓ Solventado</button>`}</span></div>`;
+  return `<section class="section"><div class="section-head"><h2>🔴 Alertas de alumnos <span class="muted small">· ${out.length}</span></h2><button class="btn sm ghost" data-act="ctab" data-t="alumnos">Ver alumnos</button></div><div class="card">${out.slice(0, 15).map(fila).join('') || '<div class="empty">Ninguna alerta roja. 👌</div>'}${out.length > 15 ? `<div class="small muted" style="padding:8px 0">y ${out.length - 15} más…</div>` : ''}</div></section>`;
+}
+function tdAlertasNegocio() {
+  const l = Compromisos.abiertos().filter(x => x.tipo === 'gasto' || x.tipo === 'cobro').sort(Compromisos.ordenar);
+  const fila = x => `<div class="line" style="align-items:flex-start;gap:8px;flex-wrap:wrap"><span class="al-dot-s" style="background:var(--${x.atraso ? 'bad' : 'warn'});margin-top:6px"></span><div class="grow stack" style="gap:2px;min-width:200px"><b class="small">${x.aid ? esc(Compromisos.corto(x.aid)) + ' · ' : ''}${esc(x.titulo)}</b><span class="small muted">${esc(Compromisos.T[x.tipo].uno)} · ${Compromisos.venceTxt(x)}</span></div>
+    <span class="row" style="gap:6px;flex-wrap:wrap"><button class="btn sm" data-act="tdNeg" data-t="${x.tipo === 'gasto' ? 'caja' : 'cobros'}">Ir a Negocio ›</button><button class="btn sm ghost" data-act="alTarea2" data-m="${esc(x.titulo.slice(0, 80))}">＋ Tarea</button>${x.tipo === 'cobro' ? `<button class="btn sm ghost" data-act="cmSolv" data-id="${esc(x.id)}">✓ Solventado</button>` : ''}</span></div>`;
+  return `<section class="section"><div class="section-head"><h2>🏢 Alertas del negocio <span class="muted small">· ${l.length}</span></h2></div><div class="card">${l.slice(0, 10).map(fila).join('') || '<div class="empty">Nada pendiente en el negocio. 👌</div>'}${l.length > 10 ? `<div class="small muted" style="padding:8px 0">y ${l.length - 10} más…</div>` : ''}</div></section>`;
+}
+function vTuDia() {
+  const f = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+  return `<section class="stack"><span class="eyebrow">${esc(f)}</span><h1>Tu día</h1></section>${tdCalendario()}${tdTareas()}${tdAlertasAlumnos()}${tdAlertasNegocio()}`;
 }
 function vFutbolCoach() {
   const fut = S.c.perfiles.filter(p => p.activo !== false && S.c.servicios.some(x => x.alumno_id === p.id && x.modulo_futbol));
@@ -4391,6 +4433,7 @@ function vFotosComida(dl) {
   return `<section class="section"><h2>Fotos de comidas · 14 días</h2><div class="card stack" style="gap:12px">${con.map(r => `<div class="stack" style="gap:6px"><span class="small muted">${esc(fLarga(r.fecha))}</span><div class="plan-imgs">${miniFotos(r.fotos)}</div></div>`).join('')}</div></section>`;
 }
 /* ---------- Tareas del coach por alumno (no las ve el alumno): plazo y prioridad; salen también en «Tu día» ---------- */
+const TD_NIV = { hoy: ['Hoy', 0], '3dias': ['Próximos 3 días', 1], semana: ['Esta semana', 2] };
 const PRIO = { alta: ['Alta', 'bad', 0], media: ['Media', 'warn', 1], baja: ['Baja', '', 2] };
 const ordTareas = (a, b) => (a.vence || '9999').localeCompare(b.vence || '9999') || (PRIO[a.prioridad]?.[2] ?? 1) - (PRIO[b.prioridad]?.[2] ?? 1);
 const filaTarea = (t, conNombre) => { const hoy = hoyISO(), venc = t.vence && t.vence < hoy, p = PRIO[t.prioridad] || PRIO.media, al = conNombre ? (S.c.perfiles.find(x => x.id === t.alumno_id)?.nombre || 'Alumno') : '';
@@ -4401,20 +4444,27 @@ function vTareasFicha(a, plano) {
   return `<div class="${plano ? 'stack' : 'card stack'}"><div class="row"><b class="grow">Tareas (solo tú las ves)</b><button class="btn sm ghost" data-act="tareaEditar" data-al="${a.id}">＋ Tarea</button></div>${l.map(t => filaTarea(t, false)).join('') || '<div class="small muted">Sin tareas pendientes con este alumno.</div>'}</div>`;
 }
 function vTareasAlumnos() {
-  if (!S.c?.tareas?.length) return '';
-  const l = S.c.tareas.slice().sort(ordTareas), venc = l.filter(t => t.vence && t.vence < hoyISO()).length;
+  if (!S.c?.tareas?.some(t => t.alumno_id)) return '';
+  const l = S.c.tareas.filter(t => t.alumno_id).sort(ordTareas), venc = l.filter(t => t.vence && t.vence < hoyISO()).length;
   return `<section class="section"><div class="section-head"><h2>Tareas de alumnos · ${l.length}</h2>${venc ? `<span class="pill bad">${venc} vencida${venc === 1 ? '' : 's'}</span>` : ''}</div><div class="card">${l.slice(0, 12).map(t => filaTarea(t, true)).join('')}${l.length > 12 ? `<div class="small muted" style="padding:8px 0">y ${l.length - 12} más…</div>` : ''}</div></section>`;
 }
-function formTarea(id, alumnoId) {
-  const t = id ? (S.c.tareas || []).find(x => x.id === id) : null, aid = t?.alumno_id || alumnoId;
-  abrirSheet(`<form class="stack" id="f-tar"><h2>${t ? 'Editar tarea' : 'Nueva tarea'}</h2><p class="small muted" style="margin-top:-8px">${esc(S.c.perfiles.find(x => x.id === aid)?.nombre || '')} · solo la ves tú</p>
-    <label class="f">Qué tienes que hacer<textarea id="ta-t" rows="3" required placeholder="Ej. Cambiarle el bloque de pierna, revisar su técnica de sentadilla…">${esc(t?.texto || '')}</textarea></label>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="f">Fecha límite<input type="date" id="ta-v" value="${esc(t?.vence || '')}"></label><label class="f">Prioridad<select id="ta-p">${Object.entries(PRIO).map(([k, v]) => `<option value="${k}" ${(t?.prioridad || 'media') === k ? 'selected' : ''}>${v[0]}</option>`).join('')}</select></label></div>
+function formTarea(id, alumnoId, texto0) {
+  const t = id ? (S.c.tareas || []).find(x => x.id === id) : null, aid = t ? t.alumno_id : alumnoId, libre = !t && (alumnoId === undefined || alumnoId === '');
+  const als = S.c.perfiles.filter(x => esCliente(x)).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  abrirSheet(`<form class="stack" id="f-tar"><h2>${t ? 'Editar tarea' : 'Nueva tarea'}</h2>
+    ${libre || (t && !t.alumno_id) ? `<label class="f">¿De qué es?<select id="ta-a"><option value="">Del negocio</option>${als.map(x => `<option value="${x.id}" ${x.id === aid ? 'selected' : ''}>De ${esc(x.nombre)}</option>`).join('')}</select></label>` : `<p class="small muted" style="margin-top:-8px">${esc(S.c.perfiles.find(x => x.id === aid)?.nombre || '')} · solo la ves tú</p>`}
+    <label class="f">Qué tienes que hacer<textarea id="ta-t" rows="3" required placeholder="Ej. Cambiarle el bloque de pierna, revisar su técnica de sentadilla…">${esc(t?.texto ?? texto0 ?? '')}</textarea></label>
+    <div style="display:grid;grid-template-columns:1fr 110px;gap:8px"><label class="f">Fecha<input type="date" id="ta-v" value="${esc(t?.vence || hoyISO())}"></label><label class="f">Hora${inHora('ta-h', t?.hora)}</label></div>
+    <label class="f">Prioridad<select id="ta-n"><option value="">Automática (según la fecha)</option>${Object.entries(TD_NIV).map(([k, v]) => `<option value="${k}" ${t?.nivel === k ? 'selected' : ''}>${v[0]}</option>`).join('')}</select></label>
     <button class="btn full">Guardar</button>${t ? '<button type="button" class="btn ghost full" id="ta-del" style="color:var(--bad)">Borrar tarea</button>' : ''}</form>`);
   $('#f-tar').addEventListener('submit', async e => { e.preventDefault();
-    const row = { texto: $('#ta-t').value.trim(), vence: $('#ta-v').value || null, prioridad: $('#ta-p').value }; if (!row.texto) return;
-    const r = t ? await sb.from('tareas_coach').update(row).eq('id', t.id).select().single() : await sb.from('tareas_coach').insert({ ...row, alumno_id: aid }).select().single();
-    if (r.error) return fallo(r.error, 'Falta ejecutar el Bloque 75 en Supabase.');
+    const h = normHora($('#ta-h').value); if (h === undefined) return toast('Hora no válida: escríbela así, 9:30 o 18:00');
+    const al = $('#ta-a') ? ($('#ta-a').value || null) : aid;
+    const row = { texto: $('#ta-t').value.trim(), vence: $('#ta-v').value || null, hora: h || null, nivel: $('#ta-n').value || null, prioridad: t?.prioridad || 'media', alumno_id: al }; if (!row.texto) return;
+    const guarda = r => t ? sb.from('tareas_coach').update(r).eq('id', t.id).select().single() : sb.from('tareas_coach').insert(r).select().single();
+    let r = await guarda(row);
+    if (r.error && /hora|nivel|column/i.test(r.error.message || '') && !/null value/i.test(r.error.message || '')) { const { hora, nivel, ...b } = row; r = await guarda(b); if (!r.error) toast('Guardada sin hora ni prioridad: ejecuta el Bloque 105 en Supabase'); }
+    if (r.error) return fallo(r.error, /null value|alumno_id/i.test(r.error.message || '') ? 'Para tareas del negocio ejecuta el Bloque 105 en Supabase.' : 'Falta ejecutar el Bloque 75 en Supabase.');
     S.c.tareas = [...(S.c.tareas || []).filter(x => x.id !== r.data.id), r.data]; cerrarSheet(); toast('Tarea guardada'); render(); });
   $('#ta-del')?.addEventListener('click', async () => { const { error } = await sb.from('tareas_coach').delete().eq('id', t.id); if (error) return fallo(error); S.c.tareas = S.c.tareas.filter(x => x.id !== t.id); cerrarSheet(); render(); });
 }
@@ -8152,7 +8202,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v338';
+const APP_VER = 'v339';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8340,7 +8390,11 @@ document.addEventListener('click', async e => {
   switch (a) {
     case 'ia': await IA.accion(b); break;
     case 'duoElegir': duoElegir(); break;
-    case 'tareaEditar': formTarea(b.dataset.id ? +b.dataset.id : null, b.dataset.al || S.ficha?.id); break;
+    case 'tareaEditar': formTarea(b.dataset.id ? +b.dataset.id : null, b.dataset.al === '' ? '' : (b.dataset.al || S.ficha?.id)); break;
+    case 'tdNeg': S.ecoTab = b.dataset.t; try { localStorage.setItem('lof-eco-tab', S.ecoTab); } catch (e) { } S.ctab = 'pagos'; S.ficha = null; render(); window.scrollTo(0, 0); break;
+    case 'alTarea2': formTarea(null, '', `${b.dataset.m}: `); break;
+    case 'alTarea': formTarea(null, b.dataset.id, `${b.dataset.m}: `); break;
+    case 'alWa': { const n = waNum(b.dataset.id); window.open(`https://wa.me/${n}`, '_blank', 'noopener'); if (!n) toast('Añade su teléfono en Datos del alumno para abrir su chat directo'); break; }
     case 'tareaHecha': await tareaHecha(+b.dataset.id); break;
     case 'histAvisos': histAvisos(b.dataset.id); break;
     case 'duoIr': await duoIr(b.dataset.id); break;
