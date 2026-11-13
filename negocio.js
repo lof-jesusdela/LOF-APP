@@ -269,16 +269,16 @@ const Negocio = (() => {
   /* ---------- Recordatorios de seguimiento: cambios que apuntas para sus entrenos, programa o app, en tu orden de prioridad ---------- */
   const TIPOS_REC = { entreno: '🏋️ Entreno', programa: '📋 Programa', nutricion: '🥗 Alimentación', app: '📱 App', otro: '📝 Otro' };
   const recPend = aid => (S.c.recordatorios || []).filter(x => !x.hecho_at && (!aid || x.alumno_id === aid)).sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || a.id - b.id);
-  function vRecordatorios(aid) {
+  function vRecordatorios(aid, plano) {
     if (S.c.recErr) return aid ? '' : `<section class="section"><div class="card small muted">Para usar los recordatorios, ejecuta el Bloque 62 en Supabase.</div></section>`;
     const l = recPend(aid), hechos = (S.c.recordatorios || []).filter(x => x.hecho_at && (!aid || x.alumno_id === aid)).slice(-5).reverse();
     const nom = id => (S.c.perfiles.find(p => p.id === id)?.nombre || '').split(' ')[0];
-    return `<section class="section"><div class="section-head"><h2>Recordatorios${aid ? '' : ' de seguimiento'}</h2><button class="btn sm ghost" data-act="recNuevo" data-al="${aid || ''}">＋ Recordatorio</button></div>
-      <div class="card">${l.map((x, i) => `<div class="line" style="gap:8px;align-items:flex-start"><button class="ag-chk" data-act="recHecho" data-id="${x.id}" aria-label="Marcar como hecho"></button><span class="pill gold num" style="flex:none">${i + 1}</span>
+    return `<${plano ? 'div class="stack" style="gap:6px"' : 'section class="section"'}><div class="section-head">${plano ? '<b>Recordatorios</b>' : `<h2>Recordatorios${aid ? '' : ' de seguimiento'}</h2>`}<button class="btn sm ghost" data-act="recNuevo" data-al="${aid || ''}">＋ Recordatorio</button></div>
+      <div class="${plano ? '' : 'card'}">${l.map((x, i) => `<div class="line" style="gap:8px;align-items:flex-start"><button class="ag-chk" data-act="recHecho" data-id="${x.id}" aria-label="Marcar como hecho"></button><span class="pill gold num" style="flex:none">${i + 1}</span>
         <div class="grow stack" style="gap:2px" data-act="recNuevo" data-id="${x.id}"><span class="small" style="cursor:pointer">${esc(x.texto)}</span><span class="small muted">${TIPOS_REC[x.tipo] || ''}${!aid && x.alumno_id ? ` · <button class="linkbtn small" data-act="ficha" data-id="${x.alumno_id}">${esc(nom(x.alumno_id))} ›</button>` : ''} · ${esc(fCorta((x.created_at || hoyISO()).slice(0, 10)))}</span></div>
         <span class="stack" style="gap:2px"><button class="btn sm ghost" data-act="recMover" data-id="${x.id}" data-dir="-1" aria-label="Subir prioridad" ${i === 0 ? 'disabled' : ''} style="padding:2px 10px">▲</button><button class="btn sm ghost" data-act="recMover" data-id="${x.id}" data-dir="1" aria-label="Bajar prioridad" ${i === l.length - 1 ? 'disabled' : ''} style="padding:2px 10px">▼</button></span></div>`).join('') || `<div class="empty">${aid ? 'Sin recordatorios para este alumno.' : 'Sin recordatorios pendientes. Apúntalos durante el seguimiento desde aquí o desde su ficha.'}</div>`}
       ${hechos.length ? `<details class="small" style="margin-top:6px"><summary class="muted">Hechos recientemente (${hechos.length})</summary>${hechos.map(x => `<div class="row small" style="gap:8px;padding:4px 0"><span class="grow muted" style="text-decoration:line-through">${esc(x.texto)}${!aid && x.alumno_id ? ' · ' + esc(nom(x.alumno_id)) : ''}</span><button class="linkbtn small" data-act="recDeshacer" data-id="${x.id}">Deshacer</button></div>`).join('')}</details>` : ''}</div>
-      ${l.length > 1 ? '<p class="small muted">El orden es tu prioridad: ▲▼ para atacarlos antes o después.</p>' : ''}</section>`;
+      ${l.length > 1 ? '<p class="small muted">El orden es tu prioridad: ▲▼ para atacarlos antes o después.</p>' : ''}</${plano ? 'div' : 'section'}>`;
   }
   function formRec(id, aid) {
     const x = id ? (S.c.recordatorios || []).find(r => r.id === id) : null, als = S.c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach');
