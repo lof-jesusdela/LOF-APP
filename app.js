@@ -493,7 +493,7 @@ function vLateral(actual) {
   const fav = favoritos().map(byId).filter(Boolean), rec = recientes().map(byId).filter(a => a && !fav.includes(a)).slice(0, 6);
   const at = cl.filter(a => !fav.includes(a) && !rec.includes(a)).map(a => ({ a, e: estadoAlumno(a) })).filter(x => x.e.nivel === 'bad').slice(0, 6).map(x => x.a);
   return `<aside class="lateral" aria-label="Navegación del coach">
-    <nav class="lat-nav">${nav.map(([k, l]) => `<button data-act="ctab" data-t="${k}" ${actual === k && !S.ficha && !S.reporte && !S.editor && !S.obj ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span></button>`).join('')}<button data-act="abrirReporte" ${S.reporte && !S.reporte.alumno ? 'aria-current="page"' : ''}>${svg('checkin')}<span>Reporting semanal</span></button></nav>
+    <nav class="lat-nav">${nav.map(([k, l]) => `<button data-act="ctab" data-t="${k}" ${actual === k && !S.ficha && !S.reporte && !S.editor && !S.obj ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span></button>`).join('')}</nav>
     <input type="search" id="lat-busca" class="lat-busca" placeholder="Buscar entre ${cl.length} clientes…" value="${esc(S.alF.q)}" aria-label="Buscar alumno" autocomplete="off" style="margin-top:16px">
     <div class="lat-al" id="lat-al">${res ? (res.length ? res.map(btn).join('') : '<div class="small muted" style="padding:8px 12px">Sin resultados</div>') : sec('★ Favoritos', fav) + sec('🕘 Recientes', rec) + sec('🔴 Requieren revisión', at) || '<div class="small muted" style="padding:8px 12px">Abre fichas o márcalas con ★ para tenerlas aquí.</div>'}</div>
     <button class="linkbtn small" data-act="ctab" data-t="alumnos" style="margin:6px 12px">Ver todos (${cl.length}) ›</button>
@@ -3585,11 +3585,12 @@ async function irA(aid, o = {}) {
   if (o.ancla) resaltar(o.ancla);
 }
 function resaltar(id) {
-  setTimeout(() => { const el = document.getElementById(id); if (!el) return; el.scrollIntoView({ behavior: 'smooth', block: 'start' }); el.classList.add('aviso-foco'); setTimeout(() => el.classList.remove('aviso-foco'), 2800); }, 350);
+  setTimeout(() => { const el = document.getElementById(id); if (!el) return; el.scrollIntoView({ behavior: 'smooth', block: 'start' }); el.classList.add('aviso-foco'); setTimeout(() => el.classList.remove('aviso-foco'), 9000); }, 350);
 }
 /* Cada aviso lleva a su sitio (por el texto del aviso): si no se reconoce, a la ficha */
 function alIr(aid, m) {
   cerrarSheet(); m = m || '';
+  Alertas.verTodas(aid, [m]); S.alFoco = { aid, m };   // al entrar se da por vista y se señala en rojo en la ficha
   if (/Revisión mensual \d+ pendiente/.test(m)) { S.proponer = { aid }; return verAgenda(); }   // revisión pendiente: directo a agendarla
   if (/^🎯/.test(m)) return irA(aid, { tab: 'resumen' });
   const rv = /Revisión mensual (\d+)/.exec(m); if (rv) return irA(aid, { fn: () => formRevision(+rv[1], null) });
@@ -3609,6 +3610,15 @@ function alIr(aid, m) {
   return irA(aid);
 }
 /* ======================= TU DÍA: calendario de la semana, tareas por prioridad, alertas rojas y alertas del negocio ======================= */
+/* Lo que el coach ya ha abierto desde una notificación se da por visto (como un mail leído); se guarda en ajustes_privados «vistos_coach» */
+const vistosCoach = () => { try { return JSON.parse(S.c?.fiscal?.vistos_coach || '{}') || {}; } catch (e) { return {}; } };
+const vistoCoach = k => !!vistosCoach()[k];
+async function marcaVisto(...ks) {
+  const v = vistosCoach(), h = hoyISO(); ks.forEach(k => { v[k] = h; });
+  const claves = Object.keys(v); if (claves.length > 300) claves.sort((p, q) => v[p].localeCompare(v[q])).slice(0, claves.length - 300).forEach(k => delete v[k]);
+  const txt = JSON.stringify(v); (S.c.fiscal ||= {}).vistos_coach = txt;
+  try { await sb.from('ajustes_privados').upsert({ clave: 'vistos_coach', valor: txt }, { onConflict: 'clave' }); } catch (e) { }
+}
 const nivelTarea = t => { const h = hoyISO(); return t.nivel || (!t.vence || t.vence > sumaDias(h, 3) ? 'semana' : t.vence <= h ? 'hoy' : '3dias'); };
 const tareaVencida = t => { const h = hoyISO(), n = new Date(), ahora = `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`; return !!t.vence && (t.vence < h || (t.vence === h && !!t.hora && String(t.hora).slice(0, 5) < ahora)); };
 function tdCalendario() {
@@ -3632,16 +3642,16 @@ function tdTareas() {
 }
 function tdAlertasAlumnos() {
   const cl = (S.c.perfiles || []).filter(esCliente), out = [];
-  cl.forEach(a => { try { estadoAlumno(a).items.filter(x => !x.ok && x.n === 'bad').forEach(x => out.push({ a, x })); } catch (e) { } });
+  cl.forEach(a => { try { estadoAlumno(a).items.filter(x => !x.ok && x.n === 'bad' && x.nueva).forEach(x => out.push({ a, x })); } catch (e) { } });
   const pri = o => /^🎯|^🩹/.test(o.x.m) ? 0 : 1; out.sort((p, q) => pri(p) - pri(q));
   const fila = ({ a, x }) => `<div class="line" style="align-items:flex-start;gap:8px;flex-wrap:wrap"><span class="al-dot-s" style="background:var(--bad);margin-top:6px"></span><div class="grow stack" style="gap:2px;min-width:200px"><b class="small">${esc(a.nombre)}</b><span class="small">${esc(x.m)}</span></div>
     <span class="row" style="gap:6px;flex-wrap:wrap"><button class="btn sm" data-act="alIr" data-id="${a.id}" data-m="${esc(x.m)}">Ir ›</button>${/motivaci|emocional|mental/i.test(x.m) ? `<button class="btn sm ghost" data-act="alWa" data-id="${a.id}">💬 WhatsApp</button>` : ''}<button class="btn sm ghost" data-act="alTarea" data-id="${a.id}" data-m="${esc(x.m.slice(0, 80))}">＋ Tarea</button>${x.comp ? '' : `<button class="btn sm ghost" data-act="alResolver" data-id="${a.id}" data-m="${esc(x.m)}" data-on="1">✓ Solventado</button>`}</span></div>`;
   return `<section class="section"><div class="section-head"><h2>🔴 Alertas de alumnos <span class="muted small">· ${out.length}</span></h2><button class="btn sm ghost" data-act="ctab" data-t="alumnos">Ver alumnos</button></div><div class="card">${out.slice(0, 15).map(fila).join('') || '<div class="empty">Ninguna alerta roja. 👌</div>'}${out.length > 15 ? `<div class="small muted" style="padding:8px 0">y ${out.length - 15} más…</div>` : ''}</div></section>`;
 }
 function tdAlertasNegocio() {
-  const l = Compromisos.abiertos().filter(x => x.tipo === 'gasto' || x.tipo === 'cobro').sort(Compromisos.ordenar);
+  const l = Compromisos.abiertos().filter(x => (x.tipo === 'gasto' || x.tipo === 'cobro') && !vistoCoach('neg|' + x.id)).sort(Compromisos.ordenar);
   const fila = x => `<div class="line" style="align-items:flex-start;gap:8px;flex-wrap:wrap"><span class="al-dot-s" style="background:var(--${x.atraso ? 'bad' : 'warn'});margin-top:6px"></span><div class="grow stack" style="gap:2px;min-width:200px"><b class="small">${x.aid ? esc(Compromisos.corto(x.aid)) + ' · ' : ''}${esc(x.titulo)}</b><span class="small muted">${esc(Compromisos.T[x.tipo].uno)} · ${Compromisos.venceTxt(x)}</span></div>
-    <span class="row" style="gap:6px;flex-wrap:wrap"><button class="btn sm" data-act="tdNeg" data-t="${x.tipo === 'gasto' ? 'caja' : 'cobros'}">Ir a Negocio ›</button><button class="btn sm ghost" data-act="alTarea2" data-m="${esc(x.titulo.slice(0, 80))}">＋ Tarea</button>${x.tipo === 'cobro' ? `<button class="btn sm ghost" data-act="cmSolv" data-id="${esc(x.id)}">✓ Solventado</button>` : ''}</span></div>`;
+    <span class="row" style="gap:6px;flex-wrap:wrap"><button class="btn sm" data-act="tdNeg" data-id="${esc(x.id)}" data-t="${x.tipo === 'gasto' ? 'caja' : 'cobros'}">Ir a Negocio ›</button><button class="btn sm ghost" data-act="alTarea2" data-m="${esc(x.titulo.slice(0, 80))}">＋ Tarea</button>${x.tipo === 'cobro' ? `<button class="btn sm ghost" data-act="cmSolv" data-id="${esc(x.id)}">✓ Solventado</button>` : ''}</span></div>`;
   return `<section class="section"><div class="section-head"><h2>🏢 Alertas del negocio <span class="muted small">· ${l.length}</span></h2></div><div class="card">${l.slice(0, 10).map(fila).join('') || '<div class="empty">Nada pendiente en el negocio. 👌</div>'}${l.length > 10 ? `<div class="small muted" style="padding:8px 0">y ${l.length - 10} más…</div>` : ''}</div></section>`;
 }
 function vTuDia() {
@@ -4482,6 +4492,11 @@ function histAvisos(aid) {
 /* Banners de la ficha: recuerda cuáles tienes abiertos */
 document.addEventListener('toggle', e => { const d = e.target; if (d?.classList?.contains('fb')) ((S.fbAbiertos ||= {})[S.ficha?.id] ||= {})[d.dataset.fb] = d.open; }, true);
 function vFicha() {
+  const al = S.alFoco, f0 = S.ficha;
+  const ban = al && f0 && al.aid === f0.id ? `<section class="section"><div class="card stack" style="border:2px solid var(--bad);background:color-mix(in srgb,var(--bad) 8%,var(--card,#fff));gap:8px"><b style="color:var(--bad)">🔴 Alerta que vienes a resolver</b><div class="small">${esc(al.m)}</div><div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn sm ghost" data-act="alTarea" data-id="${al.aid}" data-m="${esc(String(al.m).slice(0, 80))}">＋ Tarea</button><button class="btn sm ghost" data-act="alResolver" data-id="${al.aid}" data-m="${esc(al.m)}" data-on="1">✓ Solventado</button><button class="btn sm ghost" data-act="alFocoOk">Entendido</button></div></div></section>` : '';
+  return ban + vFichaBase();
+}
+function vFichaBase() {
   const f = S.ficha, a = S.c.perfiles.find(p => p.id === f.id) || {};
   if (f.cargando) return '<div class="empty">Cargando ficha…</div>';
   if (S.fichaSub) return vFichaSub(f, a);
@@ -8202,7 +8217,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v339';
+const APP_VER = 'v340';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8391,7 +8406,7 @@ document.addEventListener('click', async e => {
     case 'ia': await IA.accion(b); break;
     case 'duoElegir': duoElegir(); break;
     case 'tareaEditar': formTarea(b.dataset.id ? +b.dataset.id : null, b.dataset.al === '' ? '' : (b.dataset.al || S.ficha?.id)); break;
-    case 'tdNeg': S.ecoTab = b.dataset.t; try { localStorage.setItem('lof-eco-tab', S.ecoTab); } catch (e) { } S.ctab = 'pagos'; S.ficha = null; render(); window.scrollTo(0, 0); break;
+    case 'tdNeg': marcaVisto('neg|' + b.dataset.id); S.ecoTab = b.dataset.t; try { localStorage.setItem('lof-eco-tab', S.ecoTab); } catch (e) { } S.ctab = 'pagos'; S.ficha = null; render(); window.scrollTo(0, 0); break;
     case 'alTarea2': formTarea(null, '', `${b.dataset.m}: `); break;
     case 'alTarea': formTarea(null, b.dataset.id, `${b.dataset.m}: `); break;
     case 'alWa': { const n = waNum(b.dataset.id); window.open(`https://wa.me/${n}`, '_blank', 'noopener'); if (!n) toast('Añade su teléfono en Datos del alumno para abrir su chat directo'); break; }
@@ -8402,7 +8417,7 @@ document.addEventListener('click', async e => {
       S.tab = b.dataset.t; if (!enCurso()) { S.dia = null; S.sesion = null; } S.chipsCargados = false; render(); window.scrollTo(0, 0); break;
     case 'sinWhatsapp': toast('Jesús aún no ha puesto su WhatsApp en la app'); break;
     case 'metSub': S.metSub = b.dataset.v; render(); window.scrollTo(0, 0); break;
-    case 'ctab': if (S.obj) await aparcarOSalir(); S.iaCoach = false; S.reporte = null; S.factura = null; S.ctab = b.dataset.t; S.ficha = null; S.editor = null; render(); window.scrollTo(0, 0); break;
+    case 'ctab': S.alFoco = null; if (S.obj) await aparcarOSalir(); S.iaCoach = false; S.reporte = null; S.factura = null; S.ctab = b.dataset.t; S.ficha = null; S.editor = null; render(); window.scrollTo(0, 0); break;
     case 'modo': if (S.obj) await aparcarOSalir(); S.iaCoach = false; S.ia = false; S.modo = b.dataset.v; S.ficha = null; S.editor = null; S.fichaSub = null; if (S.modo === 'coach') await cargarCoach(); else if (S.perfil?.rol === 'coach' && !S.prueba && !S.vista) await cargarAlumno(S.user.id); render(); window.scrollTo(0, 0); break;
     case 'abrirDia': await abrirDia(+b.dataset.id); break;
     case 'cerrarDia': if (enCurso()) { S.tab = 'hoy'; toast('Tu entreno sigue en curso: vuelve desde la barra azul'); } else { S.dia = null; S.sesion = null; } render(); break;
@@ -8549,7 +8564,7 @@ document.addEventListener('click', async e => {
     case 'alIr': alIr(b.dataset.id, b.dataset.m); break;
     case 'alConfig': formAvisos(b.dataset.id); break;
     case 'pesoVisto': await pesoVisto(b.dataset.id); toast('Cambios de peso revisados'); render(); break;
-    case 'irAviso': irA(b.dataset.id, { tab: b.dataset.tab || null, sub: b.dataset.sub || null, ancla: b.dataset.ancla || null }); break;
+    case 'irAviso': marcaVisto(...(b.dataset.k ? [`nu|${b.dataset.id}|${b.dataset.k}`] : Nutricion.colaRevisiones().filter(q => q.a.id === b.dataset.id).flatMap(q => q.items.map(x => `nu|${b.dataset.id}|${x.motivo}`)))); irA(b.dataset.id, { tab: b.dataset.tab || null, sub: b.dataset.sub || null, ancla: b.dataset.ancla || null }); break;
     case 'checkin': controlFut(); break;
     case 'futSem': S.ficha.semFut = b.dataset.l; S.ficha.diaFut = null; render(); break;
     case 'futEquipo': formEquipo(b.dataset.al); break;
@@ -8569,7 +8584,8 @@ document.addEventListener('click', async e => {
     case 'alResolver': { const enSheet = !!b.closest('#sheet'), on = b.dataset.on === '1', nota = null; if (on && !confirm('¿Seguro que ya está solventado?')) break; const ms = b.dataset.m.split('\n'); for (const m of ms) await Alertas.resolver(b.dataset.id, m, on, nota); if (on && ms.some(m => /ha cambiado su peso/i.test(m))) await pesoVisto(b.dataset.id); toast(on ? (ms.length > 1 ? `${ms.length} avisos solventados` : 'Marcado como solventado') : 'Vuelve a estar pendiente'); render(); if (enSheet) verAlertas(b.dataset.id); break; }
     case 'alFiltro': S.alF.k = S.alF.k === b.dataset.k ? '' : b.dataset.k; if (S.obj) await aparcarOSalir(); S.ficha = null; S.reporte = null; S.factura = null; S.editor = null; S.ctab = 'alumnos'; render(); if (S.alF.k) $('#al-lista')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
     case 'inicio': if (S.modo === 'coach') { if (S.obj) await aparcarOSalir(); Object.assign(S, { iaCoach: false, reporte: null, factura: null, ficha: null, editor: null, verSes: null, verPlan: null, valEd: null, fichaSub: null, ctab: 'inicio' }); } else { S.ia = false; if (!S.dia) S.tab = 'hoy'; } cerrarSheet(); render(); window.scrollTo(0, 0); break;
-    case 'cerrarFicha': S.ficha = null; S.verSes = null; S.verPlan = null; S.valEd = null; render(); break;
+    case 'alFocoOk': S.alFoco = null; render(); break;
+    case 'cerrarFicha': S.alFoco = null; S.ficha = null; S.verSes = null; S.verPlan = null; S.valEd = null; render(); break;
     case 'cerrarVerSesion': S.verSes = null; render(); window.scrollTo(0, 0); break;
     case 'verPlan': verPlan(+b.dataset.p, +b.dataset.d); break;
     case 'editarPlantilla': await abrirEditor(null, +b.dataset.id); break;

@@ -592,7 +592,8 @@ const Nutricion = (() => {
       if (chk?.aplicacion_plan === 'ayuda') add('duda', 'Pide ayuda para adaptar el plan' + (chk.dificultades ? `: «${chk.dificultades.slice(0, 90)}»` : ''), sumaDias(lAnt, 7), 'Responder en su devolución', { tab: 'checkins', ancla: 'ac-chk' });
       const nc = (c.creacionesNuevas || []).filter(x => x.alumno_id === a.id).length;
       if (nc) add('duda', `${nc} plato${nc > 1 ? 's' : ''} compartido${nc > 1 ? 's' : ''} sin revisar`, hoy, 'Revisarlos en la próxima revisión', { sub: 'alimentacion', ancla: 'nu-crea' });
-      if (items.length) out.push({ a, items: items.sort((x, y) => String(x.fecha).localeCompare(String(y.fecha))) });
+      const nuevos = items.filter(x => !(typeof vistoCoach === 'function' && vistoCoach(`nu|${a.id}|${x.motivo}`)));   // lo que ya abriste se va, como un mail leído
+      if (nuevos.length) out.push({ a, items: nuevos.sort((x, y) => String(x.fecha).localeCompare(String(y.fecha))) });
     });
     return out.sort((x, y) => String(x.items[0].fecha).localeCompare(String(y.items[0].fecha)));
   }
@@ -611,7 +612,7 @@ const Nutricion = (() => {
     abrirSheet(`<div class="stack"><span class="eyebrow">Nutrición</span><h2>Revisiones pendientes</h2>
       <p class="small muted" style="margin-top:-6px">Solo lo que pide una decisión tuya. Las fotos, las variaciones y los días sin registro no aparecen como incidencias.</p>
       ${l.length ? l.map(({ a, items }) => `<div class="card stack" style="gap:6px"><div class="row"><b class="grow">${esc(a.nombre)}</b><button class="btn sm ghost" data-act="irAviso" data-id="${a.id}">Ficha ›</button></div>
-        ${items.map(x => `<button class="coh-l cola-ir" data-act="irAviso" data-id="${a.id}" data-sub="${x.ir.sub || ''}" data-tab="${x.ir.tab || ''}" data-ancla="${x.ir.ancla || ''}"><span class="pill ${TIPO[x.tipo][1]}" style="flex:none">${TIPO[x.tipo][0]}</span><span class="grow"><b>${esc(x.motivo)}</b><br><span class="muted">${esc(fCorta(x.fecha))} · ${esc(x.resp)} · ${esc(x.accion)}</span></span><span class="cola-flecha" aria-hidden="true">›</span></button>`).join('')}</div>`).join('') : '<div class="card small muted">No hay revisiones pendientes de nutrición.</div>'}
+        ${items.map(x => `<button class="coh-l cola-ir" data-act="irAviso" data-k="${esc(x.motivo)}" data-id="${a.id}" data-sub="${x.ir.sub || ''}" data-tab="${x.ir.tab || ''}" data-ancla="${x.ir.ancla || ''}"><span class="pill ${TIPO[x.tipo][1]}" style="flex:none">${TIPO[x.tipo][0]}</span><span class="grow"><b>${esc(x.motivo)}</b><br><span class="muted">${esc(fCorta(x.fecha))} · ${esc(x.resp)} · ${esc(x.accion)}</span></span><span class="cola-flecha" aria-hidden="true">›</span></button>`).join('')}</div>`).join('') : '<div class="card small muted">No hay revisiones pendientes de nutrición.</div>'}
       <details class="card small"><summary><b>Métricas (automáticas)</b></summary><div class="stack" style="gap:4px;margin-top:6px">
         <div>Días desde el inicio de la incorporación hasta publicar el plan: <b>${M.dias != null ? fmtNum(M.dias, 0) + ' (mediana de ' + M.n + ')' : 'sin datos aún'}</b></div>
         <div>Ajustes de contextos (versiones después de la primera): <b>${M.ajustes != null ? M.ajustes + ' en ' + M.conVersion + ' alumno' + (M.conVersion > 1 ? 's' : '') : 'sin datos aún'}</b></div>
