@@ -3592,13 +3592,13 @@ function alIr(aid, m) {
   cerrarSheet(); m = m || '';
   Alertas.verTodas(aid, [m]); S.alFoco = { aid, m };   // al entrar se da por vista y se señala en rojo en la ficha
   if (/Revisión mensual \d+ pendiente/.test(m)) { S.proponer = { aid }; return verAgenda(); }   // revisión pendiente: directo a agendarla
-  if (/^🎯/.test(m)) return irA(aid, { tab: 'resumen' });
+  if (/^🎯/.test(m)) return irA(aid, { tab: 'resumen', ancla: 'ac-prox' });
   const rv = /Revisión mensual (\d+)/.exec(m); if (rv) return irA(aid, { fn: () => formRevision(+rv[1], null) });
   if (/revisi[oó]n(es)? mensual/i.test(m)) { const c = estadoAlumno(S.c.perfiles.find(x => x.id === aid) || {}).control; return irA(aid, c ? { fn: () => formRevision(c.n, null) } : { tab: 'calendario' }); }
   if (/fatiga|molestia|pico de carga|cuestionario del lunes|planificación del equipo/i.test(m)) return checkinSheet(aid);
   if (/ha cambiado su peso en/i.test(m) && (S.c.cambiosPeso || []).filter(c => c.alumno_id === aid).length > 1) return irA(aid, { sub: 'entreno', ancla: 'ent-peso' });
   if (/ha cambiado su peso en/i.test(m)) { const x = (S.c.cambiosPeso || []).find(c => c.alumno_id === aid && (!c.ejercicio || m.includes(c.ejercicio))); if (x?.sesion_id) return irA(aid, { fn: () => verSesion(x.sesion_id) }); return irA(aid, { sub: 'entreno' }); }
-  if (/pago|cobro/i.test(m)) return irA(aid, { tab: 'pagos' });
+  if (/pago|cobro/i.test(m)) { const pv = (S.c.pagos || []).filter(p => p.alumno_id === aid && !p.pagado_at && p.vence < hoyISO()).sort((x, y) => x.vence.localeCompare(y.vence))[0]; return irA(aid, { tab: 'pagos', ancla: pv ? 'pago-' + pv.id : null }); }
   if (/del bono|bono agotado/i.test(m)) return irA(aid, { tab: 'calendario' });
   if (/devoluci[oó]n|check-in de la semana|motivaci[oó]n/i.test(m)) return irA(aid, { tab: 'checkins', ancla: 'ac-chk' });
   if (/pr[oó]xima acci[oó]n/i.test(m)) return irA(aid, { tab: 'resumen', ancla: 'ac-prox' });
@@ -6003,6 +6003,7 @@ function vReporteAlumno(a, R, detalle) {
   const semTxt = d.P && !d.P.antes ? `Semana ${d.P.semana} del proceso · ${esc(nomCiclo(d.P.cc))}, semana ${d.P.semCiclo} de ${d.P.cc.sem}` : 'Sin fecha de inicio';
   const com = detalle ? d.coment : d.coment.slice(0, 4);
   return `<div class="card stack"><div class="row"><div class="grow"><h3>${esc(a.nombre)}</h3><div class="small muted">${semTxt}</div></div>${detalle ? '' : `<button class="btn sm ghost" data-act="abrirReporte" data-id="${a.id}">Ver</button>`}</div>
+    <div class="aprox small stack" style="gap:3px"><span>🎯 <b>Foco de esta persona</b></span>${Foco.linea(a.id)}</div>
     <div class="kpis">${caja('Entrenos', d.dpw ? `${Math.min(w.entrenos, d.dpw)}/${d.dpw}` : w.entrenos, d.pctE != null ? `${d.pctE} %${w.entrenos > d.dpw ? ` · +${w.entrenos - d.dpw} extra` : ''}${w.ent?.retomadas ? ` · ${w.ent.retomadas} retomada${w.ent.retomadas === 1 ? '' : 's'} (cuenta una vez)` : ''}` : 'sin plan', d.nivel(d.pctE))}
       ${d.srv?.modulo_nutricion && midoCoach(a.id) && Nutricion.acuerdoDe(planNutriDe(a.id)).nivel === 'ligero' ? caja('Alimentación', w.chk?.aplicacion_plan ? { aplicado: '✓', parte: '½', ayuda: '?' }[w.chk.aplicacion_plan] : '—', w.chk?.aplicacion_plan ? esc(aplTxt(w.chk.aplicacion_plan)) + ' · seguimiento ligero' : 'seguimiento ligero · sin check-in', w.chk?.aplicacion_plan === 'aplicado' ? 'ok' : w.chk?.aplicacion_plan ? 'warn' : '') : d.srv?.modulo_nutricion && !midoCoach(a.id) ? caja('Alimentación', '—', esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || '') + ' · no se mide', '') : d.srv?.modulo_nutricion ? caja('Alimentación', w.nutri != null ? w.nutri + ' %' : '—', w.ing.dias ? `${w.ing.hechas}/${w.ing.posibles} ingestas de ${w.ing.dias} día${w.ing.dias > 1 ? 's' : ''} registrado${w.ing.dias > 1 ? 's' : ''} · ${w.nutri != null ? evalNutri(w.nutri)[1] : `pocos datos para valorar (mín. ${MIN_DIAS_NUTRI} días)`}` : w.chk?.nutricion_pct != null ? 'según su check-in' : 'sin días registrados', evalNutri(w.nutri)?.[0] || '') : ''}
       ${!conPasos(d.srv) ? '' : caja('Pasos', w.pasosMedia != null ? fmtNum(w.pasosMedia, 0) : '—', `obj. ${fmtNum(d.obj, 0)} · ${w.diasPasos}/7 días`, d.nivel(d.pctP))}</div>
@@ -6014,7 +6015,7 @@ function vReporteAlumno(a, R, detalle) {
     ${d.pres.length ? `<div class="small">Presenciales: ${d.pres.map(p => `${fCorta(p.fecha)} (${({ dada: 'hecha', tarde: 'aviso < 24 h', programada: 'reservada', cancelada: 'cancelada' })[p.estado] || p.estado})`).join(' · ')}</div>` : ''}
     ${com.length ? `<div class="stack" style="gap:6px"><span class="eyebrow">Lo que ha contado</span>${com.map(([t, f, x]) => `<div class="rep-c"><span class="small muted">${esc(t)} · ${esc(fCorta(f))}</span><div class="small">${esc(x)}</div></div>`).join('')}${!detalle && d.coment.length > 4 ? `<span class="small muted">y ${d.coment.length - 4} más…</span>` : ''}</div>` : '<p class="small muted">No ha dejado comentarios esta semana.</p>'}
     ${detalle && d.dpw ? `<div class="stack" style="gap:4px"><span class="eyebrow">Entrenamientos</span>${w.ses.map(x => `<div class="line" data-act="repVerSesion" data-id="${x.id}" data-al="${a.id}" style="cursor:pointer"><span class="small muted num" style="width:56px;flex:none">${esc(fCorta(x.fecha))}</span><div class="grow small"><b>${esc(nomDia(x.dias))}</b> · ${esc(x.dias?.foco || '')}${x.cansancio ? ` · cansancio ${x.cansancio}/5` : ''}${x.poderio ? ` · poderío ${x.poderio}/5` : ''}</div><span class="small muted">›</span></div>`).join('') || '<p class="small muted">Ningún entrenamiento registrado.</p>'}</div>` : ''}
-    ${detalle ? `<button class="btn full" data-act="reporteFicha" data-id="${a.id}">Abrir su ficha para revisarlo a fondo</button>` : ''}
+    ${detalle ? `<div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn grow" data-act="reporteFicha" data-id="${a.id}">Abrir su ficha para revisarlo a fondo</button><button class="btn ghost grow" data-act="alWa" data-id="${a.id}">💬 Habla con ${esc((a.nombre || '').split(' ')[0])}</button></div>` : ''}
   </div>`;
 }
 function vReporte() {
@@ -8114,7 +8115,7 @@ async function moverEj(id, dir) {
 function lineaPago(p) {
   const hoy = hoyISO(), st = p.pagado_at ? 'pagado' : p.vence < hoy ? 'vencido' : 'pendiente';
   const a = S.c.perfiles.find(x => x.id === p.alumno_id) || {};
-  return `<div class="line"><div class="grow" data-act="editarPago" data-id="${p.id}" style="cursor:pointer"><h3>${esc(a.nombre || '')}</h3><div class="small muted">${esc(p.concepto)} · vence ${esc(fCorta(p.vence))}${p.pagado_at ? ` · pagado ${esc(fCorta(p.pagado_at))}` : ''}</div></div>
+  return `<div class="line" id="pago-${p.id}" ${st === 'vencido' ? 'style="border-left:5px solid var(--bad);background:color-mix(in srgb,var(--bad) 9%,transparent);padding-left:10px;border-radius:10px"' : ''}><div class="grow" data-act="editarPago" data-id="${p.id}" style="cursor:pointer"><h3>${esc(a.nombre || '')}${st === 'vencido' ? ' <span class="pill bad">PAGO PENDIENTE · VENCIDO</span>' : ''}</h3><div class="small muted">${esc(p.concepto)} · vence ${esc(fCorta(p.vence))}${p.pagado_at ? ` · pagado ${esc(fCorta(p.pagado_at))}` : ''}</div></div>
     <div class="stack" style="gap:6px;align-items:flex-end"><b class="num" style="font-family:var(--display);font-size:20px">${fmtNum(p.importe, 2)} €</b>
     ${st === 'pagado' ? `<div class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><span class="pill ok">Pagado</span>${(() => { const fa = (S.c.facturas || []).find(x => x.pago_id === p.id); return fa ? `<button class="btn sm ghost" data-act="verFactura" data-id="${fa.id}">Factura ${esc(fa.numero)}</button>` : `<button class="btn sm" data-act="nuevaFactura" data-id="${p.id}">Factura</button><button class="btn sm ghost" data-act="deshacerPago" data-id="${p.id}">Deshacer pago</button>`; })()}</div>` : `<div class="row" style="gap:6px">${st === 'vencido' ? `<button class="btn sm ghost" data-act="recordar" data-id="${p.id}">Recordatorio</button>` : ''}<button class="btn sm${st === 'vencido' ? '' : ' ghost'}" data-act="pagar" data-id="${p.id}">Pagado</button></div>`}</div></div>`;
 }
@@ -8217,7 +8218,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v340';
+const APP_VER = 'v341';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
