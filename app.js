@@ -108,7 +108,7 @@ const IC = {
   cal: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
   plantillas: '<rect x="4" y="3" width="12" height="15" rx="2"/><path d="M8 21h10a2 2 0 0 0 2-2V7M7 8h6M7 12h6"/>'
 };
-const svg = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${IC[k]}</svg>`;
+const svg = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${IC[k === 'metodologia' ? 'plantillas' : k]}</svg>`;
 const CHK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 
 /* ---------- Estado ---------- */
@@ -486,14 +486,14 @@ function vLateralAlumno(tabs, actual) {
 function vLateral(actual) {
   if (!S.c?.perfiles) return '';
   const cl = S.c.perfiles.filter(esCliente), byId = id => cl.find(p => p.id === id), q = normaliza(S.alF.q);
-  const nav = [['inicio', 'Tu día'], ['alumnos', 'Alumnos'], ['plantillas', 'Plantillas'], ['ejercicios', 'Ejercicios'], ['pagos', 'Economía']];
+  const nav = [['inicio', 'Tu día'], ['alumnos', 'Alumnos'], ['metodologia', 'Metodología'], ['pagos', 'Negocio']];
   const btn = a => { const e = estadoAlumno(a); return `<button data-act="ficha" data-id="${a.id}" ${S.ficha?.id === a.id ? 'aria-current="page"' : ''}><i class="al-dot ${e.nuevas ? 'nueva' : ''}" data-act="verAlertas" data-id="${a.id}" role="button" aria-label="${e.nivel === 'bad' ? 'Revisar' : e.nivel === 'warn' ? 'Atención' : 'En camino'}: ver pendientes de ${esc(a.nombre)}" style="background:var(--${e.nivel})"></i><span class="grow">${esc(a.nombre)}</span>${e.nuevas ? `<b class="al-n">${e.nuevas}</b>` : ''}</button>`; };
   const sec = (t, l) => l.length ? `<div class="lat-sec">${t}</div>${l.map(btn).join('')}` : '';
   const res = q ? cl.filter(a => normaliza(a.nombre).includes(q)).slice(0, 30) : null;
   const fav = favoritos().map(byId).filter(Boolean), rec = recientes().map(byId).filter(a => a && !fav.includes(a)).slice(0, 6);
   const at = cl.filter(a => !fav.includes(a) && !rec.includes(a)).map(a => ({ a, e: estadoAlumno(a) })).filter(x => x.e.nivel === 'bad').slice(0, 6).map(x => x.a);
   return `<aside class="lateral" aria-label="Navegación del coach">
-    <nav class="lat-nav">${nav.map(([k, l]) => `<button data-act="ctab" data-t="${k}" ${actual === k && !S.ficha && !S.reporte && !S.editor && !S.obj ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span></button>`).join('')}<button data-act="abrirReporte" ${S.reporte && !S.reporte.alumno ? 'aria-current="page"' : ''}>${svg('checkin')}<span>Reporting semanal</span></button>${futbolistas().length ? `<button data-act="ctab" data-t="futbol" ${actual === 'futbol' && !S.ficha ? 'aria-current="page"' : ''}>${svg('checkin')}<span>Control futbolistas</span></button>` : ''}</nav>
+    <nav class="lat-nav">${nav.map(([k, l]) => `<button data-act="ctab" data-t="${k}" ${actual === k && !S.ficha && !S.reporte && !S.editor && !S.obj ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span></button>`).join('')}<button data-act="abrirReporte" ${S.reporte && !S.reporte.alumno ? 'aria-current="page"' : ''}>${svg('checkin')}<span>Reporting semanal</span></button></nav>
     <input type="search" id="lat-busca" class="lat-busca" placeholder="Buscar entre ${cl.length} clientes…" value="${esc(S.alF.q)}" aria-label="Buscar alumno" autocomplete="off" style="margin-top:16px">
     <div class="lat-al" id="lat-al">${res ? (res.length ? res.map(btn).join('') : '<div class="small muted" style="padding:8px 12px">Sin resultados</div>') : sec('★ Favoritos', fav) + sec('🕘 Recientes', rec) + sec('🔴 Requieren revisión', at) || '<div class="small muted" style="padding:8px 12px">Abre fichas o márcalas con ★ para tenerlas aquí.</div>'}</div>
     <button class="linkbtn small" data-act="ctab" data-t="alumnos" style="margin:6px 12px">Ver todos (${cl.length}) ›</button>
@@ -510,10 +510,12 @@ function render() {
     if (vistos.length) { S.d.avisos = S.d.avisos.filter(x => !vistos.includes(x)); sb.from('avisos').update({ visto_at: new Date().toISOString() }).in('id', vistos.map(x => x.id)).then(() => { }, () => { }); } }
   if (S.tab === 'tests') S.tab = 'progreso';   // los tests viven ahora dentro de Progreso
   if (S.tab === 'checkin') S.tab = 'hoy';       // el check-in vive ahora al final de Hoy
-  const tabs = coach ? [['inicio', 'Tu día'], ['alumnos', 'Alumnos'], ['plantillas', 'Plantillas'], ['ejercicios', 'Ejercicios'], ['pagos', 'Economía']] : tabsAlumno();
+  if (coach && (S.ctab === 'plantillas' || S.ctab === 'ejercicios')) { S.metSub = S.ctab; S.ctab = 'metodologia'; }
+  if (coach && S.ctab === 'futbol') S.ctab = 'inicio';   // el control de futbolistas vive ahora en el Reporting semanal
+  const tabs = coach ? [['inicio', 'Tu día'], ['alumnos', 'Alumnos'], ['metodologia', 'Metodología'], ['pagos', 'Negocio']] : tabsAlumno();
   const actual = coach ? S.ctab : (cierreAlumno() && !tabs.some(t => t[0] === S.tab) ? 'hoy' : S.tab);
   const esCoach = S.perfil.rol === 'coach';
-  const vistas = { futbol: () => `<section class="stack"><span class="eyebrow">Élite Player</span><h1>Futbolistas</h1></section>${vFutbolCoach() || '<div class="card empty">Sin futbolistas activos.</div>'}`, hoy: vHoy, entreno: vEntreno, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, tests: vProgreso, coach: Acomp.vTuCoach, inicio: Negocio.vInicio, habitos: Habitos.vista, alumnos: vAlumnos, pagos: vEconomiaTabs, ejercicios: vEjercicios, plantillas: vPlantillas };
+  const vistas = { futbol: () => `<section class="stack"><span class="eyebrow">Élite Player</span><h1>Futbolistas</h1></section>${vFutbolCoach() || '<div class="card empty">Sin futbolistas activos.</div>'}`, hoy: vHoy, entreno: vEntreno, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, tests: vProgreso, coach: Acomp.vTuCoach, inicio: Negocio.vInicio, habitos: Habitos.vista, alumnos: vAlumnos, pagos: vEconomiaTabs, ejercicios: vEjercicios, plantillas: vPlantillas, metodologia: () => `<div class="seg" role="group" aria-label="Metodología" style="margin-bottom:12px"><button data-act="metSub" data-v="plantillas" aria-pressed="${S.metSub !== 'ejercicios'}">Plantillas</button><button data-act="metSub" data-v="ejercicios" aria-pressed="${S.metSub === 'ejercicios'}">Ejercicios</button></div>` + (S.metSub === 'ejercicios' ? vEjercicios() : vPlantillas()) };
   $('#app').innerHTML = `<header class="top">
       <button type="button" class="badge" data-act="inicio" aria-label="Ir al inicio" style="background:none;border:0;padding:0;cursor:pointer;text-align:left;color:inherit;font:inherit"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : esc(S.perfil.metodologia || 'Tu proceso')}</strong></div></button>
       <div class="row" style="gap:8px">${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
@@ -5960,10 +5962,10 @@ function vReporte() {
   const aviso = (R.faltan || []).length ? `<div class="aprox small">No se han podido leer: ${esc(R.faltan.join(', '))}. El resto del informe sí está al día; vuelve a abrirlo en un rato para completarlo.</div>` : '';
   /* Cada alumno se pinta aislado: si su ficha tiene un dato incompleto, sale un aviso en su tarjeta y el resto sigue */
   const tarjeta = (a, det) => { try { return vReporteAlumno(a, R, det); } catch (err) { console.error('Reporting de', a?.nombre, err); return `<div class="card stack"><div class="row"><b class="grow">${esc(a?.nombre || 'Alumno')}</b><span class="pill warn">Revisar ficha</span></div><p class="small muted" style="margin:0">Su informe de esta semana no se ha podido montar porque falta o está incompleto algún dato de su ficha. El resto del reporting no se ve afectado.</p><button class="btn sm ghost" data-act="reporteFicha" data-id="${a?.id}" style="align-self:flex-start">Abrir su ficha</button></div>`; } };
-  if (R.alumno) { const a = S.c.perfiles.find(p => p.id === R.alumno) || { id: R.alumno, nombre: 'Alumno' }; return cab + aviso + `<section class="section">${tarjeta(a, true)}</section>`; }
+  if (R.alumno) { const a = S.c.perfiles.find(p => p.id === R.alumno) || { id: R.alumno, nombre: 'Alumno' }; let fut = ''; try { if (futbolistas().some(x => x.id === a.id)) fut = `<section class="section"><h2>⚽ Control de futbolista</h2>${vFutbolFicha(a)}</section>`; } catch (er) { console.warn(er); } return cab + aviso + `<section class="section">${tarjeta(a, true)}</section>` + fut; }
   const als = S.c.perfiles.filter(p => p && p.activo !== false && !esFamilia(p.id) && (S.c.servicios.some(x => x.alumno_id === p.id) || S.c.programas.some(x => x.alumno_id === p.id)) && (!srvDe(p.id) || conSeguimiento(srvDe(p.id))));
   const lista = als.map(a => { try { return { a, d: datosReporte(a, R) }; } catch (err) { console.error('Reporting de', a?.nombre, err); return { a, d: { score: -1 } }; } }).sort((x, y) => x.d.score - y.d.score);
-  return cab + aviso + `<section class="section rep-lista"><p class="small muted">Ordenados de menor a mayor cumplimiento. Toca "Ver" para el detalle de cada alumno.</p><details class="small muted"><summary>Cómo se calcula la alimentación</summary><p style="margin:6px 0 0">Comidas del plan = comidas que el alumno marca como hechas ÷ comidas previstas de los días que registró. Solo se valora con ${MIN_DIAS_NUTRI} días o más; los días sin información no cuentan como fallo y se muestran aparte. Bien ≥ 85 %, regular 60–84 %, mal &lt; 60 %. La aplicación declarada en el check-in («aplicado», «en parte», «necesito ayuda») se muestra tal cual, sin convertirla en porcentaje. Con seguimiento ligero solo cuenta esa respuesta.</p></details>${lista.map(({ a }) => tarjeta(a, false)).join('') || '<div class="empty">Sin alumnos activos.</div>'}</section>`;
+  return cab + aviso + `<section class="section rep-lista"><p class="small muted">Ordenados de menor a mayor cumplimiento. Toca "Ver" para el detalle de cada alumno.</p><details class="small muted"><summary>Cómo se calcula la alimentación</summary><p style="margin:6px 0 0">Comidas del plan = comidas que el alumno marca como hechas ÷ comidas previstas de los días que registró. Solo se valora con ${MIN_DIAS_NUTRI} días o más; los días sin información no cuentan como fallo y se muestran aparte. Bien ≥ 85 %, regular 60–84 %, mal &lt; 60 %. La aplicación declarada en el check-in («aplicado», «en parte», «necesito ayuda») se muestra tal cual, sin convertirla en porcentaje. Con seguimiento ligero solo cuenta esa respuesta.</p></details>${lista.map(({ a }) => tarjeta(a, false)).join('') || '<div class="empty">Sin alumnos activos.</div>'}</section>` + (() => { try { return futbolistas().length ? `<section class="section"><h2>⚽ Control de futbolistas</h2>${vFutbolCoach()}</section>` : ''; } catch (er) { console.warn(er); return ''; } })();
 }
 const numSemanaISO = iso => { const d = fecha(iso); d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7); const y = new Date(d.getFullYear(), 0, 4); return 1 + Math.round(((d - y) / 864e5 - 3 + (y.getDay() + 6) % 7) / 7); };
 
@@ -8150,7 +8152,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v337';
+const APP_VER = 'v338';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8345,6 +8347,7 @@ document.addEventListener('click', async e => {
     case 'tab': S.ia = false; if (b.dataset.t === 'checkin') { S.tab = 'hoy'; S.dia = null; render(); $('#checkin')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break; }
       S.tab = b.dataset.t; if (!enCurso()) { S.dia = null; S.sesion = null; } S.chipsCargados = false; render(); window.scrollTo(0, 0); break;
     case 'sinWhatsapp': toast('Jesús aún no ha puesto su WhatsApp en la app'); break;
+    case 'metSub': S.metSub = b.dataset.v; render(); window.scrollTo(0, 0); break;
     case 'ctab': if (S.obj) await aparcarOSalir(); S.iaCoach = false; S.reporte = null; S.factura = null; S.ctab = b.dataset.t; S.ficha = null; S.editor = null; render(); window.scrollTo(0, 0); break;
     case 'modo': if (S.obj) await aparcarOSalir(); S.iaCoach = false; S.ia = false; S.modo = b.dataset.v; S.ficha = null; S.editor = null; S.fichaSub = null; if (S.modo === 'coach') await cargarCoach(); else if (S.perfil?.rol === 'coach' && !S.prueba && !S.vista) await cargarAlumno(S.user.id); render(); window.scrollTo(0, 0); break;
     case 'abrirDia': await abrirDia(+b.dataset.id); break;
