@@ -4583,7 +4583,7 @@ function vFicha() {
         const sig = Compromisos.deAlumno(a.id).sort(Compromisos.ordenar)[0], rv = Compromisos.deAlumno(a.id).find(x => x.tipo === 'rev' && !x.futuro);
         return `<div class="card fx-c fx-acuerdo"><div class="fx-ct">Objetivo y acuerdo</div>
           <div class="fx-ac-g"><div><span class="fx-l">🎯 Objetivo</span><p>${esc(obj || 'Sin objetivo escrito')}${ctx?.n ? `<br><span class="muted small">Contexto: ${esc(ctx.n)}</span>` : ''}</p></div>
-          <div><span class="fx-l">🤝 Último acuerdo${ac ? ` · ${esc(fCorta(ac.f))}` : ''}</span><p>${ac ? `${esc(String(ac.t || 'Sin prioridad escrita').slice(0, 220))}<br><span class="muted small">Fuente: ${esc(ac.src)}</span>` : '<span class="muted">Aún no hay revisión ni devolución.</span>'}</p></div>
+          <div><span class="fx-l">🎯 Último acuerdo · foco de la revisión${Foco.de(a.id)?.desde ? ` · ${esc(fCorta(Foco.de(a.id).desde))}` : ''}</span><div style="margin:4px 0 0">${Foco.de(a.id)?.tipo ? `${Foco.linea(a.id)}<div class="small muted" style="margin-top:2px">Compromiso del alumno hasta la siguiente revisión: ahí verificas que lo cumple.</div>` : `<span class="muted">Sin foco fijado. Se fija en la revisión mensual.</span>${ac ? `<div class="small" style="margin-top:4px">${esc(String(ac.t || '').slice(0, 160))} <span class="muted">· ${esc(ac.src)}</span></div>` : ''}`}</div></div>
           ${d0 ? `<div><span class="fx-l">🔄 Desde entonces</span>${nov.length ? `<ul class="fx-nov">${nov.slice(0, 4).map(n => `<li>${esc(n.t)} <span class="muted small">· ${esc(n.src)}</span></li>`).join('')}</ul>` : '<p class="muted">Sin novedades registradas.</p>'}</div>` : ''}
           <div><span class="fx-l">➡️ Próximo paso</span><p>${sig ? `${Compromisos.T[sig.tipo].ico} ${esc(Compromisos.T[sig.tipo].uno)}: ${esc(sig.titulo)} <span class="muted small">· ${Compromisos.venceTxt(sig)}</span>` : '<span class="muted">Nada pendiente.</span>'}</p></div></div>
           ${rv ? `<button class="btn sm" data-act="revisionGuiada" data-n="${rv.n}" style="align-self:flex-start">🗓 Empezar revisión mensual ${rv.n}</button>` : ''}</div>`; })();
@@ -8150,7 +8150,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v336';
+const APP_VER = 'v337';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
