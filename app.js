@@ -2692,6 +2692,33 @@ const Foco = {
     if (f.tipo === 'alimentacion') { const n = semanaDatos(aid, sumaDias(lunesDe(hoy), -7), S.c).nutri; return n == null ? { pct: 0, txt: 'sin datos de alimentación la semana pasada' } : { pct: n / meta, txt: `${n} % de ingestas la semana pasada` }; }
     return null;
   },
+  /* % de cumplimiento del foco en una semana concreta (lunes L); d = semanaDatos de esa semana */
+  pctSemana(aid, f, L, d) {
+    const meta = Number(f.meta); if (f.tipo === 'libre' || !(meta > 0)) return null;
+    if (f.tipo === 'pasos') return d.pasosMedia == null ? 0 : Math.min(1, d.pasosMedia / meta);
+    if (f.tipo === 'entrenos') return Math.min(1, d.entrenos / meta);
+    if (f.tipo === 'alimentacion') return d.nutri == null ? 0 : Math.min(1, d.nutri / meta);
+    if (f.tipo === 'sueno') { const fin = sumaDias(L, 6), v = (S.c.wellness || []).filter(x => x.alumno_id === aid && x.tipo === 'diario' && x.fecha >= L && x.fecha <= fin && x.datos?.dormir && x.datos?.levantar).map(x => horasSueno(x.datos.dormir, x.datos.levantar)).filter(h => h != null); return v.length ? Math.min(1, v.reduce((a, b) => a + b, 0) / v.length / meta) : 0; }
+    return null;
+  },
+  /* Últimos 7 días, día a día (solo si se puede medir a diario): [{f, ok|null, v}] */
+  dias(aid, f) {
+    const hoy = hoyISO(), meta = Number(f.meta); if (!(meta > 0) || !['pasos', 'sueno', 'entrenos'].includes(f.tipo)) return null;
+    return [6, 5, 4, 3, 2, 1, 0].map(k => { const dia = sumaDias(hoy, -k);
+      if (f.tipo === 'pasos') { const r = (S.c.diario || []).find(x => x.alumno_id === aid && x.fecha === dia && x.pasos != null); return { f: dia, v: r ? r.pasos : null, ok: r ? r.pasos >= meta * 0.95 : null }; }
+      if (f.tipo === 'sueno') { const w = (S.c.wellness || []).find(x => x.alumno_id === aid && x.tipo === 'diario' && x.fecha === dia && x.datos?.dormir && x.datos?.levantar), h = w ? horasSueno(w.datos.dormir, w.datos.levantar) : null; return { f: dia, v: h, ok: h == null ? null : h >= meta * 0.95 }; }
+      const n = (S.c.sesiones || []).some(x => x.alumno_id === aid && x.fecha === dia); return { f: dia, v: n ? 1 : null, ok: n ? true : null }; });
+  },
+  tira(aid, f) {
+    const d = this.dias(aid, f); if (!d) return '';
+    return `<span class="row" style="gap:3px" title="Últimos 7 días (de más antiguo a hoy)">${d.map(x => `<span title="${esc(fCorta(x.f))}${x.v != null ? ': ' + (f.tipo === 'entrenos' ? 'entrenó' : fmtNum(x.v, f.tipo === 'sueno' ? 1 : 0)) : ': sin dato'}" style="width:12px;height:12px;border-radius:50%;background:${x.ok === true ? '#16a34a' : x.ok === false ? '#dc2626' : 'var(--line)'}"></span>`).join('')}</span>`;
+  },
+  tarjeta(aid) {
+    const f = this.de(aid);
+    if (!f || !f.tipo) return `<div class="aprox small row" style="gap:8px;flex-wrap:wrap"><span class="grow">🎯 <b>Sin foco principal.</b> Fíjalo en la próxima revisión mensual: es lo único que te avisará de su adherencia.</span></div>`;
+    const m = this.medir(aid, f), niv = !m ? '' : m.pct >= 0.95 ? 'var(--ok,#16a34a)' : m.pct >= 0.7 ? '#d97706' : '#dc2626';
+    return `<div class="card stack" style="gap:6px;border-left:4px solid ${niv || 'var(--line)'}"><div class="row" style="gap:8px;flex-wrap:wrap;align-items:center"><b class="grow">🎯 Foco: ${esc(this.titulo(f))}</b>${this.tira(aid, f)}</div>${m ? `<span class="small muted">Últimos 7 días: ${esc(m.txt)}${f.desde ? ' · fijado el ' + esc(fCorta(f.desde)) : ''}</span>` : `<span class="small muted">Foco libre: lo valoras tú en la revisión${f.desde ? ' · fijado el ' + esc(fCorta(f.desde)) : ''}</span>`}</div>`;
+  },
   /* Alerta del foco: no sale los 3 primeros días tras fijarlo; cumple = nada; ≥ 70 % = naranja; menos = rojo */
   motivo(aid) {
     const f = this.de(aid); if (!f || !f.tipo) return null;
@@ -2722,14 +2749,8 @@ const Radar = {
   /* % de cumplimiento de una semana: entrenos, pasos, alimentación (si la mides) y check-in (si lleva seguimiento) */
   semana(a, srv, L) {
     const c = S.c, base = (c.programas.find(p => p.alumno_id === a.id) || {}).dias_semana || 0, dpw = dpwEn(a.id, L, base), d = semanaDatos(a.id, L, c), parts = {};
-    const off = Alertas.cfg(a.id).off || [];   // solo cuenta lo que tienes marcado para este alumno
-    if (dpw && !off.includes('entrenos')) parts.ent = Math.min(1, d.entrenos / dpw);
-    if (conPasos(srv) && !off.includes('pasos')) parts.pas = d.pasosMedia == null ? 0 : Math.min(1, d.pasosMedia / (objPasos(srv) || 1));
-    if (srv?.modulo_nutricion && midoCoach(a.id) && d.nutri != null && !off.includes('alimentacion')) parts.nut = Math.min(1, d.nutri / 100);
-    if (conSeguimiento(srv) && !off.includes('devolucion')) parts.chk = d.chk ? 1 : 0;
-    /* Peso: entrenos 50 %, pasos 20 %, alimentación 20 %, check-in 10 % (sobre lo que aplique a ese alumno) */
-    const W = { ent: .5, pas: .2, nut: .2, chk: .1 }, k = Object.keys(parts), tw = k.reduce((t, x) => t + W[x], 0);
-    return { L, pct: k.length ? Math.round(k.reduce((t, x) => t + parts[x] * W[x], 0) / tw * 100) : null, parts, d, dpw };
+    const fo = Foco.de(a.id), p = fo && fo.tipo ? Foco.pctSemana(a.id, fo, L, d) : null;   // la adherencia es solo la del foco principal
+    return { L, pct: p == null ? null : Math.round(p * 100), parts: {}, d, dpw };
   },
   de(a) {
     const srv = S.c.servicios.find(x => x.alumno_id === a.id); if (!srv || esFamilia(a.id) || Alertas.silenciado(a.id)) return null;
@@ -2743,11 +2764,10 @@ const Radar = {
     else if (seguida) razones.push(`Bajando dos semanas seguidas: ${s3} → ${s2} → ${s1} %`);
     else if (caida >= 12) razones.push(`Empieza a bajar: ${s1} % (su media es ${media} %)`);
     const cur = this.semana(a, srv, lunes), dow = (fecha(hoyISO()).getDay() + 6) % 7;
-    if (dow >= 3 && cur.dpw && cur.d.entrenos === 0 && !(Alertas.cfg(a.id).off || []).includes('entrenos')) razones.push(`Esta semana aún no ha entrenado (${['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'][dow]})`);
     const sal = saludDe(a.id), salV = this.salVisto()[a.id] || '', saludPend = sal.length && sal[0].f > salV;
     if (saludPend) razones.unshift(`🩹 ${sal[0].m} (${fCorta(sal[0].f)})`);
     const rojo = saludPend || e.nivel === 'bad' || (s1 != null && s1 < 50) || caida >= 25, nar = !rojo && (e.nivel === 'warn' || (s1 != null && s1 < 75) || seguida || caida >= 12 || razones.length);
-    return { a, srv, sem, s1, media, caida, nivel: rojo ? 'rojo' : nar ? 'naranja' : 'verde', razones: [...e.motivos.filter(m => m.startsWith('🎯')), ...razones, ...e.motivos.filter(m => !m.startsWith('🩹') && !m.startsWith('🎯')).slice(0, 3)], e, cur, sal, saludPend };
+    return { a, srv, sem, s1, media, caida, nivel: rojo ? 'rojo' : nar ? 'naranja' : 'verde', razones: [...e.motivos.filter(m => m.startsWith('🎯')), ...(Foco.de(a.id)?.tipo ? [] : ['🎯 Sin foco principal: fíjalo en la próxima revisión']), ...razones, ...e.motivos.filter(m => !m.startsWith('🩹') && !m.startsWith('🎯')).slice(0, 3)], e, cur, sal, saludPend };
   },
   todos() { return (S.c?.perfiles || []).filter(esCliente).map(a => this.de(a)).filter(Boolean)
     .sort((x, y) => (y.saludPend ? 1 : 0) - (x.saludPend ? 1 : 0) || ({ rojo: 0, naranja: 1, verde: 2 }[x.nivel] - { rojo: 0, naranja: 1, verde: 2 }[y.nivel]) || (x.s1 ?? 101) - (y.s1 ?? 101) || y.caida - x.caida); },
@@ -2757,7 +2777,7 @@ const Radar = {
     return `<button type="button" class="line" data-act="ficha" data-id="${r.a.id}" style="width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);cursor:pointer;color:inherit;gap:10px;align-items:flex-start">
       <span style="width:12px;height:12px;border-radius:50%;background:${this.COL[r.nivel]};margin-top:5px;flex:none"></span>
       <span class="grow stack" style="gap:2px;min-width:0"><b>${esc(n)}</b>${r.razones.length ? `<span class="small muted">${r.razones.slice(0, 2).map(esc).join(' · ')}</span>` : '<span class="small muted">Cumpliendo su plan</span>'}</span>
-      ${this.barras(r)}<span style="min-width:62px;text-align:right"><b>${tl}</b> <span class="small">${fl}</span></span></button>`; },
+      ${(() => { const fo = Foco.de(r.a.id); return fo?.tipo ? Foco.tira(r.a.id, fo) : ''; })()}${this.barras(r)}<span style="min-width:62px;text-align:right"><b>${tl}</b> <span class="small">${fl}</span></span></button>`; },
   /* Revisión por rutina, no apagando fuegos: lunes (planificar la semana) y viernes (cierre de seguimientos).
      Los demás días solo salen los urgentes de verdad (pago vencido o motivación muy baja). Lo atendido se oculta hasta la siguiente revisión */
   DIAS_REV: [0, 4],
@@ -2794,6 +2814,8 @@ const Radar = {
     abrirSheet(`<div class="stack"><h2>📡 Radar de adherencia</h2><p class="small muted">Cumplimiento de cada alumno en sus últimas semanas (entrenos, pasos, alimentación si la mides y check-in). Las barras van de la más antigua a la semana pasada; la flecha compara con su media. Toca un alumno para abrir su ficha.</p>
       ${sec('rojo', '🔴 Atención inmediata')}${sec('naranja', '🟠 Vigilar esta semana')}${sec('verde', '🟢 En camino')}</div>`); },
 };
+/* La adherencia (entrenos, pasos, alimentación…) NO avisa sola: el único indicador es el foco principal que fijas en la revisión */
+const SOLO_FOCO = true;
 function estadoAlumno(a) {
   const c = S.c, hoy = hoyISO(), lunes = lunesDe(hoy), dow = (fecha(hoy).getDay() + 6) % 7; // 0 = lunes … 6 = domingo
   const srv = c.servicios.find(x => x.alumno_id === a.id), dpwBase = (c.programas.find(p => p.alumno_id === a.id) || {}).dias_semana || 0, obj = objPasos(srv);
@@ -2808,14 +2830,14 @@ function estadoAlumno(a) {
   const est = Acomp.estado(srv), pausa = est.k === 'pausado';
   const enProceso = !pausa && (!srv?.inicio || srv.inicio <= sumaDias(lunes, -7));
   const pre = semanaDatos(a.id, sumaDias(lunes, -7), c);
-  if (enProceso) {
+  if (enProceso && !SOLO_FOCO) {
     if (dpwPre && pre.entrenos < dpwPre) { sube(pre.entrenos <= dpwPre / 2 ? 'bad' : 'warn'); motivos.push(`Semana pasada: ${pre.entrenos} de ${dpwPre} entrenos`); }
     if (!conPasos(srv)) { }
     else if (pre.pasosMedia == null) { sube('warn'); motivos.push('Semana pasada: sin registro de pasos'); }
     else if (pre.pasosMedia < obj) { sube('warn'); motivos.push(`Semana pasada: ${fmtNum(pre.pasosMedia, 0)} pasos de media (objetivo ${fmtNum(obj, 0)})`); }
     if (srv?.modulo_nutricion && midoCoach(a.id) && pre.nutri != null && pre.nutri < 85) { sube(pre.nutri < 60 ? 'bad' : 'warn'); motivos.push(`Semana pasada: alimentación ${evalNutri(pre.nutri)[1].toLowerCase()} (${pre.nutri} % de ingestas)`); }
   }
-  if (dow >= 5 && !pausa) {
+  if (dow >= 5 && !pausa && !SOLO_FOCO) {
     const cur = semanaDatos(a.id, lunes, c), dias = dow + 1;
     if (dpw && cur.entrenos < dpw * 0.5) { sube('bad'); motivos.push(`Esta semana: solo ${cur.entrenos} de ${dpw} entrenos y ya es ${dow === 5 ? 'sábado' : 'domingo'}`); }
     if (conPasos(srv) && (cur.diasPasos < dias * 0.5 || (cur.pasosMedia != null && cur.pasosMedia < obj * 0.5))) { sube('warn'); motivos.push(`Esta semana: pasos registrados ${cur.diasPasos} de ${dias} días${cur.pasosMedia != null ? `, media ${fmtNum(cur.pasosMedia, 0)}` : ''}`); }
@@ -4408,6 +4430,7 @@ function vFicha() {
     ${(() => { const ci = srv && cierreDe(a.id); return ci ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>Bono terminado el ${esc(fCorta(ci.fin))}.</b> Su app muestra su resumen y cómo seguir; ${a.activo === false ? 'ya está archivado.' : `pasa a antiguos alumnos y pierde el acceso el ${esc(fCorta(ci.limite))}. Si renueva o cambia de programa, se reactiva solo al guardar su servicio.`}</div><button class="btn sm" data-act="pdfCierre" data-id="${a.id}">📄 Resumen PDF</button></div>` : ''; })()}
     ${srv ? (() => { const h = Array.isArray(srv.historial) ? srv.historial : []; return `<div class="small row" style="flex-wrap:wrap;gap:6px;align-items:center">${h.map((x, i) => `<button class="pill" data-act="histEditar" data-i="${i}" title="Editar programa anterior">Antes: ${esc(x.producto || x.linea || 'Programa')} · ${esc(fCorta(x.desde))}–${esc(fCorta(x.hasta))} ✎</button>`).join('')}<button class="linkbtn small" data-act="histEditar" data-i="-1">＋ Programa anterior</button><button class="linkbtn small" data-act="srvExtra">＋ Servicio extra</button></div>`; })() : ''}
     ${(() => { const af = avisoFin(srv); return af ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>${af.terminado ? `Su proceso terminó el ${esc(fCorta(af.fin))}` : `Le quedan ${af.dias} días de proceso`}</b> (final ${esc(fF(af.fin))}). Si sigue contigo, añádele una extensión: continúa con sus bloques y su historial.</div><button class="btn sm gold" data-act="extension">＋ Añadir extensión</button><button class="btn sm ghost" data-act="entExtra">＋ Entrenamientos sueltos</button></div>` : srv?.inicio ? '<span class="row" style="gap:12px;flex-wrap:wrap"><button class="linkbtn small" data-act="extension">＋ Añadir extensión del proceso</button><button class="linkbtn small" data-act="entExtra">＋ Entrenamientos sueltos</button></span>' : ''; })()}
+    ${Foco.tarjeta(a.id)}
     ${srv?.modulo_futbol ? '' : (() => { const B = (f.contextos || []).filter(esBloqueP), c = ctxEnSemana(B, lunesDe(hoyISO())); return `<div class="row small" style="gap:8px;flex-wrap:wrap"><span class="grow">🧱 ${c ? `<b>${esc(c.contexto_nombre)}</b> · ${esc(fCtx(c))}` : B.length ? 'Ahora sin bloque con fechas (programa base)' : 'Sin bloques con fechas'}</span>${c ? `<button class="btn sm gold" data-act="bloqueSig" data-id="${c.id}">Terminar y empezar el siguiente</button>` : ''}<button class="btn sm ghost" data-act="bloqueEnt">＋ Nuevo bloque</button></div>`; })()}
     ${e.control ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>Toca su revisión mensual ${e.control.n}</b> (${esc(fCorta(e.control.fecha))}): llamada o videollamada de 10-15 minutos para ver cómo se siente, sus objetivos y su composición corporal.</div><button class="btn sm gold" data-act="revision" data-n="${e.control.n}">Registrar revisión</button></div>` : ''}
   </div></section>`;
@@ -8080,7 +8103,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v331';
+const APP_VER = 'v332';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
