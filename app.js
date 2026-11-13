@@ -2530,6 +2530,8 @@ function verAgenda(desplaza = 0) {
 }
 const ctl0 = aid => { const c = estadoAlumno(S.c.perfiles.find(x => x.id === aid) || {}).control; return c && c.fecha >= hoyISO() ? c.fecha : sumaDias(hoyISO(), 7); };
 /* Proponer hora: eliges el hueco en la agenda → mensaje listo en WhatsApp (tú lo envías) y la cita queda reservada hasta que confirme */
+const nifDe = aid => String(S.c?.fiscal?.['nif_' + aid] || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+const nifOk = v => { v = String(v || '').toUpperCase(); const L = 'TRWAGMYFPDXBNJZSQVHLCKE'; let m = /^(\d{8})([A-Z])$/.exec(v); if (m) return L[+m[1] % 23] === m[2]; m = /^([XYZ])(\d{7})([A-Z])$/.exec(v); return !!m && L[+(('XYZ'.indexOf(m[1])) + m[2]) % 23] === m[3]; };
 const waNum = aid => String(S.c?.fiscal?.['wa_' + aid] || '').replace(/\D/g, '');
 function propuestaHora(aid, f, h) {
   const a = S.c.perfiles.find(x => x.id === aid); if (!a) return;
@@ -4976,6 +4978,7 @@ function formDatosAlumno(id) {
     <p class="small muted">Es el nombre que verás en tus listas. Pon nombre y primer apellido para no confundir a dos alumnos con el mismo nombre.</p>
  <label class="f">Frase motivadora (la ve en el saludo de Hoy)<textarea id="da-frase" rows="2" placeholder="${esc(FRASE_DEF)}">${esc(a.frase_motivacion || '')}</textarea><span class="small muted">Déjala vacía para que vea la frase general.</span></label>
     <label class="f">Teléfono de contacto (WhatsApp, con prefijo)<input type="tel" id="da-wa" inputmode="tel" value="${esc(waNum(id))}" placeholder="34600111222"><span class="small muted">Los mensajes que le mandes por WhatsApp (proponer hora, avisos…) abren su chat directamente.</span></label>
+    <label class="f">DNI / NIE (para facturar; solo lo ves tú)<input type="text" id="da-nif" autocomplete="off" value="${esc(nifDe(id))}" placeholder="12345678Z"></label>
     <label class="f">Nombre completo (para facturas)<input type="text" data-k="nombre_fiscal" value="${esc(a.nombre_fiscal || '')}" placeholder="Como aparece en su DNI"></label>
     <label class="f">NIF / NIE<input type="text" data-k="nif" value="${esc(a.nif || '')}"></label>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><label class="f">Sexo<select data-k="sexo"><option value="">—</option><option value="mujer" ${a.sexo === 'mujer' ? 'selected' : ''}>Mujer</option><option value="hombre" ${a.sexo === 'hombre' ? 'selected' : ''}>Hombre</option></select></label>
@@ -4992,6 +4995,7 @@ function formDatosAlumno(id) {
     let { error } = await sb.from('perfiles').update(upd).eq('id', id);
     if (error && /column/.test(error.message || '')) { ({ error } = await sb.from('perfiles').update({ nombre: upd.nombre }).eq('id', id)); if (!error) toast('Nombre guardado. Para el resto de datos ejecuta los Bloques 11 y 13'); }
     if (error) return fallo(error);
+    { const n = ($('#da-nif')?.value || '').toUpperCase().replace(/[^0-9A-Z]/g, ''); if ($('#da-nif') && n !== nifDe(id)) { (S.c.fiscal ||= {})['nif_' + id] = n; await sb.from('ajustes_privados').upsert({ clave: 'nif_' + id, valor: n }, { onConflict: 'clave' }); } }
     { const w = ($('#da-wa')?.value || '').replace(/\D/g, ''); if (w !== waNum(id)) { (S.c.fiscal ||= {})['wa_' + id] = w; await sb.from('ajustes_privados').upsert({ clave: 'wa_' + id, valor: w }, { onConflict: 'clave' }); } }
     { const fr = $('#da-frase')?.value.trim() || null;
       if (fr !== (a.frase_motivacion || null)) { const r2 = await sb.from('perfiles').update({ frase_motivacion: fr }).eq('id', id); if (r2.error) toast(/frase/.test(r2.error.message || '') ? 'Datos guardados. Para la frase falta ejecutar el Bloque 36 en Supabase' : 'No se ha podido guardar la frase'); else upd.frase_motivacion = fr; } }
@@ -8227,12 +8231,33 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v343';
+/* Importa DNI/NIE desde un archivo (JSON {"Nombre": "DNI"} o líneas «nombre;DNI»): casa por nombre con tus alumnos y lo guarda en ajustes_privados (nif_<id>). Los DNI nunca van en el código. */
+document.addEventListener('change', async ev => {
+  const inp = ev.target; if (inp.id !== 'nif-imp' || !inp.files?.[0]) return;
+  let datos = []; const txt = await inp.files[0].text(); inp.value = '';
+  try { const j = JSON.parse(txt); datos = Array.isArray(j) ? j.map(x => [x.nombre || x.alumno, x.nif || x.dni]) : Object.entries(j); }
+  catch (e) { datos = txt.split(/\r?\n/).map(l => l.split(/[;,\t]/).map(z => z.trim().replace(/^"|"$/g, ''))).filter(x => x.length >= 2); }
+  const tok = t => normaliza(t).replace(/[^a-z ]/g, ' ').split(/\s+/).filter(w => w.length > 1 && !['de', 'la', 'del', 'los', 'las'].includes(w));
+  const al = (S.c?.perfiles || []).filter(p => p.rol === 'alumno'), ok = [], dud = [], sin = [], mal = [], igual = [], dif = [];
+  for (const [nom, raw] of datos) {
+    const nif = String(raw || '').toUpperCase().replace(/[^0-9A-Z]/g, ''); if (!nom || !nif) continue;
+    if (!nifOk(nif)) { mal.push(nom); continue; }
+    const t = tok(nom), c = al.filter(p => { const u = tok(p.nombre); const [a, b] = t.length <= u.length ? [t, u] : [u, t]; return a.length >= 2 && a.every(w => b.includes(w)); });
+    if (c.length !== 1) { (c.length ? dud : sin).push(nom); continue; }
+    const act = nifDe(c[0].id); if (act === nif) { igual.push(nom); continue; } if (act) { dif.push(nom); continue; }
+    ok.push([c[0], nif]);
+  }
+  if (ok.length) { const { error } = await sb.from('ajustes_privados').upsert(ok.map(([p, n]) => ({ clave: 'nif_' + p.id, valor: n })), { onConflict: 'clave' }); if (error) return fallo(error); ok.forEach(([p, n]) => (S.c.fiscal ||= {})['nif_' + p.id] = n); }
+  const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
+  abrirSheet(`<div class="stack"><h2>DNI/NIE importados</h2><p><b>${ok.length}</b> guardados en la ficha de su alumno${igual.length ? ` · ${igual.length} ya estaban` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
+});
+const APP_VER = 'v344';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
     ${S.perfil.rol === 'coach' && !S.prueba && !S.vista ? '<button class="btn ghost full" data-act="miFicha">✎ Mi ficha: editar mi plan, entrenos y datos</button>' : ''}
     <button class="btn ghost full" data-act="cambiarClave">Cambiar contraseña</button>
+    ${S.perfil.rol === 'coach' && !S.prueba && !S.vista ? '<label class="btn ghost full" style="cursor:pointer">📥 Importar DNI/NIE desde archivo<input type="file" id="nif-imp" accept=".json,.csv,.txt" hidden></label>' : ''}
     <button class="btn ghost full" data-act="salir">Cerrar sesión</button>
     <button class="btn ghost full" data-act="actualizarApp">🔄 Buscar actualización</button>
     <p class="small muted" style="text-align:center;margin:0">Versión de la app: <b>${APP_VER}</b></p>
