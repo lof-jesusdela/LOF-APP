@@ -2627,7 +2627,7 @@ function semanaDatos(aid, lunes, src) {
    Se guarda en la tabla alertas_coach (Bloque 51); si no existe, en este dispositivo. */
 /* Tipos de aviso para el coach (por el texto del aviso): sirven para agruparlos y para elegir cuáles te llegan de cada alumno */
 const TIPOS_AL = [
-  ['salud', 'Dolor, molestias, lesiones y fatiga alta', /^🩹/],
+  ['salud', 'Dolor, molestias, lesiones y fatiga alta', /^🩹/], ['foco', 'Foco principal de la revisión', /^🎯/],
   ['pago', 'Pagos vencidos', /pago vencido|cobro/i], ['bono', 'Bono de sesiones por agotarse', /del bono|bono agotado/i], ['revision', 'Revisión mensual pendiente', /revisi[oó]n(es)? mensual/i],
   ['devolucion', 'Check-in sin devolución', /sin devoluci[oó]n|devoluciones/i], ['motivacion', 'Bajadas de motivación', /motivaci[oó]n/i],
   ['peso', 'Cambios de peso en ejercicios', /ha cambiado su peso/i], ['casos', 'Permisos, testimonios y canjes de puntos', /permisos de imagen|testimonio|canje|puntos/i],
@@ -2657,7 +2657,7 @@ const Alertas = {
   de(aid) { return this.m[aid] || (this.m[aid] = { vistas: [], resueltas: [] }); },
   cfg(aid) { return this.de(aid).config || {}; },
   silenciado(aid) { const h = this.cfg(aid).silencio; return h && h >= hoyISO() ? h : null; },
-  activa(aid, m) { if (this.silenciado(aid)) return false; return !(this.cfg(aid).off || []).includes(tipoAlerta(m)); },
+  activa(aid, m) { if (this.silenciado(aid)) return false; const t = tipoAlerta(m); return t === 'foco' || !(this.cfg(aid).off || []).includes(t); },   // el foco de la revisión siempre avisa
   async guardarCfg(aid, cfg) {
     const x = this.de(aid); x.config = cfg;
     try { const lc = JSON.parse(localStorage.getItem('lof-alertas-cfg') || '{}'); lc[aid] = cfg; localStorage.setItem('lof-alertas-cfg', JSON.stringify(lc)); } catch (e) { }
@@ -2676,6 +2676,31 @@ const Alertas = {
 /* Alertas: semana anterior incumplida, o semana en curso por debajo del 50 % a partir del sábado */
 /* Compromisos (lo que tienes que hacer tú): no se marcan con ✓ ni se esconden al silenciar; se resuelven al hacerlos */
 const T_COMPROMISO = ['pago', 'revision', 'devolucion', 'proxima', 'proceso'];
+/* ---------- Foco principal de la revisión: lo que acordáis priorizar con el alumno; es la alerta prioritaria y mide si lo cumple ---------- */
+const TIPOS_FOCO = [['pasos', 'Pasos diarios (media)', 'pasos al día'], ['sueno', 'Dormir (horas por noche)', 'horas'], ['entrenos', 'Entrenos por semana', 'entrenos'], ['alimentacion', 'Alimentación (% de ingestas cumplidas)', '%'], ['libre', 'Otro (lo escribo yo)', '']];
+const Foco = {
+  de(aid) { try { const v = S.c?.fiscal?.['foco_' + aid]; return v ? JSON.parse(v) : null; } catch (e) { return null; } },
+  async guardar(aid, f) { const v = f ? JSON.stringify(f) : ''; S.c.fiscal ||= {}; S.c.fiscal['foco_' + aid] = v; await sb.from('ajustes_privados').upsert({ clave: 'foco_' + aid, valor: v }, { onConflict: 'clave' }); },
+  titulo(f) { const t = TIPOS_FOCO.find(x => x[0] === f.tipo); return f.tipo === 'libre' ? (f.texto || 'Foco') : `${t?.[1].replace(/ \(.*\)/, '') || 'Foco'}: ${fmtNum(f.meta, 0)} ${t?.[2] || ''}${f.texto ? ' · ' + f.texto : ''}`.trim(); },
+  /* Cómo va en los últimos 7 días: { pct, txt } (pct = % de la meta) o null si no se puede medir todavía */
+  medir(aid, f) {
+    const hoy = hoyISO(), d7 = sumaDias(hoy, -6), meta = Number(f.meta);
+    if (f.tipo === 'libre' || !(meta > 0)) return null;
+    if (f.tipo === 'pasos') { const v = (S.c.diario || []).filter(r => r.alumno_id === aid && r.fecha >= d7 && r.pasos != null).map(r => r.pasos); return v.length ? { pct: v.reduce((a, b) => a + b, 0) / v.length / meta, txt: `lleva ${fmtNum(Math.round(v.reduce((a, b) => a + b, 0) / v.length), 0)} de media los últimos 7 días` } : { pct: 0, txt: 'sin registrar pasos en 7 días' }; }
+    if (f.tipo === 'sueno') { const v = (S.c.wellness || []).filter(x => x.alumno_id === aid && x.tipo === 'diario' && x.fecha >= d7 && x.datos?.dormir && x.datos?.levantar).map(x => horasSueno(x.datos.dormir, x.datos.levantar)).filter(h => h != null); return v.length ? { pct: v.reduce((a, b) => a + b, 0) / v.length / meta, txt: `duerme ${fmtNum(v.reduce((a, b) => a + b, 0) / v.length)} h de media (${v.length} noches registradas)` } : { pct: 0, txt: 'sin registrar sueño en 7 días' }; }
+    if (f.tipo === 'entrenos') { const n = contarEntrenos((S.c.sesiones || []).filter(x => x.alumno_id === aid && x.fecha >= d7 && x.fecha <= hoy)).n; return { pct: n / meta, txt: `${n} entreno${n === 1 ? '' : 's'} en los últimos 7 días` }; }
+    if (f.tipo === 'alimentacion') { const n = semanaDatos(aid, sumaDias(lunesDe(hoy), -7), S.c).nutri; return n == null ? { pct: 0, txt: 'sin datos de alimentación la semana pasada' } : { pct: n / meta, txt: `${n} % de ingestas la semana pasada` }; }
+    return null;
+  },
+  /* Alerta del foco: no sale los 3 primeros días tras fijarlo; cumple = nada; ≥ 70 % = naranja; menos = rojo */
+  motivo(aid) {
+    const f = this.de(aid); if (!f || !f.tipo) return null;
+    if (f.desde && hoyISO() < sumaDias(f.desde, 3)) return null;
+    const m = this.medir(aid, f); if (!m || m.pct >= 0.95) return null;
+    const r = m.pct >= 0.7;
+    return { n: r ? 'warn' : 'bad', m: `🎯 Foco de la revisión · ${this.titulo(f)} — ${m.txt}` };
+  }
+};
 /* ---------- Salud: dolor, molestias, lesión, sobrecarga o fatiga alta en los últimos 7 días (siempre en rojo y urgente) ---------- */
 const RX_SALUD = /dolor|duel[eo]n?\b|lesi[oó]n|lesionad|sobrecarg|molesti|pinchazo|contractur|esguince|tendin|rotura|tir[oó]n|inflamad|calambre|lumbalgia|ci[aá]tic/i;
 function saludDe(aid) {
@@ -2697,16 +2722,17 @@ const Radar = {
   /* % de cumplimiento de una semana: entrenos, pasos, alimentación (si la mides) y check-in (si lleva seguimiento) */
   semana(a, srv, L) {
     const c = S.c, base = (c.programas.find(p => p.alumno_id === a.id) || {}).dias_semana || 0, dpw = dpwEn(a.id, L, base), d = semanaDatos(a.id, L, c), parts = {};
-    if (dpw) parts.ent = Math.min(1, d.entrenos / dpw);
-    if (conPasos(srv)) parts.pas = d.pasosMedia == null ? 0 : Math.min(1, d.pasosMedia / (objPasos(srv) || 1));
-    if (srv?.modulo_nutricion && midoCoach(a.id) && d.nutri != null) parts.nut = Math.min(1, d.nutri / 100);
-    if (conSeguimiento(srv)) parts.chk = d.chk ? 1 : 0;
+    const off = Alertas.cfg(a.id).off || [];   // solo cuenta lo que tienes marcado para este alumno
+    if (dpw && !off.includes('entrenos')) parts.ent = Math.min(1, d.entrenos / dpw);
+    if (conPasos(srv) && !off.includes('pasos')) parts.pas = d.pasosMedia == null ? 0 : Math.min(1, d.pasosMedia / (objPasos(srv) || 1));
+    if (srv?.modulo_nutricion && midoCoach(a.id) && d.nutri != null && !off.includes('alimentacion')) parts.nut = Math.min(1, d.nutri / 100);
+    if (conSeguimiento(srv) && !off.includes('devolucion')) parts.chk = d.chk ? 1 : 0;
     /* Peso: entrenos 50 %, pasos 20 %, alimentación 20 %, check-in 10 % (sobre lo que aplique a ese alumno) */
     const W = { ent: .5, pas: .2, nut: .2, chk: .1 }, k = Object.keys(parts), tw = k.reduce((t, x) => t + W[x], 0);
     return { L, pct: k.length ? Math.round(k.reduce((t, x) => t + parts[x] * W[x], 0) / tw * 100) : null, parts, d, dpw };
   },
   de(a) {
-    const srv = S.c.servicios.find(x => x.alumno_id === a.id); if (!srv || esFamilia(a.id)) return null;
+    const srv = S.c.servicios.find(x => x.alumno_id === a.id); if (!srv || esFamilia(a.id) || Alertas.silenciado(a.id)) return null;
     const est = Acomp.estado(srv); if (['pausado', 'antiguo', 'baja'].includes(est.k)) return null;
     const lunes = lunesDe(hoyISO()), sem = [1, 2, 3, 4].map(k => sumaDias(lunes, -7 * k)).filter(L => !srv.inicio || srv.inicio <= sumaDias(L, 3)).map(L => this.semana(a, srv, L)).filter(x => x.pct != null);
     const e = estadoAlumno(a), [s1, s2, s3] = sem.map(x => x.pct), media = sem.length > 1 ? Math.round(sem.slice(1).reduce((t, x) => t + x.pct, 0) / (sem.length - 1)) : null;
@@ -2717,11 +2743,11 @@ const Radar = {
     else if (seguida) razones.push(`Bajando dos semanas seguidas: ${s3} → ${s2} → ${s1} %`);
     else if (caida >= 12) razones.push(`Empieza a bajar: ${s1} % (su media es ${media} %)`);
     const cur = this.semana(a, srv, lunes), dow = (fecha(hoyISO()).getDay() + 6) % 7;
-    if (dow >= 3 && cur.dpw && cur.d.entrenos === 0) razones.push(`Esta semana aún no ha entrenado (${['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'][dow]})`);
+    if (dow >= 3 && cur.dpw && cur.d.entrenos === 0 && !(Alertas.cfg(a.id).off || []).includes('entrenos')) razones.push(`Esta semana aún no ha entrenado (${['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'][dow]})`);
     const sal = saludDe(a.id), salV = this.salVisto()[a.id] || '', saludPend = sal.length && sal[0].f > salV;
     if (saludPend) razones.unshift(`🩹 ${sal[0].m} (${fCorta(sal[0].f)})`);
     const rojo = saludPend || e.nivel === 'bad' || (s1 != null && s1 < 50) || caida >= 25, nar = !rojo && (e.nivel === 'warn' || (s1 != null && s1 < 75) || seguida || caida >= 12 || razones.length);
-    return { a, srv, sem, s1, media, caida, nivel: rojo ? 'rojo' : nar ? 'naranja' : 'verde', razones: [...razones, ...e.motivos.filter(m => !m.startsWith('🩹')).slice(0, 3)], e, cur, sal, saludPend };
+    return { a, srv, sem, s1, media, caida, nivel: rojo ? 'rojo' : nar ? 'naranja' : 'verde', razones: [...e.motivos.filter(m => m.startsWith('🎯')), ...razones, ...e.motivos.filter(m => !m.startsWith('🩹') && !m.startsWith('🎯')).slice(0, 3)], e, cur, sal, saludPend };
   },
   todos() { return (S.c?.perfiles || []).filter(esCliente).map(a => this.de(a)).filter(Boolean)
     .sort((x, y) => (y.saludPend ? 1 : 0) - (x.saludPend ? 1 : 0) || ({ rojo: 0, naranja: 1, verde: 2 }[x.nivel] - { rojo: 0, naranja: 1, verde: 2 }[y.nivel]) || (x.s1 ?? 101) - (y.s1 ?? 101) || y.caida - x.caida); },
@@ -2741,7 +2767,7 @@ const Radar = {
   rev() { try { const r = JSON.parse(S.c?.fiscal?.radar_rev || '{}') || {}; return r.v === this.ventana() ? r : { v: this.ventana(), at: {} }; } catch (e) { return { v: this.ventana(), at: {} }; } },
   async guardaRev(r) { const v = JSON.stringify(r); S.c.fiscal ||= {}; S.c.fiscal.radar_rev = v; await sb.from('ajustes_privados').upsert({ clave: 'radar_rev', valor: v }, { onConflict: 'clave' }); },
   salVisto() { try { return JSON.parse(S.c?.fiscal?.radar_sal || '{}') || {}; } catch (e) { return {}; } },
-  urgente: r => r.saludPend || r.e.motivos.some(m => /pago vencido|motivación [0-4]\/10/i.test(m)),
+  urgente: r => r.saludPend || r.e.motivos.some(m => /pago vencido|motivación [0-4]\/10|^🎯/i.test(m)),
   pendientes() { const at = this.rev().at, T = this.todos().filter(r => r.saludPend || (r.nivel !== 'verde' && at[r.a.id] !== r.nivel && !(r.nivel === 'naranja' && at[r.a.id] === 'rojo'))); return this.esDiaRev() ? T : T.filter(r => this.urgente(r)); },
   MSG: { salud: ['¿Cómo va esa molestia?', n => `${n}, he visto lo que me contaste. Cuéntame cómo estás ahora (dónde, desde cuándo y qué movimientos te molestan) y adaptamos tu entreno para que mejore. 🩹`],
     rojo: ['Hablemos de tu semana', n => `${n}, he visto que estas semanas te está costando más. Escríbeme y reorganizamos tu plan para que encaje con tu vida. Estoy contigo. 💪`],
@@ -2796,6 +2822,7 @@ function estadoAlumno(a) {
     if (srv?.modulo_nutricion && midoCoach(a.id) && cur.nutri != null && cur.nutri < 50) { sube('bad'); motivos.push(`Esta semana: alimentación al ${cur.nutri} %`); }
   }
   saludDe(a.id).forEach(x => { sube('bad'); motivos.push(`🩹 ${x.m} (${fCorta(x.f)})`); });
+  if (!pausa) { const fm = Foco.motivo(a.id); if (fm) { sube(fm.n); motivos.push(fm.m); } }
   if (srv?.modulo_futbol) alertasFutbol(a.id).forEach(([n, m]) => { sube(n); motivos.push(m); });
   if (!srv?.modulo_futbol && !pausa) { const af = Casos.alertaFotos(a.id, srv); if (af) { sube('warn'); motivos.push(af); } }
   if (est.k === 'pausaVencida') { sube('warn'); motivos.push(`Su pausa terminó el ${fCorta(est.hasta)}: pásalo a Regreso o a Activo`); }
@@ -2813,7 +2840,7 @@ function estadoAlumno(a) {
   const control = !seg ? null : revisionPendiente(srv, (c.revisiones || []).filter(r => r.alumno_id === a.id), c.revisionesErr) || (c.revisionesErr ? controlEnSemana(srv, lunes) : null);
   { const bn = bonoDe(a.id, srv); if (bn && bn.total) { const usadas = bn.hechas.length; if (usadas >= bn.total && !bn.prox.length) { sube('warn'); const ci = cierreBono(srv, S.c.presenciales.filter(p => p.alumno_id === a.id)); motivos.push(`Bono agotado: ha usado las ${bn.total} sesiones${ci ? ` · tiene su resumen y la oferta en la app; se archiva el ${fCorta(ci.limite)}` : ''}`); } else if (bn.quedan <= 2 && usadas > 0) { sube('warn'); motivos.push(`Le ${bn.quedan === 1 ? 'queda 1 sesión' : `quedan ${bn.quedan} sesiones`} del bono (de ${bn.total})`); } } }
   if (control?.atrasada && !pausa) { sube('warn'); motivos.push(`Revisión mensual ${control.n} pendiente desde el ${fCorta(control.fecha)}`); }
-  const st = Alertas.de(a.id), items = esFamilia(a.id) ? [] : motivos.map((m, i) => ({ m, n: niveles[i], k: Alertas.clave(m), t: tipoAlerta(m) })).map(x => ({ ...x, comp: T_COMPROMISO.includes(x.t) })).filter(x => (seg || ['pago', 'bono', 'salud'].includes(x.t)) && (x.comp ? !(Alertas.cfg(a.id).off || []).includes(x.t) : Alertas.activa(a.id, x.m))).map(x => ({ ...x, ok: !x.comp && st.resueltas.includes(x.k), nueva: !st.vistas.includes(x.k) }));
+  const st = Alertas.de(a.id), items = esFamilia(a.id) ? [] : motivos.map((m, i) => ({ m, n: niveles[i], k: Alertas.clave(m), t: tipoAlerta(m) })).map(x => ({ ...x, comp: T_COMPROMISO.includes(x.t) })).filter(x => (seg || ['pago', 'bono', 'salud', 'foco'].includes(x.t)) && (x.comp ? !(Alertas.cfg(a.id).off || []).includes(x.t) : Alertas.activa(a.id, x.m))).map(x => ({ ...x, ok: !x.comp && st.resueltas.includes(x.k), nueva: !st.vistas.includes(x.k) }));
   const pend = items.filter(x => !x.ok);
   pend.forEach(x => { const n = est.k === 'regreso' && x.n === 'bad' ? 'warn' : x.n; if (n === 'bad' || nivel === 'ok') nivel = n; });
   return { nivel, motivos: pend.map(x => x.m), items, nuevas: items.filter(x => x.nueva && !x.ok).length, ult, ultSes: ses[0], dpw, dpw4, ctx: ctxDe(a.id), semana, mes, control, ses7: semana };
@@ -3096,7 +3123,7 @@ function formRevision(n, id) {
   const f = S.ficha, a = S.c.perfiles.find(p => p.id === f.id) || {}, r = id ? (S.c.revisiones || []).find(x => x.id === id) || {} : {};
   const prev = (S.c.revisiones || []).filter(x => x.alumno_id === f.id && x.estado !== 'borrador' && x.id !== id).sort((x, y) => y.fecha.localeCompare(x.fecha))[0];
   const dv = (f.devoluciones || [])[0], d0 = prev?.fecha || dv?.semana_inicio || f.srv?.inicio || sumaDias(hoyISO(), -30), nov = Revision.novedades(f.id, d0);
-  const nn = n || r.control_n, sigC = f.srv ? controlesMensuales(f.srv, sumaDias(hoyISO(), 80)).find(c => c.n === (nn || 0) + 1 || (!nn && c.fecha > hoyISO())) : null;
+  const foco0 = Foco.de(f.id), nn = n || r.control_n, sigC = f.srv ? controlesMensuales(f.srv, sumaDias(hoyISO(), 80)).find(c => c.n === (nn || 0) + 1 || (!nn && c.fecha > hoyISO())) : null;
   const paso = (k, t, html) => `<div class="rv-paso"><span class="rv-k">${k}</span><div class="grow stack" style="gap:6px"><b>${t}</b>${html}</div></div>`;
   abrirSheet(`<form class="stack" id="f-rev"><h2>Revisión mensual${nn ? ' ' + nn : ''}</h2><p class="small muted" style="margin-top:-6px">${esc(a.nombre || '')} · 10-15 min. Nada se envía hasta que pulses «Publicar».${r.estado === 'borrador' ? ' <span class="pill gold">Borrador</span>' : ''}</p>
     ${paso(1, 'Último acuerdo', prev ? `<div class="small">${esc(fCorta(prev.fecha))} · ${prev.prioridad ? `<b>Prioridad:</b> ${esc(prev.prioridad)}` : esc(prev.resumen || prev.objetivos || 'sin texto')}${prev.cambia ? `<br><b>Cambió:</b> ${esc(prev.cambia)}` : ''}${prev.mantiene ? `<br><b>Se mantuvo:</b> ${esc(prev.mantiene)}` : ''}</div>` : dv ? `<div class="small">Devolución del ${esc(fCorta(dv.semana_inicio))}${dv.prioridad ? ` · <b>Prioridad:</b> ${esc(dv.prioridad)}` : ''}</div>` : '<div class="small muted">Es su primera revisión.</div>')}
@@ -3106,6 +3133,9 @@ function formRevision(n, id) {
       <label class="f">Se mantiene<textarea id="rv-m" rows="2" placeholder="Lo que funciona y seguimos igual">${esc(r.mantiene || '')}</textarea></label>
       <label class="f">Cambia<textarea id="rv-c" rows="2" placeholder="Ajustes de entreno, alimentación o hábitos">${esc(r.cambia || '')}</textarea></label>
       <label class="f">Prioridad del próximo mes<input type="text" id="rv-p" value="${esc(r.prioridad || '')}" placeholder="Una sola cosa, la más importante"></label>
+      <div class="card stack" style="gap:8px;padding:12px"><b>🎯 Foco principal <span class="small muted" style="font-weight:400">(te avisa cada día si no lo cumple)</span></b>
+        <select id="rv-ft"><option value="">Sin foco</option>${TIPOS_FOCO.map(([k, t]) => `<option value="${k}" ${foco0?.tipo === k ? 'selected' : ''}>${t}</option>`).join('')}</select>
+        <div class="row" style="gap:8px"><input type="text" inputmode="decimal" id="rv-fm" value="${esc(foco0?.meta ?? '')}" placeholder="Meta (nº)" style="max-width:130px"><input type="text" class="grow" id="rv-fx" value="${esc(foco0?.texto || '')}" placeholder="Detalle (ej. 12.000 pasos, también en fin de semana)"></div></div>
       <label class="f">Consecución de objetivos<textarea id="rv-o" rows="2" placeholder="Qué ha conseguido y qué le falta">${esc(r.objetivos || '')}</textarea></label>`)}
     ${paso(4, 'Devolución para el alumno', `<textarea id="rv-r" rows="4" placeholder="Lo que verá en su app">${esc(r.resumen || '')}</textarea><button type="button" class="btn sm ghost" id="rv-bor" style="align-self:flex-start">✍️ Preparar borrador con lo anterior</button>`)}
     ${paso(5, 'Próxima revisión', `<label class="f">Fecha<input type="date" id="rv-px" value="${esc(r.proxima || sigC?.fecha || '')}"></label><span class="small muted">${sigC ? `Por su plan toca el ${esc(fCorta(sigC.fecha))}. Si pones otra fecha, queda programada.` : 'Sin próxima revisión en su plan.'}</span>`)}
@@ -3114,11 +3144,14 @@ function formRevision(n, id) {
     <div class="row" style="gap:8px"><button type="button" class="btn ghost grow" id="rv-borr">Guardar borrador</button><button class="btn grow" type="submit">Publicar al alumno</button></div></form>`);
   $('#rv-bor').addEventListener('click', () => {
     const nom = (a.nombre || '').split(' ')[0], m = $('#rv-m').value.trim(), c = $('#rv-c').value.trim(), p = $('#rv-p').value.trim();
-    $('#rv-r').value = [`${nom}, gracias por la revisión de este mes.`, m && `Seguimos igual con: ${m}.`, c && `Cambiamos: ${c}.`, p && `Tu prioridad para el próximo mes: ${p}.`].filter(Boolean).join('\n');
+    $('#rv-r').value = [`${nom}, gracias por la revisión de este mes.`, m && `Seguimos igual con: ${m}.`, c && `Cambiamos: ${c}.`, p && `Tu prioridad para el próximo mes: ${p}.`, $('#rv-ft').value && `Tu foco principal: ${Foco.titulo({ tipo: $('#rv-ft').value, meta: numero($('#rv-fm').value), texto: $('#rv-fx').value.trim() })}.`].filter(Boolean).join('\n');
   });
   const guardar = async publicar => {
     const row = { alumno_id: f.id, control_n: nn || null, fecha: $('#rv-f').value, formato: $('#rv-t').value, sensacion: valEscala('rv-s'), objetivos: $('#rv-o').value.trim() || null, resumen: $('#rv-r').value.trim() || null };
     const nuevos = { mantiene: $('#rv-m').value.trim() || null, cambia: $('#rv-c').value.trim() || null, prioridad: $('#rv-p').value.trim() || null, estado: publicar ? 'publicada' : 'borrador', proxima: $('#rv-px').value || null };
+    const ft = $('#rv-ft').value, fmv = numero($('#rv-fm').value), fx = $('#rv-fx').value.trim();
+    if (ft && ft !== 'libre' && !(fmv > 0)) return $('#rv-err').textContent = 'Pon la meta del foco (un número) o elige «Sin foco».';
+    if (ft === 'libre' && !fx) return $('#rv-err').textContent = 'Escribe el foco en el detalle.';
     if (publicar && !row.resumen) return $('#rv-err').textContent = 'Escribe la devolución para el alumno (o prepárala con el botón) antes de publicar.';
     const nota = $('#rv-n')?.value.trim();
     const q = x => id ? sb.from('revisiones').update(x).eq('id', id).select().single() : sb.from('revisiones').insert(x).select().single();
@@ -3129,6 +3162,8 @@ function formRevision(n, id) {
       if (!res.error) toast('Guardada sin los campos nuevos: ejecuta el Bloque 92');
     }
     if (res.error) return fallo(res.error, /revisiones/.test(res.error.message || '') ? 'Falta ejecutar el Bloque 22 en Supabase.' : undefined);
+    try { const nuevoF = ft ? { tipo: ft, meta: ft === 'libre' ? null : fmv, texto: fx, desde: foco0 && foco0.tipo === ft && foco0.meta === (ft === 'libre' ? null : fmv) ? foco0.desde : hoyISO() } : null;
+      if (JSON.stringify(nuevoF) !== JSON.stringify(foco0 || null)) await Foco.guardar(f.id, nuevoF); } catch (err) { console.warn(err); toast('Revisión guardada, pero no he podido guardar el foco'); }
     if (nota) await sb.from('notas_coach').insert({ alumno_id: f.id, texto: `Revisión mensual${row.control_n ? ' ' + row.control_n : ''}: ${nota}` });
     if (publicar && nuevos.proxima && sigC && nuevos.proxima !== sigC.fecha) await sb.from('agenda').insert({ fecha: nuevos.proxima, origen: `rev:${f.id}:${sigC.n}`, titulo: `Revisión mensual · ${a.nombre}: Revisión mensual ${sigC.n}`, minutos: 20, estado: nuevos.proxima > hoyISO() ? 'programada' : 'pendiente', alumno_id: f.id }).then(() => Negocio.cargar());
     cerrarSheet(); toast(publicar ? 'Revisión publicada: ya la ve en su app' : 'Borrador guardado (no lo ve el alumno)');
@@ -3450,7 +3485,7 @@ function formAvisos(aid) {
     <div class="card stack" style="gap:8px"><b>Silenciar sus avisos</b><span class="small muted">No te sale nada de ${esc(nom)} en alumnos, Tu día ni su ficha. Útil en vacaciones, lesión o pausa.</span>
       <div class="chips" id="av-sil">${opS.map(([v, t]) => `<button type="button" class="pill ${(!sil && !v) || (sil && v === 'siempre' && sil >= '9999') ? 'blue' : ''}" data-v="${v}" aria-pressed="false">${t}</button>`).join('')}</div>
       ${sil ? `<span class="small">🔕 Ahora: silenciado ${sil >= '9999' ? 'hasta que lo reactives' : 'hasta el ' + esc(fLarga(sil))}</span>` : ''}</div>
-    <div class="card stack" style="gap:0"><div class="row" style="margin-bottom:6px;gap:8px"><b class="grow">Qué avisos de ${esc(nom)} te llegan a ti</b><button type="button" class="btn sm ghost" data-todos="avc">Quitar todos</button></div>${TIPOS_AL.filter(t => t[0] !== 'otros').map(([k, t]) => chk(`data-avc="${k}"`, !off.includes(k), t)).join('')}</div>
+    <div class="card stack" style="gap:0"><div class="row" style="margin-bottom:6px;gap:8px"><b class="grow">Qué avisos de ${esc(nom)} te llegan a ti</b><button type="button" class="btn sm ghost" data-todos="avc">Quitar todos</button></div>${TIPOS_AL.filter(t => t[0] !== 'otros' && t[0] !== 'foco').map(([k, t]) => chk(`data-avc="${k}"`, !off.includes(k), t)).join('')}<div class="small muted" style="padding:10px 0 2px">🎯 El foco principal que fijas en cada revisión avisa siempre, con prioridad.</div></div>
     <div class="card stack" style="gap:0"><div class="row" style="margin-bottom:6px;gap:8px"><b class="grow">Qué le sale a ${esc(nom)} en su app</b><button type="button" class="btn sm ghost" data-todos="ava">Quitar todos</button></div>${AVISOS_ALUMNO.map(([k, t, d]) => chk(`data-ava="${k}"`, va[k] !== false, t, d)).join('')}</div>
     <p class="err" id="av-err"></p><button class="btn full" id="av-b">Guardar</button></div>`);
   document.querySelectorAll('[data-todos]').forEach(bt => bt.addEventListener('click', () => { const g = bt.dataset.todos, cs = [...document.querySelectorAll(`[data-${g}]`)], quitar = cs.some(c => c.checked); cs.forEach(c => { c.checked = !quitar; }); bt.textContent = quitar ? 'Marcar todos' : 'Quitar todos'; }));
@@ -8045,7 +8080,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v330';
+const APP_VER = 'v331';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
