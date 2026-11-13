@@ -4318,11 +4318,18 @@ function formApartado(sec, clave) {
     <button class="linkbtn small" type="button" data-act2="ctxRepMas">＋ Comida</button>${(c.r || []).length ? '' : ' <button class="linkbtn small" type="button" data-act2="ctxRepAuto">Rellenar con las comidas del contexto</button>'}
     <input type="text" data-c="rep" value="${esc(c.rep || '')}" placeholder="Solo si no rellenas lo de arriba: % de calorías por comida (ej. 70,30)" style="margin-top:6px">
     <p class="small muted" style="margin:4px 0 0">Cada macro puede repartirse distinto: lo que escribas aquí es lo que usan la calculadora, las equivalencias y el menú semanal del alumno.</p></details><div class="ctx-chk small"></div></div>`;
-  function filaRep(r = {}) { return `<div class="ctx-rfila"><input type="text" data-r="n" value="${esc(r.n || '')}" placeholder="Comida"><input type="number" inputmode="numeric" data-r="kcal" value="${esc(r.kcal ?? '')}" placeholder="kcal"><input type="number" inputmode="numeric" data-r="p" value="${esc(r.p ?? '')}" placeholder="P g"><input type="number" inputmode="numeric" data-r="c" value="${esc(r.c ?? '')}" placeholder="C g"><input type="number" inputmode="numeric" data-r="g" value="${esc(r.g ?? '')}" placeholder="G g"><button type="button" class="linkbtn" data-act2="ctxRepQuita" aria-label="Quitar comida">✕</button></div>`; }
+  function filaRep(r = {}) { return `<div class="ctx-rfila"><div class="ctx-rl"><input type="text" data-r="n" value="${esc(r.n || '')}" placeholder="Comida"><input type="number" inputmode="numeric" data-r="kcal" value="${esc(r.kcal ?? '')}" placeholder="kcal"><input type="number" inputmode="numeric" data-r="p" value="${esc(r.p ?? '')}" placeholder="P g"><input type="number" inputmode="numeric" data-r="c" value="${esc(r.c ?? '')}" placeholder="C g"><input type="number" inputmode="numeric" data-r="g" value="${esc(r.g ?? '')}" placeholder="G g"><button type="button" class="linkbtn" data-act2="ctxRepQuita" aria-label="Quitar comida">✕</button></div><div class="ctx-rl ctx-rpct"><span class="small muted">% del día</span><input type="number" inputmode="decimal" data-pc="kcal" placeholder="% kcal"><input type="number" inputmode="decimal" data-pc="p" placeholder="% P"><input type="number" inputmode="decimal" data-pc="c" placeholder="% C"><input type="number" inputmode="decimal" data-pc="g" placeholder="% G"><span></span></div></div>`; }
   /* Comprobación: kcal = 4·P + 4·C + 9·G (solo avisa; no cambia lo que escribes) */
   const chkCtx = el => { const v = k => numero(el.querySelector(`[data-c="${k}"]`)?.value), p = v('p'), c = v('c'), gr = v('g'), k = v('kcal'), o = el.querySelector('.ctx-chk'); if (!o) return;
     if (p == null || c == null || gr == null) { o.innerHTML = chkRep(el, { p, c, g: gr, kcal: k }); return; } const calc = Math.round(4 * p + 4 * c + 9 * gr), dif = k == null ? null : k - calc, tol = Math.max(20, calc * 0.02);
     const sumas = chkRep(el, { p, c, g: gr, kcal: k }); o.innerHTML = sumas + `Calculado con los macros: <b>${fmtNum(calc, 0)} kcal</b>${dif == null ? '' : dif === 0 ? ' · ✓ cuadra' : Math.abs(dif) <= tol ? ` · diferencia de ${dif > 0 ? '+' : ''}${fmtNum(dif, 0)} kcal con lo escrito (pequeña, se guarda tal cual)` : ` · <span style="color:var(--warn);font-weight:700">diferencia de ${dif > 0 ? '+' : ''}${fmtNum(dif, 0)} kcal con lo escrito: revisa</span>`} <span class="muted">· ${fmtNum(Math.round(4 * p / calc * 100), 0)} % P · ${fmtNum(Math.round(4 * c / calc * 100), 0)} % C · ${fmtNum(Math.round(9 * gr / calc * 100), 0)} % G</span>`; };
+  /* % del día por macro en cada comida: se escriben como % y se guardan como gramos (única fuente); al revés, los gramos muestran su % */
+  const MAC = ['kcal', 'p', 'c', 'g'], R9 = { p: 4, c: 4, g: 9 };
+  function syncPct(el, skip) { const tot = {}; MAC.forEach(k => tot[k] = numero(el.querySelector(`[data-c="${k}"]`)?.value));
+    el.querySelectorAll('.ctx-rfila').forEach(fl => MAC.forEach(k => { const pi = fl.querySelector(`[data-pc="${k}"]`); if (!pi || pi === skip) return; const g = numero(fl.querySelector(`[data-r="${k}"]`).value); pi.value = tot[k] && g != null ? String(Math.round(g / tot[k] * 1000) / 10) : ''; })); }
+  function pctAGramos(el, pi) { const k = pi.dataset.pc, tot = numero(el.querySelector(`[data-c="${k}"]`)?.value), fl = pi.closest('.ctx-rfila'), v = numero(pi.value), gi = fl.querySelector(`[data-r="${k}"]`);
+    if (!tot || v == null) return; gi.value = String(Math.round(tot * v / 100));
+    if (k !== 'kcal') { const [p, c, g] = ['p', 'c', 'g'].map(m => numero(fl.querySelector(`[data-r="${m}"]`).value)); if (p != null && c != null && g != null && !fl.querySelector('[data-pc="kcal"]').value) fl.querySelector('[data-r="kcal"]').value = String(Math.round(4 * p + 4 * c + 9 * g)); } }
   /* Sumas del reparto por comida frente al total del día, con tolerancia explícita (±3 g o 3 % por macro; ±30 kcal o 3 %) */
   function chkRep(el, dia) {
     const fl = [...el.querySelectorAll('.ctx-rfila')].map(r => Object.fromEntries(['kcal', 'p', 'c', 'g'].map(k => [k, numero(r.querySelector(`[data-r="${k}"]`).value)])));
@@ -4330,7 +4337,7 @@ function formApartado(sec, clave) {
     const L = { kcal: 'kcal', p: 'P', c: 'C', g: 'G' }, out = [];
     ['kcal', 'p', 'c', 'g'].forEach(k => { const v = fl.map(x => x[k]); if (v.every(x => x == null)) return; if (v.some(x => x == null)) { out.push(`<span style="color:var(--warn)">${L[k]}: falta en ${v.filter(x => x == null).length} comida(s)</span>`); return; }
       const sum = v.reduce((a, b) => a + b, 0); if (dia[k] == null) { out.push(`${L[k]} suma ${fmtNum(sum, 0)}`); return; } const tol = k === 'kcal' ? Math.max(30, dia[k] * 0.03) : Math.max(3, dia[k] * 0.03), dif = sum - dia[k];
-      out.push(Math.abs(dif) <= tol ? `${L[k]} ✓` : `<span style="color:var(--warn);font-weight:700">${L[k]}: las comidas suman ${fmtNum(sum, 0)} y el día ${fmtNum(dia[k], 0)}</span>`); });
+      out.push(Math.abs(dif) <= tol ? `${L[k]} ✓ (${fmtNum(Math.round(sum / dia[k] * 100), 0)} %)` : `<span style="color:var(--warn);font-weight:700">${L[k]}: las comidas suman ${fmtNum(sum, 0)} y el día ${fmtNum(dia[k], 0)} (${fmtNum(Math.round(sum / dia[k] * 100), 0)} %)</span>`); });
     return out.length ? `<div>Reparto: ${out.join(' · ')}</div>` : '';
   }
   const DSEM = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'], semana = x.datos?.semana?.length ? x.datos.semana : [];
@@ -4364,10 +4371,10 @@ function formApartado(sec, clave) {
     if (b.dataset.act2 === 'ctxRepMas') box.insertAdjacentHTML('beforeend', filaRep());
     else if (b.dataset.act2 === 'ctxRepQuita') b.closest('.ctx-rfila').remove();
     else if (b.dataset.act2 === 'ctxRepAuto') { const n = numero(el.querySelector('[data-c="ing"]').value) || comidasDia(f.srv); box.innerHTML = Nutricion.nombresIng(Math.max(1, Math.min(8, n))).map(nm => filaRep({ n: nm })).join(''); b.remove(); }
-    chkCtx(el); });
+    chkCtx(el); syncPct(el); });
   $('#sem-mas')?.addEventListener('click', () => $('#sem-filas').insertAdjacentHTML('beforeend', filaSem()));
-  document.querySelectorAll('#ctx-filas .ctx-fila').forEach(chkCtx);
-  $('#ctx-filas')?.addEventListener('input', ev => { const el = ev.target.closest('.ctx-fila'); if (el) chkCtx(el); if (ev.target.dataset.c === 'n') document.querySelectorAll('#sem-filas select').forEach(sl => { const v = sl.value; sl.innerHTML = opcSem(v); }); });
+  document.querySelectorAll('#ctx-filas .ctx-fila').forEach(el => { chkCtx(el); syncPct(el); });
+  $('#ctx-filas')?.addEventListener('input', ev => { const el = ev.target.closest('.ctx-fila'); if (el && ev.target.dataset.pc) pctAGramos(el, ev.target); if (el) { chkCtx(el); syncPct(el, ev.target.dataset.pc ? ev.target : null); } if (ev.target.dataset.c === 'n') document.querySelectorAll('#sem-filas select').forEach(sl => { const v = sl.value; sl.innerHTML = opcSem(v); }); });
   $('#ap-del')?.addEventListener('click', async () => {
     if (!confirm('¿Eliminar este apartado y sus imágenes?')) return;
     if ((x.imagenes || []).length) await sb.storage.from('planificacion').remove(x.imagenes);
@@ -8218,7 +8225,7 @@ async function subirFoto(input) {
   } catch (err) { fallo(err, /bucket|not found|foto_url|poner_mi_foto/i.test(err.message || '') ? 'Falta ejecutar el Bloque 33 en Supabase.' : 'No se ha podido subir la foto.'); }
   input.value = '';
 }
-const APP_VER = 'v341';
+const APP_VER = 'v342';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
