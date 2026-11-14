@@ -4350,6 +4350,8 @@ function formApartado(sec, clave) {
   function opcSem(v) { const l = typeof document !== 'undefined' && document.querySelector('#ctx-filas') ? nombresCtx() : (x.datos?.ctx || []).map(c => c.n).filter(Boolean); return `<option value="">—</option>${[...new Set([...l, ...(v ? [v] : [])])].map(n => `<option ${n === v ? 'selected' : ''}>${esc(n)}</option>`).join('')}`; }
   abrirSheet(`<form class="stack" id="f-ap"><h2>${nuevo ? 'Nuevo apartado' : esc(x.titulo)}</h2>
     ${fijo ? '' : `<label class="f">Título<input type="text" id="ap-t" value="${esc(x.titulo)}" placeholder="Ej. Pautas para comer fuera" required></label>`}
+    ${esCtx ? (() => { const m = x.datos?.met || {}, ni = (k, t, ph) => `<label>${t}<input type="number" inputmode="decimal" data-m="${k}" value="${esc(m[k] ?? '')}" placeholder="${ph || ''}"></label>`;
+      return `<details class="card" id="met-card" ${m.bmr || m.neat || m.ejer ? 'open' : ''}><summary class="small"><b>Metabolismo global</b> · media diaria de la semana y objetivo de sus contextos</summary><div class="stack" style="gap:8px;margin-top:8px"><div class="ctx-num">${ni('bmr', 'Basal kcal')}${ni('neat', 'NEAT kcal')}${ni('ejer', 'Ejercicio kcal/día')}${ni('def', '% déficit')}${ni('exc', '% excesos', '15')}</div><div id="met-out" class="small stack" style="gap:3px"></div><button class="btn sm ghost" type="button" id="met-ajusta" hidden style="align-self:flex-start">Ajustar contextos a este objetivo</button><p class="small muted" style="margin:0">Ejercicio = gasto medio diario de la semana (sus entrenos repartidos entre 7 días). El % de déficit se aplica al mantenimiento; el % de excesos es la parte de la semana que reservas para comidas libres. Si cambias el déficit, «Ajustar» reescala kcal y macros de todos los contextos (y su reparto por comida) y tú decides si guardas.</p></div></details>`; })() : ''}
     ${esCtx ? `<div class="stack" style="gap:8px"><span class="small"><b>Tabla de contextos</b> · el alumno la ve como guía del día («¿Qué tipo de día tienes hoy?») y la puede imprimir</span><div id="ctx-filas" class="stack" style="gap:10px">${((x.datos?.ctx || []).length ? x.datos.ctx : [{}, {}]).map(filaCtx).join('')}</div>
 <button class="linkbtn small" type="button" id="ctx-mas" style="align-self:flex-start">＋ Añadir contexto</button></div>` : ''}
     ${esCtx ? `<details class="card" ${semana.length ? 'open' : ''}><summary class="small"><b>Semana tipo</b> · qué contexto toca cada día (opcional; para fútbol, una semana por cada día de partido)</summary><div id="sem-filas" class="stack" style="gap:10px;margin-top:8px">${(semana.length ? semana : [{}]).map(filaSem).join('')}</div><button class="linkbtn small" type="button" id="sem-mas" style="margin-top:6px">＋ Otra semana tipo</button><p class="small muted" style="margin:6px 0 0">Elige el contexto de cada día. Al alumno se le marca solo el de hoy (y puede cambiarlo si su día cambia).</p></details>` : ''}
@@ -4378,6 +4380,26 @@ function formApartado(sec, clave) {
     chkCtx(el); syncPct(el); });
   $('#sem-mas')?.addEventListener('click', () => $('#sem-filas').insertAdjacentHTML('beforeend', filaSem()));
   document.querySelectorAll('#ctx-filas .ctx-fila').forEach(el => { chkCtx(el); syncPct(el); });
+  /* Metabolismo global: mantenimiento = basal + NEAT + ejercicio; objetivo = mantenimiento − déficit; para contextos = objetivo − reserva de excesos. Se compara con la media semanal de los contextos (semana tipo). */
+  const metV = () => { const g = k => numero(document.querySelector(`[data-m="${k}"]`)?.value); return { bmr: g('bmr'), neat: g('neat'), ejer: g('ejer'), def: g('def'), exc: g('exc') }; };
+  const mediaCtx = () => { const kc = {}; document.querySelectorAll('#ctx-filas .ctx-fila').forEach(el => { const n = el.querySelector('[data-c="n"]').value.trim(), k = numero(el.querySelector('[data-c="kcal"]').value); if (n && k) kc[n] = k; });
+    const f1 = [...document.querySelectorAll('#sem-filas .sem-fila')].map(r => [...r.querySelectorAll('select')].map(sl => sl.value).filter(v => v in kc)).find(l => l.length);
+    if (f1) return { v: f1.reduce((a, n) => a + kc[n], 0) / f1.length, nota: f1.length < 7 ? ` (${f1.length}/7 días asignados)` : ' (semana tipo)' };
+    const l = Object.values(kc); return l.length ? { v: l.reduce((a, b) => a + b, 0) / l.length, nota: ' (media simple: define la «Semana tipo» para afinar)' } : null; };
+  function metPinta() { const out = $('#met-out'); if (!out) return; const m = metV(), tot = (m.bmr || 0) + (m.neat || 0) + (m.ejer || 0), btn = $('#met-ajusta'); btn.hidden = true;
+    if (!tot) { out.innerHTML = '<span class="muted">Rellena basal, NEAT y ejercicio para ver el objetivo.</span>'; return; }
+    const obj = tot * (1 - (m.def || 0) / 100), exc = obj * ((m.exc ?? 15) / 100), parte = obj - exc, md = mediaCtx(), r = v => fmtNum(Math.round(v), 0);
+    let l = `<span>Mantenimiento: <b>${r(tot)}</b> kcal/día (${r(m.bmr || 0)} + ${r(m.neat || 0)} + ${r(m.ejer || 0)})</span><span>Objetivo con ${fmtNum(m.def || 0, 0)} % de déficit: <b>${r(obj)}</b> kcal/día · reserva de excesos ${fmtNum(m.exc ?? 15, 0)} %: ${r(exc)} kcal/día</span><span>Media que deben dar sus contextos: <b>${r(parte)}</b> kcal/día</span>`;
+    if (md) { const dif = md.v - parte, ok = Math.abs(dif) <= parte * 0.015; l += `<span style="color:var(--${ok ? 'ok' : 'warn'})">Media actual de sus contextos: <b>${r(md.v)}</b> kcal/día${md.nota} · ${ok ? '✓ cuadra' : (dif > 0 ? 'te pasas ' : 'te faltan ') + r(Math.abs(dif)) + ' kcal/día'}</span>`; btn.hidden = ok; btn.dataset.f = String(parte / md.v); }
+    out.innerHTML = l; }
+  $('#met-card')?.addEventListener('input', metPinta);
+  $('#ctx-filas')?.addEventListener('input', metPinta); $('#sem-filas')?.addEventListener('change', metPinta);
+  $('#met-ajusta')?.addEventListener('click', () => { const fct = +$('#met-ajusta').dataset.f; if (!fct || !isFinite(fct)) return;
+    document.querySelectorAll('#ctx-filas .ctx-fila').forEach(el => { const esc5 = (v, st) => Math.round(v / st) * st;
+      el.querySelectorAll('[data-c="kcal"],[data-c="p"],[data-c="c"],[data-c="g"],[data-r="kcal"],[data-r="p"],[data-r="c"],[data-r="g"]').forEach(i => { const v = numero(i.value); if (v != null) i.value = String(i.dataset.c === 'kcal' || i.dataset.r === 'kcal' ? esc5(v * fct, 5) : Math.round(v * fct)); });
+      chkCtx(el); syncPct(el); });
+    metPinta(); toast('Contextos reescalados (×' + fmtNum(fct, 3) + '). Revisa y guarda si te cuadra.'); });
+  metPinta();
   $('#ctx-filas')?.addEventListener('input', ev => { const el = ev.target.closest('.ctx-fila'); if (el && ev.target.dataset.pc) pctAGramos(el, ev.target); if (el) { chkCtx(el); syncPct(el, ev.target.dataset.pc ? ev.target : null); } if (ev.target.dataset.c === 'n') document.querySelectorAll('#sem-filas select').forEach(sl => { const v = sl.value; sl.innerHTML = opcSem(v); }); });
   $('#ap-del')?.addEventListener('click', async () => {
     if (!confirm('¿Eliminar este apartado y sus imágenes?')) return;
@@ -4403,7 +4425,7 @@ function formApartado(sec, clave) {
       const nuevas = {};
       if (ali) nuevas.visible = publicar;
       if (ali && publicar && x.visible === false || ali && publicar && nuevo) nuevas.datos = { ...(x.datos || {}), pub_at: x.datos?.pub_at || new Date().toISOString() };   // primera publicación (métricas de elaboración)
-      if (esCtx) nuevas.datos = { ...(x.datos || {}), ...(nuevas.datos || {}), ctx: [...document.querySelectorAll('#ctx-filas .ctx-fila')].map(el => { const o = {}; el.querySelectorAll('[data-c]').forEach(i => { const v = i.value.trim(); if (v !== '') o[i.dataset.c] = i.type === 'number' ? numero(v) : v; });
+      if (esCtx) nuevas.datos = { ...(x.datos || {}), ...(nuevas.datos || {}), met: (() => { const m = metV(), o = {}; Object.entries(m).forEach(([k, v]) => { if (v != null) o[k] = v; }); return Object.keys(o).length ? o : undefined; })(), ctx: [...document.querySelectorAll('#ctx-filas .ctx-fila')].map(el => { const o = {}; el.querySelectorAll('[data-c]').forEach(i => { const v = i.value.trim(); if (v !== '') o[i.dataset.c] = i.type === 'number' ? numero(v) : v; });
           const r = [...el.querySelectorAll('.ctx-rfila')].map(fl => { const x = {}; fl.querySelectorAll('[data-r]').forEach(i => { const v = i.value.trim(); if (v !== '') x[i.dataset.r] = i.type === 'number' ? numero(v) : v; }); return x; }).filter(x => Object.keys(x).length);
           if (r.length) o.r = r; return o; }).filter(o => o.n),
         semana: [...document.querySelectorAll('#sem-filas .sem-fila')].map(el => ({ nombre: el.querySelector('[data-s="nombre"]').value.trim(), dias: DSEM.map((_, i) => el.querySelector(`[data-s="d${i}"]`).value.trim()) })).filter(p => p.dias.some(Boolean)) };
@@ -8257,7 +8279,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v348';
+const APP_VER = 'v349';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
