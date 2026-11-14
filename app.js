@@ -3176,18 +3176,18 @@ const Revision = {
     const ses = (f ? f.todas.map(x => ({ ...x, alumno_id: aid })) : (S.c.sesiones || []).filter(x => x.alumno_id === aid)).filter(x => x.fecha > d0 && !x.previa);
     const n = new Set(ses.map(x => x.fecha + x.dia_id)).size;
     let prev = 0; for (let l = lunesDe(sumaDias(d0, 1)); l <= hoy; l = sumaDias(l, 7)) { const fin = sumaDias(l, 6); if (fin < hoy) prev += dpwEn(aid, l, (S.c.programas.find(p => p.alumno_id === aid) || {}).dias_semana || 0); }
-    out.push({ t: `${n} entreno${n === 1 ? '' : 's'} registrado${n === 1 ? '' : 's'}${prev ? ` (previstos ${prev} en semanas completas)` : ''}`, src: 'registros de entreno' });
+    out.push({ t: `${n} entreno${n === 1 ? '' : 's'} registrado${n === 1 ? '' : 's'}${prev ? ` (previstos ${prev} en semanas completas)` : ''}`, src: 'registros de entreno', d: 'sub|entreno' });
     const ch = (S.c.checkins || []).filter(k => k.alumno_id === aid && k.semana_inicio >= d0);
-    if (ch.length) { const mv = ch.filter(k => k.motivacion != null).map(k => k.motivacion); out.push({ t: `${ch.length} check-in${ch.length === 1 ? '' : 's'}${mv.length ? ` · motivación ${mv[mv.length - 1]}→${mv[0]}/10` : ''}`, src: 'check-ins' }); }
+    if (ch.length) { const mv = ch.filter(k => k.motivacion != null).map(k => k.motivacion); out.push({ t: `${ch.length} check-in${ch.length === 1 ? '' : 's'}${mv.length ? ` · motivación ${mv[mv.length - 1]}→${mv[0]}/10` : ''}`, src: 'check-ins', d: 'tab|checkins|ac-chk' }); }
     const ap = ch.filter(k => k.aplicacion_plan).map(k => aplTxt(k.aplicacion_plan).toLowerCase());
-    if (ap.length) out.push({ t: `Alimentación: ${[...new Set(ap)].map(x => `${ap.filter(y => y === x).length}× ${x}`).join(', ')}`, src: 'check-ins (lo declara el alumno)' });
+    if (ap.length) out.push({ t: `Alimentación: ${[...new Set(ap)].map(x => `${ap.filter(y => y === x).length}× ${x}`).join(', ')}`, src: 'check-ins (lo declara el alumno)', d: 'tab|checkins|ac-chk' });
     const med = (f ? f.med : []).slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), m0 = med.filter(m => m.fecha <= d0).pop(), m1 = med.filter(m => m.fecha > d0).pop();
-    if (m0 && m1 && m0.peso != null && m1.peso != null) out.push({ t: `Peso ${fmtNum(m0.peso)} → ${fmtNum(m1.peso)} kg`, src: `mediciones ${fCorta(m0.fecha)} y ${fCorta(m1.fecha)}` });
-    else if (m1) out.push({ t: `Nueva medición${m1.peso != null ? ` · ${fmtNum(m1.peso)} kg` : ''}`, src: `medición del ${fCorta(m1.fecha)}` });
+    if (m0 && m1 && m0.peso != null && m1.peso != null) out.push({ t: `Peso ${fmtNum(m0.peso)} → ${fmtNum(m1.peso)} kg`, src: `mediciones ${fCorta(m0.fecha)} y ${fCorta(m1.fecha)}`, d: 'tab|progreso' });
+    else if (m1) out.push({ t: `Nueva medición${m1.peso != null ? ` · ${fmtNum(m1.peso)} kg` : ''}`, src: `medición del ${fCorta(m1.fecha)}`, d: 'tab|progreso' });
     const notas = ses.filter(x => x.nota || x.nota_revision);
-    if (notas.length) out.push({ t: `${notas.length} comentario${notas.length === 1 ? '' : 's'} en sus entrenos: «${String(notas[0].nota_revision || notas[0].nota).slice(0, 90)}»`, src: 'notas del alumno' });
+    if (notas.length) out.push({ t: `${notas.length} comentario${notas.length === 1 ? '' : 's'} en sus entrenos: «${String(notas[0].nota_revision || notas[0].nota).slice(0, 90)}»`, src: 'notas del alumno', d: 'sub|entreno' });
     const pres = (S.c.presenciales || []).filter(p => p.alumno_id === aid && p.fecha > d0 && p.fecha <= hoy && p.estado === 'dada').length;
-    if (pres) out.push({ t: `${pres} sesión${pres === 1 ? '' : 'es'} presencial${pres === 1 ? '' : 'es'}`, src: 'agenda' });
+    if (pres) out.push({ t: `${pres} sesión${pres === 1 ? '' : 'es'} presencial${pres === 1 ? '' : 'es'}`, src: 'agenda', d: 'tab|calendario' });
     return out;
   }
 };
@@ -3586,6 +3586,17 @@ async function irA(aid, o = {}) {
   if (o.sub) await abrirSub(o.sub); else { S.fichaSub = null; render(); window.scrollTo(0, 0); }
   if (o.fn) await o.fn();
   if (o.ancla) resaltar(o.ancla);
+}
+/* Cada dato de la ficha lleva a de dónde sale: «tipo|destino|ancla» */
+const destComp = x => ({ rev: `guiada|${x.n || ''}`, dev: 'tab|checkins|ac-chk', cobro: 'tab|pagos', fin: 'tab|plan', pausa: 'tab|plan', acc: 'tab|resumen|ac-prox', tarea: 'tab|resumen' })[x.tipo] || 'tab|plan';
+function fIr(d) {
+  const aid = S.ficha?.id; if (!aid || !d) return; const [k, a, b] = d.split('|');
+  if (k === 'obj') return formBloquesProceso();
+  if (k === 'tab') return irA(aid, { tab: a, ancla: b || null });
+  if (k === 'sub') return irA(aid, { sub: a, ancla: b || null });
+  if (k === 'rev') return formRevision(+a || null, b || null);
+  if (k === 'pres') return verPres(+a);
+  if (k === 'guiada') return formRevision(+a || null, null);
 }
 function resaltar(id) {
   setTimeout(() => { const el = document.getElementById(id); if (!el) return; el.scrollIntoView({ behavior: 'smooth', block: 'start' }); el.classList.add('aviso-foco'); setTimeout(() => el.classList.remove('aviso-foco'), 9000); }, 350);
@@ -4663,21 +4674,21 @@ function vFichaBase() {
         conPasos(srv) && kpi('Pasos · 7 días', pasos7 != null ? fmtNum(pasos7, 0) : '—', `Objetivo ${fmtNum(obj, 0)}`, pasos7 != null ? pasos7 / obj * 100 : null, 'habitos'),
         kpi('Peso', m1?.peso != null ? `${fmtNum(m1.peso)}<small> kg</small>` : '—', m1 ? `${dl('peso', ' kg') ? dl('peso', ' kg') + ' desde el inicio' : 'Medido el ' + esc(fCorta(m1.fecha))}` : 'Sin mediciones', null, 'progreso')].filter(Boolean).join('');
       const presP = (f.pres || []).filter(x => x.fecha >= hoy && x.estado !== 'cancelada').sort((x, y) => x.fecha.localeCompare(y.fecha))[0];
-      const prox = (() => { const l = [], add = (ic, t, iso, extra = '') => iso && l.push([ic, t, `${fCorta(iso)}${extra}`, iso]);
+      const prox = (() => { const l = [], add = (ic, t, iso, extra = '', dest = '') => iso && l.push([ic, t, `${fCorta(iso)}${extra}`, iso, dest]);
         const cm = Compromisos.deAlumno(a.id).filter(x => x.tipo !== 'cobro' && x.tipo !== 'fin');
-        cm.forEach(x => add(Compromisos.T[x.tipo].ico, `${Compromisos.T[x.tipo].uno}${x.estado === 'programado' ? ' (programada)' : ''}`, x.para || x.vence || hoy));
-        if (!cm.some(x => x.tipo === 'rev') && conSeguimiento(srv) && !avisoFin(srv)?.terminado) { const nx = controlesMensuales(srv, sumaDias(hoy, 70)).find(c => c.fecha > hoy); if (nx) add('🗓', `Revisión mensual ${nx.n}`, nx.fecha); }
-        if (presP) add('🏋️', 'Sesión presencial', presP.fecha, presP.hora ? ' · ' + hhmm(presP.hora) : '');
-        if (pagV.length) l.push(['💳', `${pagV.length} cuota${pagV.length > 1 ? 's' : ''} vencida${pagV.length > 1 ? 's' : ''}`, 'Revisar', '0000']);
-        else if (pagP.length) add('💳', 'Próxima cuota', pagP.slice().sort((x, y) => x.vence.localeCompare(y.vence))[0].vence);
-        if (P && !P.sinFin && !P.fuera) add('🏁', 'Fin del proceso', P.ciclos[P.ciclos.length - 1].fin);
+        cm.forEach(x => add(Compromisos.T[x.tipo].ico, `${Compromisos.T[x.tipo].uno}${x.estado === 'programado' ? ' (programada)' : ''}`, x.para || x.vence || hoy, '', destComp(x)));
+        if (!cm.some(x => x.tipo === 'rev') && conSeguimiento(srv) && !avisoFin(srv)?.terminado) { const nx = controlesMensuales(srv, sumaDias(hoy, 70)).find(c => c.fecha > hoy); if (nx) add('🗓', `Revisión mensual ${nx.n}`, nx.fecha, '', `guiada|${nx.n}`); }
+        if (presP) add('🏋️', 'Sesión presencial', presP.fecha, presP.hora ? ' · ' + hhmm(presP.hora) : '', `pres|${presP.id}`);
+        if (pagV.length) l.push(['💳', `${pagV.length} cuota${pagV.length > 1 ? 's' : ''} vencida${pagV.length > 1 ? 's' : ''}`, 'Revisar', '0000', 'tab|pagos']);
+        else if (pagP.length) add('💳', 'Próxima cuota', pagP.slice().sort((x, y) => x.vence.localeCompare(y.vence))[0].vence, '', 'tab|pagos');
+        if (P && !P.sinFin && !P.fuera) add('🏁', 'Fin del proceso', P.ciclos[P.ciclos.length - 1].fin, '', 'tab|plan');
         return l.sort((x, y) => x[3].localeCompare(y[3])).slice(0, 5); })();
       const k0 = chks[0], dev = (f.devoluciones || [])[0];
-      const cCumpl = `<div class="card fx-c fx-cumpl"><div class="fx-ct">Cómo va <span class="muted">· ${esc(per || 'sin semanas completas')}</span></div><div class="fx-cumpl-in"><div class="fx-partes" style="width:100%">${partes.map(([l, v, sub]) => `<div class="fx-parte"><div class="row"><span class="grow">${l}</span><b>${v} %</b></div><span class="fx-bar"><i style="width:${v}%;background:${v >= 85 ? 'var(--ok)' : v >= 60 ? 'var(--gold)' : 'var(--line-strong,#9aa3b2)'}"></i></span><small>${esc(sub)}</small></div>`).join('') || `<p class="small muted">${nS ? 'Sin datos suficientes en este periodo.' : 'Aún no hay semanas completas (las semanas antes del alta o en pausa no cuentan).'}</p>`}</div></div>${partes.length ? `<details class="small"><summary>Qué significa cada dato</summary>${partes.map(x => `<p style="margin:6px 0 0"><b>${esc(x[0])}:</b> ${esc(x[3])}</p>`).join('')}<p style="margin:6px 0 0" class="muted">Cada dimensión se mira por separado: no hay nota global del proceso.</p></details>` : ''}</div>`;
+      const cCumpl = `<div class="card fx-c fx-cumpl"><div class="fx-ct">Cómo va <span class="muted">· ${esc(per || 'sin semanas completas')}</span></div><div class="fx-cumpl-in"><div class="fx-partes" style="width:100%">${partes.map(([l, v, sub]) => `<div class="fx-parte fx-tap" data-act="fIr" data-d="${{ 'Entrenamiento': 'sub|entreno', 'Alimentación declarada': 'sub|alimentacion', 'Pasos': 'sub|habitos' }[l] || 'tab|checkins|ac-chk'}" role="button" tabindex="0"><div class="row"><span class="grow">${l}</span><b>${v} %</b></div><span class="fx-bar"><i style="width:${v}%;background:${v >= 85 ? 'var(--ok)' : v >= 60 ? 'var(--gold)' : 'var(--line-strong,#9aa3b2)'}"></i></span><small>${esc(sub)}</small></div>`).join('') || `<p class="small muted">${nS ? 'Sin datos suficientes en este periodo.' : 'Aún no hay semanas completas (las semanas antes del alta o en pausa no cuentan).'}</p>`}</div></div>${partes.length ? `<details class="small"><summary>Qué significa cada dato</summary>${partes.map(x => `<p style="margin:6px 0 0"><b>${esc(x[0])}:</b> ${esc(x[3])}</p>`).join('')}<p style="margin:6px 0 0" class="muted">Cada dimensión se mira por separado: no hay nota global del proceso.</p></details>` : ''}</div>`;
       const cmA = Compromisos.deAlumno(a.id), cmN = cmA.filter(x => !(x.futuro && x.estado === 'pendiente')).length, avP = pend.filter(x => !x.comp);
       const cPend = `<div class="card fx-c"><div class="fx-ct">Pendiente de ti ${cmN ? `<span class="fx-num">${cmN}</span>` : ''}</div>${Compromisos.vFicha(a.id, true)}
         <div class="row small" style="gap:10px;margin-top:8px;flex-wrap:wrap">${avP.length ? `<button class="linkbtn small" data-act="fTab" data-t="resumen">🔔 ${avP.length} aviso${avP.length === 1 ? '' : 's'} ›</button>` : `<span class="muted">${Alertas.silenciado(a.id) ? '🔕 Avisos silenciados' : 'Sin avisos'}</span>`}<button class="linkbtn small" data-act="alConfig" data-id="${a.id}">Ajustes de avisos</button></div></div>`;
-      const cChk = `<div class="card fx-c"><div class="fx-ct">Último check-in</div>${k0 ? `<div class="fx-chk"><span class="muted small">Semana del ${esc(fCorta(k0.semana_inicio))}</span><div class="fx-mini"><div><b>${k0.motivacion ?? '—'}</b><small>motivación</small></div><div><b>${k0.implicacion ?? '—'}</b><small>implicación</small></div></div>${k0.dificultades ? `<p class="small" style="margin:0">«${esc(k0.dificultades.slice(0, 160))}${k0.dificultades.length > 160 ? '…' : ''}»</p>` : ''}${dev?.prioridad ? `<p class="small muted" style="margin:0">Tu prioridad para él: ${esc(dev.prioridad)}</p>` : ''}</div>` : '<div class="fx-vacio">Aún no ha enviado ningún check-in</div>'}</div>`;
+      const cChk = `<div class="card fx-c"><button class="fx-ct fx-link" data-act="fIr" data-d="tab|checkins|ac-chk">Último check-in ›</button>${k0 ? `<div class="fx-chk"><span class="muted small">Semana del ${esc(fCorta(k0.semana_inicio))}</span><div class="fx-mini"><div><b>${k0.motivacion ?? '—'}</b><small>motivación</small></div><div><b>${k0.implicacion ?? '—'}</b><small>implicación</small></div></div>${k0.dificultades ? `<p class="small" style="margin:0">«${esc(k0.dificultades.slice(0, 160))}${k0.dificultades.length > 160 ? '…' : ''}»</p>` : ''}${dev?.prioridad ? `<p class="small muted" style="margin:0">Tu prioridad para él: ${esc(dev.prioridad)}</p>` : ''}</div>` : '<div class="fx-vacio">Aún no ha enviado ningún check-in</div>'}</div>`;
       const cAcuerdo = (() => {
         const revs = (S.c.revisiones || []).filter(r => r.alumno_id === a.id && r.estado !== 'borrador'), r0 = revs[0], dv = (f.devoluciones || [])[0];
         const ac = r0 && (!dv || r0.fecha >= dv.semana_inicio) ? { f: r0.fecha, src: `Revisión mensual${r0.control_n ? ' ' + r0.control_n : ''}`, t: r0.prioridad || r0.cambia || r0.resumen || r0.objetivos } : dv ? { f: dv.semana_inicio, src: `Devolución de la semana del ${fCorta(dv.semana_inicio)}`, t: dv.prioridad || dv.ajuste || dv.texto } : null;
@@ -4685,12 +4696,12 @@ function vFichaBase() {
         const nov = d0 ? Revision.novedades(a.id, d0) : [];
         const sig = Compromisos.deAlumno(a.id).sort(Compromisos.ordenar)[0], rv = Compromisos.deAlumno(a.id).find(x => x.tipo === 'rev' && !x.futuro);
         return `<div class="card fx-c fx-acuerdo"><div class="fx-ct">Objetivo y acuerdo</div>
-          <div class="fx-ac-g"><div><span class="fx-l">🎯 Objetivo</span><p>${esc(obj || 'Sin objetivo escrito')}${ctx?.n ? `<br><span class="muted small">Contexto: ${esc(ctx.n)}</span>` : ''}</p></div>
-          <div><span class="fx-l">🎯 Último acuerdo · foco de la revisión${Foco.de(a.id)?.desde ? ` · ${esc(fCorta(Foco.de(a.id).desde))}` : ''}</span><div style="margin:4px 0 0">${Foco.de(a.id)?.tipo ? `${Foco.linea(a.id)}<div class="small muted" style="margin-top:2px">Compromiso del alumno hasta la siguiente revisión: ahí verificas que lo cumple.</div>` : `<span class="muted">Sin foco fijado. Se fija en la revisión mensual.</span>${ac ? `<div class="small" style="margin-top:4px">${esc(String(ac.t || '').slice(0, 160))} <span class="muted">· ${esc(ac.src)}</span></div>` : ''}`}</div></div>
-          ${d0 ? `<div><span class="fx-l">🔄 Desde entonces</span>${nov.length ? `<ul class="fx-nov">${nov.slice(0, 4).map(n => `<li>${esc(n.t)} <span class="muted small">· ${esc(n.src)}</span></li>`).join('')}</ul>` : '<p class="muted">Sin novedades registradas.</p>'}</div>` : ''}
-          <div><span class="fx-l">➡️ Próximo paso</span><p>${sig ? `${Compromisos.T[sig.tipo].ico} ${esc(Compromisos.T[sig.tipo].uno)}: ${esc(sig.titulo)} <span class="muted small">· ${Compromisos.venceTxt(sig)}</span>` : '<span class="muted">Nada pendiente.</span>'}</p></div></div>
+          <div class="fx-ac-g"><div><button class="fx-l fx-link" data-act="fIr" data-d="obj">🎯 Objetivo ›</button><p>${esc(obj || 'Sin objetivo escrito')}${ctx?.n ? `<br><span class="muted small">Contexto: ${esc(ctx.n)}</span>` : ''}</p></div>
+          <div>${r0 ? `<button class="fx-l fx-link" data-act="fIr" data-d="rev|${r0.control_n || ''}|${r0.id}">` : '<span class="fx-l">'}🎯 Último acuerdo · foco de la revisión${Foco.de(a.id)?.desde ? ` · ${esc(fCorta(Foco.de(a.id).desde))}` : ''}${r0 ? ' ›</button>' : '</span>'}<div style="margin:4px 0 0">${Foco.de(a.id)?.tipo ? `${Foco.linea(a.id)}<div class="small muted" style="margin-top:2px">Compromiso del alumno hasta la siguiente revisión: ahí verificas que lo cumple.</div>` : `<span class="muted">Sin foco fijado. Se fija en la revisión mensual.</span>${ac ? `<div class="small" style="margin-top:4px">${esc(String(ac.t || '').slice(0, 160))} <span class="muted">· ${esc(ac.src)}</span></div>` : ''}`}</div></div>
+          ${d0 ? `<div><span class="fx-l">🔄 Desde entonces</span>${nov.length ? `<ul class="fx-nov">${nov.slice(0, 4).map(n => `<li>${n.d ? `<button class="fx-link fx-li" data-act="fIr" data-d="${n.d}">${esc(n.t)} <span class="muted small">· ${esc(n.src)} ›</span></button>` : `${esc(n.t)} <span class="muted small">· ${esc(n.src)}</span>`}</li>`).join('')}</ul>` : '<p class="muted">Sin novedades registradas.</p>'}</div>` : ''}
+          <div><span class="fx-l">➡️ Próximo paso</span><p>${sig ? `<button class="fx-link fx-li" data-act="fIr" data-d="${destComp(sig)}">${Compromisos.T[sig.tipo].ico} ${esc(Compromisos.T[sig.tipo].uno)}: ${esc(sig.titulo)} <span class="muted small">· ${Compromisos.venceTxt(sig)} ›</span></button>` : '<span class="muted">Nada pendiente.</span>'}</p></div></div>
           ${rv ? `<button class="btn sm" data-act="revisionGuiada" data-n="${rv.n}" style="align-self:flex-start">🗓 Empezar revisión mensual ${rv.n}</button>` : ''}</div>`; })();
-      const cProx = l => `<div class="card fx-c"><div class="fx-ct">Próximo</div>${l.length ? `<div class="fx-lista">${l.map(([ic, t, d]) => `<div class="fx-prox"><span class="fx-ic">${ic}</span><span class="grow">${esc(t)}</span><b>${esc(d)}</b></div>`).join('')}</div>` : '<div class="fx-vacio">Nada programado</div>'}</div>`;
+      const cProx = l => `<div class="card fx-c"><div class="fx-ct">Próximo</div>${l.length ? `<div class="fx-lista">${l.map(([ic, t, d, , dest]) => `<${dest ? 'button' : 'div'} class="fx-prox ${dest ? 'fx-link fx-tap' : ''}" ${dest ? `data-act="fIr" data-d="${dest}"` : ''}><span class="fx-ic">${ic}</span><span class="grow">${esc(t)}</span><b>${esc(d)}</b></${dest ? 'button' : 'div'}>`).join('')}</div>` : '<div class="fx-vacio">Nada programado</div>'}</div>`;
       const kEnt = (srv?.modulo_entreno ?? true) ? kpi('Entrenos · semana en curso', entTxt(cur.entrenos, dpw), `Semana pasada ${Math.min(pre.entrenos, dpwPre || pre.entrenos)}${dpwPre ? '/' + dpwPre : ''}`, dpw ? Math.min(100, cur.entrenos / dpw * 100) : null, 'checkins') : '';
       if (srv?.modulo_futbol) {
         /* Futbolista: partido, fatiga, carga y su semana de entreno (lo que se mira cada lunes) */
@@ -8279,7 +8290,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v350';
+const APP_VER = 'v351';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8674,6 +8685,7 @@ document.addEventListener('click', async e => {
     case 'probarPlantilla': await probarPlantilla(+b.dataset.id); break;
     case 'salirPrueba': await salirPrueba(); break;
     case 'revision': formRevision(+b.dataset.n || null, b.dataset.id ? +b.dataset.id : null); break;
+    case 'fIr': fIr(b.dataset.d); break;
     case 'revisionGuiada': formRevision(+b.dataset.n || null, null); break;
     case 'verGps': { const r = await sb.storage.from('gps').createSignedUrls([b.dataset.r], 3600); const u = r.data?.[0]?.signedUrl; if (!u) { toast('No se ha podido abrir el archivo'); break; } if (/\.pdf$/i.test(b.dataset.r)) window.open(u, '_blank', 'noopener'); else abrirSheet(`<div class="stack"><img src="${esc(u)}" alt="GPS" style="width:100%;border-radius:12px"><a class="btn ghost full" href="${esc(u)}" target="_blank" rel="noopener">Abrir en grande</a><button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`); break; }
     case 'wellnessSem': { const l = $('#fs-sem-' + b.dataset.al)?.value || lunesDe(hoyISO()); formWellness(b.dataset.t, b.dataset.t === 'lunes' ? l : sumaDias(l, -1), b.dataset.al); break; }
