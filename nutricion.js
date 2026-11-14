@@ -213,7 +213,37 @@ const Nutricion = (() => {
       ...n.plan.filter(x => !DOCS.some(([k]) => k === x.clave) && !esInc(x) && tiene(x)).map(x => ({ x, k: x.clave, t: x.titulo, s: '', ic: '📌' }))];
     const cab = prev ? '' : `<section class="stack"><span class="eyebrow">Tu plan de alimentación</span><h1>Nutrición</h1><p class="small muted">Tu guía para comer bien sin pensarlo demasiado. Vuelve aquí siempre que tengas una duda.</p></section>`;
     const act = mide(fase(d));
-    return cab + (act ? '' : vFase(d)) + vIncAlumno(n, d) + (prev ? '' : tarjetaTemporal(d)) + vHoyCtx(n, d) + vAcuerdoAlumno(n, d) + (prev || !act ? '' : vBtnSemana()) + vDocs(docs) + (act ? vFase(d) : '') + (prev ? '' : vDiario(n, d));
+    const hoy = vHoyCtx(n, d), met = vMetab(n);
+    if (act && (hoy || met)) {   // plan en marcha: metabolismo → calculadora → semana y compra; todo lo demás plegado
+      const resto = vIncAlumno(n, d) + vAcuerdoAlumno(n, d) + vDocs(docs) + vFase(d) + (prev ? '' : vDiario(n, d));
+      return cab + (prev ? '' : tarjetaTemporal(d)) + met + hoy + (prev ? '' : vBtnSemana()) + `<details class="section nu-resto"><summary><b>Registro, acuerdos y documentos</b> <span class="muted small">· solo informativo</span></summary>${resto}</details>`;
+    }
+    return cab + (act ? '' : vFase(d)) + vIncAlumno(n, d) + (prev ? '' : tarjetaTemporal(d)) + hoy + vAcuerdoAlumno(n, d) + (prev || !act ? '' : vBtnSemana()) + vDocs(docs) + (act ? vFase(d) : '') + (prev ? '' : vDiario(n, d));
+  }
+  /* Lo primero que ve el alumno: su metabolismo, el déficit aplicado y sus contextos (kcal y macros), en números y gráficas */
+  const CTX_COL = ['#3B7BD8', '#7B52A0', '#C98A2E', '#3F8A3F', '#C0504D', '#2E8E94'];
+  function vMetab(n) {
+    const x = docDe(n, 'contextos'), m = x?.datos?.met || {}, cx = ctxDe(n).filter(c => +c.kcal), r = v => fmtNum(Math.round(v), 0);
+    const tot = (+m.bmr || 0) + (+m.neat || 0) + (+m.ejer || 0), def = +m.def || 0, exc = m.exc == null ? 15 : +m.exc;
+    if (!tot && !cx.length) return '';
+    let h = '';
+    if (tot) {
+      const obj = tot * (1 - def / 100), seg = [['Basal', +m.bmr || 0, '#3B7BD8'], ['NEAT', +m.neat || 0, '#3F8A3F'], ['Ejercicio', +m.ejer || 0, '#C98A2E']].filter(z => z[1] > 0);
+      h += `<div class="card stack nu-met"><span class="eyebrow">Tu metabolismo</span>
+        <div class="nu-gasto"><b class="num">${r(tot)}</b><small>kcal/día de gasto medio · ${r(tot * 7)} a la semana</small></div>
+        <div class="nu-bar" role="img" aria-label="Gasto: ${seg.map(z => z[0] + ' ' + r(z[1])).join(', ')}">${seg.map(z => `<i style="flex:${z[1]};background:${z[2]}"></i>`).join('')}</div>
+        <div class="nu-leg">${seg.map(z => `<span><i style="background:${z[2]}"></i>${z[0]} <b class="num">${r(z[1])}</b></span>`).join('')}</div>
+        <div class="nu-tiles"><div><b class="num">${def ? '−' + fmtNum(def, 1) + ' %' : '0 %'}</b><small>déficit aplicado</small></div><div><b class="num">${r(obj)}</b><small>kcal/día objetivo</small></div><div><b class="num">${fmtNum(exc, 0)} %</b><small>comidas flexibles</small></div></div>
+        <div class="nu-vs"><div><span>Gasto</span><div class="nu-vb"><i style="width:100%;background:#C98A2E"></i></div><b class="num">${r(tot)}</b></div><div><span>Objetivo</span><div class="nu-vb"><i style="width:${Math.max(4, Math.min(100, obj / tot * 100))}%;background:var(--blue)"></i></div><b class="num">${r(obj)}</b></div></div></div>`;
+    }
+    if (cx.length) {
+      const sem = semanasDe(n)[0], kc = Object.fromEntries(cx.map(c => [c.n, +c.kcal])), ds = sem ? (sem.dias || []).filter(d => d in kc) : [], media = ds.length ? ds.reduce((a, d) => a + kc[d], 0) / ds.length : null;
+      h += `<div class="card stack nu-ctxs"><span class="eyebrow">Tus contextos · calorías del día</span><div class="nu-cg">${cx.map((c, i) => {
+        const p = (+c.p || 0) * 4, ch = (+c.c || 0) * 4, g = (+c.g || 0) * 9, t = p + ch + g || 1, a = p / t * 100, b = a + ch / t * 100, col = CTX_COL[i % CTX_COL.length];
+        return `<div class="nu-cc" style="--cc:${col}"><b class="nu-ch">${esc(c.n)}</b><div class="nu-cr"><div><b class="num">${r(+c.kcal)}</b><small>kcal</small></div><i class="nu-dn" style="background:conic-gradient(#3B7BD8 0 ${a}%,#3F8A3F ${a}% ${b}%,#C98A2E ${b}% 100%)"></i></div><div class="nu-mc"><span><i style="background:#3B7BD8"></i>P <b class="num">${r(+c.p || 0)}</b></span><span><i style="background:#3F8A3F"></i>H <b class="num">${r(+c.c || 0)}</b></span><span><i style="background:#C98A2E"></i>G <b class="num">${r(+c.g || 0)}</b></span></div></div>`; }).join('')}</div>
+        ${media ? `<div class="nu-media"><b class="num">≈ ${r(media)}</b> kcal/día de media en tu semana tipo</div>` : ''}</div>`;
+    }
+    return `<section class="section">${h}</section>`;
   }
   const vBtnSemana = () => `<section class="section"><div class="card stack" style="gap:6px"><span class="eyebrow">Tu semana</span><p class="small muted" style="margin:0">Opcional: si te ayuda organizarte, marca cuándo entrenas y trabajas y qué vas a comer. Parte de tus menús o de tu semana anterior y cambia solo los días que haga falta; te calculo las cantidades y la lista de la compra. Comidas flexibles: ${esc(flexTxt(acuerdo(S.d)))}.</p><button class="btn full" data-act="nuSemana">🗓 Planifica tu semana y la compra</button></div></section>`;
   function vFase(d) {
