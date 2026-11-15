@@ -19,7 +19,7 @@ const Consultas = (() => {
     ['wa_evento', '🎉', 'Evento esta semana', 'Hola Jesús, esta semana tengo un evento y necesito ayuda: ']
   ];
   const H48 = 48 * 36e5;
-  const tm = k => TEMAS.find(t => t[0] === k) || URG.find(t => t[0] === k) || (k === 'fin_entreno' ? ['fin_entreno', '🏁', 'Tras entrenar'] : [k, '', '']);
+  const tm = k => TEMAS.find(t => t[0] === k) || URG.find(t => t[0] === k) || (k === 'wa_chat' ? ['wa_chat', '📞', 'Algo urgente'] : null) || (k === 'fin_entreno' ? ['fin_entreno', '🏁', 'Tras entrenar'] : [k, '', '']);
   const perfilDe = id => (S.c?.perfiles || []).find(p => p.id === id) || {};
   const nombreAl = id => perfilDe(id).nombre || 'Alumno';
   const dia = iso => new Date(iso).toLocaleDateString('sv-SE');
@@ -69,20 +69,20 @@ const Consultas = (() => {
     const b = document.getElementById('wa-body'); if (b) b.scrollTop = b.scrollHeight;
   }
   const avatarJ = '<img class="wa-av" src="icons/coach.jpg" alt="" onerror="this.style.visibility=\'hidden\'">';
-  const cab = (av, nom, sub) => `<div class="wa-head"><button type="button" class="wa-back" data-act="cerrarSheetPide" aria-label="Volver">‹</button>${av}<div class="grow"><b>${esc(nom)}</b><div class="wa-sub">${esc(sub)}</div></div></div>`;
+  const TEL = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>';
+  const cab = (av, nom, sub, der = '') => `<div class="wa-head"><button type="button" class="wa-back" data-act="cerrarSheetPide" aria-label="Volver">‹</button>${av}<div class="grow"><b>${esc(nom)}</b><div class="wa-sub">${esc(sub)}</div></div>${der}</div>`;
 
   /* ---------- Alumno ---------- */
   function abrir() { S.cq = S.cq || { tema: null, ejercicio: '' }; pintaAlumno(); marcarVistas(); }
   function pintaAlumno(txt0) {
     const q = S.cq, L = (S.d?.consultas || []).slice().reverse(), conEj = q.tema === 'ejercicio' || q.tema === 'dolor';
     const ses = ejerciciosDeSesion();
-    montar(`<div class="wa">${cab(avatarJ, 'Jesús de la Obra', 'Te responde Jesús en persona')}
-      <details class="wa-urg"><summary>⚡ ¿Es urgente? <span>(no puede esperar 24 h) → WhatsApp</span></summary><div class="wa-chips">${URG.map(([k, ico, t]) => `<button type="button" class="wa-ch" data-act="cq" data-q="wa" data-v="${k}">${ico} ${t}</button>`).join('')}</div></details>
+    montar(`<div class="wa">${cab(avatarJ, 'Jesús de la Obra', 'Te responde Jesús en persona', S.whatsapp ? `<button type="button" class="wa-tel" data-act="cq" data-q="watel" aria-label="Escribir a Jesús por WhatsApp">${TEL}</button>` : '')}
       <div class="wa-body" id="wa-body">${hilo(L, 'al')}</div>
       <div class="wa-temas"><span>¿Sobre qué?</span>${TEMAS.map(([k, ico, t]) => `<button type="button" class="wa-ch ${q.tema === k ? 'on' : ''}" data-act="cq" data-q="tema" data-v="${k}">${ico} ${t}</button>`).join('')}</div>
       ${conEj ? `<input class="wa-ej" id="cq-ej" list="cq-ejs" value="${esc(q.ejercicio)}" placeholder="¿Qué ejercicio? (opcional)"><datalist id="cq-ejs">${ses.map(x => `<option value="${esc(x)}">`).join('')}</datalist>` : ''}
       <div class="wa-bar"><textarea id="cq-txt" rows="1" placeholder="Mensaje">${esc(txt0 || '')}</textarea><button type="button" class="wa-send" data-act="cq" data-q="enviar" aria-label="Enviar">➤</button></div>
-      <div class="wa-pie">🔒 Te responde Jesús en persona: no es un bot ni una IA. Lo revisa como tarde en tu revisión semanal y te avisa en Hoy. Lo urgente, por WhatsApp.</div></div>`);
+      <div class="wa-pie">🔒 Te responde Jesús en persona: no es un bot ni una IA. Te contesta como tarde en tu revisión semanal y te avisa en Hoy.<br>¿No puede esperar 24 h (mover una cita, un dolor que te limita, un imprevisto o un evento de esta semana)? Toca 📞 arriba para WhatsApp.</div></div>`);
   }
   async function marcarVistas() {
     const ids = sinLeer().map(c => c.id); if (!ids.length || S.vista || S.prueba) return;
@@ -160,7 +160,7 @@ const Consultas = (() => {
   }
   function abrirHilo(aid) {
     S.cqAl = aid; const L = (S.c.consultas || []).filter(c => c.alumno_id === aid).reverse();
-    montar(`<div class="wa">${cab(avatarDe(perfilDe(aid), 36), nombreAl(aid), 'Respondes tú en persona')}
+    montar(`<div class="wa">${cab(avatarDe(perfilDe(aid), 36), nombreAl(aid), 'Respondes tú en persona', typeof waNum === 'function' && waNum(aid) ? `<a class="wa-tel" href="https://wa.me/${waNum(aid)}" target="_blank" rel="noopener" aria-label="Abrir su WhatsApp">${TEL}</a>` : '')}
       <div class="wa-body" id="wa-body">${hilo(L, 'je')}</div>
       <div class="wa-temas">${RAPIDAS.map((r, i) => `<button type="button" class="wa-ch" data-act="cq" data-q="rapida" data-i="${i}">${esc(r.slice(0, 30))}…</button>`).join('')}</div>
       <div class="wa-bar"><textarea id="cq-resp" rows="1" placeholder="Mensaje"></textarea><button type="button" class="wa-send" data-act="cq" data-q="envresp" aria-label="Enviar">➤</button></div>
@@ -201,6 +201,7 @@ const Consultas = (() => {
       case 'felim': document.querySelectorAll('#fe-lim button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); { const w = document.getElementById('fe-wa'); if (w) w.hidden = v !== 'si'; } break;
       case 'wa': { const u = URG.find(x => x[0] === v); if (!u) break; log(v); window.open(waJesus(u[3]), '_blank', 'noopener'); break; }
       case 'walog': log(v); break;
+      case 'watel': log('wa_chat'); window.open(waJesus('Hola Jesús, '), '_blank', 'noopener'); break;
       case 'hilo': abrirHilo(v); break;
       case 'rapida': { const t = document.getElementById('cq-resp'); if (t) t.value = RAPIDAS[+b.dataset.i]; break; }
       case 'envresp': await guardaResp(false); break;
