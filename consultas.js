@@ -1,6 +1,6 @@
 /* «Habla con Jesús»: consultas guiadas (no es un chat libre). El alumno elige tema y detalle, Jesús responde dentro de la app. */
 const Consultas = (() => {
-  /* Chat (respuesta en la app, < 48 h) */
+  /* Chat: compromiso con el alumno = revisión semanal; objetivo interno de Jesús = < 48 h */
   const TEMAS = [
     ['dolor', '🩹', 'Dolor o molestia', 'Algo me duele o me ha molestado'],
     ['ejercicio', '🏋️', 'Un ejercicio', 'Dudas o cambios en un ejercicio'],
@@ -48,7 +48,7 @@ const Consultas = (() => {
     if (q.paso === 1) return abrirSheet(`<div class="stack"><h2>Habla con Jesús</h2>
       <span class="eyebrow">Urgente · no puede esperar 24 h</span>
       ${URG.map(([k, ico, t]) => `<button class="btn ghost full" style="text-align:left" data-act="cq" data-q="wa" data-v="${k}"><b>${ico} ${t}</b> <span class="small muted">· por WhatsApp</span></button>`).join('')}
-      <span class="eyebrow" style="margin-top:6px">Puede esperar · te respondo aquí en menos de 48 h</span>
+      <span class="eyebrow" style="margin-top:6px">Puede esperar · te respondo aquí, como tarde en tu revisión semanal</span>
       ${TEMAS.map(([k, ico, t, d]) => `<button class="btn ghost full" style="text-align:left" data-act="cq" data-q="tema" data-v="${k}"><b>${ico} ${t}</b><br><span class="small muted">${d}</span></button>`).join('')}</div>`);
     const [, ico, t] = tm(q.tema), ses = ultimasSesiones();
     const sel = q.tema === 'dolor' || q.tema === 'ejercicio';
@@ -57,7 +57,7 @@ const Consultas = (() => {
         ${q.urgente ? `<p class="small" style="color:var(--bad);margin:0">Si te limita, no esperes: escríbeme por WhatsApp. Si es fuerte, repentino o con hormigueo, para y consulta con un médico.</p><a class="btn full" href="${esc(waJesus('Hola Jesús, tengo un dolor que me limita: '))}" target="_blank" rel="noopener" data-act="cq" data-q="walog" data-v="wa_dolor">💬 Escribir por WhatsApp</a>` : ''}</div>` : ''}
       ${sel ? `<label class="f">${q.tema === 'dolor' ? '¿En qué ejercicio o entreno ha pasado? (opcional)' : '¿Qué ejercicio?'}<input type="text" id="cq-ej" list="cq-ejs" value="${esc(q.ejercicio)}" placeholder="Ej. Sentadilla"><datalist id="cq-ejs">${[...new Set([...ejerciciosDeSesion(), ...ses.map(s => s.txt)])].map(x => `<option value="${esc(x)}">`).join('')}</datalist></label>` : ''}
       <label class="f">${q.tema === 'dolor' ? 'Cuéntame qué notas y desde cuándo' : 'Cuéntame con detalle'}<textarea id="cq-txt" placeholder="Cuanto más concreto, más rápido te respondo">${esc(q.texto)}</textarea></label>
-      <p class="small muted" style="margin:0">Te respondo aquí en menos de 48 h y te avisará en Hoy.</p>
+      <p class="small muted" style="margin:0">Te respondo aquí, como tarde en tu revisión semanal, y te avisará en Hoy.</p>
       <div class="row" style="gap:8px"><button class="btn ghost" data-act="cq" data-q="atras">Atrás</button><button class="btn grow" data-act="cq" data-q="enviar">Enviar a Jesús</button></div></div>`);
   }
   async function enviar() {
@@ -66,7 +66,7 @@ const Consultas = (() => {
     const fila = { tema: q.tema, urgente: q.tema === 'dolor' && q.urgente, ejercicio: q.ejercicio.trim() || null, texto: q.texto.trim(), alumno_id: S.d.uid };
     const { data, error } = await sb.from('consultas').insert(fila).select().single();
     if (error) return fallo(error, /consultas|relation/i.test(error.message || '') ? 'Falta ejecutar el Bloque 106 en Supabase.' : 'No se ha podido enviar.');
-    (S.d.consultas = S.d.consultas || []).unshift(data); S.cq = null; cerrarSheet(); toast('Enviado. Te respondo aquí en menos de 48 h.'); render();
+    (S.d.consultas = S.d.consultas || []).unshift(data); S.cq = null; cerrarSheet(); toast('Enviado. Te respondo aquí, como tarde en tu revisión semanal.'); render();
   }
   /* Preguntas de fin de entreno → mismas consultas */
   function vFinEntreno(sesionRef) {
