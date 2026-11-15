@@ -363,7 +363,7 @@ Jesús
         <div><div class="eyebrow">Mensaje</div><div class="row" style="gap:6px;flex-wrap:wrap;margin:6px 0">${PLANTILLAS.map(([k, t]) => `<button type="button" class="wa-ch" data-act="cq" data-q="dplant" data-v="${k}">📄 ${t}</button>`).join('')}</div>
           <div class="wa-bar" style="padding:0;background:none"><textarea id="cq-dif" placeholder="Escribe tu mensaje. {nombre} se cambia por el nombre de cada alumno.">${esc(d.txt)}</textarea></div>
           <div class="small muted" style="margin-top:4px">Usa {nombre} para que salga su nombre.</div></div>
-        ${d.txt.trim() && ej ? `<div><div class="eyebrow">Así lo verá ${esc((ej.nombre || '').split(' ')[0])}</div><div class="wa-body" style="padding:10px;border-radius:12px;margin-top:6px">${(() => { const tx = conNombre(d.txt, ej), mk = MARCA_AV.test(tx); return `<div class="wa-msg"><span class="wa-txt">${esc(tx.replace(MARCA_AV, '').trim())}</span>${mk ? vAvisosMsg('je') : ''}</div>`; })()}</div></div>` : ''}
+        ${d.txt.trim() && ej ? `<div><div class="eyebrow">Así lo verá ${esc((ej.nombre || '').split(' ')[0])}</div><div class="wa-prev">${(() => { const tx = conNombre(d.txt, ej), mk = MARCA_AV.test(tx); return `<div class="wa-msg"><span class="wa-txt">${esc(tx.replace(MARCA_AV, '').trim())}</span>${mk ? vAvisosMsg('je') : ''}</div>`; })()}</div></div>` : ''}
         ${d.txt.trim() && L.length ? `<button type="button" class="btn full ${d.conf ? '' : 'ghost'}" data-act="cq" data-q="denviar">${d.conf ? `✅ Confirmar: enviar a ${L.length} ${L.length === 1 ? 'alumno' : 'alumnos'}` : `Enviar a ${L.length} ${L.length === 1 ? 'alumno' : 'alumnos'}`}</button>` : ''}
         <div id="cq-dres"></div>
       </div></div>`);
