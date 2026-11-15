@@ -73,6 +73,7 @@ const Consultas = (() => {
   }
   const avatarJ = '<img class="wa-av" src="icons/coach.jpg" alt="" onerror="this.style.visibility=\'hidden\'">';
   const TEL = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>';
+  const WA_ICO = '<img src="icons/whatsapp.png" alt="" onerror="this.replaceWith(document.createRange().createContextualFragment(Consultas.TEL))">';
   const cab = (av, nom, sub, der = '', atras = null) => `<div class="wa-head">${atras || '<button type="button" class="wa-back" data-act="cerrarSheetPide" aria-label="Volver">‹</button>'}${av}<div class="grow"><b>${esc(nom)}</b><div class="wa-sub">${esc(sub)}</div></div>${der}</div>`;
 
   /* ---------- Alumno: conversación guiada por banners ---------- */
@@ -139,7 +140,7 @@ const Consultas = (() => {
     else guia = `<div class="wa-msg">${q.path[0]?.k === 'resp' ? 'Escríbeme abajo tu respuesta.' : 'Perfecto. Cuéntamelo abajo con el detalle que puedas.'}</div>`;
     const nav = q.path.length ? `<div class="wa-nav"><button type="button" data-act="cq" data-q="g1">‹ Atrás</button><button type="button" data-act="cq" data-q="g0">↺ Empezar de nuevo</button></div>` : '';
     const listo = !st;
-    montar(`<div class="wa">${cab(avatarJ, 'Jesús de la Obra', 'Te responde Jesús en persona', S.whatsapp ? `<button type="button" class="wa-tel" data-act="cq" data-q="watel" aria-label="Escribir a Jesús por WhatsApp">${TEL}</button>` : '')}
+    montar(`<div class="wa">${cab(avatarJ, 'Jesús de la Obra', 'Te responde Jesús en persona', S.whatsapp ? `<button type="button" class="wa-tel" data-act="cq" data-q="watel" aria-label="Escribir a Jesús por WhatsApp">${WA_ICO}</button>` : '')}
       <div class="wa-body" id="wa-body">${hilo(L, 'al')}<div class="wa-guia">${elegidas}${guia}${nav}</div></div>
       ${listo ? `<div class="wa-bar"><textarea id="cq-txt" rows="2" placeholder="${esc(q.path.length > 1 ? 'Cuéntame sobre «' + q.path[q.path.length - 1].t + '»…' : 'Mensaje')}"></textarea><button type="button" class="wa-send" data-act="cq" data-q="enviar" aria-label="Enviar">➤</button></div>` : ''}</div>`);
     if (listo) setTimeout(() => document.getElementById('cq-txt')?.focus(), 50);
@@ -169,11 +170,11 @@ const Consultas = (() => {
     return `<section class="section"><button type="button" class="card wa-entrada" data-act="cq" data-q="abrir">
         <div class="row" style="gap:12px;align-items:center">${avatarJ.replace('wa-av', 'wa-av lg')}<div class="grow" style="min-width:0;text-align:left"><div class="row"><b class="grow" style="font-size:17px">Habla con Jesús</b>${n ? `<span class="wa-badge">${n}</span>` : u ? `<span class="small muted">${esc(cuando(u.t))}</span>` : ''}</div>
           <div class="small muted wa-prev">${u ? (u.de === 'al' ? 'Tú: ' : 'Jesús: ') + esc(u.txt) : 'Toca para escribirme'}</div></div><span class="wa-go">›</span></div></button>
-      <div class="card stack wa-reglas">
-        <div class="wa-reg"><span class="i">💬</span><div><b>Chat de la app</b><div class="small muted">Lo que no puede esperar a tu revisión mensual. Te respondo aquí, como tarde en tu revisión semanal, y te aviso en Hoy.</div></div></div>
-        <div class="wa-reg"><span class="i" style="background:#25D366;color:#fff">${TEL}</span><div><b>WhatsApp</b><div class="small muted">Solo lo urgente, que no puede esperar 24 h: mover una cita, un dolor que te limita, un imprevisto o un evento de esta semana. Está en el teléfono de arriba del chat.</div></div></div>
-        <div class="wa-reg"><span class="i">🔒</span><div><b>Te respondo yo, en persona</b><div class="small muted">No es un bot ni una IA: cada mensaje lo leo y lo contesto yo.</div></div></div>
-      </div></section>`;
+        <div class="wa-nota"><b>Para qué es:</b> lo que no puede esperar a tu revisión mensual (dudas de tu entreno, alimentación, hábitos o tu plan).<br><b>Cuándo te respondo:</b> como tarde en tu revisión semanal, y te aviso en Hoy.<br>🔒 Te respondo yo en persona: no es un bot ni una IA.</div>
+      ${S.whatsapp ? `<a class="card wa-entrada wa-entrada-wa" href="${esc(waJesus('Hola Jesús, '))}" target="_blank" rel="noopener" data-act="cq" data-q="walog" data-v="wa_chat">
+        <div class="row" style="gap:12px;align-items:center"><span class="wa-ico-wa">${WA_ICO}</span><div class="grow" style="text-align:left"><b style="font-size:17px">WhatsApp · solo urgente</b><div class="small muted">Abre WhatsApp con Jesús</div></div><span class="wa-go">›</span></div></a>
+        <div class="wa-nota"><b>Para qué es:</b> solo lo que no puede esperar 24 h: mover una cita, un dolor que te limita, un cambio de plan por un imprevisto o ayuda con un evento de esta semana.<br><b>Cuándo te respondo:</b> en menos de 24 h.</div>` : ''}
+      </section>`;
   }
   function vAvisoHoy() {
     const n = sinLeer().length; if (!n) return '';
@@ -300,7 +301,7 @@ const Consultas = (() => {
   }
   /* Registro mínimo de cada derivación a WhatsApp desde la app (para medir) */
   function log(tema) { if (S.vista || S.prueba || !S.d?.uid) return; sb.from('consultas').insert({ alumno_id: S.d.uid, tema, estado: 'whatsapp', texto: null }).then(r => { if (r.error) console.warn(r.error.message); }); }
-  return { vBoton, abrirLista, vDevolucion, metrica, cargarAlumno, cargarCoach, vAlumno, vAvisoHoy, vCoach, vFinEntreno, leerFinEntreno, crearDeFin, accion, sinLeer, abiertas, abrirHilo };
+  return { TEL, vBoton, abrirLista, vDevolucion, metrica, cargarAlumno, cargarCoach, vAlumno, vAvisoHoy, vCoach, vFinEntreno, leerFinEntreno, crearDeFin, accion, sinLeer, abiertas, abrirHilo };
 })();
 
 document.addEventListener('change', e => { const sel = e.target.closest && e.target.closest('[data-cq-nuevo]'); if (sel && sel.value) Consultas.abrirHilo(sel.value); });
