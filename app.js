@@ -480,7 +480,7 @@ function claseMain() {
 /* Escritorio del alumno: sus mismas pestañas en una barra lateral */
 function vLateralAlumno(tabs, actual) {
   return `<aside class="lateral" aria-label="Navegación">
-    <nav class="lat-nav">${tabs.map(([k, l]) => `<button data-act="tab" data-t="${k}" ${actual === k ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${k === 'hoy' && (pendientesFutbol().length || tocaCheckin()) ? '<i class="badge-dot" style="position:static;margin-left:auto"></i>' : ''}</button>`).join('')}</nav>
+    <nav class="lat-nav">${tabs.map(([k, l]) => `<button data-act="tab" data-t="${k}" ${actual === k ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${k === 'hoy' && (pendientesFutbol().length || tocaCheckin()) ? '<i class="badge-dot" style="position:static;margin-left:auto"></i>' : ''}${k === 'coach' && nChat() ? `<i class="badge-n" style="position:static;margin-left:auto">${nChat()}</i>` : ''}</button>`).join('')}</nav>
     ${S.perfil?.nombre ? `<div class="lat-yo small muted">${esc(S.perfil.nombre)}</div>` : ''}
   </aside>`;
 }
@@ -505,7 +505,11 @@ function seguro(fn) {
   try { return fn(); }
   catch (err) { console.error(err); return `<section class="section"><div class="card stack"><b>No se ha podido abrir esta pantalla</b><p class="small muted">Mándale a Jesús este mensaje: ${esc(String(err && err.message || err).slice(0, 200))}</p></div></section>`; }
 }
+/* Respuestas de Jesús sin leer: globo en «Contacto» y en el icono de la app (si el móvil lo permite) */
+const nChat = () => S.modo !== 'coach' && !S.vista && typeof Consultas !== 'undefined' ? Consultas.sinLeer().length : 0;
+function globoApp() { try { if (S.modo === 'coach' || S.vista || !navigator.setAppBadge) return; const n = nChat(); n ? navigator.setAppBadge(n) : navigator.clearAppBadge(); } catch (e) { } }
 function render() {
+  setTimeout(globoApp, 0);
   const coach = S.modo === 'coach'; if (coach && typeof Compromisos !== 'undefined') Compromisos.invalidar();
   if (!coach && !S.vista && !S.prueba && S.d?.avisos?.length) { const lun = lunesDe(hoyISO()), vistos = S.d.avisos.filter(x => x.tipo === 'semana' && (S.tab === 'entreno' || (x.semana_inicio || String(x.creado_at || '').slice(0, 10)) < lun));
     if (vistos.length) { S.d.avisos = S.d.avisos.filter(x => !vistos.includes(x)); sb.from('avisos').update({ visto_at: new Date().toISOString() }).in('id', vistos.map(x => x.id)).then(() => { }, () => { }); } }
@@ -526,7 +530,7 @@ function render() {
   document.body.classList.toggle('modo-alumno', !coach && ANCHO.matches);
   if (coach) aplicarFiltroAl();
   $('#tabs').hidden = false;
-  $('#tabs-in').innerHTML = tabs.map(([k, l]) => `<button data-act="${coach ? 'ctab' : 'tab'}" data-t="${k}" ${actual === k && !((S.ficha || S.editor || S.obj) && coach) ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${!coach && k === 'hoy' && (pendientesFutbol().length || tocaCheckin()) ? '<i class="badge-dot"></i>' : ''}</button>`).join('');
+  $('#tabs-in').innerHTML = tabs.map(([k, l]) => `<button data-act="${coach ? 'ctab' : 'tab'}" data-t="${k}" ${actual === k && !((S.ficha || S.editor || S.obj) && coach) ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${!coach && k === 'coach' && nChat() ? `<i class="badge-n">${nChat()}</i>` : ''}${!coach && k === 'hoy' && (pendientesFutbol().length || tocaCheckin()) ? '<i class="badge-dot"></i>' : ''}</button>`).join('');
   if (S.dia && ((!coach && S.tab === 'entreno') || (coach && S.obj))) rellenarSesion();
 }
 
@@ -8298,7 +8302,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v363';
+const APP_VER = 'v364';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}

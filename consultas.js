@@ -158,10 +158,10 @@ const Consultas = (() => {
     }
     if (t0 === 'resp' || t0 === 'urg') return null;
     if (t0 === 'entreno') {
-      if (!t1) return { preg: '¿Sobre qué del entrenamiento?', ops: [O('planif', '🗓️', 'Planificación', 'Días, horarios, objetivo'), O('sesion', '📄', 'Un entrenamiento', 'Una sesión concreta'), O('ejercicio', '🎯', 'Un ejercicio', 'Dudas o dolor en un ejercicio')] };
+      if (!t1) return { preg: '¿Sobre qué del entrenamiento?', ops: [O('planif', '🗓️', 'Planificación', 'Días, horarios, objetivo'), O('sesion', '📄', 'Una sesión de entrenamiento', 'Una sesión completa de tu plan'), O('ejercicio', '🎯', 'Un ejercicio', 'Dudas o dolor en un ejercicio')] };
       if (t1 === 'planif') return t2 ? null : { preg: '¿Qué necesitas?', ops: [O('dias', '⏰', 'Días u horarios'), O('objetivo', '🎯', 'Objetivo o tipo de entreno'), O('cambio', '🔁', 'Quiero cambiar algo'), O('otra', '❓', 'Otra duda')] };
       if (t1 === 'sesion') {
-        if (!t2) return { preg: '¿Qué te pasa con ese entrenamiento?', ops: [O('duda', '❔', 'Tengo una duda'), O('intens', '⚖️', 'Muy duro o muy fácil'), O('tiempo', '⏱️', 'No me da tiempo'), O('dolor', '🩹', 'Me ha molestado algo')] };
+        if (!t2) return { preg: '¿Qué te pasa con esa sesión?', ops: [O('duda', '❔', 'Tengo una duda'), O('intens', '⚖️', 'Muy duro o muy fácil'), O('tiempo', '⏱️', 'No me da tiempo'), O('dolor', '🩹', 'Me ha molestado algo')] };
         if (!k[3]) { const e = elegirSesion('¿Qué sesión?'); return e.ops ? e : null; }
         return null;
       }
@@ -345,6 +345,11 @@ const Consultas = (() => {
       <div class="wa-bar"><textarea id="cq-resp" rows="1" placeholder="Mensaje"></textarea><button type="button" class="wa-send" data-act="cq" data-q="envresp" aria-label="Enviar">➤</button></div>
       <div class="wa-pie">El alumno ve: «Te responde Jesús en persona, como tarde en tu revisión semanal». Tu objetivo interno: &lt; 48 h.${L.some(c => c.estado === 'abierta' && !/^wa_/.test(c.tema)) ? ' · <button type="button" class="wa-link" data-act="cq" data-q="cerrar">Marcar como atendido sin responder</button>' : ''}</div></div>`);
   }
+  /* Notificación al móvil del alumno cuando Jesús responde (como un WhatsApp) */
+  function avisarAlumno(aid, txt) {
+    if (S.vista || S.prueba) return;
+    sb.functions.invoke('enviar-aviso', { body: { alumno_ids: [aid], titulo: '💬 Jesús te ha respondido', cuerpo: String(txt || '').slice(0, 120), url: './', tag: 'lof-chat' } }).catch(() => { });
+  }
   async function guardaResp(cerrar) {
     const aid = S.cqAl, txt = document.getElementById('cq-resp')?.value.trim(), ahora = new Date().toISOString();
     if (!cerrar && !txt) return;
@@ -356,10 +361,10 @@ const Consultas = (() => {
       const ult = ab[ab.length - 1], prev = ab.slice(0, -1);
       if (prev.length) { const r = await sb.from('consultas').update({ estado: 'respondida', respondida_at: ahora }).in('id', prev.map(c => c.id)); if (r.error) return fallo(r.error, 'No se ha podido enviar.'); prev.forEach(c => Object.assign(c, { estado: 'respondida', respondida_at: ahora })); }
       const cambio = { estado: 'respondida', respuesta: txt, respondida_at: ahora };
-      const { error } = await sb.from('consultas').update(cambio).eq('id', ult.id); if (error) return fallo(error, 'No se ha podido enviar.'); Object.assign(ult, cambio);
+      const { error } = await sb.from('consultas').update(cambio).eq('id', ult.id); if (error) return fallo(error, 'No se ha podido enviar.'); Object.assign(ult, cambio); avisarAlumno(aid, txt);
     } else {
       const { data, error } = await sb.from('consultas').insert({ alumno_id: aid, tema: 'jesus', texto: null, respuesta: txt, estado: 'respondida', respondida_at: ahora }).select().single();
-      if (error) return fallo(error, 'No se ha podido enviar.'); S.c.consultas.unshift(data);
+      if (error) return fallo(error, 'No se ha podido enviar.'); S.c.consultas.unshift(data); avisarAlumno(aid, txt);
     }
     abrirHilo(aid); render();
   }

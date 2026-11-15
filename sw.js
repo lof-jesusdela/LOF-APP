@@ -1,6 +1,6 @@
 // Guarda la "carcasa" de la app para que abra rápido y sin conexión.
 // Los datos siempre se piden a la base de datos (nunca se guardan aquí).
-const VERSION = 'lof-v363';
+const VERSION = 'lof-v364';
 const CARCASA = ['./', 'index.html', 'app.js', 'temperamento.js', 'habitos.js', 'nutricion.js', 'pdf.js', 'casos.js', 'acomp.js', 'consultas.js', 'negocio.js', 'compromisos.js', 'tandas.js', 'entrenaidor.js', 'oposicion.js', 'menusemana.js', 'cuestionario.js', 'tarifas.js', 'programas.js', 'config.js', 'manifest.webmanifest', 'icons/logo-96.jpg', 'icons/coach.jpg', 'icons/logo-chat.jpg', 'icons/icon-192.png', 'icons/whatsapp.png'];
 
 self.addEventListener('install', e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(CARCASA)).then(() => self.skipWaiting())); });
@@ -18,6 +18,7 @@ self.addEventListener('fetch', e => {
 // Avisos push del servidor (p. ej. «Tu semana está lista») y toque en cualquier aviso
 self.addEventListener('push', e => {
   let d = {}; try { d = e.data ? e.data.json() : {}; } catch (x) { d = { titulo: 'La Obra Fitness', cuerpo: e.data ? e.data.text() : '' }; }
+  try { if (self.navigator && self.navigator.setAppBadge) self.navigator.setAppBadge().catch(() => { }); } catch (x) { }
   e.waitUntil(self.registration.showNotification(d.titulo || 'La Obra Fitness', { body: d.cuerpo || '', icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: d.tag || 'lof-aviso', renotify: true, data: { url: d.url || './' } }));
 });
 self.addEventListener('notificationclick', e => {
