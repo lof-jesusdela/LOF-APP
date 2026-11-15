@@ -2399,7 +2399,7 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
     d.innerHTML = `<select class="pg-a2 grow">${$('#pg-a').innerHTML}</select><button type="button" class="btn sm ghost" aria-label="Quitar">✕</button>`; d.querySelector('select').value = v || '';
     d.querySelector('button').onclick = () => d.remove(); $('#pg-mas').append(d); };
   G0.slice(1).forEach(r => r.alumno_id && masAlumno(r.alumno_id));
-  $('#pg-vv')?.addEventListener('click', () => verAgenda());
+  $('#pg-vv')?.addEventListener('click', () => { S.agTd = false; verAgenda(); });
   $('#pg-rep')?.addEventListener('change', e => { $('#pg-hw').hidden = !e.target.value; });
   /* Fechas de una cita que se repite (máximo un año / 120 citas) */
   const fechasRep = (f0, k, hasta) => { if (!k) return [f0]; const out = []; let d = f0; const lim = sumaDias(f0, 366);
@@ -2517,12 +2517,13 @@ function agendaEvento(pid) {
     for (const r of grp) { const { error } = await sb.from('presenciales').delete().eq('id', r.id); if (error) return fallo(error); }
     gcalSync([], gcalIdsDe(grp)); await cargarPresCoach(); if (S.ficha) await cargarPres(); toast('Cita eliminada'); verAgenda(); };
   document.querySelectorAll('[data-fi]').forEach(b => b.onclick = () => { const aid = b.dataset.fi, mid = grp.find(x => x.alumno_id === aid)?.id; cerrarSheet(); irA(aid, { tab: 'calendario', fn: () => { if ((S.ficha.pres || []).some(x => x.id === mid)) formPres(mid); } }); });
-  $('#ae-vv').onclick = () => verAgenda(); $('#ae-ed').onclick = () => formProgramar(null, null, null, pid);
+  $('#ae-vv').onclick = () => { S.agTd = false; verAgenda(); }; $('#ae-ed').onclick = () => formProgramar(null, null, null, pid);
 }
 /* Agenda: todas las sesiones presenciales de tus alumnos, por días (de la semana pasada a 3 semanas vista) */
 /* Agenda tipo Google Calendar: semana (7 días), 3 días o lista. Toca un hueco para programar ahí; toca una sesión para abrirla */
 const AG_VISTAS = [['semana', 'Semana'], ['3dias', '3 días'], ['lista', 'Lista']];
 function verAgenda(desplaza = 0) {
+  if (S.agTd) { S.agTd = false; cerrarSheet(); render(); return; }
   let vista = 'semana'; try { vista = localStorage.getItem('lof-ag-vista') || 'semana'; } catch (e) { }
   const hoy = hoyISO(), nDias = vista === 'semana' ? 7 : vista === '3dias' ? 3 : 14;
   if (!S.agIni) S.agIni = vista === '3dias' ? hoy : lunesDe(hoy);
@@ -3664,12 +3665,28 @@ async function marcaVisto(...ks) {
 const nivelTarea = t => { const h = hoyISO(); return t.nivel || (!t.vence || t.vence > sumaDias(h, 3) ? 'semana' : t.vence <= h ? 'hoy' : '3dias'); };
 const tareaVencida = t => { const h = hoyISO(), n = new Date(), ahora = `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`; return !!t.vence && (t.vence < h || (t.vence === h && !!t.hora && String(t.hora).slice(0, 5) < ahora)); };
 function tdCalendario() {
-  const hoy = hoyISO(), ini = lunesDe(hoy), dias = [...Array(7)].map((_, i) => sumaDias(ini, i));
+  const hoy = hoyISO(), ini = S.tdIni || lunesDe(hoy), dias = [...Array(7)].map((_, i) => sumaDias(ini, i));
   const l = agruparCitas((S.c.presenciales || []).filter(p => p.fecha && p.fecha >= ini && p.fecha <= sumaDias(ini, 6) && p.estado !== 'cancelada').sort(ordPres));
   const nom = x => x?._g?.length > 1 ? x._g.map(y => (S.c.perfiles.find(p => p.id === y.alumno_id)?.nombre || 'Alumno').split(' ')[0]).join(' + ') : x?.alumno_id ? S.c.perfiles.find(p => p.id === x.alumno_id)?.nombre || 'Alumno' : x?.persona || x?.tipo || 'Cita';
   const EST = { programada: ['blue', 'Reservada'], dada: ['ok', 'Hecha'], tarde: ['warn', 'Aviso < 24 h'], falta: ['bad', 'No vino'] };
-  let grid = ''; try { grid = agendaRejilla(dias, l, hoy, nom, EST).replace('<span>Toca un hueco para programar</span>', ''); } catch (e) { console.warn(e); }
-  return `<section class="section"><div class="section-head"><h2>Tu semana · ${esc(fCorta(ini))} – ${esc(fCorta(sumaDias(ini, 6)))}</h2><div class="row" style="gap:6px"><button class="btn sm ghost" data-act="verAgenda">Agenda completa</button><button class="btn sm" data-act="programarSes">＋ Cita</button></div></div><div class="card" style="padding:8px">${grid || '<div class="empty">Sin citas esta semana.</div>'}</div></section>`;
+  let grid = ''; try { grid = agendaRejilla(dias, l, hoy, nom, EST).replace('id="ag-grid"', 'id="td-grid"').replace('<span>Toca un hueco para programar</span>', '<span>Toca un hueco para crear · mantén pulsada una cita para moverla</span>'); } catch (e) { console.warn(e); }
+  setTimeout(tdCalActivar, 0);
+  const esEsta = ini === lunesDe(hoy);
+  return `<section class="section td-cal"><div class="section-head"><h2>${esEsta ? 'Tu semana' : 'Semana'} · ${esc(fCorta(ini))} – ${esc(fCorta(sumaDias(ini, 6)))}</h2><div class="row" style="gap:6px"><button class="btn sm ghost" data-act="tdSem" data-d="-1" aria-label="Semana anterior">‹</button>${esEsta ? '' : '<button class="btn sm ghost" data-act="tdSem" data-d="0">Hoy</button>'}<button class="btn sm ghost" data-act="tdSem" data-d="1" aria-label="Semana siguiente">›</button><button class="btn sm ghost" data-act="verAgenda">Agenda completa</button><button class="btn sm" data-act="programarSes">＋ Cita</button></div></div><div class="card" style="padding:8px">${grid || '<div class="empty">Sin citas esta semana.</div>'}</div></section>`;
+}
+/* La agenda de Tu día se usa directamente: tocar un hueco crea, tocar una cita la abre, mantener pulsada la mueve */
+function tdCalActivar() {
+  const g = document.getElementById('td-grid'); if (!g || g._ok) return; g._ok = 1;
+  const H = +g.dataset.h, h0 = +g.dataset.h0;
+  const hs = [...g.querySelectorAll('.ag-ev')].map(e => parseFloat(e.style.top) || 0);
+  g.scrollTop = Math.max(0, (hs.length ? Math.min(...hs) : (8 - h0) * H) - H / 2);
+  g.addEventListener('pointerdown', () => { S.agTd = true; AGD.H = H; AGD.h0 = h0; }, true);
+  agendaArrastre(g, H, h0);
+  g.addEventListener('click', ev => {
+    if (ev.target.closest('[data-act]') || Date.now() - (S._agNoClick || 0) < 600) return; const col = ev.target.closest('.ag-col'); if (!col) return;
+    const y = ev.clientY - col.getBoundingClientRect().top, m = Math.max(0, Math.floor(y / H * 2) * 30), hh = h0 + Math.floor(m / 60);
+    S.agTd = true; formProgramar(null, col.dataset.f, `${String(hh).padStart(2, '0')}:${m % 60 ? '30' : '00'}`);
+  });
 }
 function tdFilaTarea(x) {
   const t = x.t, venc = tareaVencida(t), al = t.alumno_id ? S.c.perfiles.find(p => p.id === t.alumno_id)?.nombre : null;
@@ -8317,7 +8334,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v370';
+const APP_VER = 'v371';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8631,12 +8648,13 @@ document.addEventListener('click', async e => {
     case 'ajBloques': { const srv = S.ficha?.srv; if (!srv) break; b.disabled = true; try { await ajustarBloquesFin(S.ficha.id, durContratada(srv)); toast('Bloques ajustados: ya termina en su fecha'); await cargarCoach(); await abrirFicha(S.ficha.id); } catch (err) { b.disabled = false; fallo(err); } break; }
     case 'entExtra': formEntExtra(); break;
     case 'programarSes': formProgramar(S.ficha?.id || null, b.dataset.f || null); break;
-    case 'verAgenda': verAgenda(); break;
-    case 'agendaMover': verAgenda(+b.dataset.d); break;
+    case 'verAgenda': S.agTd = false; verAgenda(); break;
+    case 'tdSem': { const d = +b.dataset.d; S.tdIni = d ? sumaDias(S.tdIni || lunesDe(hoyISO()), 7 * d) : null; render(); break; }
+    case 'agendaMover': S.agTd = false; verAgenda(+b.dataset.d); break;
     case 'agendaVista': { const v = b.dataset.v; try { localStorage.setItem('lof-ag-vista', v); } catch (e) { } S.agIni = v === '3dias' ? hoyISO() : lunesDe(S.agIni || hoyISO()); verAgenda(); break; }
     case 'agendaHoy': S.agIni = null; verAgenda(); break;
     case 'agendaSuscribir': await agendaSuscribir(); break;
-    case 'agendaIr': { if (Date.now() - (S._agNoClick || 0) < 600) break; if (+b.dataset.p && (S.c.presenciales || []).some(x => x.id === +b.dataset.p)) { agendaEvento(+b.dataset.p); break; } const id = b.dataset.id, pid = +b.dataset.p; await irA(id, { tab: 'calendario', fn: pid ? () => { if ((S.ficha.pres || []).some(x => x.id === pid)) formPres(pid); } : null }); break; }
+    case 'agendaIr': { S.agTd = !!b.closest('.td-cal'); if (Date.now() - (S._agNoClick || 0) < 600) break; if (+b.dataset.p && (S.c.presenciales || []).some(x => x.id === +b.dataset.p)) { agendaEvento(+b.dataset.p); break; } const id = b.dataset.id, pid = +b.dataset.p; await irA(id, { tab: 'calendario', fn: pid ? () => { if ((S.ficha.pres || []).some(x => x.id === pid)) formPres(pid); } : null }); break; }
     case 'nuevaPresVal': S.presVal = b.dataset.t; formPres(); break;
     case 'editarPres': formPres(+b.dataset.id); break;
     case 'presVerSesion': cerrarSheet(); await verSesion(+b.dataset.id); break;
