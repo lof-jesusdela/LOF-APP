@@ -2174,9 +2174,24 @@ function vProgreso() {
   <section class="section">${vGraficaComp(med, S.perfil, S.d.medObj) || '<div class="card empty">Aún no hay mediciones. Jesús las añadirá en tu próximo control mensual.</div>'}${vObjetivoComp(S.d.medObj, med, false)}
   </section>
   ${vUltimos7()}
+  ${vRevisionProgreso()}
   ${med.length ? `<section class="section"><h2>Mediciones</h2><div class="card tbl"><table><thead><tr><th>Fecha · método</th><th>Peso (kg)</th><th>% grasa</th><th>Cintura (cm)</th><th>Cadera (cm)</th></tr></thead><tbody>${med.slice().reverse().map(m => `<tr><td>${esc(fCorta(m.fecha))} ${String(fecha(m.fecha).getFullYear()).slice(2)}${m.metodo ? `<div class="small muted">${esc(m.metodo)}</div>` : ''}</td><td class="num">${fmtNum(m.peso)}</td><td class="num">${fmtNum(m.grasa_pct)}</td><td class="num">${fmtNum(m.cintura)}</td><td class="num">${fmtNum(m.cadera)}</td></tr>`).join('')}</tbody></table></div></section>` : ''}
   ${vTestsProgreso()}
   ${Casos.vSeccionAlumno()}`;
+}
+
+/* Revisión mensual en Progreso, junto a las mediciones: próxima revisión (cita reservada o semana que toca) y la última */
+function vRevisionProgreso() {
+  const D = S.d || {}, hoy = hoyISO(), s = D.servicio;
+  let prox = null; try { prox = controlesMensuales(s, sumaDias(hoy, 45)).find(c => c.fecha >= hoy); } catch (e) { }
+  const cita = (D.presenciales || []).filter(p => p.estado === 'programada' && p.fecha && p.fecha >= hoy && /revisi/i.test(p.tipo || '')).sort((x, y) => (x.fecha + (x.hora || '')).localeCompare(y.fecha + (y.hora || '')))[0];
+  const ult = (D.revisiones || []).find(r => r.fecha <= hoy);
+  if (!prox && !cita && !ult) return '';
+  return `<section class="section"><h2>Revisión mensual</h2><div class="card">
+    ${cita ? `<div class="line" data-act="verPres" data-id="${cita.id}" style="cursor:pointer"><div class="ico gold">${svg('progreso')}</div><div class="grow"><b class="small">Próxima revisión · reservada</b><div class="small muted">${esc(fLargaP(cita))}${cita.hora ? ' · ' + hhmm(cita.hora) : ''} · llamada o videollamada de 10-15 minutos</div></div><span class="small muted">›</span></div>`
+      : prox ? `<div class="line"><div class="ico gold">${svg('progreso')}</div><div class="grow"><b class="small">Próxima revisión · control ${prox.n}</b><div class="small muted">Semana del ${esc(fCorta(prox.lunes))} · llamada o videollamada de 10-15 minutos</div></div></div>` : ''}
+    ${ult ? `<div class="line"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">Última revisión · ${esc(fCorta(ult.fecha))}</b>${ult.resumen ? `<div class="small muted">${esc(String(ult.resumen).slice(0, 180))}${String(ult.resumen).length > 180 ? '…' : ''}</div>` : ''}</div></div>` : ''}
+  </div></section>`;
 }
 
 /* ---------- Check-in ---------- */
@@ -8302,7 +8317,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v364';
+const APP_VER = 'v365';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
