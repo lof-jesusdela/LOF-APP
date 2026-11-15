@@ -449,6 +449,7 @@ async function cargarAlumno(uid) {
   await Cuest.cargar(uid, S.d);
   await Casos.cargar(uid, S.d);
   await Acomp.cargarAlumno(uid, S.d);
+  await Consultas.cargarAlumno(uid, S.d);
   { const r = await sb.from('programas').select('contexto_nombre,alternativo,' + SEL_PROGRAMA).eq('alumno_id', uid).eq('alternativo', true).order('id');
     S.d.alternativos = r.error ? [] : (r.data || []).map(x => { ordSemana(x.dias ||= []); x.dias.forEach(ordenarDia); return x; }); }
   { const r = await sb.from('plan_semana').select('*').eq('alumno_id', uid).gte('semana_inicio', sumaDias(lunesDe(hoyISO()), -56)); S.d.planes = r.data || []; }  { const r = await sb.from('avisos').select('*').eq('alumno_id', uid).is('visto_at', null).order('creado_at', { ascending: false }).limit(5); S.d.avisos = r.error ? [] : (r.data || []); }
@@ -1096,6 +1097,7 @@ function vHoy() {
   ${Acomp.tarjetaEstadoHoy()}
   ${vAvisoContexto()}
   ${vAvisosHoy()}
+  ${Consultas.vAvisoHoy()}
   ${esWeekCard()}
   ${vPendientesHoy(s)}
   <section class="section"><h2>Lo que toca hoy</h2><div class="card">${toca}</div></section>
@@ -1977,22 +1979,26 @@ const Peso = {
     toast(S.obj ? 'Peso actualizado en su programa' : 'Peso actualizado para tus próximos entrenamientos');
   }
 };
+function vFinViejo(escala, el) {
+  return `    ${escala('s-cans', `Cansancio ahora mismo: ¿cómo ${S.obj ? 'termina' : 'terminas'} de cansad@ físicamente?`, ['1 · Como nuev@', '5 · Vací@'])}
+    ${escala('s-pod', `Rendimiento: comparado con ${S.obj ? 'sus' : 'tus'} sesiones normales, ¿cómo de fuerte ${S.obj ? 'se ha' : 'te has'} notado hoy? (3 = como siempre)`, ['1 · Mucho peor', '5 · Mejor que nunca'])}
+    <label class="f">Comentarios de la sesión (opcional)<textarea id="s-nota" placeholder="Molestias, sensaciones, máquinas ocupadas…"></textarea></label>
+    <label class="f">Para la revisión semanal o mensual (opcional)<textarea id="s-rev" placeholder="Algo que quieras que revisemos juntos: progreso, dudas, ajustes…"></textarea></label>`;
+}
 function terminar() {
   if (S.obj && S.sesion?.editar) return guardarSesion();
   const min = S.sesion?.inicio ? Math.max(1, Math.round((Date.now() - S.sesion.inicio) / 60000)) : null;
   const escala = (id, txt, ext) => `<div class="stack" style="gap:6px"><span class="small"><b>${txt}</b></span><div class="escala" role="group" id="${id}">${[1, 2, 3, 4, 5].map(n => `<button type="button" data-act="escala" data-g="${id}" data-v="${n}" aria-pressed="false">${n}</button>`).join('')}</div><div class="row small muted"><span class="grow">${ext[0]}</span><span>${ext[1]}</span></div></div>`;
   const el = S.obj ? 'se ha sentido' : 'te has sentido';
   abrirSheet(`<div class="stack"><h2>Sesión terminada</h2>${min ? `<p class="small">${S.obj ? 'Ha' : 'Has'} entrenado <b>${min} minutos</b>.</p>` : ''}
-    ${escala('s-cans', `Cansancio ahora mismo: ¿cómo ${S.obj ? 'termina' : 'terminas'} de cansad@ físicamente?`, ['1 · Como nuev@', '5 · Vací@'])}
-    ${escala('s-pod', `Rendimiento: comparado con ${S.obj ? 'sus' : 'tus'} sesiones normales, ¿cómo de fuerte ${S.obj ? 'se ha' : 'te has'} notado hoy? (3 = como siempre)`, ['1 · Mucho peor', '5 · Mejor que nunca'])}
-    <label class="f">Comentarios de la sesión (opcional)<textarea id="s-nota" placeholder="Molestias, sensaciones, máquinas ocupadas…"></textarea></label>
-    <label class="f">Para la revisión semanal o mensual (opcional)<textarea id="s-rev" placeholder="Algo que quieras que revisemos juntos: progreso, dudas, ajustes…"></textarea></label>
+    ${S.obj ? vFinViejo(escala, el) : Consultas.vFinEntreno()}
     <button class="btn full" data-act="guardarSesion">Guardar y salir</button></div>`);
 }
 async function guardarSesion() {
   try {
     if (S.obj && S.sesion?.editar) { const sid = S.sesion.id; cerrarSheet(); stopTimer(); await salirComo(); toast('Cambios guardados'); if (sid) await verSesion(sid); return; }
-    const id = await asegurarSesion(), nota = $('#s-nota').value.trim(), rev = $('#s-rev')?.value.trim(), cambios = {};
+    const id = await asegurarSesion(), fe = S.obj ? null : Consultas.leerFinEntreno(), rev = $('#s-rev')?.value.trim(), cambios = {};
+    const nota = fe ? [fe.si ? `🩹 ${fe.ej || 'Ejercicio'}: ${fe.det || 'a revisar'}` : '', fe.otra].filter(Boolean).join('\n') : $('#s-nota').value.trim();
     if (nota) cambios.nota = nota;
     const val = g => { const b = document.querySelector(`#${g} [aria-pressed="true"]`); return b ? +b.dataset.v : null; };
     const extra = {}; if (val('s-cans')) extra.cansancio = val('s-cans'); if (val('s-pod')) extra.poderio = val('s-pod'); if (rev) extra.nota_revision = rev;
@@ -2005,6 +2011,7 @@ async function guardarSesion() {
     if (Object.keys(cambios).length) { const { error } = await conRespaldo(() => sb.from('sesiones_hechas').update(cambios).eq('id', id), () => sb.from('sesiones_hechas').update({ nota: cambios.nota ?? null }).eq('id', id)); if (error) throw error; Object.assign(S.d.sesiones.find(s => s.id === id) || {}, cambios); }
     { const c = conteoSeries(S.dia, S.sesion), est = { estado: !c.total || c.hechas >= c.total ? 'completa' : 'parcial', series_hechas: c.hechas, series_total: c.total };
       const r = await sb.from('sesiones_hechas').update(est).eq('id', id); if (!r.error) Object.assign(S.d.sesiones.find(x => x.id === id) || {}, est); }
+    if (fe) await Consultas.crearDeFin(fe, id);
     try { localStorage.removeItem(claveCrono()); } catch (e) { } S.sesion.inicio = null; S.reanudar = null;
     if (S.obj) { const canj = S.obj.presencial; await registrarPresencial(id); cerrarSheet(); stopTimer(); await salirComo(); toast(canj ? 'Sesión guardada y presencial canjeada' : 'Sesión guardada en su ficha'); await verSesion(id); return; }
     cerrarSheet(); stopTimer(); S.dia = null; S.sesion = null; S.tab = 'hoy'; toast('Sesión guardada. ¡Buen trabajo!'); render(); window.scrollTo(0, 0);
@@ -2235,6 +2242,7 @@ async function cargarCoach() {
   { const r = await sb.from('cambios_peso').select('*').is('visto_at', null).order('created_at', { ascending: false }); S.c.cambiosPeso = r.data || []; }
   await cargarPresCoach();
   await Acomp.cargarCoach();
+  await Consultas.cargarCoach();
   await Negocio.cargar();
   S.c.servicios.forEach(x => x._bloques = bloquesDe((rut.data || []).filter(r => r.alumno_id === x.alumno_id)));
   const [fa, ap] = await Promise.all([sb.from('facturas').select('*').order('numero', { ascending: false }), sb.from('ajustes_privados').select('*')]);
@@ -3671,7 +3679,7 @@ function tdAlertasNegocio() {
 }
 function vTuDia() {
   const f = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
-  return `<section class="stack"><span class="eyebrow">${esc(f)}</span><h1>Tu día</h1></section>${tdCalendario()}${tdTareas()}${tdAlertasAlumnos()}${tdAlertasNegocio()}`;
+  return `<section class="stack"><span class="eyebrow">${esc(f)}</span><h1>Tu día</h1></section>${tdCalendario()}${Consultas.vCoach()}${tdTareas()}${tdAlertasAlumnos()}${tdAlertasNegocio()}`;
 }
 function vFutbolCoach() {
   const fut = S.c.perfiles.filter(p => p.activo !== false && S.c.servicios.some(x => x.alumno_id === p.id && x.modulo_futbol));
@@ -8290,7 +8298,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v351';
+const APP_VER = 'v352';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8478,6 +8486,7 @@ document.addEventListener('click', async e => {
   const a = b.dataset.act;
   switch (a) {
     case 'ia': await IA.accion(b); break;
+    case 'cq': await Consultas.accion(b); break;
     case 'duoElegir': duoElegir(); break;
     case 'tareaEditar': formTarea(b.dataset.id ? +b.dataset.id : null, b.dataset.al === '' ? '' : (b.dataset.al || S.ficha?.id)); break;
     case 'tdNeg': marcaVisto('neg|' + b.dataset.id); S.ecoTab = b.dataset.t; try { localStorage.setItem('lof-eco-tab', S.ecoTab); } catch (e) { } S.ctab = 'pagos'; S.ficha = null; render(); window.scrollTo(0, 0); break;
