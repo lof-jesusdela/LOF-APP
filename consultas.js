@@ -82,7 +82,7 @@ const Consultas = (() => {
     const ejHtml = ej ? `<button type="button" class="wa-ejref" data-act="cq" data-q="fotourl" data-u="${esc(ej.imagen_url || '')}">${ej.imagen_url ? `<img src="${esc(ej.imagen_url)}" alt="" loading="lazy">` : '<span class="ph">🏋️</span>'}<b>${esc(ej.nombre)}</b></button>` : '';
     const foto = m.de === 'al' && c.foto ? `<button type="button" class="wa-foto" data-act="cq" data-q="foto" data-p="${esc(c.foto)}"><img data-foto="${esc(c.foto)}" alt="Foto"></button>` : '';
     const marca = MARCA_AV.test(m.txt || ''), txt = marca ? m.txt.replace(MARCA_AV, '').trim() : m.txt;
-    return `<div class="wa-msg ${mio ? 'mio' : ''}">${chip}${ejHtml}${foto}${txt && !(foto && txt === '📷') ? `<span class="wa-txt">${esc(txt)}</span>` : ''}${marca ? vAvisosMsg(yo) : ''}<span class="wa-hr">${esc(hora(m.t))}${tick}</span></div>`;
+    return `<div class="wa-msg ${mio ? 'mio' : ''}${yo === 'je' ? ' pulsable' : ''}"${yo === 'je' ? ` data-cid="${c.id}" data-de="${m.de}"` : ''}>${chip}${ejHtml}${foto}${txt && !(foto && txt === '📷') ? `<span class="wa-txt">${esc(txt)}</span>` : ''}${marca ? vAvisosMsg(yo) : ''}<span class="wa-hr">${esc(hora(m.t))}${tick}</span></div>`;
   }
   function hilo(L, yo) {
     const M = mensajes(L, yo === 'je'); let ult = '';
@@ -406,6 +406,55 @@ Jesús
     const r2 = await sb.from('consultas').update(cambio).eq('id', ult.id); if (!r2.error) Object.assign(ult, cambio);
     abrirHilo(aid); render();
   }
+  /* ---------- Mantener pulsado un mensaje (coach): Copiar · Reenviar a otro alumno · Eliminar ---------- */
+  const msgDe = (cid, de) => { const c = (S.c.consultas || []).find(x => String(x.id) === String(cid)); return c ? { c, txt: String((de === 'al' ? c.texto : c.respuesta) || '').replace(MARCA_AV, '').trim() } : null; };
+  function menuMsg(el) {
+    const cid = el.dataset.cid, de = el.dataset.de, m = msgDe(cid, de); if (!m) return;
+    document.querySelectorAll('.wa-msg.sel').forEach(x => x.classList.remove('sel')); el.classList.add('sel');
+    if (navigator.vibrate) try { navigator.vibrate(15); } catch (e) { }
+    capa(`<div class="wa-menu" role="menu">
+      ${m.txt ? `<button type="button" data-act="cq" data-q="mcopiar" data-cid="${cid}" data-de="${de}">📋 Copiar</button>` : ''}
+      ${m.txt ? `<button type="button" data-act="cq" data-q="mreenv" data-cid="${cid}" data-de="${de}">↪️ Reenviar a otro alumno</button>` : ''}
+      <button type="button" class="peligro" data-act="cq" data-q="mborrar" data-cid="${cid}" data-de="${de}">🗑️ Eliminar</button>
+      <button type="button" data-act="cq" data-q="mcerrar">Cancelar</button></div>`);
+  }
+  function capa(html) {
+    cerrarCapa(); const d = document.createElement('div'); d.className = 'wa-capa'; d.id = 'wa-capa'; d.innerHTML = html;
+    d.addEventListener('click', e => { if (e.target === d) cerrarCapa(); }); (document.getElementById('sheet-in') || document.body).appendChild(d);
+  }
+  function cerrarCapa() { document.getElementById('wa-capa')?.remove(); document.querySelectorAll('.wa-msg.sel').forEach(x => x.classList.remove('sel')); }
+  function reenviarPick(cid, de, filtro = '') {
+    const m = msgDe(cid, de); if (!m) return; const f = normaliza(filtro);
+    const L = (S.c.perfiles || []).filter(p => (typeof esCliente === 'function' ? esCliente(p) : p.rol !== 'coach') && p.id !== S.cqAl && (!f || normaliza(p.nombre).includes(f))).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+    capa(`<div class="wa-menu wa-pick"><b style="padding:6px 4px">Reenviar a…</b><div class="small muted" style="padding:0 4px 6px">«${esc(m.txt.slice(0, 80))}${m.txt.length > 80 ? '…' : ''}»</div>
+      <input type="search" id="wa-pick-q" placeholder="Buscar alumno" value="${esc(filtro)}" data-cid="${cid}" data-de="${de}">
+      <div class="wa-pick-l">${L.map(p => `<button type="button" data-act="cq" data-q="mreenvA" data-cid="${cid}" data-de="${de}" data-al="${p.id}">${avatarDe(p, 28)} ${esc(p.nombre || '')}</button>`).join('') || '<div class="small muted" style="padding:8px">Nadie coincide</div>'}</div>
+      <button type="button" data-act="cq" data-q="mcerrar">Cancelar</button></div>`);
+    const q = document.getElementById('wa-pick-q'); if (q && filtro) { q.focus(); q.setSelectionRange(filtro.length, filtro.length); }
+  }
+  async function reenviarA(cid, de, aid) {
+    const m = msgDe(cid, de); if (!m) return; cerrarCapa();
+    if (S.vista || S.prueba) return toast('En modo prueba no se envía nada');
+    const ahora = new Date().toISOString();
+    const { data, error } = await sb.from('consultas').insert({ alumno_id: aid, tema: 'jesus', texto: null, respuesta: m.txt, estado: 'respondida', respondida_at: ahora }).select().single();
+    if (error) return fallo(error, 'No se ha podido reenviar.');
+    S.c.consultas.unshift(data); avisarAlumno(aid, m.txt); toast(`Reenviado a ${(nombreAl(aid) || '').split(' ')[0]}`); render();
+  }
+  async function borrarMsg(cid, de, b) {
+    const m = msgDe(cid, de); if (!m) return;
+    if (!b.dataset.ok) { b.dataset.ok = '1'; b.textContent = de === 'al' ? '🗑️ Toca otra vez: se borra su mensaje (y tu respuesta)' : '🗑️ Toca otra vez para eliminar tu mensaje'; return; }
+    const c = m.c; cerrarCapa();
+    let r;
+    if (de === 'al' || c.tema === 'jesus' || !c.texto) {
+      r = await sb.from('consultas').delete().eq('id', c.id);
+      if (!r.error) { if (c.foto) sb.storage.from('consultas').remove([c.foto]).then(() => { }, () => { }); S.c.consultas = S.c.consultas.filter(x => x.id !== c.id); }
+    } else {
+      const cambio = { respuesta: null, estado: 'abierta', respondida_at: null, visto_alumno_at: null };
+      r = await sb.from('consultas').update(cambio).eq('id', c.id); if (!r.error) Object.assign(c, cambio);
+    }
+    if (r.error) return fallo(r.error, 'No se ha podido eliminar.');
+    toast('Mensaje eliminado'); abrirHilo(S.cqAl); render();
+  }
   function abrirHilo(aid) {
     S.cqAl = aid; const L = (S.c.consultas || []).filter(c => c.alumno_id === aid).reverse();
     const volver = S.cqLista ? '<button type="button" class="wa-back" data-act="cq" data-q="lista" aria-label="Volver a chats">‹</button>' : null;
@@ -463,6 +512,11 @@ Jesús
       case 'hilo': S.cqLista = !!b.closest('.wa-lista'); abrirHilo(v); break;
       case 'lista': abrirLista(); break;
       case 'difu': abrirDifusion(); break;
+      case 'mcerrar': cerrarCapa(); break;
+      case 'mcopiar': { const m = msgDe(b.dataset.cid, b.dataset.de); cerrarCapa(); try { await navigator.clipboard.writeText(m.txt); toast('Copiado'); } catch (e) { toast('No se ha podido copiar'); } break; }
+      case 'mreenv': reenviarPick(b.dataset.cid, b.dataset.de); break;
+      case 'mreenvA': await reenviarA(b.dataset.cid, b.dataset.de, b.dataset.al); break;
+      case 'mborrar': await borrarMsg(b.dataset.cid, b.dataset.de, b); break;
       case 'push': if (typeof activarPush === 'function' && await activarPush()) { await refrescarPush(); S.push = 'ok'; pintaAlumno(); } break;
       case 'dgrupo': { leeDif(); const d = S.cqDif; d.conf = false; if (v === 'todos') d.sel = new Set(['todos']); else { d.sel.delete('todos'); d.sel.has(v) ? d.sel.delete(v) : d.sel.add(v); if (!d.sel.size) d.sel.add('todos'); } abrirDifusion(); break; }
       case 'dplant': { S.cqDif.txt = PLANTILLAS.find(p => p[0] === v)[2]; S.cqDif.conf = false; abrirDifusion(); break; }
@@ -476,8 +530,19 @@ Jesús
   }
   /* Registro mínimo de cada derivación a WhatsApp desde la app (para medir) */
   function log(tema) { if (S.vista || S.prueba || !S.d?.uid) return; sb.from('consultas').insert({ alumno_id: S.d.uid, tema, estado: 'whatsapp', texto: null }).then(r => { if (r.error) console.warn(r.error.message); }); }
-  return { difTecleo: () => { if (S.cqDif) { S.cqDif.conf = false; clearTimeout(S.cqDifT); S.cqDifT = setTimeout(() => { const t = document.getElementById('cq-dif'); if (!t) return; const pos = t.selectionStart; S.cqDif.txt = t.value; abrirDifusion(); const n = document.getElementById('cq-dif'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }, 900); } }, ajustaAlto, elegirFoto, TEL, vBoton, abrirLista, vDevolucion, metrica, cargarAlumno, cargarCoach, vAlumno, vAvisoHoy, vCoach, vFinEntreno, leerFinEntreno, crearDeFin, accion, sinLeer, abiertas, abrirHilo };
+  return { menuMsg, reenviarPick, difTecleo: () => { if (S.cqDif) { S.cqDif.conf = false; clearTimeout(S.cqDifT); S.cqDifT = setTimeout(() => { const t = document.getElementById('cq-dif'); if (!t) return; const pos = t.selectionStart; S.cqDif.txt = t.value; abrirDifusion(); const n = document.getElementById('cq-dif'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }, 900); } }, ajustaAlto, elegirFoto, TEL, vBoton, abrirLista, vDevolucion, metrica, cargarAlumno, cargarCoach, vAlumno, vAvisoHoy, vCoach, vFinEntreno, leerFinEntreno, crearDeFin, accion, sinLeer, abiertas, abrirHilo };
 })();
 
 document.addEventListener('input', e => { if (e.target.matches && e.target.matches('.wa-bar textarea')) Consultas.ajustaAlto(e.target); if (e.target.id === 'cq-dif') Consultas.difTecleo(); });
 document.addEventListener('change', e => { const sel = e.target.closest && e.target.closest('[data-cq-nuevo]'); if (sel && sel.value) Consultas.abrirHilo(sel.value); if (e.target.id === 'cq-foto') Consultas.elegirFoto(e.target); });
+
+/* Mantener pulsado (o clic derecho) sobre un mensaje en el chat del coach */
+(() => {
+  let t = null, x0 = 0, y0 = 0;
+  const fin = () => { clearTimeout(t); t = null; };
+  document.addEventListener('pointerdown', e => { const el = e.target.closest && e.target.closest('.wa-msg.pulsable'); if (!el || e.target.closest('button,a')) return; x0 = e.clientX; y0 = e.clientY; fin(); t = setTimeout(() => { t = null; Consultas.menuMsg(el); }, 480); });
+  document.addEventListener('pointermove', e => { if (t && Math.hypot(e.clientX - x0, e.clientY - y0) > 10) fin(); });
+  ['pointerup', 'pointercancel', 'scroll'].forEach(ev => document.addEventListener(ev, fin, true));
+  document.addEventListener('contextmenu', e => { const el = e.target.closest && e.target.closest('.wa-msg.pulsable'); if (el) { e.preventDefault(); Consultas.menuMsg(el); } });
+  document.addEventListener('input', e => { if (e.target.id === 'wa-pick-q') { clearTimeout(e.target._t); const v = e.target.value, d = e.target.dataset; e.target._t = setTimeout(() => Consultas.reenviarPick(d.cid, d.de, v), 250); } });
+})();
