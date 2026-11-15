@@ -38,6 +38,14 @@ const Consultas = (() => {
   async function cargarCoach() {
     const r = await sb.from('consultas').select('*').order('creado_at', { ascending: false }).limit(300);
     S.c.consultas = r.error ? [] : (r.data || []); S.c.consultasErr = !!r.error;
+    limpiarFotos();
+  }
+  /* Las fotos se borran a los 60 días (lo hace la app del coach al cargar, sin tarea manual) */
+  async function limpiarFotos() {
+    const lim = Date.now() - 60 * 864e5, viejas = (S.c.consultas || []).filter(c => c.foto && new Date(c.creado_at).getTime() < lim);
+    if (!viejas.length) return;
+    const r = await sb.storage.from('consultas').remove(viejas.map(c => c.foto)); if (r.error) return console.warn(r.error.message);
+    const u = await sb.from('consultas').update({ foto: null }).in('id', viejas.map(c => c.id)); if (!u.error) viejas.forEach(c => c.foto = null);
   }
   const sinLeer = () => (S.d?.consultas || []).filter(c => c.estado === 'respondida' && c.respuesta && !c.visto_alumno_at);
   const abiertas = () => (S.c?.consultas || []).filter(c => c.estado === 'abierta' && !/^wa_|^jesus$/.test(c.tema));
@@ -60,16 +68,49 @@ const Consultas = (() => {
     const mio = m.de === yo, c = m.c, [, ico, t] = tm(c.tema);
     const chip = m.de === 'al' && ico ? `<div class="wa-chip">${ico} ${esc(t)}${c.ejercicio ? ' · ' + esc(c.ejercicio) : ''}${c.urgente ? ' · le limita' : ''}</div>` : '';
     const tick = !mio ? '' : m.de === 'al' ? (c.estado === 'abierta' ? '<span class="wa-tk">✓</span>' : '<span class="wa-tk leido">✓✓</span>') : `<span class="wa-tk ${c.visto_alumno_at ? 'leido' : ''}">✓✓</span>`;
-    return `<div class="wa-msg ${mio ? 'mio' : ''}">${chip}<span class="wa-txt">${esc(m.txt)}</span><span class="wa-hr">${esc(hora(m.t))}${tick}</span></div>`;
+    const foto = m.de === 'al' && c.foto ? `<button type="button" class="wa-foto" data-act="cq" data-q="foto" data-p="${esc(c.foto)}"><img data-foto="${esc(c.foto)}" alt="Foto"></button>` : '';
+    return `<div class="wa-msg ${mio ? 'mio' : ''}">${chip}${foto}${m.txt && !(foto && m.txt === '📷') ? `<span class="wa-txt">${esc(m.txt)}</span>` : ''}<span class="wa-hr">${esc(hora(m.t))}${tick}</span></div>`;
   }
   function hilo(L, yo) {
     const M = mensajes(L, yo === 'je'); let ult = '';
     if (!M.length) return `<div class="wa-sys">${yo === 'al' ? 'Escríbeme lo que necesites. Lo leo yo en persona.' : 'Aún no hay mensajes con este alumno.'}</div>`;
     return M.map(m => { const d = dia(m.t), sep = d !== ult ? `<div class="wa-dia">${esc(sepDia(d))}</div>` : ''; ult = d; return sep + burbuja(m, yo); }).join('');
   }
+  const FOTOS = {};
   function montar(html) {
     abrirSheet(html); const el = document.getElementById('sheet-in'); el.classList.add('chat');
     const b = document.getElementById('wa-body'); if (b) b.scrollTop = b.scrollHeight;
+    pintaFotos();
+  }
+  /* Fotos privadas: enlaces firmados de 1 h, sin volver a pintar el chat */
+  async function pintaFotos() {
+    const imgs = [...document.querySelectorAll('#sheet-in img[data-foto]')]; if (!imgs.length) return;
+    const faltan = [...new Set(imgs.map(i => i.dataset.foto).filter(p => !FOTOS[p]))];
+    if (faltan.length) { const r = await sb.storage.from('consultas').createSignedUrls(faltan, 3600); (r.data || []).forEach(x => { if (x.signedUrl) FOTOS[x.path] = x.signedUrl; }); }
+    imgs.forEach(i => { if (FOTOS[i.dataset.foto]) i.src = FOTOS[i.dataset.foto]; else i.closest('.wa-foto')?.classList.add('caducada'); });
+    const b = document.getElementById('wa-body'); if (b) setTimeout(() => b.scrollTop = b.scrollHeight, 150);
+  }
+  function verFoto(p) {
+    const u = FOTOS[p]; if (!u) return;
+    const d = document.createElement('div'); d.className = 'wa-lb'; d.innerHTML = `<img src="${esc(u)}" alt=""><span>Toca para cerrar</span>`;
+    d.addEventListener('click', () => d.remove()); document.body.appendChild(d);
+  }
+  /* Reduce la foto en el móvil antes de subirla (máx. 1280 px, JPEG ≈ 150-250 KB) */
+  async function comprimir(file) {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = new Image(); await new Promise((ok, ko) => { img.onload = ok; img.onerror = ko; img.src = url; });
+      const k = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      return await new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.72));
+    } finally { URL.revokeObjectURL(url); }
+  }
+  async function elegirFoto(input) {
+    const f = input.files?.[0]; if (!f) return;
+    if (!/^image\//.test(f.type || 'image/')) return toast('Solo se pueden adjuntar fotos');
+    try { const blob = await comprimir(f); if (!blob) throw new Error('foto'); S.cq.foto = blob; S.cq.fotoUrl && URL.revokeObjectURL(S.cq.fotoUrl); S.cq.fotoUrl = URL.createObjectURL(blob); }
+    catch (e) { return toast('No se ha podido leer la foto'); }
+    const t = document.getElementById('cq-txt')?.value || ''; pintaAlumno(); const ta = document.getElementById('cq-txt'); if (ta) ta.value = t;
   }
   const avatarJ = '<img class="wa-av" src="icons/coach.jpg" alt="" onerror="this.style.visibility=\'hidden\'">';
   const TEL = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>';
@@ -155,7 +196,7 @@ const Consultas = (() => {
     const listo = !st;
     montar(`<div class="wa">${cab(avatarJ, 'Jesús de la Obra', 'Te responde Jesús en persona', S.whatsapp ? `<button type="button" class="wa-tel" data-act="cq" data-q="watel" aria-label="Escribir a Jesús por WhatsApp">${WA_ICO}</button>` : '')}
       <div class="wa-body" id="wa-body">${hilo(L, 'al')}<div class="wa-guia">${elegidas}${guia}${nav}</div></div>
-      ${listo ? `<div class="wa-bar"><textarea id="cq-txt" rows="2" placeholder="${esc(q.path.length > 1 ? 'Cuéntame sobre «' + q.path[q.path.length - 1].t + '»…' : 'Mensaje')}"></textarea><button type="button" class="wa-send" data-act="cq" data-q="enviar" aria-label="Enviar">➤</button></div>` : ''}</div>`);
+      ${listo ? `${q.fotoUrl ? `<div class="wa-prevfoto"><img src="${q.fotoUrl}" alt=""><button type="button" data-act="cq" data-q="sinfoto" aria-label="Quitar foto">✕</button><span class="small muted">1 foto · se borra a los 60 días</span></div>` : ''}<div class="wa-bar">${q.foto ? '' : '<label class="wa-clip" aria-label="Adjuntar una foto">📷<input type="file" id="cq-foto" accept="image/*" hidden></label>'}<textarea id="cq-txt" rows="2" placeholder="${esc(q.path.length > 1 ? 'Cuéntame sobre «' + q.path[q.path.length - 1].t + '»…' : 'Mensaje')}"></textarea><button type="button" class="wa-send" data-act="cq" data-q="enviar" aria-label="Enviar">➤</button></div>` : ''}</div>`);
     if (listo) setTimeout(() => document.getElementById('cq-txt')?.focus(), 50);
   }
   function elegir(i) {
@@ -169,12 +210,18 @@ const Consultas = (() => {
   }
   async function enviar() {
     const q = S.cq, txt = (document.getElementById('cq-txt')?.value || '').trim();
-    if (!txt) return toast('Escribe tu mensaje');
+    if (!txt && !q.foto) return toast('Escribe tu mensaje');
     const p = q.path, t0 = p[0]?.k, ultResp = (S.d?.consultas || []).find(c => c.respuesta);
     const tema = t0 === 'resp' ? (ultResp?.tema || 'otro') : tieneDolor(p) ? 'dolor' : (t0 || 'otro');
-    const fila = { tema, urgente: false, ejercicio: t0 === 'resp' ? (ultResp?.ejercicio || null) : (resumenRuta(p) || null), texto: txt, alumno_id: S.d.uid };
+    const fila = { tema, urgente: false, ejercicio: t0 === 'resp' ? (ultResp?.ejercicio || null) : (resumenRuta(p) || null), texto: txt || '📷', alumno_id: S.d.uid };
+    const bt = document.querySelector('[data-q="enviar"]'); if (bt) { if (bt.disabled) return; bt.disabled = true; }
+    if (q.foto) {
+      const ruta = `${S.d.uid}/${Date.now()}.jpg`, up = await sb.storage.from('consultas').upload(ruta, q.foto, { contentType: 'image/jpeg' });
+      if (up.error) { if (bt) bt.disabled = false; return fallo(up.error, /bucket|not found/i.test(up.error.message || '') ? 'Falta ejecutar el Bloque 107 en Supabase.' : 'No se ha podido subir la foto: ' + (up.error.message || '')); }
+      fila.foto = ruta; FOTOS[ruta] = q.fotoUrl;
+    }
     const { data, error } = await sb.from('consultas').insert(fila).select().single();
-    if (error) { const m = String(error.message || ''); return fallo(error, /does not exist|schema cache|could not find the table/i.test(m) ? 'Falta ejecutar el Bloque 106 en Supabase.' : 'No se ha podido enviar: ' + m); }
+    if (error) { if (bt) bt.disabled = false; const m = String(error.message || ''); return fallo(error, /does not exist|schema cache|could not find the table/i.test(m) ? 'Falta ejecutar el Bloque 106 en Supabase.' : 'No se ha podido enviar: ' + m); }
     (S.d.consultas = S.d.consultas || []).unshift(data); S.cq = { path: [] }; toast('Enviado'); pintaAlumno();
   }
   /* Pantalla «Tu coach»: una sola entrada al chat + cómo funciona cada canal */
@@ -300,6 +347,8 @@ const Consultas = (() => {
       case 'g1': S.cq.path.pop(); pintaAlumno(); break;
       case 'g0': S.cq = { path: [] }; pintaAlumno(); break;
       case 'enviar': await enviar(); break;
+      case 'sinfoto': { const t = document.getElementById('cq-txt')?.value || ''; S.cq.foto = null; S.cq.fotoUrl = null; pintaAlumno(); const ta = document.getElementById('cq-txt'); if (ta) ta.value = t; break; }
+      case 'foto': verFoto(b.dataset.p); break;
       case 'fe': document.querySelectorAll('#fe-q1 button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); { const bx = document.getElementById('fe-box'); if (bx) bx.hidden = v !== 'si'; } break;
       case 'felim': document.querySelectorAll('#fe-lim button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); { const w = document.getElementById('fe-wa'); if (w) w.hidden = v !== 'si'; } break;
       case 'wa': { const u = URG.find(x => x[0] === v); if (!u) break; log(v); window.open(waJesus(u[3]), '_blank', 'noopener'); break; }
@@ -314,7 +363,7 @@ const Consultas = (() => {
   }
   /* Registro mínimo de cada derivación a WhatsApp desde la app (para medir) */
   function log(tema) { if (S.vista || S.prueba || !S.d?.uid) return; sb.from('consultas').insert({ alumno_id: S.d.uid, tema, estado: 'whatsapp', texto: null }).then(r => { if (r.error) console.warn(r.error.message); }); }
-  return { TEL, vBoton, abrirLista, vDevolucion, metrica, cargarAlumno, cargarCoach, vAlumno, vAvisoHoy, vCoach, vFinEntreno, leerFinEntreno, crearDeFin, accion, sinLeer, abiertas, abrirHilo };
+  return { elegirFoto, TEL, vBoton, abrirLista, vDevolucion, metrica, cargarAlumno, cargarCoach, vAlumno, vAvisoHoy, vCoach, vFinEntreno, leerFinEntreno, crearDeFin, accion, sinLeer, abiertas, abrirHilo };
 })();
 
-document.addEventListener('change', e => { const sel = e.target.closest && e.target.closest('[data-cq-nuevo]'); if (sel && sel.value) Consultas.abrirHilo(sel.value); });
+document.addEventListener('change', e => { const sel = e.target.closest && e.target.closest('[data-cq-nuevo]'); if (sel && sel.value) Consultas.abrirHilo(sel.value); if (e.target.id === 'cq-foto') Consultas.elegirFoto(e.target); });
