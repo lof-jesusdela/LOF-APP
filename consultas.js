@@ -70,10 +70,10 @@ const Consultas = (() => {
   }
   const avatarJ = '<img class="wa-av" src="icons/coach.jpg" alt="" onerror="this.style.visibility=\'hidden\'">';
   const TEL = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>';
-  const cab = (av, nom, sub, der = '') => `<div class="wa-head"><button type="button" class="wa-back" data-act="cerrarSheetPide" aria-label="Volver">‹</button>${av}<div class="grow"><b>${esc(nom)}</b><div class="wa-sub">${esc(sub)}</div></div>${der}</div>`;
+  const cab = (av, nom, sub, der = '', atras = null) => `<div class="wa-head">${atras || '<button type="button" class="wa-back" data-act="cerrarSheetPide" aria-label="Volver">‹</button>'}${av}<div class="grow"><b>${esc(nom)}</b><div class="wa-sub">${esc(sub)}</div></div>${der}</div>`;
 
   /* ---------- Alumno ---------- */
-  function abrir() { S.cq = S.cq || { tema: null, ejercicio: '' }; pintaAlumno(); marcarVistas(); }
+  function abrir() { S.cqLista = false; S.cq = S.cq || { tema: null, ejercicio: '' }; pintaAlumno(); marcarVistas(); }
   function pintaAlumno(txt0) {
     const q = S.cq, L = (S.d?.consultas || []).slice().reverse(), conEj = q.tema === 'ejercicio' || q.tema === 'dolor';
     const ses = ejerciciosDeSesion();
@@ -142,11 +142,11 @@ const Consultas = (() => {
   }
   /* ---------- Coach ---------- */
   const RAPIDAS = ['Entendido, lo ajusto en tu próximo entreno.', 'Para hoy, sustituye el ejercicio por una variante sin dolor y avísame mañana.', 'Lo vemos en tu próxima revisión; mientras tanto sigue igual.'];
-  function vCoach() {
+  function vCoach(enSheet) {
     if (S.c?.consultasErr) return '';
     const desde = Date.now() - 30 * 864e5, todas = (S.c.consultas || []).filter(c => new Date(c.creado_at).getTime() >= desde), ab = abiertas();
     const ids = [...new Set(todas.map(c => c.alumno_id))];
-    if (!ids.length) return '';
+    if (!ids.length && !enSheet) return '';
     const fila = aid => { const L = todas.filter(c => c.alumno_id === aid), pend = ab.filter(c => c.alumno_id === aid), u = mensajes(L.slice().reverse()).pop(), viejo = pend.reduce((m, c) => Math.max(m, edad(c)), 0);
       const col = !pend.length ? '' : viejo > H48 ? 'bad' : viejo > 24 * 36e5 ? 'warn' : 'ok';
       return { pend: pend.length, viejo, html: `<div class="wa-fila" data-act="cq" data-q="hilo" data-v="${aid}" style="cursor:pointer">${avatarDe(perfilDe(aid), 44)}<div class="grow" style="min-width:0"><div class="row"><b class="grow">${esc(nombreAl(aid))}</b>${u ? `<span class="small ${pend.length ? 'wa-nue' : 'muted'}">${esc(cuando(u.t))}</span>` : ''}</div>
@@ -154,13 +154,27 @@ const Consultas = (() => {
     const F = ids.map(fila).sort((a, b) => b.pend - a.pend || b.viejo - a.viejo), conP = F.filter(f => f.pend), sinP = F.filter(f => !f.pend);
     const M = metrica(), venc = ab.filter(c => edad(c) > H48).length;
     const met = M.n ? `<div class="small muted">30 días: ${M.pct != null ? `<b style="color:var(--${M.pct >= 90 ? 'ok' : M.pct >= 70 ? 'warn' : 'bad'})">${M.pct}%</b> respondidas en &lt;48 h` : 'sin respuestas aún'}${M.media != null ? ` · media ${M.media} h` : ''} · ${M.n} mensajes · ${M.wa} derivados a WhatsApp${venc ? ` · <b style="color:var(--bad)">${venc} fuera de plazo</b>` : ''}</div>` : '';
+    const nuevo = enSheet ? `<select class="wa-nuevo" data-cq-nuevo><option value="">＋ Nuevo chat con…</option>${(S.c.perfiles || []).filter(p => p.rol !== 'coach' && p.activo !== false && (typeof esCliente !== 'function' || esCliente(p))).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '')).map(p => `<option value="${p.id}">${esc(p.nombre || '')}</option>`).join('')}</select>` : '';
+    if (enSheet) return `${met}${nuevo}${conP.map(f => f.html).join('') || '<div class="small muted" style="padding:8px 0">Sin mensajes pendientes ✓</div>'}${sinP.length ? `<div class="eyebrow" style="margin-top:8px">Al día</div>${sinP.map(f => f.html).join('')}` : ''}`;
     return `<section class="section"><div class="section-head"><h2>Chats con alumnos</h2></div><div class="card stack" style="gap:4px">${met}
       ${conP.map(f => f.html).join('') || '<div class="small muted">Sin mensajes pendientes ✓</div>'}
       ${sinP.length ? `<details><summary class="small muted">${sinP.length} chat${sinP.length === 1 ? '' : 's'} al día</summary>${sinP.map(f => f.html).join('')}</details>` : ''}</div></section>`;
   }
+  /* Acceso al chat desde la cabecera del coach (Tu día, Alumnos, Metodología, Negocio) */
+  function pendAl() { return new Set(abiertas().map(c => c.alumno_id)).size; }
+  function vBoton() {
+    if (S.c?.consultasErr) return ''; const n = pendAl();
+    return `<button type="button" class="wa-hbtn" data-act="cq" data-q="lista" aria-label="Chats con alumnos${n ? ': ' + n + ' pendientes' : ''}"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.6A8.4 8.4 0 1 1 21 11.5z"/></svg>${n ? `<span class="n">${n}</span>` : ''}</button>`;
+  }
+  function abrirLista() {
+    S.cqLista = true;
+    montar(`<div class="wa"><div class="wa-head"><button type="button" class="wa-back" data-act="cerrarSheetPide" aria-label="Volver">‹</button><div class="grow"><b>Chats</b><div class="wa-sub">Alumnos · respondes tú en persona</div></div></div>
+      <div class="wa-lista">${vCoach(true)}</div></div>`);
+  }
   function abrirHilo(aid) {
     S.cqAl = aid; const L = (S.c.consultas || []).filter(c => c.alumno_id === aid).reverse();
-    montar(`<div class="wa">${cab(avatarDe(perfilDe(aid), 36), nombreAl(aid), 'Respondes tú en persona', typeof waNum === 'function' && waNum(aid) ? `<a class="wa-tel" href="https://wa.me/${waNum(aid)}" target="_blank" rel="noopener" aria-label="Abrir su WhatsApp">${TEL}</a>` : '')}
+    const volver = S.cqLista ? '<button type="button" class="wa-back" data-act="cq" data-q="lista" aria-label="Volver a chats">‹</button>' : null;
+    montar(`<div class="wa">${cab(avatarDe(perfilDe(aid), 36), nombreAl(aid), 'Respondes tú en persona', typeof waNum === 'function' && waNum(aid) ? `<a class="wa-tel" href="https://wa.me/${waNum(aid)}" target="_blank" rel="noopener" aria-label="Abrir su WhatsApp">${TEL}</a>` : '', volver)}
       <div class="wa-body" id="wa-body">${hilo(L, 'je')}</div>
       <div class="wa-temas">${RAPIDAS.map((r, i) => `<button type="button" class="wa-ch" data-act="cq" data-q="rapida" data-i="${i}">${esc(r.slice(0, 30))}…</button>`).join('')}</div>
       <div class="wa-bar"><textarea id="cq-resp" rows="1" placeholder="Mensaje"></textarea><button type="button" class="wa-send" data-act="cq" data-q="envresp" aria-label="Enviar">➤</button></div>
@@ -202,7 +216,8 @@ const Consultas = (() => {
       case 'wa': { const u = URG.find(x => x[0] === v); if (!u) break; log(v); window.open(waJesus(u[3]), '_blank', 'noopener'); break; }
       case 'walog': log(v); break;
       case 'watel': log('wa_chat'); window.open(waJesus('Hola Jesús, '), '_blank', 'noopener'); break;
-      case 'hilo': abrirHilo(v); break;
+      case 'hilo': S.cqLista = !!b.closest('.wa-lista'); abrirHilo(v); break;
+      case 'lista': abrirLista(); break;
       case 'rapida': { const t = document.getElementById('cq-resp'); if (t) t.value = RAPIDAS[+b.dataset.i]; break; }
       case 'envresp': await guardaResp(false); break;
       case 'cerrar': await guardaResp(true); break;
@@ -210,5 +225,7 @@ const Consultas = (() => {
   }
   /* Registro mínimo de cada derivación a WhatsApp desde la app (para medir) */
   function log(tema) { if (S.vista || S.prueba || !S.d?.uid) return; sb.from('consultas').insert({ alumno_id: S.d.uid, tema, estado: 'whatsapp', texto: null }).then(r => { if (r.error) console.warn(r.error.message); }); }
-  return { vDevolucion, metrica, cargarAlumno, cargarCoach, vAlumno, vAvisoHoy, vCoach, vFinEntreno, leerFinEntreno, crearDeFin, accion, sinLeer, abiertas, abrirHilo };
+  return { vBoton, abrirLista, vDevolucion, metrica, cargarAlumno, cargarCoach, vAlumno, vAvisoHoy, vCoach, vFinEntreno, leerFinEntreno, crearDeFin, accion, sinLeer, abiertas, abrirHilo };
 })();
+
+document.addEventListener('change', e => { const sel = e.target.closest && e.target.closest('[data-cq-nuevo]'); if (sel && sel.value) Consultas.abrirHilo(sel.value); });
