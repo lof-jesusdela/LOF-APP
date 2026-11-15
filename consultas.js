@@ -36,7 +36,7 @@ const Consultas = (() => {
     D.consultas = r.error ? [] : (r.data || []); D.consultasErr = !!r.error;
   }
   async function cargarCoach() {
-    const r = await sb.from('consultas').select('*').order('creado_at', { ascending: false }).limit(300);
+    const r = await sb.from('consultas').select('*').order('creado_at', { ascending: false }).limit(600);
     S.c.consultas = r.error ? [] : (r.data || []); S.c.consultasErr = !!r.error;
     limpiarFotos();
   }
@@ -315,7 +315,65 @@ const Consultas = (() => {
   function abrirLista() {
     S.cqLista = true;
     montar(`<div class="wa"><div class="wa-head"><button type="button" class="wa-back" data-act="cerrarSheetPide" aria-label="Volver">‹</button><div class="grow"><b>Chats</b><div class="wa-sub">Alumnos · respondes tú en persona</div></div></div>
-      <div class="wa-lista">${vCoach(true)}</div></div>`);
+      <div class="wa-lista"><button type="button" class="btn full" data-act="cq" data-q="difu" style="margin-bottom:10px">📣 Mensaje a varios alumnos</button>${vCoach(true)}</div></div>`);
+  }
+  /* ---------- Mensaje a varios (difusión): llega a cada alumno como mensaje privado tuyo en su chat ---------- */
+  const GRUPOS = [
+    ['todos', 'Todos', () => true],
+    ['entreno', '🏋️ Entrenamiento', s => s && (s.modulo_entreno ?? true)],
+    ['nutricion', '🍽️ Alimentación', s => !!s?.modulo_nutricion],
+    ['habitos', '🌱 Hábitos', s => !!s?.modulo_habitos],
+    ['oposicion', '🎯 Opositores', s => !!s?.oposicion],
+    ['futbol', '⚽ Futbolistas', s => !!s?.modulo_futbol]
+  ];
+  const PLANTILLAS = [['anuncio', 'Anuncio del chat', `¡Hola {nombre}! 👋
+
+Te cuento una novedad de la app: desde hoy tienes un chat directo conmigo en la pestaña Contacto.
+
+💬 Chat de la app: para tus dudas de entreno, alimentación, hábitos o tu proceso que no puedan esperar a la revisión mensual. Te va guiando paso a paso (puedes tocar la sesión y el ejercicio con su foto, y adjuntarme una foto). Te respondo yo en persona, como tarde en tu revisión semanal, y la app te avisa cuando lo haga.
+
+📲 WhatsApp: solo para lo urgente que no puede esperar 24 h: mover una cita, un dolor que te limita, un cambio de plan por un imprevisto o algo de un evento de esta semana. Ahí te respondo en menos de 24 h.
+
+Así lo tengo todo ordenado y te puedo responder mejor. ¡Cualquier cosa me dices!
+
+Jesús`]];
+  const destinatarios = sel => (S.c.perfiles || []).filter(p => (typeof esCliente === 'function' ? esCliente(p) : p.rol !== 'coach' && p.activo !== false))
+    .filter(p => { const sv = typeof srvDe === 'function' ? srvDe(p.id) : null; return [...sel].some(k => GRUPOS.find(g => g[0] === k)[2](sv)); })
+    .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+  const conNombre = (txt, p) => txt.replace(/\{nombre\}/g, (p?.nombre || '').split(' ')[0] || '');
+  function abrirDifusion() {
+    const d = S.cqDif = S.cqDif || { sel: new Set(['todos']), txt: '', conf: false };
+    const L = destinatarios(d.sel), ej = L[0];
+    montar(`<div class="wa"><div class="wa-head"><button type="button" class="wa-back" data-act="cq" data-q="lista" aria-label="Volver a chats">‹</button><div class="grow"><b>Mensaje a varios</b><div class="wa-sub">Le llega a cada uno como mensaje privado tuyo</div></div></div>
+      <div class="wa-lista stack" style="gap:12px">
+        <div><div class="eyebrow">¿A quién?</div><div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">${GRUPOS.map(([k, t]) => `<button type="button" class="wa-ch ${d.sel.has(k) ? 'on' : ''}" data-act="cq" data-q="dgrupo" data-v="${k}">${t}</button>`).join('')}</div>
+          <details style="margin-top:6px"><summary class="small muted">${L.length} ${L.length === 1 ? 'alumno' : 'alumnos'} · ver quiénes</summary><div class="small" style="padding-top:4px">${L.map(p => esc(p.nombre || '')).join(' · ') || '—'}</div></details></div>
+        <div><div class="eyebrow">Mensaje</div><div class="row" style="gap:6px;flex-wrap:wrap;margin:6px 0">${PLANTILLAS.map(([k, t]) => `<button type="button" class="wa-ch" data-act="cq" data-q="dplant" data-v="${k}">📄 ${t}</button>`).join('')}</div>
+          <div class="wa-bar" style="padding:0;background:none"><textarea id="cq-dif" placeholder="Escribe tu mensaje. {nombre} se cambia por el nombre de cada alumno.">${esc(d.txt)}</textarea></div>
+          <div class="small muted" style="margin-top:4px">Usa {nombre} para que salga su nombre.</div></div>
+        ${d.txt.trim() && ej ? `<div><div class="eyebrow">Así lo verá ${esc((ej.nombre || '').split(' ')[0])}</div><div class="wa-body" style="padding:10px;border-radius:12px;margin-top:6px"><div class="wa-msg"><span class="wa-txt">${esc(conNombre(d.txt, ej))}</span></div></div></div>` : ''}
+        ${d.txt.trim() && L.length ? `<button type="button" class="btn full ${d.conf ? '' : 'ghost'}" data-act="cq" data-q="denviar">${d.conf ? `✅ Confirmar: enviar a ${L.length} ${L.length === 1 ? 'alumno' : 'alumnos'}` : `Enviar a ${L.length} ${L.length === 1 ? 'alumno' : 'alumnos'}`}</button>` : ''}
+        <div id="cq-dres"></div>
+      </div></div>`);
+    const t = document.getElementById('cq-dif'); if (t) ajustaAlto(t);
+  }
+  const leeDif = () => { const t = document.getElementById('cq-dif'); if (t && S.cqDif && typeof t.value === 'string') S.cqDif.txt = t.value; };
+  async function enviarDifusion() {
+    leeDif(); const d = S.cqDif, L = destinatarios(d.sel);
+    if (!d.txt.trim() || !L.length) return;
+    if (!d.conf) { d.conf = true; return abrirDifusion(); }
+    if (S.vista || S.prueba) return toast('En modo prueba no se envía nada');
+    const ahora = new Date().toISOString();
+    const filas = L.map(p => ({ alumno_id: p.id, tema: 'jesus', texto: null, respuesta: conNombre(d.txt, p).trim(), estado: 'respondida', respondida_at: ahora }));
+    const { data, error } = await sb.from('consultas').insert(filas).select();
+    if (error) { d.conf = false; return fallo(error, 'No se ha podido enviar el mensaje.'); }
+    S.c.consultas = [...(data || []), ...(S.c.consultas || [])];
+    let sin = [];
+    try { const r = await sb.functions.invoke('enviar-aviso', { body: { alumno_ids: L.map(p => p.id), titulo: '💬 Mensaje nuevo de Jesús', cuerpo: 'Tienes un mensaje nuevo en Contacto', url: './' } }); sin = r.data?.sin_movil || []; } catch (e) { }
+    S.cqDif = null; abrirDifusion(); render();
+    const nom = id => (L.find(p => p.id === id)?.nombre || '');
+    const res = document.getElementById('cq-dres');
+    if (res) res.innerHTML = `<div class="card small stack" style="gap:4px"><b>✅ Enviado a ${L.length} ${L.length === 1 ? 'alumno' : 'alumnos'}.</b>${sin.length ? `<span class="muted">${sin.length} sin avisos activados en el móvil (lo verán al abrir la app): ${esc(sin.map(nom).join(', '))}</span>` : ''}</div>`;
   }
   /* Pasar a WhatsApp desde el chat (para vídeo, foto o audio): mensaje preparado y el chat queda respondido */
   function temaPara(aid) {
@@ -392,6 +450,10 @@ const Consultas = (() => {
       case 'watel': { const dl = v === 'wa_dolor'; log(dl ? 'wa_dolor' : 'wa_chat'); window.open(waJesus(dl ? 'Hola Jesús, tengo un dolor en un ejercicio que me limita: ' : 'Hola Jesús, '), '_blank', 'noopener'); break; }
       case 'hilo': S.cqLista = !!b.closest('.wa-lista'); abrirHilo(v); break;
       case 'lista': abrirLista(); break;
+      case 'difu': abrirDifusion(); break;
+      case 'dgrupo': { leeDif(); const d = S.cqDif; d.conf = false; if (v === 'todos') d.sel = new Set(['todos']); else { d.sel.delete('todos'); d.sel.has(v) ? d.sel.delete(v) : d.sel.add(v); if (!d.sel.size) d.sel.add('todos'); } abrirDifusion(); break; }
+      case 'dplant': { S.cqDif.txt = PLANTILLAS.find(p => p[0] === v)[2]; S.cqDif.conf = false; abrirDifusion(); break; }
+      case 'denviar': await enviarDifusion(); break;
       case 'rapida': { const t = document.getElementById('cq-resp'); if (t) { t.value = RAPIDAS[+b.dataset.i]; ajustaAlto(t); t.focus(); } break; }
       case 'cwa': await pasarWa(S.cqAl); break;
       case 'fotourl': if (b.dataset.u) verFoto(null, b.dataset.u); break;
@@ -401,8 +463,8 @@ const Consultas = (() => {
   }
   /* Registro mínimo de cada derivación a WhatsApp desde la app (para medir) */
   function log(tema) { if (S.vista || S.prueba || !S.d?.uid) return; sb.from('consultas').insert({ alumno_id: S.d.uid, tema, estado: 'whatsapp', texto: null }).then(r => { if (r.error) console.warn(r.error.message); }); }
-  return { ajustaAlto, elegirFoto, TEL, vBoton, abrirLista, vDevolucion, metrica, cargarAlumno, cargarCoach, vAlumno, vAvisoHoy, vCoach, vFinEntreno, leerFinEntreno, crearDeFin, accion, sinLeer, abiertas, abrirHilo };
+  return { difTecleo: () => { if (S.cqDif) { S.cqDif.conf = false; clearTimeout(S.cqDifT); S.cqDifT = setTimeout(() => { const t = document.getElementById('cq-dif'); if (!t) return; const pos = t.selectionStart; S.cqDif.txt = t.value; abrirDifusion(); const n = document.getElementById('cq-dif'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }, 900); } }, ajustaAlto, elegirFoto, TEL, vBoton, abrirLista, vDevolucion, metrica, cargarAlumno, cargarCoach, vAlumno, vAvisoHoy, vCoach, vFinEntreno, leerFinEntreno, crearDeFin, accion, sinLeer, abiertas, abrirHilo };
 })();
 
-document.addEventListener('input', e => { if (e.target.matches && e.target.matches('.wa-bar textarea')) Consultas.ajustaAlto(e.target); });
+document.addEventListener('input', e => { if (e.target.matches && e.target.matches('.wa-bar textarea')) Consultas.ajustaAlto(e.target); if (e.target.id === 'cq-dif') Consultas.difTecleo(); });
 document.addEventListener('change', e => { const sel = e.target.closest && e.target.closest('[data-cq-nuevo]'); if (sel && sel.value) Consultas.abrirHilo(sel.value); if (e.target.id === 'cq-foto') Consultas.elegirFoto(e.target); });
