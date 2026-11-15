@@ -71,7 +71,7 @@ const Consultas = (() => {
     const cuerpo = est === 'instalar' ? 'Para recibirlas en el iPhone: abre la app en Safari → Compartir → «Añadir a pantalla de inicio», y ábrela desde el icono.'
       : est === 'bloqueado' ? 'Las tienes bloqueadas: actívalas en los Ajustes del móvil para esta app.'
       : `<button type="button" class="btn sm" data-act="cq" data-q="push" style="margin-top:6px">🔔 Permitir notificaciones</button>`;
-    return `<div class="wa-av">🔔 <b>Recuerda permitir las notificaciones</b> para estar al tanto de mis mensajes.<div>${cuerpo}</div>${yo === 'je' ? '<div class="muted" style="font-size:11px;margin-top:4px">Solo lo ven quienes aún no las tienen activadas.</div>' : ''}</div>`;
+    return `<div class="wa-avisos">🔔 <b>Recuerda permitir las notificaciones</b> para estar al tanto de mis mensajes.<div>${cuerpo}</div>${yo === 'je' ? '<div class="muted" style="font-size:11px;margin-top:4px">Solo lo ven quienes aún no las tienen activadas.</div>' : ''}</div>`;
   }
   function burbuja(m, yo) {
     if (m.sys) return `<div class="wa-sys">${esc(m.txt)} · ${esc(hora(m.t))}</div>`;
