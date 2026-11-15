@@ -217,7 +217,7 @@ const Consultas = (() => {
   async function marcarVistas() {
     const ids = sinLeer().map(c => c.id); if (!ids.length || S.vista || S.prueba) return;
     const ahora = new Date().toISOString(); sinLeer().forEach(c => c.visto_alumno_at = ahora);
-    await sb.from('consultas').update({ visto_alumno_at: ahora }).in('id', ids);
+    await sb.from('consultas').update({ visto_alumno_at: ahora }).in('id', ids); render();
   }
   async function enviar() {
     const q = S.cq, txt = (document.getElementById('cq-txt')?.value || '').trim();
@@ -334,7 +334,7 @@ const Consultas = (() => {
     ab.forEach(c => Object.assign(c, { estado: 'respondida', respondida_at: ahora }));
     const cambio = { respuesta: '📲 Te contesto por WhatsApp para que lo veas antes.' };
     const r2 = await sb.from('consultas').update(cambio).eq('id', ult.id); if (!r2.error) Object.assign(ult, cambio);
-    abrirHilo(aid);
+    abrirHilo(aid); render();
   }
   function abrirHilo(aid) {
     S.cqAl = aid; const L = (S.c.consultas || []).filter(c => c.alumno_id === aid).reverse();
@@ -361,7 +361,7 @@ const Consultas = (() => {
       const { data, error } = await sb.from('consultas').insert({ alumno_id: aid, tema: 'jesus', texto: null, respuesta: txt, estado: 'respondida', respondida_at: ahora }).select().single();
       if (error) return fallo(error, 'No se ha podido enviar.'); S.c.consultas.unshift(data);
     }
-    abrirHilo(aid);
+    abrirHilo(aid); render();
   }
 
   /* Contexto en la devolución semanal: consultas del alumno esa semana */
