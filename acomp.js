@@ -156,7 +156,7 @@ const Acomp = (() => {
 
   /* ---------- Pantalla «Tu coach» del alumno: WhatsApp directo, próxima revisión y próximos entrenos con Jesús ---------- */
   function vTuCoach() {
-    return `<section class="stack"><span class="eyebrow">Tu acompañamiento</span><h1>Tu coach</h1></section>${IA.vEntrada()}${Consultas.vAlumno()}`;
+    return `<section class="stack"><span class="eyebrow">Habla con Jesús</span><h1>Contacto</h1></section>${IA.vEntrada()}${Consultas.vAlumno()}`;
   }
   /* Última indicación de Jesús en Hoy (cuando no hay una devolución nueva sin leer, que ya sale en Pendiente) */
   function ultimaIndicacion() {

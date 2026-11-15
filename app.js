@@ -459,8 +459,8 @@ async function cargarAlumno(uid) {
 /* ---------- Render principal ---------- */
 function tabsAlumno() {
   const s = S.d.servicio || {}, ci = cierreAlumno();
-  if (ci) return ci.cerrado ? [['hoy', 'Inicio']] : [['hoy', 'Inicio'], ['progreso', 'Progreso'], ['coach', 'Tu coach']];
-  return [['hoy', 'Hoy'], (s.modulo_entreno ?? true) && ['entreno', 'Entreno'], s.modulo_nutricion && ['nutri', 'Nutrición'], s.modulo_habitos && ['habitos', 'Hábitos'], ['progreso', 'Progreso'], ['coach', 'Tu coach']].filter(Boolean);
+  if (ci) return ci.cerrado ? [['hoy', 'Inicio']] : [['hoy', 'Inicio'], ['progreso', 'Progreso'], ['coach', 'Contacto']];
+  return [['hoy', 'Hoy'], (s.modulo_entreno ?? true) && ['entreno', 'Entreno'], s.modulo_nutricion && ['nutri', 'Nutrición'], s.modulo_habitos && ['habitos', 'Hábitos'], ['progreso', 'Progreso'], ['coach', 'Contacto']].filter(Boolean);
 }
 
 /* Escritorio (iPad / Mac): barra lateral con la lista de alumnos y fichas a dos columnas */
@@ -926,7 +926,7 @@ const Bienvenida = {
     return [
       ['🎯', 'Lo que has contratado', `<p><b>${esc(s.producto || 'Tu proceso de acompañamiento')}</b>${s.duracion_semanas ? ` · ${s.duracion_semanas} semanas` : ''}.</p>${s.inicio ? `<p class="small">Empieza el ${esc(fF(s.inicio))}${fin ? ` y termina el ${esc(fF(fin))}` : ''}${P && !P.antes && !P.fuera && !P.sinFin ? `. Ahora estás en la semana ${P.semana} de ${P.total}` : ''}.</p>` : ''}<p class="small">Incluye: ${esc(mods.join(', '))}.</p>${objetivoDe(S.d?.ruta) ? `<div class="aprox small"><b>Tu objetivo:</b> ${esc(objetivoDe(S.d.ruta))}</div>` : ''}`],
       ['📅', 'Cómo funciona tu semana', `<ul class="small stack" style="gap:8px;padding-left:18px;margin:0">${dpw ? `<li><b>${dpw} ${dpw === 1 ? 'entreno' : 'entrenos'} a la semana.</b> En <b>Hoy</b> verás siempre el siguiente; el día lo eliges tú.</li>` : '<li>Jesús está preparando tu programa: aparecerá en <b>Hoy</b> y en <b>Entreno</b>.</li>'}${conPasos(s) || s.modulo_nutricion ? `<li><b>Cada día</b>, en Hoy: ${[conPasos(s) && 'tus pasos', s.modulo_nutricion && 'las comidas de tu plan que has cumplido'].filter(Boolean).join(' y ')}. Menos de un minuto.</li>` : ''}<li><b>El fin de semana</b>, tu check-in: cómo ha ido la semana.</li><li><b>Una vez al mes</b>, revisión con Jesús: composición corporal y ajustes.</li></ul>`],
-      ['🤝', 'Quién te acompaña', `<p><b>Jesús</b> revisa tus entrenos, tus registros y tus check-ins, y ajusta tu plan.</p><p class="small">Para cualquier duda, escríbele desde la pestaña <b>Tu coach</b> (WhatsApp).${S.respuesta ? ` Te responde ${esc(S.respuesta)}.` : ''}</p><p class="small muted">Si un día no puedes registrar algo, no pasa nada: rellénalo cuando puedas.</p>`]
+      ['🤝', 'Quién te acompaña', `<p><b>Jesús</b> revisa tus entrenos, tus registros y tus check-ins, y ajusta tu plan.</p><p class="small">Para cualquier duda, escríbele desde la pestaña <b>Contacto</b>.${S.respuesta ? ` Te responde ${esc(S.respuesta)}.` : ''}</p><p class="small muted">Si un día no puedes registrar algo, no pasa nada: rellénalo cuando puedas.</p>`]
     ];
   },
   abrir(i = 0) {
@@ -6595,7 +6595,7 @@ function formCalendly() {
     <p class="small">Pega el enlace de tu evento de Calendly para los entrenamientos presenciales (el que conectas a tu Google Calendar).</p>
     <label class="f">Enlace<input type="url" id="cal-u" value="${esc(S.calendly || '')}" placeholder="https://calendly.com/tu-usuario/entrenamiento-presencial"></label>
     <label class="f">Tu WhatsApp: pega el enlace a tu chat (o tu número con prefijo)<input type="text" id="cal-w" value="${esc(S.whatsapp || '')}" placeholder="https://wa.me/34600111222"></label>
-    <label class="f">Cuándo respondes a tus alumnos (lo ven en su bienvenida y en «Tu coach»)<input type="text" id="cal-r" value="${esc(S.respuesta || '')}" placeholder="Ej. en menos de 24 h, de lunes a viernes"></label>
+    <label class="f">Cuándo respondes a tus alumnos (lo ven en su bienvenida y en «Contacto»)<input type="text" id="cal-r" value="${esc(S.respuesta || '')}" placeholder="Ej. en menos de 24 h, de lunes a viernes"></label>
     <p class="note">Cuando un alumno toque un recuadro libre se abrirá tu Calendly con su nombre y email ya puestos. Calendly te avisa y lo añade a tu Google Calendar; la app guarda la reserva en su bono.</p>
     <button class="btn full" type="submit">Guardar</button></form>`);
   $('#f-cal').addEventListener('submit', async e => {
@@ -8298,7 +8298,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v359';
+const APP_VER = 'v360';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}

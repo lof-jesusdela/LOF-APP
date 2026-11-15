@@ -8,7 +8,7 @@ const Consultas = (() => {
     ['entreno', '🏋️', 'Entrenamiento'],
     ['nutricion', '🍽️', 'Alimentación'],
     ['habitos', '🌙', 'Hábitos'],
-    ['plan', '📋', 'Mi plan'],
+    ['plan', '📋', 'Mi proceso'],
     ['dolor', '🩹', 'Dolor o molestia'],
     ['ejercicio', '🏋️', 'Ejercicio'],
     ['pago', '💳', 'Cuota'],
@@ -81,18 +81,28 @@ const Consultas = (() => {
   function diasPrograma() {
     const p = S.d?.programa; return (p?.dias || []).filter(d => (d.bloques_sesion || []).some(b => (b.ejercicios_sesion || []).length));
   }
+  const NOM_BLOQUE = { calentamiento: 'Calentamiento', fuerza: 'Fuerza', cardio: 'Cardio', movilidad: 'Movilidad', core: 'Core', vuelta: 'Vuelta a la calma' };
+  /* Ejercicios de una sesión, con foto y agrupados por bloque en el orden de su planificación */
   function ejerciciosDia(id) {
     const d = diasPrograma().find(x => String(x.id) === String(id)); if (!d) return [];
-    return [...new Set(d.bloques_sesion.flatMap(b => b.ejercicios_sesion || []).map(e => { try { return ejDe(e).nombre; } catch (er) { return ''; } }).filter(Boolean))];
+    const vistos = new Set(), out = [];
+    (d.bloques_sesion || []).slice().sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0)).forEach((b, bi) => {
+      const g = b.nombre || b.titulo || NOM_BLOQUE[b.tipo] || `Bloque ${bi + 1}`;
+      (b.ejercicios_sesion || []).slice().sort((x, y) => (x.orden ?? 0) - (y.orden ?? 0)).forEach(e => {
+        let x = {}; try { x = ejDe(e); } catch (er) { } if (!x.nombre || vistos.has(x.nombre)) return; vistos.add(x.nombre);
+        out.push({ n: x.nombre, img: x.imagen_url || '', g });
+      });
+    });
+    return out;
   }
   const elegirSesion = (preg) => { const ds = diasPrograma(); return { preg, ops: ds.length ? ds.map(d => O('dia:' + d.id, '📅', typeof nomDia === 'function' ? nomDia(d) : (d.nombre || 'Sesión'))).concat(O('dia:otra', '❓', 'Otra / no está en la lista')) : null }; };
   /* Árbol: devuelve la pregunta y sus opciones, o null si ya puede escribir */
   function paso(p) {
     const k = p.map(x => x.k), s = S.d?.servicio || {}, [t0, t1, t2] = k;
     if (!k.length) {
-      const ops = [(s.modulo_entreno ?? true) && O('entreno', '🏋️', 'Entrenamiento', 'Planificación, una sesión o un ejercicio'), s.modulo_nutricion && O('nutricion', '🍽️', 'Alimentación', 'Tu plan, comidas, compra'), s.modulo_habitos && O('habitos', '🌙', 'Hábitos', 'Sueño, pasos, rutinas'), O('plan', '📋', 'Mi plan', 'Cuota, fechas, revisiones o la app')].filter(Boolean);
+      const ops = [(s.modulo_entreno ?? true) && O('entreno', '🏋️', 'Entrenamiento', 'Planificación, una sesión o un ejercicio'), s.modulo_nutricion && O('nutricion', '🍽️', 'Alimentación', 'Tu plan, comidas, compra'), s.modulo_habitos && O('habitos', '🌙', 'Hábitos', 'Sueño, pasos, rutinas'), O('plan', '📋', 'Mi proceso', 'Fechas, revisiones o la app')].filter(Boolean);
       const ult = (S.d?.consultas || []).find(c => c.respuesta); if (ult && edad({ creado_at: ult.respondida_at || ult.creado_at }) < 14 * 864e5) ops.push(O('resp', '↩️', 'Responder a Jesús', 'Seguir con lo último que te contestó'));
-      return { preg: '¿Sobre qué quieres hablar?', ops };
+      return { preg: '¿Qué necesitas?', ops };
     }
     if (t0 === 'resp' || t0 === 'urg') return null;
     if (t0 === 'entreno') {
@@ -108,7 +118,7 @@ const Consultas = (() => {
         let i = 3;
         if (t2 === 'dolor') { if (!k[3]) return { preg: '¿Te limita para entrenar o moverte con normalidad?', ops: [O('leve', '🙂', 'No, es leve'), O('limita', '⚠️', 'Sí, me limita')] }; if (k[3] === 'limita') return { urg: true }; i = 4; }
         if (!k[i]) { const e = elegirSesion('¿De qué sesión es el ejercicio?'); return e.ops ? e : null; }
-        if (!k[i + 1] && k[i] !== 'dia:otra') { const ejs = ejerciciosDia(k[i].slice(4)); if (ejs.length) return { preg: '¿Qué ejercicio?', ops: ejs.map(n => O('ej:' + n, '•', n)).concat(O('ej:otro', '❓', 'Otro')) }; }
+        if (!k[i + 1] && k[i] !== 'dia:otra') { const ejs = ejerciciosDia(k[i].slice(4)); if (ejs.length) return { preg: 'Toca el ejercicio', grid: true, ops: ejs.map(x => ({ ...O('ej:' + x.n, '•', x.n), img: x.img, g: x.g })).concat({ ...O('ej:otro', '❓', 'Otro / no está aquí'), g: '' }) }; }
         return null;
       }
     }
@@ -122,7 +132,7 @@ const Consultas = (() => {
       return t2 ? null : { preg: '¿Qué te pasa?', ops: [O('cuesta', '😮‍💨', 'Me cuesta cumplirlo'), O('duda', '❔', 'Tengo una duda'), O('ajustar', '🔁', 'Quiero ajustarlo')] };
     }
     if (t0 === 'plan') {
-      if (!t1) return { preg: '¿Sobre qué de tu plan?', ops: [O('cuota', '💳', 'Cuota y pagos'), O('proceso', '🗓️', 'Mi proceso', 'Fechas, duración, revisiones'), O('cambio', '⬆️', 'Cambiar o ampliar mi plan'), O('app', '📱', 'La app')] };
+      if (!t1) return { preg: '¿Sobre qué de tu proceso?', ops: [O('proceso', '🗓️', 'Fechas y revisiones', 'Duración, próximas revisiones, seguimiento'), O('app', '📱', 'La app', 'Cómo se usa o algo no funciona')] };
       return t2 ? null : { preg: '¿Qué necesitas?', ops: [O('duda', '❔', 'Tengo una duda'), O('problema', '⚠️', 'Algo no va bien')] };
     }
     return null;
@@ -136,6 +146,9 @@ const Consultas = (() => {
     let guia;
     if (st?.urg) guia = `<div class="wa-msg">Esto no puede esperar a la revisión: escríbeme por WhatsApp y lo vemos hoy. Si es fuerte, repentino o con hormigueo, para y consulta con un médico.</div>
       ${S.whatsapp ? `<button type="button" class="wa-ban wa-ban-wa" data-act="cq" data-q="watel" data-v="wa_dolor"><span class="i">📞</span><span class="grow"><b>Escribir a Jesús por WhatsApp</b></span></button>` : ''}`;
+    else if (st?.grid) { let n = 0; const grupos = [...new Set(st.ops.map(o => o.g))];
+      guia = `<div class="wa-msg">${esc(st.preg)}</div>${grupos.map(g => { const os = st.ops.map((o, i) => ({ o, i })).filter(z => z.o.g === g);
+        return `${g ? `<div class="wa-gh"><span>${esc(g)}</span><small>${os.length} ${os.length === 1 ? 'ejercicio' : 'ejercicios'}</small></div>` : ''}<div class="wa-grid">${os.map(({ o, i }) => `<button type="button" class="wa-ej" data-act="cq" data-q="g" data-i="${i}">${o.k === 'ej:otro' ? '' : `<span class="nu">${++n}</span>`}<span class="nm">${esc(o.t)}</span>${o.img ? `<img src="${esc(o.img)}" alt="" loading="lazy">` : `<span class="ph">${o.k === 'ej:otro' ? '❓' : '🏋️'}</span>`}</button>`).join('')}</div>`; }).join('')}`; }
     else if (st) guia = `<div class="wa-msg">${esc(st.preg)}</div>${st.ops.map((o, i) => `<button type="button" class="wa-ban" data-act="cq" data-q="g" data-i="${i}"><span class="i">${o.ico}</span><span class="grow"><b>${esc(o.t)}</b>${o.sub ? `<span class="sub">${esc(o.sub)}</span>` : ''}</span><span class="fl">›</span></button>`).join('')}`;
     else guia = `<div class="wa-msg">${q.path[0]?.k === 'resp' ? 'Escríbeme abajo tu respuesta.' : 'Perfecto. Cuéntamelo abajo con el detalle que puedas.'}</div>`;
     const nav = q.path.length ? `<div class="wa-nav"><button type="button" data-act="cq" data-q="g1">‹ Atrás</button><button type="button" data-act="cq" data-q="g0">↺ Empezar de nuevo</button></div>` : '';
