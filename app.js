@@ -51,10 +51,10 @@ const seg = s => s >= 60 ? (s % 60 ? `${Math.floor(s / 60)}' ${s % 60}''` : `${s
 function toast(t) { const el = $('#toast'); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 2600); }
 /* ---------- Hojas (formularios): salida visible, Escape, cambios sin guardar y estado del guardado ---------- */
 function abrirSheet(html) {
-  $('#sheet-in').innerHTML = `<div class="sheet-top"><span class="sheet-est" id="sheet-est" aria-live="polite"></span><button type="button" class="sheet-x" data-act="cerrarSheetPide" aria-label="Cerrar">Cerrar ✕</button></div>` + html;
+  $('#sheet-in').classList.remove('chat'); $('#sheet-in').innerHTML = `<div class="sheet-top"><span class="sheet-est" id="sheet-est" aria-live="polite"></span><button type="button" class="sheet-x" data-act="cerrarSheetPide" aria-label="Cerrar">Cerrar ✕</button></div>` + html;
   $('#sheet').hidden = false; S.sheetSucio = false; $('#sheet-in').scrollTop = 0;
 }
-function cerrarSheet() { $('#sheet').hidden = true; $('#sheet-in').innerHTML = ''; S.sheetSucio = false; }
+function cerrarSheet() { $('#sheet').hidden = true; $('#sheet-in').classList.remove('chat'); $('#sheet-in').innerHTML = ''; S.sheetSucio = false; }
 function pedirCerrarSheet() {
   if (!S.sheetSucio) return cerrarSheet();
   if ($('#sheet-aviso')) return;
@@ -8298,7 +8298,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v354';
+const APP_VER = 'v355';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
