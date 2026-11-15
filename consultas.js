@@ -68,8 +68,10 @@ const Consultas = (() => {
     const mio = m.de === yo, c = m.c, [, ico, t] = tm(c.tema);
     const chip = m.de === 'al' && ico ? `<div class="wa-chip">${ico} ${esc(t)}${c.ejercicio ? ' · ' + esc(c.ejercicio) : ''}${c.urgente ? ' · le limita' : ''}</div>` : '';
     const tick = !mio ? '' : m.de === 'al' ? (c.estado === 'abierta' ? '<span class="wa-tk">✓</span>' : '<span class="wa-tk leido">✓✓</span>') : `<span class="wa-tk ${c.visto_alumno_at ? 'leido' : ''}">✓✓</span>`;
+    const ej = m.de === 'al' && yo === 'je' ? ejDeMsg(c) : null;
+    const ejHtml = ej ? `<button type="button" class="wa-ejref" data-act="cq" data-q="fotourl" data-u="${esc(ej.imagen_url || '')}">${ej.imagen_url ? `<img src="${esc(ej.imagen_url)}" alt="" loading="lazy">` : '<span class="ph">🏋️</span>'}<b>${esc(ej.nombre)}</b></button>` : '';
     const foto = m.de === 'al' && c.foto ? `<button type="button" class="wa-foto" data-act="cq" data-q="foto" data-p="${esc(c.foto)}"><img data-foto="${esc(c.foto)}" alt="Foto"></button>` : '';
-    return `<div class="wa-msg ${mio ? 'mio' : ''}">${chip}${foto}${m.txt && !(foto && m.txt === '📷') ? `<span class="wa-txt">${esc(m.txt)}</span>` : ''}<span class="wa-hr">${esc(hora(m.t))}${tick}</span></div>`;
+    return `<div class="wa-msg ${mio ? 'mio' : ''}">${chip}${ejHtml}${foto}${m.txt && !(foto && m.txt === '📷') ? `<span class="wa-txt">${esc(m.txt)}</span>` : ''}<span class="wa-hr">${esc(hora(m.t))}${tick}</span></div>`;
   }
   function hilo(L, yo) {
     const M = mensajes(L, yo === 'je'); let ult = '';
@@ -77,6 +79,15 @@ const Consultas = (() => {
     return M.map(m => { const d = dia(m.t), sep = d !== ult ? `<div class="wa-dia">${esc(sepDia(d))}</div>` : ''; ult = d; return sep + burbuja(m, yo); }).join('');
   }
   const FOTOS = {};
+  const ajustaAlto = t => { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight + 2, Math.round(window.innerHeight * 0.4)) + 'px'; };
+  /* Ejercicio al que se refiere un mensaje (y su foto de la biblioteca), para que Jesús lo vea sin abrir nada */
+  function ejDeMsg(c) {
+    const lib = S.c?.ejercicios || []; if (!lib.length) return null;
+    const busca = n => n && lib.find(z => normaliza(z.nombre) === normaliza(n));
+    const cand = [/^ej:/.test(c.sesion_ref || '') ? c.sesion_ref.slice(3) : null, ...(String(c.ejercicio || '').split(' · ').reverse())];
+    for (const n of cand) { const e = busca(n); if (e) return e; }
+    return null;
+  }
   function montar(html) {
     abrirSheet(html); const el = document.getElementById('sheet-in'); el.classList.add('chat');
     const b = document.getElementById('wa-body'); if (b) b.scrollTop = b.scrollHeight;
@@ -90,8 +101,8 @@ const Consultas = (() => {
     imgs.forEach(i => { if (FOTOS[i.dataset.foto]) i.src = FOTOS[i.dataset.foto]; else i.closest('.wa-foto')?.classList.add('caducada'); });
     const b = document.getElementById('wa-body'); if (b) setTimeout(() => b.scrollTop = b.scrollHeight, 150);
   }
-  function verFoto(p) {
-    const u = FOTOS[p]; if (!u) return;
+  function verFoto(p, url) {
+    const u = url || FOTOS[p]; if (!u) return;
     const d = document.createElement('div'); d.className = 'wa-lb'; d.innerHTML = `<img src="${esc(u)}" alt=""><span>Toca para cerrar</span>`;
     d.addEventListener('click', () => d.remove()); document.body.appendChild(d);
   }
@@ -214,6 +225,7 @@ const Consultas = (() => {
     const p = q.path, t0 = p[0]?.k, ultResp = (S.d?.consultas || []).find(c => c.respuesta);
     const tema = t0 === 'resp' ? (ultResp?.tema || 'otro') : tieneDolor(p) ? 'dolor' : (t0 || 'otro');
     const fila = { tema, urgente: false, ejercicio: t0 === 'resp' ? (ultResp?.ejercicio || null) : (resumenRuta(p) || null), texto: txt || '📷', alumno_id: S.d.uid };
+    { const ej = p.find(x => /^ej:/.test(x.k) && x.k !== 'ej:otro'); if (ej) fila.sesion_ref = 'ej:' + ej.t; }
     const bt = document.querySelector('[data-q="enviar"]'); if (bt) { if (bt.disabled) return; bt.disabled = true; }
     if (q.foto) {
       const ruta = `${S.d.uid}/${Date.now()}.jpg`, up = await sb.storage.from('consultas').upload(ruta, q.foto, { contentType: 'image/jpeg' });
@@ -305,12 +317,31 @@ const Consultas = (() => {
     montar(`<div class="wa"><div class="wa-head"><button type="button" class="wa-back" data-act="cerrarSheetPide" aria-label="Volver">‹</button><div class="grow"><b>Chats</b><div class="wa-sub">Alumnos · respondes tú en persona</div></div></div>
       <div class="wa-lista">${vCoach(true)}</div></div>`);
   }
+  /* Pasar a WhatsApp desde el chat (para vídeo, foto o audio): mensaje preparado y el chat queda respondido */
+  function temaPara(aid) {
+    const L = (S.c.consultas || []).filter(c => c.alumno_id === aid && c.texto && !/^wa_|^jesus$/.test(c.tema)), c = L.find(x => x.estado === 'abierta') || L[0];
+    if (!c) return '';
+    const ej = ejDeMsg(c); if (ej) return ej.nombre;
+    const seg = String(c.ejercicio || '').split(' · ').filter(Boolean); return seg.length ? seg[seg.length - 1] : (tm(c.tema)[2] || '').toLowerCase();
+  }
+  async function pasarWa(aid) {
+    const nom = (nombreAl(aid) || '').split(' ')[0], t = temaPara(aid), n = typeof waNum === 'function' ? waNum(aid) : '';
+    const txt = `Hola ${nom}, he visto que me has escrito${t ? ` sobre ${t}` : ''}. Prefiero darte respuesta por aquí para que lo veas más rápido.`;
+    window.open(`https://wa.me/${n}?text=${encodeURIComponent(txt)}`, '_blank', 'noopener');
+    const ab = abiertas().filter(c => c.alumno_id === aid); if (!ab.length) return;
+    const ahora = new Date().toISOString(), ult = ab.sort((a, b) => new Date(a.creado_at) - new Date(b.creado_at))[ab.length - 1];
+    const r1 = await sb.from('consultas').update({ estado: 'respondida', respondida_at: ahora }).in('id', ab.map(c => c.id)); if (r1.error) return console.warn(r1.error.message);
+    ab.forEach(c => Object.assign(c, { estado: 'respondida', respondida_at: ahora }));
+    const cambio = { respuesta: '📲 Te contesto por WhatsApp para que lo veas antes.' };
+    const r2 = await sb.from('consultas').update(cambio).eq('id', ult.id); if (!r2.error) Object.assign(ult, cambio);
+    abrirHilo(aid);
+  }
   function abrirHilo(aid) {
     S.cqAl = aid; const L = (S.c.consultas || []).filter(c => c.alumno_id === aid).reverse();
     const volver = S.cqLista ? '<button type="button" class="wa-back" data-act="cq" data-q="lista" aria-label="Volver a chats">‹</button>' : null;
-    montar(`<div class="wa">${cab(avatarDe(perfilDe(aid), 36), nombreAl(aid), 'Respondes tú en persona', typeof waNum === 'function' && waNum(aid) ? `<a class="wa-tel" href="https://wa.me/${waNum(aid)}" target="_blank" rel="noopener" aria-label="Abrir su WhatsApp">${TEL}</a>` : '', volver)}
+    montar(`<div class="wa">${cab(avatarDe(perfilDe(aid), 36), nombreAl(aid), 'Respondes tú en persona', `<button type="button" class="wa-tel" data-act="cq" data-q="cwa" aria-label="Contestar por WhatsApp">${WA_ICO}</button>`, volver)}
       <div class="wa-body" id="wa-body">${hilo(L, 'je')}</div>
-      <div class="wa-temas">${RAPIDAS.map((r, i) => `<button type="button" class="wa-ch" data-act="cq" data-q="rapida" data-i="${i}">${esc(r.slice(0, 30))}…</button>`).join('')}</div>
+      <div class="wa-temas"><button type="button" class="wa-ch wa-ch-wa" data-act="cq" data-q="cwa">📲 Contestar por WhatsApp</button>${RAPIDAS.map((r, i) => `<button type="button" class="wa-ch" data-act="cq" data-q="rapida" data-i="${i}">${esc(r.slice(0, 30))}…</button>`).join('')}</div>
       <div class="wa-bar"><textarea id="cq-resp" rows="1" placeholder="Mensaje"></textarea><button type="button" class="wa-send" data-act="cq" data-q="envresp" aria-label="Enviar">➤</button></div>
       <div class="wa-pie">El alumno ve: «Te responde Jesús en persona, como tarde en tu revisión semanal». Tu objetivo interno: &lt; 48 h.${L.some(c => c.estado === 'abierta' && !/^wa_/.test(c.tema)) ? ' · <button type="button" class="wa-link" data-act="cq" data-q="cerrar">Marcar como atendido sin responder</button>' : ''}</div></div>`);
   }
@@ -356,14 +387,17 @@ const Consultas = (() => {
       case 'watel': { const dl = v === 'wa_dolor'; log(dl ? 'wa_dolor' : 'wa_chat'); window.open(waJesus(dl ? 'Hola Jesús, tengo un dolor en un ejercicio que me limita: ' : 'Hola Jesús, '), '_blank', 'noopener'); break; }
       case 'hilo': S.cqLista = !!b.closest('.wa-lista'); abrirHilo(v); break;
       case 'lista': abrirLista(); break;
-      case 'rapida': { const t = document.getElementById('cq-resp'); if (t) t.value = RAPIDAS[+b.dataset.i]; break; }
+      case 'rapida': { const t = document.getElementById('cq-resp'); if (t) { t.value = RAPIDAS[+b.dataset.i]; ajustaAlto(t); t.focus(); } break; }
+      case 'cwa': await pasarWa(S.cqAl); break;
+      case 'fotourl': if (b.dataset.u) verFoto(null, b.dataset.u); break;
       case 'envresp': await guardaResp(false); break;
       case 'cerrar': await guardaResp(true); break;
     }
   }
   /* Registro mínimo de cada derivación a WhatsApp desde la app (para medir) */
   function log(tema) { if (S.vista || S.prueba || !S.d?.uid) return; sb.from('consultas').insert({ alumno_id: S.d.uid, tema, estado: 'whatsapp', texto: null }).then(r => { if (r.error) console.warn(r.error.message); }); }
-  return { elegirFoto, TEL, vBoton, abrirLista, vDevolucion, metrica, cargarAlumno, cargarCoach, vAlumno, vAvisoHoy, vCoach, vFinEntreno, leerFinEntreno, crearDeFin, accion, sinLeer, abiertas, abrirHilo };
+  return { ajustaAlto, elegirFoto, TEL, vBoton, abrirLista, vDevolucion, metrica, cargarAlumno, cargarCoach, vAlumno, vAvisoHoy, vCoach, vFinEntreno, leerFinEntreno, crearDeFin, accion, sinLeer, abiertas, abrirHilo };
 })();
 
+document.addEventListener('input', e => { if (e.target.matches && e.target.matches('.wa-bar textarea')) Consultas.ajustaAlto(e.target); });
 document.addEventListener('change', e => { const sel = e.target.closest && e.target.closest('[data-cq-nuevo]'); if (sel && sel.value) Consultas.abrirHilo(sel.value); if (e.target.id === 'cq-foto') Consultas.elegirFoto(e.target); });
