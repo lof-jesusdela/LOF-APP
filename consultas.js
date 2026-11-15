@@ -63,6 +63,16 @@ const Consultas = (() => {
     });
     return M.sort((a, b) => new Date(a.t) - new Date(b.t));
   }
+  /* Recordatorio de notificaciones dentro de un mensaje: solo lo ve el alumno que aún no las tiene activadas en ese móvil */
+  const MARCA_AV = /\[\[avisos\]\]/g;
+  function vAvisosMsg(yo) {
+    const est = yo === 'je' ? 'falta' : S.push;
+    if (yo !== 'je' && (est === 'ok' || est === 'no' || !est)) return '';
+    const cuerpo = est === 'instalar' ? 'Para recibirlas en el iPhone: abre la app en Safari → Compartir → «Añadir a pantalla de inicio», y ábrela desde el icono.'
+      : est === 'bloqueado' ? 'Las tienes bloqueadas: actívalas en los Ajustes del móvil para esta app.'
+      : `<button type="button" class="btn sm" data-act="cq" data-q="push" style="margin-top:6px">🔔 Permitir notificaciones</button>`;
+    return `<div class="wa-av">🔔 <b>Recuerda permitir las notificaciones</b> para estar al tanto de mis mensajes.<div>${cuerpo}</div>${yo === 'je' ? '<div class="muted" style="font-size:11px;margin-top:4px">Solo lo ven quienes aún no las tienen activadas.</div>' : ''}</div>`;
+  }
   function burbuja(m, yo) {
     if (m.sys) return `<div class="wa-sys">${esc(m.txt)} · ${esc(hora(m.t))}</div>`;
     const mio = m.de === yo, c = m.c, [, ico, t] = tm(c.tema);
@@ -71,7 +81,8 @@ const Consultas = (() => {
     const ej = m.de === 'al' && yo === 'je' ? ejDeMsg(c) : null;
     const ejHtml = ej ? `<button type="button" class="wa-ejref" data-act="cq" data-q="fotourl" data-u="${esc(ej.imagen_url || '')}">${ej.imagen_url ? `<img src="${esc(ej.imagen_url)}" alt="" loading="lazy">` : '<span class="ph">🏋️</span>'}<b>${esc(ej.nombre)}</b></button>` : '';
     const foto = m.de === 'al' && c.foto ? `<button type="button" class="wa-foto" data-act="cq" data-q="foto" data-p="${esc(c.foto)}"><img data-foto="${esc(c.foto)}" alt="Foto"></button>` : '';
-    return `<div class="wa-msg ${mio ? 'mio' : ''}">${chip}${ejHtml}${foto}${m.txt && !(foto && m.txt === '📷') ? `<span class="wa-txt">${esc(m.txt)}</span>` : ''}<span class="wa-hr">${esc(hora(m.t))}${tick}</span></div>`;
+    const marca = MARCA_AV.test(m.txt || ''), txt = marca ? m.txt.replace(MARCA_AV, '').trim() : m.txt;
+    return `<div class="wa-msg ${mio ? 'mio' : ''}">${chip}${ejHtml}${foto}${txt && !(foto && txt === '📷') ? `<span class="wa-txt">${esc(txt)}</span>` : ''}${marca ? vAvisosMsg(yo) : ''}<span class="wa-hr">${esc(hora(m.t))}${tick}</span></div>`;
   }
   function hilo(L, yo) {
     const M = mensajes(L, yo === 'je'); let ult = '';
@@ -245,7 +256,7 @@ const Consultas = (() => {
         <div class="wa-nota"><b>Para qué es:</b> lo que no puede esperar a tu revisión mensual (dudas de tu entreno, alimentación, hábitos o tu plan).<br><b>Cuándo te respondo:</b> como tarde en tu revisión semanal, y te aviso en Hoy.<br>🔒 Te respondo yo en persona: no es un bot ni una IA.</div>
       ${S.whatsapp ? `<a class="card wa-entrada wa-entrada-wa" href="${esc(waJesus('Hola Jesús, '))}" target="_blank" rel="noopener" data-act="cq" data-q="walog" data-v="wa_chat">
         <div class="row" style="gap:12px;align-items:center"><span class="wa-ico-wa">${WA_ICO}</span><div class="grow" style="text-align:left"><b style="font-size:17px">WhatsApp · solo urgente</b><div class="small muted">Abre WhatsApp con Jesús</div></div><span class="wa-go">›</span></div></a>
-        <div class="wa-nota"><b>Para qué es:</b> solo lo que no puede esperar 24 h: mover una cita, un dolor que te limita, un cambio de plan por un imprevisto o ayuda con un evento de esta semana.<br><b>Cuándo te respondo:</b> en menos de 24 h.</div>` : ''}
+        <div class="wa-nota"><b>Para qué es:</b> solo lo urgente: mover una cita, un dolor que te limita, un cambio de plan por un imprevisto o ayuda con un evento de esta semana.<br><b>Cuándo te respondo:</b> en menos de 48 h.</div>` : ''}
       </section>`;
   }
   function vAvisoHoy() {
@@ -332,11 +343,12 @@ Te cuento una novedad de la app: desde hoy tienes un chat directo conmigo en la 
 
 💬 Chat de la app: para tus dudas de entreno, alimentación, hábitos o tu proceso que no puedan esperar a la revisión mensual. Te va guiando paso a paso (puedes tocar la sesión y el ejercicio con su foto, y adjuntarme una foto). Te respondo yo en persona, como tarde en tu revisión semanal, y la app te avisa cuando lo haga.
 
-📲 WhatsApp: solo para lo urgente que no puede esperar 24 h: mover una cita, un dolor que te limita, un cambio de plan por un imprevisto o algo de un evento de esta semana. Ahí te respondo en menos de 24 h.
+📲 WhatsApp: solo para lo urgente: mover una cita, un dolor que te limita, un cambio de plan por un imprevisto o algo de un evento de esta semana. Ahí te respondo en menos de 48 h.
 
 Así lo tengo todo ordenado y te puedo responder mejor. ¡Cualquier cosa me dices!
 
-Jesús`]];
+Jesús
+[[avisos]]`]];
   const destinatarios = sel => (S.c.perfiles || []).filter(p => (typeof esCliente === 'function' ? esCliente(p) : p.rol !== 'coach' && p.activo !== false))
     .filter(p => { const sv = typeof srvDe === 'function' ? srvDe(p.id) : null; return [...sel].some(k => GRUPOS.find(g => g[0] === k)[2](sv)); })
     .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
@@ -351,7 +363,7 @@ Jesús`]];
         <div><div class="eyebrow">Mensaje</div><div class="row" style="gap:6px;flex-wrap:wrap;margin:6px 0">${PLANTILLAS.map(([k, t]) => `<button type="button" class="wa-ch" data-act="cq" data-q="dplant" data-v="${k}">📄 ${t}</button>`).join('')}</div>
           <div class="wa-bar" style="padding:0;background:none"><textarea id="cq-dif" placeholder="Escribe tu mensaje. {nombre} se cambia por el nombre de cada alumno.">${esc(d.txt)}</textarea></div>
           <div class="small muted" style="margin-top:4px">Usa {nombre} para que salga su nombre.</div></div>
-        ${d.txt.trim() && ej ? `<div><div class="eyebrow">Así lo verá ${esc((ej.nombre || '').split(' ')[0])}</div><div class="wa-body" style="padding:10px;border-radius:12px;margin-top:6px"><div class="wa-msg"><span class="wa-txt">${esc(conNombre(d.txt, ej))}</span></div></div></div>` : ''}
+        ${d.txt.trim() && ej ? `<div><div class="eyebrow">Así lo verá ${esc((ej.nombre || '').split(' ')[0])}</div><div class="wa-body" style="padding:10px;border-radius:12px;margin-top:6px">${(() => { const tx = conNombre(d.txt, ej), mk = MARCA_AV.test(tx); return `<div class="wa-msg"><span class="wa-txt">${esc(tx.replace(MARCA_AV, '').trim())}</span>${mk ? vAvisosMsg('je') : ''}</div>`; })()}</div></div>` : ''}
         ${d.txt.trim() && L.length ? `<button type="button" class="btn full ${d.conf ? '' : 'ghost'}" data-act="cq" data-q="denviar">${d.conf ? `✅ Confirmar: enviar a ${L.length} ${L.length === 1 ? 'alumno' : 'alumnos'}` : `Enviar a ${L.length} ${L.length === 1 ? 'alumno' : 'alumnos'}`}</button>` : ''}
         <div id="cq-dres"></div>
       </div></div>`);
@@ -451,6 +463,7 @@ Jesús`]];
       case 'hilo': S.cqLista = !!b.closest('.wa-lista'); abrirHilo(v); break;
       case 'lista': abrirLista(); break;
       case 'difu': abrirDifusion(); break;
+      case 'push': if (typeof activarPush === 'function' && await activarPush()) { await refrescarPush(); S.push = 'ok'; pintaAlumno(); } break;
       case 'dgrupo': { leeDif(); const d = S.cqDif; d.conf = false; if (v === 'todos') d.sel = new Set(['todos']); else { d.sel.delete('todos'); d.sel.has(v) ? d.sel.delete(v) : d.sel.add(v); if (!d.sel.size) d.sel.add('todos'); } abrirDifusion(); break; }
       case 'dplant': { S.cqDif.txt = PLANTILLAS.find(p => p[0] === v)[2]; S.cqDif.conf = false; abrirDifusion(); break; }
       case 'denviar': await enviarDifusion(); break;
