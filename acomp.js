@@ -92,6 +92,7 @@ const Acomp = (() => {
     abrirSheet(`<form class="stack" id="f-dev"><h2>Devolución · semana del ${esc(fCorta(semana))}</h2>
       ${ya ? `<p class="small muted">${ya.leida_at ? '✓ Leída el ' + esc(fLarga(ya.leida_at.slice(0, 10))) : 'Enviada, aún sin leer'}.</p>` : '<p class="small muted">Borrador preparado con sus datos y su check-in. Edítalo y envíalo: lo leerá en su Hoy.</p>'}
       ${chk.dificultades || chk.motivacion != null ? `<div class="aprox small">Su check-in: motivación ${chk.motivacion ?? '—'}/10 · implicación ${chk.implicacion ?? '—'}/10${chk.dificultades ? `<br>«${esc(chk.dificultades)}»` : ''}</div>` : ''}
+      ${typeof Consultas !== 'undefined' ? Consultas.vDevolucion(f.id, semana) : ''}
       ${[['avance', 'Qué hemos observado'], ['mantener', 'Qué mantenemos'], ['ajuste', 'Qué ajustamos'], ['prioridad', 'Prioridad hasta la próxima revisión'], ['dificultad', 'Dificultad que nos ha contado (opcional)']].map(([k, l]) => `<label class="f">${l}<textarea data-dv="${k}" rows="${k === 'avance' ? 3 : 2}">${esc(v[k] || '')}</textarea></label>`).join('')}
       <button class="btn full" type="submit">${ya ? 'Guardar cambios' : 'Enviar devolución'}</button></form>`);
     $('#f-dev').addEventListener('submit', async e => {
@@ -160,7 +161,8 @@ const Acomp = (() => {
     const wa = S.whatsapp ? waJesus('Hola Jesús') : null;
     return `<section class="stack"><span class="eyebrow">Tu acompañamiento</span><h1>Tu coach</h1></section>${IA.vEntrada()}
       <section class="section"><div class="card stack"><div class="row" style="gap:12px;align-items:center"><img src="icons/coach.jpg" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover" onerror="this.remove()"><div class="grow"><b>Jesús de la Obra</b>${S.respuesta ? `<div class="small muted">Te responde ${esc(S.respuesta)}</div>` : ''}</div></div>
-        <button class="btn full" data-act="cq" data-q="abrir">💬 Habla con Jesús</button>${wa ? `<a class="small muted" style="text-align:center" href="${esc(wa)}" target="_blank" rel="noopener">¿Urgente? Escríbele por WhatsApp</a>` : ''}</div></section>${Consultas.vAlumno()}
+        <button class="btn full" data-act="cq" data-q="abrir">💬 Habla con Jesús</button>
+        <div class="small stack" style="gap:4px;margin-top:4px"><div><b>WhatsApp</b> · solo lo urgente, que no puede esperar 24 h: mover una cita, un dolor que te limita, un imprevisto o un evento de esta semana.</div><div><b>Chat de la app</b> · todo lo demás que no pueda esperar a tu revisión mensual. Te respondo aquí en menos de 48 h.</div></div></div></section>${Consultas.vAlumno()}
       <section class="section"><h2>Próximamente</h2><div class="card">
         ${prox ? `<div class="line"><div class="ico gold">${svg('progreso')}</div><div class="grow"><b class="small">Revisión mensual</b><div class="small muted">Control ${prox.n} · semana del ${esc(fCorta(prox.lunes))}. Llamada o videollamada de 10-15 minutos.</div></div></div>` : ''}
         ${pres.map(p => `<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">Entrenamiento personal con Jesús</b><div class="small muted">${esc(fLargaP(p))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</div></div><span class="small muted">›</span></div>`).join('')}
