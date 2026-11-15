@@ -3,11 +3,14 @@
    Compromiso con el alumno = revisión semanal; objetivo interno de Jesús = < 48 h.
    Futuro: un asistente podrá responder lo sencillo aquí mismo, ofreciendo siempre pasar a Jesús. */
 const Consultas = (() => {
-  /* Temas del chat (pueden esperar) */
+  /* Temas del chat (pueden esperar). Los 4 primeros son los de entrada; el resto, históricos o derivados */
   const TEMAS = [
-    ['ejercicio', '🏋️', 'Ejercicio'],
-    ['dolor', '🩹', 'Molestia leve'],
+    ['entreno', '🏋️', 'Entrenamiento'],
     ['nutricion', '🍽️', 'Alimentación'],
+    ['habitos', '🌙', 'Hábitos'],
+    ['plan', '📋', 'Mi plan'],
+    ['dolor', '🩹', 'Dolor o molestia'],
+    ['ejercicio', '🏋️', 'Ejercicio'],
     ['pago', '💳', 'Cuota'],
     ['otro', '❓', 'Otra cosa']
   ];
@@ -72,17 +75,78 @@ const Consultas = (() => {
   const TEL = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>';
   const cab = (av, nom, sub, der = '', atras = null) => `<div class="wa-head">${atras || '<button type="button" class="wa-back" data-act="cerrarSheetPide" aria-label="Volver">‹</button>'}${av}<div class="grow"><b>${esc(nom)}</b><div class="wa-sub">${esc(sub)}</div></div>${der}</div>`;
 
-  /* ---------- Alumno ---------- */
-  function abrir() { S.cqLista = false; S.cq = S.cq || { tema: null, ejercicio: '' }; pintaAlumno(); marcarVistas(); }
-  function pintaAlumno(txt0) {
-    const q = S.cq, L = (S.d?.consultas || []).slice().reverse(), conEj = q.tema === 'ejercicio' || q.tema === 'dolor';
-    const ses = ejerciciosDeSesion();
+  /* ---------- Alumno: conversación guiada por banners ---------- */
+  const O = (k, ico, t, sub) => ({ k, ico, t, sub });
+  function diasPrograma() {
+    const p = S.d?.programa; return (p?.dias || []).filter(d => (d.bloques_sesion || []).some(b => (b.ejercicios_sesion || []).length));
+  }
+  function ejerciciosDia(id) {
+    const d = diasPrograma().find(x => String(x.id) === String(id)); if (!d) return [];
+    return [...new Set(d.bloques_sesion.flatMap(b => b.ejercicios_sesion || []).map(e => { try { return ejDe(e).nombre; } catch (er) { return ''; } }).filter(Boolean))];
+  }
+  const elegirSesion = (preg) => { const ds = diasPrograma(); return { preg, ops: ds.length ? ds.map(d => O('dia:' + d.id, '📅', typeof nomDia === 'function' ? nomDia(d) : (d.nombre || 'Sesión'))).concat(O('dia:otra', '❓', 'Otra / no está en la lista')) : null }; };
+  /* Árbol: devuelve la pregunta y sus opciones, o null si ya puede escribir */
+  function paso(p) {
+    const k = p.map(x => x.k), s = S.d?.servicio || {}, [t0, t1, t2] = k;
+    if (!k.length) {
+      const ops = [(s.modulo_entreno ?? true) && O('entreno', '🏋️', 'Entrenamiento', 'Planificación, una sesión o un ejercicio'), s.modulo_nutricion && O('nutricion', '🍽️', 'Alimentación', 'Tu plan, comidas, compra'), s.modulo_habitos && O('habitos', '🌙', 'Hábitos', 'Sueño, pasos, rutinas'), O('plan', '📋', 'Mi plan', 'Cuota, fechas, revisiones o la app')].filter(Boolean);
+      const ult = (S.d?.consultas || []).find(c => c.respuesta); if (ult && edad({ creado_at: ult.respondida_at || ult.creado_at }) < 14 * 864e5) ops.push(O('resp', '↩️', 'Responder a Jesús', 'Seguir con lo último que te contestó'));
+      return { preg: '¿Sobre qué quieres hablar?', ops };
+    }
+    if (t0 === 'resp' || t0 === 'urg') return null;
+    if (t0 === 'entreno') {
+      if (!t1) return { preg: '¿Sobre qué del entrenamiento?', ops: [O('planif', '🗓️', 'Planificación', 'Días, horarios, objetivo'), O('sesion', '📄', 'Un entrenamiento', 'Una sesión concreta'), O('ejercicio', '🎯', 'Un ejercicio', 'Dudas o dolor en un ejercicio')] };
+      if (t1 === 'planif') return t2 ? null : { preg: '¿Qué necesitas?', ops: [O('dias', '⏰', 'Días u horarios'), O('objetivo', '🎯', 'Objetivo o tipo de entreno'), O('cambio', '🔁', 'Quiero cambiar algo'), O('otra', '❓', 'Otra duda')] };
+      if (t1 === 'sesion') {
+        if (!t2) return { preg: '¿Qué te pasa con ese entrenamiento?', ops: [O('duda', '❔', 'Tengo una duda'), O('intens', '⚖️', 'Muy duro o muy fácil'), O('tiempo', '⏱️', 'No me da tiempo'), O('dolor', '🩹', 'Me ha molestado algo')] };
+        if (!k[3]) { const e = elegirSesion('¿Qué sesión?'); return e.ops ? e : null; }
+        return null;
+      }
+      if (t1 === 'ejercicio') {
+        if (!t2) return { preg: '¿Es una duda o un dolor?', ops: [O('duda', '❔', 'Duda', 'Técnica, peso, máquina…'), O('dolor', '🩹', 'Dolor o molestia')] };
+        let i = 3;
+        if (t2 === 'dolor') { if (!k[3]) return { preg: '¿Te limita para entrenar o moverte con normalidad?', ops: [O('leve', '🙂', 'No, es leve'), O('limita', '⚠️', 'Sí, me limita')] }; if (k[3] === 'limita') return { urg: true }; i = 4; }
+        if (!k[i]) { const e = elegirSesion('¿De qué sesión es el ejercicio?'); return e.ops ? e : null; }
+        if (!k[i + 1] && k[i] !== 'dia:otra') { const ejs = ejerciciosDia(k[i].slice(4)); if (ejs.length) return { preg: '¿Qué ejercicio?', ops: ejs.map(n => O('ej:' + n, '•', n)).concat(O('ej:otro', '❓', 'Otro')) }; }
+        return null;
+      }
+    }
+    if (t0 === 'nutricion') {
+      if (!t1) return { preg: '¿Sobre qué de tu alimentación?', ops: [O('plan', '📊', 'Mi plan y contextos'), O('comida', '🥗', 'Una comida o alimento'), O('compra', '🛒', 'Compra y organización'), O('fuera', '🍽️', 'Comer fuera o un evento')] };
+      return t2 ? null : { preg: '¿Qué necesitas?', ops: [O('duda', '❔', 'Tengo una duda'), O('cambiar', '🔁', 'Quiero cambiar algo'), O('cuesta', '😮‍💨', 'Me está costando cumplirlo')] };
+    }
+    if (t0 === 'habitos') {
+      const hs = (S.d?.habitos || []).filter(h => h.titulo && h.estado !== 'archivado');
+      if (!t1) return { preg: '¿Qué hábito?', ops: (hs.length ? hs.map(h => O('h:' + h.id, '•', h.titulo)) : [O('sueno', '😴', 'Sueño y descanso'), O('pasos', '🚶', 'Pasos y actividad'), O('estres', '🧘', 'Estrés')]).concat(O('otro', '❓', 'Otro hábito')) };
+      return t2 ? null : { preg: '¿Qué te pasa?', ops: [O('cuesta', '😮‍💨', 'Me cuesta cumplirlo'), O('duda', '❔', 'Tengo una duda'), O('ajustar', '🔁', 'Quiero ajustarlo')] };
+    }
+    if (t0 === 'plan') {
+      if (!t1) return { preg: '¿Sobre qué de tu plan?', ops: [O('cuota', '💳', 'Cuota y pagos'), O('proceso', '🗓️', 'Mi proceso', 'Fechas, duración, revisiones'), O('cambio', '⬆️', 'Cambiar o ampliar mi plan'), O('app', '📱', 'La app')] };
+      return t2 ? null : { preg: '¿Qué necesitas?', ops: [O('duda', '❔', 'Tengo una duda'), O('problema', '⚠️', 'Algo no va bien')] };
+    }
+    return null;
+  }
+  const tieneDolor = p => p.some(x => x.k === 'dolor');
+  const resumenRuta = p => p.slice(1).map(x => x.t).join(' · ');
+  function abrir() { S.cqLista = false; S.cq = { path: [] }; pintaAlumno(); marcarVistas(); }
+  function pintaAlumno() {
+    const q = S.cq || (S.cq = { path: [] }), L = (S.d?.consultas || []).slice().reverse(), st = paso(q.path);
+    const elegidas = q.path.map(x => `<div class="wa-ban sel"><span class="i">${x.ico}</span><span class="grow">${esc(x.t)}</span><span class="ok">✓</span></div>`).join('');
+    let guia;
+    if (st?.urg) guia = `<div class="wa-msg">Esto no puede esperar a la revisión: escríbeme por WhatsApp y lo vemos hoy. Si es fuerte, repentino o con hormigueo, para y consulta con un médico.</div>
+      ${S.whatsapp ? `<button type="button" class="wa-ban wa-ban-wa" data-act="cq" data-q="watel" data-v="wa_dolor"><span class="i">📞</span><span class="grow"><b>Escribir a Jesús por WhatsApp</b></span></button>` : ''}`;
+    else if (st) guia = `<div class="wa-msg">${esc(st.preg)}</div>${st.ops.map((o, i) => `<button type="button" class="wa-ban" data-act="cq" data-q="g" data-i="${i}"><span class="i">${o.ico}</span><span class="grow"><b>${esc(o.t)}</b>${o.sub ? `<span class="sub">${esc(o.sub)}</span>` : ''}</span><span class="fl">›</span></button>`).join('')}`;
+    else guia = `<div class="wa-msg">${q.path[0]?.k === 'resp' ? 'Escríbeme abajo tu respuesta.' : 'Perfecto. Cuéntamelo abajo con el detalle que puedas.'}</div>`;
+    const nav = q.path.length ? `<div class="wa-nav"><button type="button" data-act="cq" data-q="g1">‹ Atrás</button><button type="button" data-act="cq" data-q="g0">↺ Empezar de nuevo</button></div>` : '';
+    const listo = !st;
     montar(`<div class="wa">${cab(avatarJ, 'Jesús de la Obra', 'Te responde Jesús en persona', S.whatsapp ? `<button type="button" class="wa-tel" data-act="cq" data-q="watel" aria-label="Escribir a Jesús por WhatsApp">${TEL}</button>` : '')}
-      <div class="wa-body" id="wa-body">${hilo(L, 'al')}</div>
-      <div class="wa-temas"><span>¿Sobre qué?</span>${TEMAS.map(([k, ico, t]) => `<button type="button" class="wa-ch ${q.tema === k ? 'on' : ''}" data-act="cq" data-q="tema" data-v="${k}">${ico} ${t}</button>`).join('')}</div>
-      ${conEj ? `<input class="wa-ej" id="cq-ej" list="cq-ejs" value="${esc(q.ejercicio)}" placeholder="¿Qué ejercicio? (opcional)"><datalist id="cq-ejs">${ses.map(x => `<option value="${esc(x)}">`).join('')}</datalist>` : ''}
-      <div class="wa-bar"><textarea id="cq-txt" rows="1" placeholder="Mensaje">${esc(txt0 || '')}</textarea><button type="button" class="wa-send" data-act="cq" data-q="enviar" aria-label="Enviar">➤</button></div>
-      <div class="wa-pie">🔒 Te responde Jesús en persona: no es un bot ni una IA. Te contesta como tarde en tu revisión semanal y te avisa en Hoy.<br>¿No puede esperar 24 h (mover una cita, un dolor que te limita, un imprevisto o un evento de esta semana)? Toca 📞 arriba para WhatsApp.</div></div>`);
+      <div class="wa-body" id="wa-body">${hilo(L, 'al')}<div class="wa-guia">${elegidas}${guia}${nav}</div></div>
+      ${listo ? `<div class="wa-bar"><textarea id="cq-txt" rows="2" placeholder="${esc(q.path.length > 1 ? 'Cuéntame sobre «' + q.path[q.path.length - 1].t + '»…' : 'Mensaje')}"></textarea><button type="button" class="wa-send" data-act="cq" data-q="enviar" aria-label="Enviar">➤</button></div>` : ''}</div>`);
+    if (listo) setTimeout(() => document.getElementById('cq-txt')?.focus(), 50);
+  }
+  function elegir(i) {
+    const st = paso(S.cq.path); if (!st?.ops?.[+i]) return;
+    S.cq.path.push(st.ops[+i]); pintaAlumno();
   }
   async function marcarVistas() {
     const ids = sinLeer().map(c => c.id); if (!ids.length || S.vista || S.prueba) return;
@@ -90,17 +154,26 @@ const Consultas = (() => {
     await sb.from('consultas').update({ visto_alumno_at: ahora }).in('id', ids);
   }
   async function enviar() {
-    const q = S.cq, txt = (document.getElementById('cq-txt')?.value || '').trim(); q.ejercicio = document.getElementById('cq-ej')?.value || q.ejercicio || '';
-    if (!txt) return;
-    const fila = { tema: q.tema || 'otro', urgente: false, ejercicio: (q.tema === 'ejercicio' || q.tema === 'dolor') && q.ejercicio.trim() || null, texto: txt, alumno_id: S.d.uid };
+    const q = S.cq, txt = (document.getElementById('cq-txt')?.value || '').trim();
+    if (!txt) return toast('Escribe tu mensaje');
+    const p = q.path, t0 = p[0]?.k, ultResp = (S.d?.consultas || []).find(c => c.respuesta);
+    const tema = t0 === 'resp' ? (ultResp?.tema || 'otro') : tieneDolor(p) ? 'dolor' : (t0 || 'otro');
+    const fila = { tema, urgente: false, ejercicio: t0 === 'resp' ? (ultResp?.ejercicio || null) : (resumenRuta(p) || null), texto: txt, alumno_id: S.d.uid };
     const { data, error } = await sb.from('consultas').insert(fila).select().single();
-    if (error) return fallo(error, /consultas|relation/i.test(error.message || '') ? 'Falta ejecutar el Bloque 106 en Supabase.' : 'No se ha podido enviar.');
-    (S.d.consultas = S.d.consultas || []).unshift(data); S.cq = { tema: null, ejercicio: '' }; pintaAlumno();
+    if (error) { const m = String(error.message || ''); return fallo(error, /does not exist|schema cache|could not find the table/i.test(m) ? 'Falta ejecutar el Bloque 106 en Supabase.' : 'No se ha podido enviar: ' + m); }
+    (S.d.consultas = S.d.consultas || []).unshift(data); S.cq = { path: [] }; toast('Enviado'); pintaAlumno();
   }
+  /* Pantalla «Tu coach»: una sola entrada al chat + cómo funciona cada canal */
   function vAlumno() {
     const L = (S.d?.consultas || []).filter(c => !/^wa_/.test(c.tema)), u = mensajes(L.slice(0, 5).reverse()).pop(), n = sinLeer().length;
-    return `<section class="section"><div class="card wa-fila" data-act="cq" data-q="abrir" style="cursor:pointer">${avatarJ}<div class="grow" style="min-width:0"><div class="row"><b class="grow">Jesús de la Obra</b>${u ? `<span class="small ${n ? 'wa-nue' : 'muted'}">${esc(cuando(u.t))}</span>` : ''}</div>
-      <div class="row"><span class="small muted wa-prev grow">${u ? (u.de === 'al' ? 'Tú: ' : '') + esc(u.txt) : 'Escríbeme lo que no pueda esperar a tu revisión'}</span>${n ? `<span class="wa-badge">${n}</span>` : ''}</div></div></div></section>`;
+    return `<section class="section"><button type="button" class="card wa-entrada" data-act="cq" data-q="abrir">
+        <div class="row" style="gap:12px;align-items:center">${avatarJ.replace('wa-av', 'wa-av lg')}<div class="grow" style="min-width:0;text-align:left"><div class="row"><b class="grow" style="font-size:17px">Habla con Jesús</b>${n ? `<span class="wa-badge">${n}</span>` : u ? `<span class="small muted">${esc(cuando(u.t))}</span>` : ''}</div>
+          <div class="small muted wa-prev">${u ? (u.de === 'al' ? 'Tú: ' : 'Jesús: ') + esc(u.txt) : 'Toca para escribirme'}</div></div><span class="wa-go">›</span></div></button>
+      <div class="card stack wa-reglas">
+        <div class="wa-reg"><span class="i">💬</span><div><b>Chat de la app</b><div class="small muted">Lo que no puede esperar a tu revisión mensual. Te respondo aquí, como tarde en tu revisión semanal, y te aviso en Hoy.</div></div></div>
+        <div class="wa-reg"><span class="i" style="background:#25D366;color:#fff">${TEL}</span><div><b>WhatsApp</b><div class="small muted">Solo lo urgente, que no puede esperar 24 h: mover una cita, un dolor que te limita, un imprevisto o un evento de esta semana. Está en el teléfono de arriba del chat.</div></div></div>
+        <div class="wa-reg"><span class="i">🔒</span><div><b>Te respondo yo, en persona</b><div class="small muted">No es un bot ni una IA: cada mensaje lo leo y lo contesto yo.</div></div></div>
+      </div></section>`;
   }
   function vAvisoHoy() {
     const n = sinLeer().length; if (!n) return '';
@@ -209,13 +282,15 @@ const Consultas = (() => {
     const q = b.dataset.q, v = b.dataset.v;
     switch (q) {
       case 'abrir': abrir(); break;
-      case 'tema': { const t = document.getElementById('cq-txt')?.value || ''; S.cq.ejercicio = document.getElementById('cq-ej')?.value || S.cq.ejercicio; S.cq.tema = S.cq.tema === v ? null : v; pintaAlumno(t); break; }
+      case 'g': elegir(b.dataset.i); break;
+      case 'g1': S.cq.path.pop(); pintaAlumno(); break;
+      case 'g0': S.cq = { path: [] }; pintaAlumno(); break;
       case 'enviar': await enviar(); break;
       case 'fe': document.querySelectorAll('#fe-q1 button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); { const bx = document.getElementById('fe-box'); if (bx) bx.hidden = v !== 'si'; } break;
       case 'felim': document.querySelectorAll('#fe-lim button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); { const w = document.getElementById('fe-wa'); if (w) w.hidden = v !== 'si'; } break;
       case 'wa': { const u = URG.find(x => x[0] === v); if (!u) break; log(v); window.open(waJesus(u[3]), '_blank', 'noopener'); break; }
       case 'walog': log(v); break;
-      case 'watel': log('wa_chat'); window.open(waJesus('Hola Jesús, '), '_blank', 'noopener'); break;
+      case 'watel': { const dl = v === 'wa_dolor'; log(dl ? 'wa_dolor' : 'wa_chat'); window.open(waJesus(dl ? 'Hola Jesús, tengo un dolor en un ejercicio que me limita: ' : 'Hola Jesús, '), '_blank', 'noopener'); break; }
       case 'hilo': S.cqLista = !!b.closest('.wa-lista'); abrirHilo(v); break;
       case 'lista': abrirLista(); break;
       case 'rapida': { const t = document.getElementById('cq-resp'); if (t) t.value = RAPIDAS[+b.dataset.i]; break; }

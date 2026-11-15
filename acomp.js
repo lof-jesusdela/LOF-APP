@@ -156,17 +156,7 @@ const Acomp = (() => {
 
   /* ---------- Pantalla «Tu coach» del alumno: WhatsApp directo, próxima revisión y próximos entrenos con Jesús ---------- */
   function vTuCoach() {
-    const D = S.d || {}, s = D.servicio, hoy = hoyISO(), prox = controlesMensuales(s, sumaDias(hoy, 45)).find(c => c.fecha >= hoy);
-    const pres = (D.presenciales || []).filter(p => p.estado === 'programada' && (!p.fecha || p.fecha >= hoy)).sort(ordPres).slice(0, 4);
-    const wa = S.whatsapp ? waJesus('Hola Jesús') : null;
-    return `<section class="stack"><span class="eyebrow">Tu acompañamiento</span><h1>Tu coach</h1></section>${IA.vEntrada()}
-      <section class="section"><div class="card stack"><div class="row" style="gap:12px;align-items:center"><img src="icons/coach.jpg" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover" onerror="this.remove()"><div class="grow"><b>Jesús de la Obra</b>${S.respuesta ? `<div class="small muted">Te responde ${esc(S.respuesta)}</div>` : ''}</div></div>
-        <button class="btn full" data-act="cq" data-q="abrir">💬 Habla con Jesús</button>
-        <div class="small stack" style="gap:4px;margin-top:4px"><div><b>WhatsApp</b> · solo lo urgente, que no puede esperar 24 h: mover una cita, un dolor que te limita, un imprevisto o un evento de esta semana.</div><div><b>Chat de la app</b> · todo lo demás que no pueda esperar a tu revisión mensual. Te respondo aquí, como tarde en tu revisión semanal.</div></div></div></section>${Consultas.vAlumno()}
-      <section class="section"><h2>Próximamente</h2><div class="card">
-        ${prox ? `<div class="line"><div class="ico gold">${svg('progreso')}</div><div class="grow"><b class="small">Revisión mensual</b><div class="small muted">Control ${prox.n} · semana del ${esc(fCorta(prox.lunes))}. Llamada o videollamada de 10-15 minutos.</div></div></div>` : ''}
-        ${pres.map(p => `<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">Entrenamiento personal con Jesús</b><div class="small muted">${esc(fLargaP(p))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</div></div><span class="small muted">›</span></div>`).join('')}
-        ${!prox && !pres.length ? '<div class="empty">Sin citas próximas.</div>' : ''}</div></section>`;
+    return `<section class="stack"><span class="eyebrow">Tu acompañamiento</span><h1>Tu coach</h1></section>${IA.vEntrada()}${Consultas.vAlumno()}`;
   }
   /* Última indicación de Jesús en Hoy (cuando no hay una devolución nueva sin leer, que ya sale en Pendiente) */
   function ultimaIndicacion() {
