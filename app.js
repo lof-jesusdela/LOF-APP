@@ -3968,7 +3968,7 @@ function vFutbolCoach() {
   const fut = S.c.perfiles.filter(p => p.activo !== false && S.c.servicios.some(x => x.alumno_id === p.id && x.modulo_futbol));
   if (!fut.length) return '';
   const hoy = hoyISO();
-  return `<section class="section"><div class="section-head"><h2>Futbolistas · hoy</h2><button class="btn sm" data-act="checkin">Control semanal</button></div><div class="card tbl" style="overflow-x:auto"><table class="fut-t"><thead><tr><th>Jugador</th><th>Partido</th><th>Fatiga</th><th>Carga 7 d</th><th>ACWR</th><th>Hoy</th></tr></thead><tbody>
+  return `<section class="section"><div class="section-head"><h2>Futbolistas · hoy</h2><div class="row" style="gap:6px"><button class="btn sm gold" data-act="avisarTodos">💬 Avisar a todos: semana lista</button><button class="btn sm" data-act="checkin">Control semanal</button></div></div><div class="card tbl" style="overflow-x:auto"><table class="fut-t"><thead><tr><th>Jugador</th><th>Partido</th><th>Fatiga</th><th>Carga 7 d</th><th>ACWR</th><th>Hoy</th></tr></thead><tbody>
     ${fut.map(a => { const { w, p } = futDe(a.id), M = mdDe(p), uf = ultimaFatiga(w), C = cargasSemana(w), [na, ta] = nivelAcwr(C.acwr), hecho = wDe(w, hoy, 'diario') || wDe(w, hoy, 'partido'), mol = molestiasRecientes(w, 3).length;
       return `<tr data-act="ficha" data-id="${a.id}" style="cursor:pointer"><td><b>${esc(a.nombre)}</b>${mol ? ' <span class="pill warn">molestia</span>' : ''}</td><td class="small">${M.md ? `<span class="md-chip sm">${esc(M.md)}</span> ` : ''}${esc(M.prox?.rival || '')}</td><td>${uf ? `<span class="pill ${nivelFat(uf.v)}">${uf.v}/10</span>` : '—'}</td><td class="num">${fmtNum(C.aguda, 0)}</td><td>${C.acwr != null ? `<span class="pill ${na}" title="${ta}">${fmtNum(C.acwr)}</span>` : '—'}</td><td>${hecho ? '<span style="color:var(--ok)">✓</span>' : '<span class="muted">pendiente</span>'}</td></tr>`; }).join('')}
   </tbody></table><p class="note">Carga = minutos × esfuerzo (1-10) del equipo, de tu sesión y del partido. Proporción de carga = últimos 7 días frente a su media semanal de las últimas 4 semanas. Indica un cambio relativo de carga, no un diagnóstico ni un riesgo de lesión individual: contrástalo con molestias, recuperación, historial y la calidad de los registros. Solo se calcula con al menos 3 de 4 semanas registradas.</p></div></section>`;
@@ -4070,7 +4070,7 @@ async function hacerPatron(id) {
   } catch (err) { fallo(err, 'No se ha podido cambiar la semana patrón.'); }
 }
 /* «Avisar»: mensaje de Jesús en el chat (tono personal, no una notificación del sistema). Llega al móvil como «Jesús te ha enviado un mensaje» */
-async function avisarSemana(alumnoId, lunes) {
+function textoSemana(alumnoId, lunes, k = 0) {
   const nom = (S.c.perfiles.find(p => p.id === alumnoId)?.nombre || '').split(' ')[0];
   const fin = sumaDias(lunes, 6), pt = (S.c.partidos || []).filter(x => x.alumno_id === alumnoId && x.fecha >= lunes && x.fecha <= fin).sort((x, y) => x.fecha.localeCompare(y.fecha))[0];
   const dia = pt ? DIAS[fecha(pt.fecha).getDay()] : '', esta = lunes <= hoyISO();
@@ -4080,10 +4080,29 @@ async function avisarSemana(alumnoId, lunes) {
     `${nom}, te acabo de dejar preparada tu semana${esta ? '' : ' que viene'}.${extra} Cualquier duda o molestia, escríbeme por aquí y lo ajustamos.`,
     `¡Hola ${nom}! Tu semana ya está montada.${extra} Ve mirándola y me cuentas qué tal 👊`
   ];
-  const txt = V[Math.floor(Math.random() * V.length)];
+  return V[((k % V.length) + V.length) % V.length];
+}
+async function avisarSemana(alumnoId, lunes) {
+  const nom = (S.c.perfiles.find(p => p.id === alumnoId)?.nombre || '').split(' ')[0], txt = textoSemana(alumnoId, lunes, Math.floor(Math.random() * 3));
   if (!confirm(`Se le enviará por el chat:\n\n«${txt}»\n\n¿Lo envío?`)) return;
   try { await Consultas.mensajeJesus(alumnoId, txt); toast(`Mensaje enviado a ${nom} por el chat`); render(); }
   catch (err) { fallo(err, 'No se ha podido enviar el mensaje.'); }
+}
+/* Avisar a todos los futbolistas de golpe: se ve el mensaje de cada uno, se puede retocar o quitar a alguien, y se envía */
+function avisarSemanaTodos() {
+  const hoy = hoyISO(), dow = (fecha(hoy).getDay() + 6) % 7, lunes = dow <= 2 ? lunesDe(hoy) : sumaDias(lunesDe(hoy), 7);
+  const fut = S.c.perfiles.filter(p => p.activo !== false && S.c.servicios.some(x => x.alumno_id === p.id && x.modulo_futbol)).sort((x, y) => (x.nombre || '').localeCompare(y.nombre || ''));
+  if (!fut.length) return toast('No hay futbolistas activos');
+  abrirSheet(`<form class="stack" id="f-avt"><h2>💬 Avisar: semana lista</h2><p class="small muted" style="margin-top:-6px">Semana del ${esc(fCorta(lunes))} al ${esc(fCorta(sumaDias(lunes, 6)))}. Les llega como mensaje tuyo en el chat. Revisa cada uno: puedes retocarlo o desmarcar a quien no quieras avisar.</p>
+    ${fut.map((a, i) => `<div class="card stack" style="gap:6px;padding:10px"><label class="row small" style="gap:8px"><input type="checkbox" data-av="${a.id}" checked><b>${esc(a.nombre)}</b></label><textarea rows="4" data-avt="${a.id}">${esc(textoSemana(a.id, lunes, i))}</textarea></div>`).join('')}
+    <button class="btn full" type="submit">Enviar a ${fut.length}</button></form>`);
+  const F = $('#f-avt'), btn = F.querySelector('[type=submit]'), cuenta = () => { const n = F.querySelectorAll('[data-av]:checked').length; btn.textContent = n ? `Enviar a ${n}` : 'Nadie marcado'; btn.disabled = !n; };
+  F.addEventListener('change', cuenta);
+  F.addEventListener('submit', async e => { e.preventDefault(); if (btn.dataset.ok !== '1') { btn.dataset.ok = '1'; btn.textContent = 'Pulsa otra vez para confirmar el envío'; return; }
+    btn.disabled = true; let ok = 0; const mal = [];
+    for (const c of F.querySelectorAll('[data-av]:checked')) { const id = c.dataset.av, t = F.querySelector(`[data-avt="${id}"]`).value.trim(); if (!t) continue;
+      try { await Consultas.mensajeJesus(id, t); ok++; } catch (err) { console.error(err); mal.push((S.c.perfiles.find(p => p.id === id)?.nombre || '').split(' ')[0]); } }
+    cerrarSheet(); toast(`Enviado a ${ok}${mal.length ? ` · falló: ${mal.join(', ')}` : ''}`); render(); });
 }
 function vSemanasFutbol(a) {
   const f = S.ficha; if (!f || f.id !== a.id) return '';
@@ -8769,7 +8788,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v407';
+const APP_VER = 'v408';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -9228,6 +9247,7 @@ document.addEventListener('click', async e => {
     case 'activarPush': await activarPush(); await refrescarPush(); render(); break;
     case 'avisoVisto': { const id = +b.dataset.id; await sb.from('avisos').update({ visto_at: new Date().toISOString() }).eq('id', id); S.d.avisos = (S.d.avisos || []).filter(x => x.id !== id); S.tab = b.dataset.t || 'hoy'; S.dia = null; render(); window.scrollTo(0, 0); break; }
     case 'hacerPatron': await hacerPatron(+b.dataset.id); break;
+    case 'avisarTodos': avisarSemanaTodos(); break;
     case 'avisarSemana': b.disabled = true; await avisarSemana(b.dataset.al, b.dataset.l); b.disabled = false; break;
     case 'semAjustar': b.disabled = true; await ajustarSemana(b.dataset.l, !!b.dataset.ant); b.disabled = false; break;
     case 'semPegar': b.disabled = true; await pegarSemana(b.dataset.l); b.disabled = false; break;
