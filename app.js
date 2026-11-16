@@ -3238,12 +3238,12 @@ function vBloqueTop(f, a) {
   const dias = (cur?.dias || []).filter(d => !d.oculto).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0));
   const semBl = bl ? Math.floor((fecha(L0) - fecha(lunesDe(bl.ini))) / 6048e5) + 1 : null;
   const edit = !cur ? `<button class="btn sm" data-act="editarPrograma" data-id="${a.id}">Crear ${fija ? 'semana patrón' : 'programa'}</button>` : esCtx && !fija ? `<button class="btn sm" data-act="abrirProg" data-id="${cur.id}">✎ Editar bloque</button>` : `<button class="btn sm" data-act="editarPrograma" data-id="${a.id}">✎ Editar ${fija ? 'semana patrón' : 'bloque'}</button>`;
-  return `<section class="section"><div class="card stack" style="gap:12px">
-    <div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-start"><div class="grow" style="min-width:220px"><span class="eyebrow">${fija ? '★ Bloque actual · semana patrón' : 'Bloque actual'}</span><h3 style="margin:2px 0">${esc(cur ? (cur.contexto_nombre || cur.nombre || '').replace(/^Bloque · /, '') : 'Sin programa')}</h3>
+  return `<section class="section"><details class="card fx-ban"><summary><span class="fx-ban-ic">${fija ? '★' : '🧱'}</span><span class="grow"><span class="eyebrow">${fija ? 'Bloque actual · semana patrón' : 'Bloque actual'}</span><br><b>${esc(cur ? (cur.contexto_nombre || cur.nombre || '').replace(/^Bloque · /, '') : 'Sin programa')}</b>${bl && semBl > 0 ? `<span class="small muted"> · semana ${semBl} de ${bl.sem}</span>` : ''}</span></summary><div class="fx-ban-in stack" style="gap:12px">
+    <div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-start"><div class="grow" style="min-width:220px">
       <div class="small muted">${[bl && semBl > 0 ? `${esc(bl.nombre || nomCiclo(bl))} · semana ${semBl} de ${bl.sem}` : '', bl ? `hasta el ${esc(fCorta(bl.fin))}` : '', cur ? `${dias.length} ${dias.length === 1 ? 'entrenamiento' : 'entrenamientos'}${cur.dias_semana ? ` · ${cur.dias_semana} días por semana` : ''}` : ''].filter(Boolean).join(' · ')}${fija ? '<br>Se repite cada semana del bloque que no hayas modificado.' : ''}</div></div>
       <div class="row" style="gap:6px;flex-wrap:wrap">${edit}<button class="btn sm ghost" data-act="asignarPlantilla" data-al="${a.id}">＋ Plantilla</button>${cur ? `<button class="btn sm ghost" data-act="guardarPlantilla" data-id="${cur.id}">Guardar como plantilla</button>` : ''}${!fija ? `<button class="btn sm ghost" data-act="bloqueEnt">＋ Nuevo bloque</button>` : `<button class="btn sm ghost" data-act="editarBloques">✎ Semanas de los bloques</button>`}</div></div>
     ${dias.length ? tilesDias(cur, dias) : ''}
-  </div></section>`;
+  </div></details></section>`;
 }
 function vSemanasNav(f, a) {
   const L0 = lunesDe(hoyISO()), l = (S.fsem?.aid === a.id && S.fsem.l) || L0, rel = Math.round((fecha(l) - fecha(L0)) / (7 * 864e5));
@@ -3713,7 +3713,7 @@ function formAvisos(aid) {
 async function irA(aid, o = {}) {
   cerrarSheet(); S.reporte = null; S.editor = null; S.verPlan = null; S.verSes = null;
   if (S.ficha?.id !== aid || S.ficha?.cargando) await abrirFicha(aid);
-  if (o.tab) (S.fTab ||= {})[aid] = o.tab;
+  if (o.tab) { const t = ['plan', 'pagos'].includes(o.tab) ? 'inicio' : o.tab; if (t !== o.tab) S.fBan = o.tab === 'pagos' ? 'pagos' : 'plan'; (S.fTab ||= {})[aid] = t; }
   if (o.sub) await abrirSub(o.sub); else { S.fichaSub = null; render(); window.scrollTo(0, 0); }
   if (o.fn) await o.fn();
   if (o.ancla) resaltar(o.ancla);
@@ -4782,7 +4782,7 @@ function vFichaBase() {
       ['progreso', 7, '📈', 'Progreso y composición corporal', ultM ? `Última medición ${esc(fCorta(ultM.fecha))}${ultM.peso != null ? ' · ' + fmtNum(ultM.peso, 1) + ' kg' : ''}${ultM.grasa_pct != null ? ' · ' + fmtNum(ultM.grasa_pct, 1) + ' % grasa' : ''}` : 'Sin mediciones', fb7 + `<h2 style="margin:18px 0 8px">Tests y valoraciones</h2>` + vTestsFicha(f), 'Progreso'],
       ['medidas', 11, '📸', 'Testimonio · medidas, fotos y casos de éxito', '', fb11, 'Testimonio']
     ].filter(Boolean);
-    const tabs = (S.fTab ||= {}), ALIAS = { calendario: 'checkins', pagos: 'plan', tests: 'progreso' }; if (ALIAS[tabs[f.id]]) tabs[f.id] = ALIAS[tabs[f.id]]; const act = SECS.some(x => x[0] === tabs[f.id]) ? tabs[f.id] : 'inicio';
+    const tabs = (S.fTab ||= {}), ALIAS = { calendario: 'checkins', pagos: 'inicio', plan: 'inicio', tests: 'progreso' }; if (ALIAS[tabs[f.id]]) tabs[f.id] = ALIAS[tabs[f.id]]; const act = SECS.some(x => x[0] === tabs[f.id]) ? tabs[f.id] : 'inicio';
     /* Columna de perfil (fija) + pestañas + contenido. Estilo tranquilo: tarjetas blancas, pocos datos por tarjeta, color solo para el estado */
     const nivTxt = { ok: 'En camino', warn: 'Atención', bad: 'Revisar' }[e.nivel];
     const filaP = (l, v) => v ? `<div class="fx-dato"><span>${l}</span><b>${v}</b></div>` : '';
@@ -4797,9 +4797,9 @@ function vFichaBase() {
       <details class="fx-mas"><summary>Más acciones</summary><div class="stack" style="gap:6px;margin-top:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button><button class="btn sm ghost" data-act="accesoAl" data-id="${a.id}">🔑 Acceso y contraseña</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}<button class="btn sm ghost" data-act="pausarAcceso" data-id="${a.id}" data-on="${a.acceso_pausado ? 0 : 1}">${a.acceso_pausado ? '🔓 Devolver el acceso' : '🔒 Quitar el acceso'}</button></div></details>
       ${a.activo === false ? '<p class="small muted" style="margin:0">Antiguo alumno: no genera avisos.</p>' : ''}</aside>`;
     /* Todas las secciones en la barra horizontal (se desliza en el móvil), en orden de uso: resumen y seguimiento primero */
-    const ORD = ['resumen', 'checkins', 'plan', 'oposicion', 'entreno', 'nutri', 'habitos', 'progreso', 'medidas'];
+    const ORD = ['resumen', 'checkins', 'oposicion', 'entreno', 'nutri', 'habitos', 'progreso', 'medidas'];
     const NOMT = { resumen: 'Notas y tareas' };
-    const nav = `<nav class="fx-tabs" role="tablist" aria-label="Secciones de la ficha"><button role="tab" data-act="fTab" data-t="inicio" aria-selected="${act === 'inicio'}">Resumen</button>${ORD.map(id => SECS.find(z => z[0] === id)).filter(Boolean).map(([id, n, , , , , corto]) => { const d = typeof n === 'number' && n > 1 ? dot(n) : id === 'resumen' ? dot(1) : ''; return `<button role="tab" data-act="fTab" data-t="${id}" aria-selected="${act === id}">${esc(NOMT[id] || corto)}${d ? '<i class="fx-tdot"></i>' : ''}</button>`; }).join('')}</nav>`;
+    const nav = `<nav class="fx-tabs" role="tablist" aria-label="Secciones de la ficha"><button role="tab" data-act="fTab" data-t="inicio" aria-selected="${act === 'inicio'}">Plan</button>${ORD.map(id => SECS.find(z => z[0] === id)).filter(Boolean).map(([id, n, , , , , corto]) => { const d = typeof n === 'number' && n > 1 ? dot(n) : id === 'resumen' ? dot(1) : ''; return `<button role="tab" data-act="fTab" data-t="${id}" aria-selected="${act === id}">${esc(NOMT[id] || corto)}${d ? '<i class="fx-tdot"></i>' : ''}</button>`; }).join('')}</nav>`;
     let cuerpo;
     if (act !== 'inicio') { const x = SECS.find(z => z[0] === act); cuerpo = `<div class="fx-cab"><h2>${esc(x[3])}</h2>${x[4] ? `<span class="small muted">${x[4]}</span>` : ''}</div><div class="ft-cuerpo">${x[5]}</div>`; }
     else {
@@ -4869,6 +4869,14 @@ function vFichaBase() {
         const cPr = `<div class="card fx-c"><div class="fx-ct">Pruebas físicas <span class="muted">· ${O.simulacros} simulacro${O.simulacros === 1 ? '' : 's'}</span></div><div class="fx-lista">${O.pruebas.map(x => `<div class="fx-prox"><span class="fx-ic">${x.ic}</span><span class="grow"><b>${esc(x.t)}</b><br><span class="small muted">${x.marca ? esc(x.marca) + ' · ' + esc(fCorta(x.fecha)) + ' · ' : ''}${esc(x.siguiente)}${x.objetivo ? ' · 🎯 ' + esc(x.objetivo) : ''}</span></span><span class="op-nota ${x.color}">${x.nota ?? '–'}</span></div>`).join('')}</div><div class="row" style="gap:8px"><button class="btn sm ghost" data-act="opSim" data-c="1">＋ Simulacro</button><button class="linkbtn small" data-act="fTab" data-t="oposicion">Ver evolución ›</button></div></div>`;
         cuerpo = `${cAcuerdo}<div class="fx-kpis">${kO}</div><div class="fx-fila">${cPr}${cPend}</div><div class="fx-fila">${cCumpl}${cProx(prox)}</div>`;
       } else cuerpo = `${cAcuerdo}<div class="fx-fila">${cPend}${cProx(prox)}</div><div class="fx-kpis">${kpis}</div><div class="fx-fila">${cChk}${cCumpl}</div>`;
+      /* Plan contratado, pagos y su histórico: banners plegados dentro de esta pestaña (se abren al tocarlos) */
+      const iH = fb9.indexOf('<section class="section"><div class="section-head"><h2>Histórico de pagos</h2>'), pagosB = iH >= 0 ? fb9.slice(0, iH) : fb9, histB = iH >= 0 ? fb9.slice(iH) : '';
+      const ab = S.fBan; S.fBan = null;
+      const ban = (k, ic, t, sub, html) => `<details class="card fx-ban" id="fban-${k}"${ab === k ? ' open' : ''}><summary><span class="fx-ban-ic">${ic}</span><span class="grow"><b>${t}</b>${sub ? `<span class="small muted"> · ${sub}</span>` : ''}</span></summary><div class="fx-ban-in">${html}</div></details>`;
+      cuerpo += `<div class="stack" style="gap:10px;margin-top:14px">${ban('plan', '📑', 'Plan contratado y bloques', `${esc(srv?.producto || 'Sin plan')}${P && !P.antes && !P.fuera ? ` · semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''}`, fb3)}
+        ${ban('pagos', '💳', 'Pagos y cuotas', pagV.length ? `<span style="color:var(--bad)">${pagV.length} vencida${pagV.length > 1 ? 's' : ''}</span>` : pagP.length ? `próxima ${esc(fCorta(pagP.slice().sort((x, y) => x.vence.localeCompare(y.vence))[0].vence))}` : 'al día', pagosB)}
+        ${histB ? ban('hist', '📚', 'Histórico de pagos', '', histB) : ''}</div>`;
+      if (ab) setTimeout(() => document.getElementById('fban-' + ab)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
     }
     return `<section class="span fx">${perfil}<div class="fx-main">${nav}<div class="fx-cuerpo">${cuerpo}</div></div></section>`;
   })()}
@@ -8447,7 +8455,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v382';
+const APP_VER = 'v383';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8682,7 +8690,7 @@ document.addEventListener('click', async e => {
       toast(`Fotos puestas en ${n} de ${datos.filter(x => x.nombre).length} ejercicios. Revisa cuáles son en ✎ Editar prueba`); await cargarValoraciones(); break; }
     case 'omitir': formOmitir(+b.dataset.es, b.dataset.n); break;
     case 'deshacerOmitir': await deshacerOmitir(+b.dataset.es); break;
-    case 'fTab': (S.fTab ||= {})[S.ficha.id] = b.dataset.t; render(); document.querySelector('.ft-tabs')?.scrollIntoView({ block: 'nearest' }); break;
+    case 'fTab': { const t0 = b.dataset.t, t = ['plan', 'pagos'].includes(t0) ? 'inicio' : t0; if (t !== t0) S.fBan = t0 === 'pagos' ? 'pagos' : 'plan'; (S.fTab ||= {})[S.ficha.id] = t; } render(); document.querySelector('.ft-tabs')?.scrollIntoView({ block: 'nearest' }); break;
     case 'abrirReporte': await abrirReporte(b.dataset.id || null); break;
     case 'reporteSemana': await abrirReporte(S.reporte.alumno, sumaDias(S.reporte.lunes, +b.dataset.d)); break;
     case 'cerrarReporte': { const al = S.reporte?.alumno; S.reporte = null; if (al && S.ficha?.id === al) render(); else render(); window.scrollTo(0, 0); break; }
