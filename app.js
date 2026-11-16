@@ -430,6 +430,8 @@ async function cargarAlumno(uid) {
   ]);
   const p = prog.data?.[0] || null;
   const ctxs = ctxR.error ? [] : (ctxR.data || []).filter(esContexto);
+  /* Si su último bloque terminó hace mucho y aún no hay otro, sigue entrenándolo (no vuelve a un programa antiguo) */
+  if (!ctxR.error && !ctxs.some(esBloqueP)) { const u = await sb.from('programas').select(CTX_COLS + SEL_PROGRAMA).eq('alumno_id', uid).like('nombre', 'Bloque · %').order('contexto_hasta', { ascending: false }).limit(1); if (!u.error && u.data?.[0] && esContexto(u.data[0])) ctxs.unshift(u.data[0]); }
   ctxs.forEach(c => { ordSemana(c.dias ||= []); c.dias.forEach(ordenarDia); });
   if (p) {
     p.dias = (p.dias || []).filter(d => !d.oculto);
@@ -8394,7 +8396,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v378';
+const APP_VER = 'v379';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}

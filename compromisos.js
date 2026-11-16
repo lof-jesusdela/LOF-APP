@@ -14,9 +14,10 @@ const Compromisos = (() => {
     tarea: { n: 'Tareas con alumnos', uno: 'Tarea', ico: '📝', min: 15, hacer: 'Tarea que te apuntaste para este alumno' },
     pausa: { n: 'Regresos de pausa', uno: 'Regreso de pausa', ico: '⏸', min: 5, hacer: 'Pasarlo a Regreso o Activo' },
     fin: { n: 'Fin de proceso', uno: 'Fin de proceso', ico: '🏁', min: 10, hacer: 'Hablar de extensión o cierre' },
+    blq: { n: 'Bloques por preparar', uno: 'Siguiente bloque', ico: '🧱', min: 30, hacer: 'Preparar el siguiente bloque de entrenamiento' },
     gasto: { n: 'Pagos a realizar', uno: 'Pago a realizar', ico: '🧾', min: 5, hacer: 'Pagarlo y marcarlo como pagado' },
   };
-  const ORDEN = ['rev', 'dev', 'acc', 'tarea', 'pausa', 'fin', 'cobro', 'gasto'];
+  const ORDEN = ['rev', 'dev', 'blq', 'acc', 'tarea', 'pausa', 'fin', 'cobro', 'gasto'];
   const VIVOS = ['pendiente', 'programada', 'en_curso', 'esperando'];
   const EST = { pendiente: ['', 'Pendiente'], hoy: ['blue', 'Para hoy'], programado: ['', 'Programado'], en_curso: ['blue', 'En curso'], esperando: ['gold', 'Esperando respuesta'], resuelto: ['ok', 'Resuelto'] };
   const tipoDe = id => String(id || '').split(':')[0];
@@ -32,6 +33,16 @@ const Compromisos = (() => {
     const seg = conSeguimiento(srv), est = Acomp.estado(srv), pausa = est.k === 'pausado';
     // Cuotas vencidas (siempre: tenga o no seguimiento)
     (c.pagos || []).filter(p => p.alumno_id === aid && !p.pagado_at && p.vence < hoy).forEach(p => add('cobro', p.id, { t: 'pago', vence: p.vence, titulo: `${eur0(p.importe)} · ${p.concepto || 'cuota'}`, m: `Pago vencido: ${p.importe} €`, pago: p.id }));
+    // Siguiente bloque de entrenamiento: aviso 7 días antes de que termine el último y no hay otro detrás.
+    // Se queda hasta que lo creas; mientras tanto el alumno sigue entrenando el último bloque semana a semana (no se queda sin entreno).
+    if (!srv?.modulo_futbol && !pausa) {
+      const B = (c.contextos || []).filter(x => x.alumno_id === aid && esBloqueP(x)).sort((x, y) => x.contexto_hasta.localeCompare(y.contexto_hasta)), u = B[B.length - 1];
+      const finProc = (() => { try { const P = proceso(srv); return P && !P.sinFin ? P.ciclos[P.ciclos.length - 1].fin : null; } catch (e) { return null; } })();
+      if (u && u.contexto_hasta <= sumaDias(hoy, 7) && !B.some(x => x.contexto_desde > u.contexto_hasta) && !(finProc && finProc <= u.contexto_hasta)) {
+        const ya = u.contexto_hasta < hoy, n = (u.contexto_nombre || 'Bloque').replace(/^Bloque · /, '');
+        add('blq', u.id, { t: 'entreno', vence: sumaDias(u.contexto_hasta, -7), bloque: u.id, titulo: ya ? `«${n}» terminó el ${fCorta(u.contexto_hasta)}: prepara el siguiente` : `«${n}» termina el ${fCorta(u.contexto_hasta)}: prepara el siguiente`, m: ya ? `Bloque terminado el ${fCorta(u.contexto_hasta)} sin el siguiente: mientras tanto repite el último cada semana` : `Su bloque termina el ${fCorta(u.contexto_hasta)} y aún no tiene el siguiente` });
+      }
+    }
     // Tareas que te apuntaste con este alumno
     (c.tareas || []).filter(t => t.alumno_id === aid && !t.hecha_at).forEach(t => out.push({ id: `tarea:${aid}:${t.id}`, tipo: 'tarea', aid, t: 'otros', vence: t.vence || null, titulo: t.texto, m: '', tareaId: t.id }));
     if (!seg) return out;
@@ -154,6 +165,7 @@ const Compromisos = (() => {
     if (x.estado === 'pendiente' || x.estado === 'hoy') guardar(x, { estado: 'en_curso', fecha: hoyISO() }, !x.fila).then(render);
     if (x.tipo === 'gasto') return ctab('pagos');
     if (x.tipo === 'tarea') return irA(x.aid, { tab: 'resumen' });
+    if (x.tipo === 'blq') return irA(x.aid, { fn: () => formBloqueEnt(null, { prev: x.bloque }) });
     if (x.tipo === 'rev') return irA(x.aid, { fn: () => formRevision(x.n, null) });
     if (x.tipo === 'dev') return irA(x.aid, { tab: 'checkins', ancla: 'ac-chk', fn: () => Acomp.formDevolucion && x.id.split(':')[2] ? Acomp.formDevolucion(x.id.split(':')[2]) : null });
     return alIr(x.aid, x.m);
