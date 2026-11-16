@@ -7555,6 +7555,8 @@ function formPrueba(id) {
 /* ---------- Editor de programas (coach) ---------- */
 const SEL_EDITOR = 'id,nombre,dias_semana,alumno_id,dias(*,bloques_sesion(*,ejercicios_sesion(*,ejercicios(nombre))))';
 async function abrirEditor(alumnoId, progId = null, quieto = false) {
+  /* Sin programa concreto: abre lo que entrena AHORA (su bloque con fechas vigente), no el primer programa que tuvo. Futbolistas: su semana patrón */
+  if (!progId && alumnoId && S.ficha?.id === alumnoId && !S.ficha.srv?.modulo_futbol) { const cur = progActual(S.ficha); if (cur?.contexto_desde && esBloqueP(cur)) progId = cur.id; }
   if (!quieto) { S.editor = { alumnoId, progId, cargando: true }; render(); window.scrollTo(0, 0); }
   const [prog, met] = await Promise.all([
     progId ? conRespaldo(() => sb.from('programas').select('categoria,' + SEL_EDITOR).eq('id', progId).limit(1), () => sb.from('programas').select(SEL_EDITOR).eq('id', progId).limit(1))
