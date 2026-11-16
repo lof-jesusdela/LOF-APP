@@ -1401,19 +1401,28 @@ function ladoAprox(e) {
   const nom = [e.nombre, e.ejercicio?.nombre, e.ejercicio?.musculo, e.musculo].filter(x => typeof x === 'string').join(' ');
   return /pierna|cu[aá]dr|g[lú]+teo|isquio|gemelo|sentadilla|zancada|b[uú]lgara|step|pistol|prensa|hip|femoral|peso muerto|abductor|aductor/i.test(nom) ? 'pies' : 'manos';
 }
-/* Pesos que calcula la app por defecto (70 % · 100 % · 110 %; el doble si es unilateral) */
-function aproxDefecto(e) {
-  if (!e) return [];
-  const r = kgRef(e); if (!r) return []; const b = ladoAprox(e) ? r * 2 : r;
-  return [.7, 1, 1.1].map(f => String(Math.round(b * f)));
+/* Aproximación 6·3·1 automática.
+   Bilateral: 6 rep al 70 % · 3 rep con el peso objetivo · 1 rep +10 %.
+   Unilateral (se hace SIEMPRE con las dos manos / los dos pies): el peso de una mano es ~33 % del máximo a dos manos,
+   así que máximo a dos ≈ peso de una mano / 0,33 → 3 rep al 90 % de ese máximo · 6 rep con la mitad del de 3 · 1 rep +10 % sobre el de 3.
+   Ej.: 33 kg a una mano → máximo a dos ≈ 100 kg → 45 · 90 · 99 kg. Si Jesús fija un peso de referencia, es el de las 3 rep. */
+const redAprox = v => v < 10 ? Math.round(v * 4) / 4 : Math.round(v * 2) / 2;
+function aproxPesos(e) {
+  if (!e) return { kg: [], uni: false };
+  const uni = !!ladoAprox(e), ak = parseFloat(String(e.aprox_kg ?? '').replace(',', '.')), r = kgRef(e);
+  if (uni) { const w3 = ak > 0 ? ak : r ? r / 0.33 * 0.9 : null; return { uni, max: !(ak > 0) && r ? r / 0.33 : null, kg: w3 ? [w3 * 0.5, w3, w3 * 1.1].map(redAprox) : [] }; }
+  const b = ak > 0 ? ak : r; return { uni, kg: b ? [b * 0.7, b, b * 1.1].map(redAprox) : [] };
 }
+function aproxDefecto(e) { return aproxPesos(e).kg.map(v => fmtNum(v, 2)); }
 function vAprox(e) {
   const lado = ladoAprox(e), dos = lado ? (lado === 'pies' ? 'los dos pies / las dos piernas' : 'las dos manos / los dos brazos') : '';
-  const ak = parseFloat(String(e.aprox_kg ?? '').replace(',', '.')), auto = !(ak > 0) && lado && kgRef(e), ref = ak > 0 ? ak : auto ? kgRef(e) * 2 : kgRef(e);   // unilateral sin peso fijado: el doble (se hace con las dos extremidades)
-  const man = String(e.aprox_kgs ?? '').split(';').map(x => parseFloat(x.replace(',', '.'))), filas = [[6, 0.7, 'Peso ligero'], [3, 1, 'Peso objetivo'], [1, 1.1, 'Por encima del objetivo']];
+  const ak = parseFloat(String(e.aprox_kg ?? '').replace(',', '.')), AP = aproxPesos(e);
+  const man = String(e.aprox_kgs ?? '').split(';').map(x => parseFloat(x.replace(',', '.')));
+  const filas = lado ? [[6, 'Ligero · la mitad del peso de las 3'], [3, `Unos ${AP.max ? fmtNum(redAprox(AP.max * 0.9), 2) + ' kg, ' : ''}el 90 % de tu máximo a dos ${lado === 'pies' ? 'piernas' : 'manos'}`], [1, 'Un 10 % más que las 3']]
+    : [[6, 'Peso ligero'], [3, 'Peso objetivo'], [1, 'Por encima del objetivo']];
   return `<div class="aprox"><span class="eyebrow">Aproximación 6·3·1 · antes de empezar${lado ? ' · con ' + (lado === 'pies' ? 'los dos pies' : 'las dos manos') : ''}</span>
-    ${lado ? `<div class="small" style="color:var(--gold,inherit);font-weight:700">⚠ Aunque el ejercicio sea unilateral, la aproximación se hace SIEMPRE con ${dos}${e.aprox_kg > 0 ? ' (peso indicado por Jesús)' : man.some(x => x > 0) ? ' (pesos indicados por Jesús)' : ' (el peso es el doble del de un lado)'}.</div>` : ''}<div class="small">Al terminar la repetición única, descansa 1 minuto y empieza tus series.</div>
-    ${filas.map(([n, f, t], j) => `<div class="ap-row"><span class="ap-n num">${n}</span><span class="small">${n === 1 ? '1 repetición' : n + ' repeticiones'}<br><span class="muted">${t}</span></span><b class="ap-kg num">${man[j] > 0 ? fmtNum(man[j], 2) + ' kg' : ref ? Math.round(ref * f) + ' kg' : 'como 1.ª serie'}</b><button class="chk" data-act="aprox" data-j="${j}" aria-label="Hecha">${CHK}</button></div>`).join('')}
+    ${lado ? `<div class="small" style="color:var(--gold,inherit);font-weight:700">⚠ Aunque el ejercicio sea unilateral, la aproximación se hace SIEMPRE con ${dos}${e.aprox_kg > 0 ? ' (peso indicado por Jesús)' : man.some(x => x > 0) ? ' (pesos indicados por Jesús)' : ''}. Los pesos son los de mover con las dos a la vez, no los de una ${lado === 'pies' ? 'pierna' : 'mano'}${AP.max ? `: con ${fmtNum(kgRef(e), 2)} kg a una ${lado === 'pies' ? 'pierna' : 'mano'}, tu máximo con las dos ronda los ${fmtNum(redAprox(AP.max), 2)} kg` : ''}.</div>` : ''}<div class="small">Al terminar la repetición única, descansa 1 minuto y empieza tus series.</div>
+    ${filas.map(([n, t], j) => `<div class="ap-row"><span class="ap-n num">${n}</span><span class="small">${n === 1 ? '1 repetición' : n + ' repeticiones'}${lado ? ` · <b>con ${lado === 'pies' ? 'los dos pies' : 'las dos manos'}</b>` : ''}<br><span class="muted">${t}</span></span><b class="ap-kg num">${man[j] > 0 ? fmtNum(man[j], 2) + ' kg' : AP.kg[j] ? fmtNum(AP.kg[j], 2) + ' kg' : 'como 1.ª serie'}</b><button class="chk" data-act="aprox" data-j="${j}"${lado ? ` data-dos="${lado === 'pies' ? 'los dos pies' : 'las dos manos'}"` : ''} aria-label="Hecha">${CHK}</button></div>`).join('')}
   </div>`;
 }
 /* El coach entra en el entreno de un alumno (en directo o para corregir una sesión) */
@@ -7863,7 +7872,7 @@ function formEjSesion(id, bloqueId) {
     <label class="f">Descripción adicional (opcional)<textarea id="es-nota" rows="3" placeholder="Algo que quieras añadir y que no sale en el vídeo: «sube explosivo, baja en 3 s», «codos pegados»…">${esc(e?.nota || '')}</textarea></label>
     <label class="f">Indicación de superserie (opcional)<input type="text" id="es-gr" value="${esc(e?.grupo || '')}" placeholder="Ej. 3 y 4 juntos (superserie)"></label>
     <label class="row small"><input type="checkbox" id="es-631" ${e?.aproximacion_631 ? 'checked' : ''} style="width:20px;height:20px"> Aproximación 6·3·1 antes de empezar</label>
-    <div class="f"><span>Pesos de la aproximación (kg, opcional) · déjalos vacíos para el cálculo automático (70 % · 100 % · 110 %, el doble si es unilateral)</span><div class="row" style="gap:8px">${(String(e?.aprox_kgs ?? '').split(';').concat(['', '', '']).slice(0, 3)).map((v, j) => `<label class="grow small">${['6 rep.', '3 rep.', '1 rep.'][j]}<input type="text" inputmode="decimal" class="es-631kgs" value="${esc(v)}" placeholder="${esc(aproxDefecto(e)[j] || 'auto')}"></label>`).join('')}</div></div>
+    <div class="f"><span>Pesos de la aproximación (kg, opcional) · déjalos vacíos para el cálculo automático. Bilateral: 70 % · 100 % · 110 %. Unilateral (con las dos manos o pies): el peso de una mano ≈ 33 % del máximo a dos → 3 rep al 90 % de ese máximo, 6 rep con la mitad y 1 rep +10 %</span><div class="row" style="gap:8px">${(String(e?.aprox_kgs ?? '').split(';').concat(['', '', '']).slice(0, 3)).map((v, j) => `<label class="grow small">${['6 rep.', '3 rep.', '1 rep.'][j]}<input type="text" inputmode="decimal" class="es-631kgs" value="${esc(v)}" placeholder="${esc(aproxDefecto(e)[j] || 'auto')}"></label>`).join('')}</div></div>
     <p class="note">Si pones descanso 0 en la última fila, la app enlaza este ejercicio con el siguiente como superserie. Para una superserie con pausa entre ejercicios, usa los botones de pausa que salen entre ellos en el editor del día.</p>
     <button class="btn full" type="submit">Guardar</button>${e ? '<button class="btn ghost full" type="button" id="es-del" style="color:var(--bad)">Quitar del programa</button>' : ''}</form>`);
   const sel = $('#es-ej');
@@ -8337,7 +8346,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v374';
+const APP_VER = 'v375';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8669,7 +8678,7 @@ document.addEventListener('click', async e => {
     case 'tandaCortar': Tandas.cortar(b); break;
     case 'rpAbrir': Tandas.abrir(+b.dataset.es, +b.dataset.n); break;
     case 'tramo': { const d = +b.dataset.d; if (d > 0) startTimer(d, 'Pausa · ' + b.dataset.lbl); else toast('Sin pausa: sigue con el siguiente tramo'); break; }
-    case 'aprox': b.classList.add('on'); if (b.dataset.j === '2') startTimer(60, 'Descanso tras la aproximación 6·3·1'); else toast(b.dataset.j === '0' ? 'Ahora 3 repeticiones con tu peso objetivo' : 'Ahora 1 repetición por encima del objetivo'); break;
+    case 'aprox': { b.classList.add('on'); const dos = b.dataset.dos ? ` con ${b.dataset.dos}` : ''; if (b.dataset.j === '2') startTimer(60, 'Descanso tras la aproximación 6·3·1'); else toast(b.dataset.j === '0' ? `Ahora 3 repeticiones${dos} (${b.dataset.dos ? 'el 90 % de tu máximo con las dos' : 'tu peso objetivo'})` : `Ahora 1 repetición${dos}, un 10 % más`); break; }
     case 'metodo': { const n = b.dataset.n; abrirSheet(`<div class="stack"><span class="eyebrow">Método</span><h2>${esc(n)}</h2><p class="pre">${esc((S.d?.metodos || {})[n] || Tandas.MET[n]?.info || 'Pregúntale a Jesús por este método.')}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`); break; }
     case 'terminar': terminar(); break;
     case 'retomar': { const x = S.d.sesiones.find(z => z.id === +b.dataset.id); if (x) await abrirDia(x.dia_id, { sesionId: x.id, fecha: x.fecha, dia: [S.d.programa, S.d.programaBase, ...(S.d.contextos || []), ...(S.d.alternativos || [])].filter(Boolean).flatMap(q => q.dias || []).find(z => z.id === x.dia_id) }); break; }
