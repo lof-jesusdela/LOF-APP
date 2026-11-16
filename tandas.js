@@ -65,7 +65,7 @@ const Tandas = {
   },
   ejercicio(es) { return S.dia?.bloques_sesion.flatMap(b => b.ejercicios_sesion).find(x => x.id === +es); },
   limpiaR: r => String(r ?? '').replace(/\s*\(2 veces\)/i, '').replace(/\s*(x|por|cada)\s*(lado|brazo|pierna|mano)\b/gi, '').replace(/^por lado:?\s*/i, '').trim(),
-  red: v => Math.round(v * 2) / 2,
+  red: v => v < 10 ? Math.round(v * 4) / 4 : Math.round(v * 2) / 2,   // a 0,5 kg; por debajo de 10 kg, a 0,25 kg (si no, el % real se desvía)
   kgN: t => { const v = numero(kgDe(t)); return v != null && v > 0 ? v : null; },
   esIso: t => t?.tp === 'iso' || (!t?.tp && /''|´´|"|\bseg|isom/i.test(String(t?.r || ''))),
   segDe: t => { const m = String(t?.r || '').match(/(\d+)\s*(?:''|´´|"|seg|s\b)/i); return m ? +m[1] : null; },
@@ -337,7 +337,7 @@ const Tandas = {
     else toast(tipo === 'tandas' ? `Sin descanso: ${b.dataset.lbl.split('·').pop().trim()}` : 'Sin descanso: sigue con la siguiente serie');
   },
   /* ---------- Pesos enlazados entre las tandas de una serie ----------
-     Dropset (y back-off en dropset): cada tanda baja entre un 20 y un 30 % respecto a la anterior.
+     Dropset (y back-off en dropset): cada tanda baja el % que pautó el coach (habitual 20-30 %) respecto a la anterior.
      Rest-pause, cluster, myo reps (y back-off en rest-pause): todas las tandas con el mismo peso.
      Top set: los back-off van un 15 % por debajo del top set.
      Si el alumno cambia el peso de UNA tanda, las demás (las que aún no ha hecho) se ajustan solas en consecuencia. */
@@ -348,7 +348,7 @@ const Tandas = {
     else if (M.tipo === 'top' && /^Back-off/.test(s.etq || '')) modo = /dropset/i.test(s.etq) ? 'drop' : /rest-pause/i.test(s.etq) ? 'igual' : null;
     if (!modo) return null;
     let p = 0.2;
-    if (modo === 'drop') { const pl = s.tandas.map(t => numero(document.getElementById(`kg-${fila}-${t.partes[0].p}`)?.dataset.plan)); if (pl[0] > 0 && pl[1] > 0) p = Math.min(0.3, Math.max(0.2, 1 - pl[1] / pl[0])); }
+    if (modo === 'drop') { const pl = s.tandas.map(t => numero(document.getElementById(`kg-${fila}-${t.partes[0].p}`)?.dataset.plan)); if (pl[0] > 0 && pl[1] > 0) p = Math.min(0.6, Math.max(0.05, 1 - pl[1] / pl[0])); }   // la bajada que pautó el coach
     return { modo, p };
   },
   ponKg(es, n, p, v) {
@@ -480,7 +480,7 @@ window.Tandas = Tandas;
 
 /* ---------- Asistente del editor: el coach rellena lo básico del método y la pauta fila a fila se genera sola ---------- */
 Tandas.ed = {
-  red: v => Math.round(v * 2) / 2,
+  red: v => v < 10 ? Math.round(v * 4) / 4 : Math.round(v * 2) / 2,   // a 0,5 kg; por debajo de 10 kg, a 0,25 kg (si no, el % real se desvía)
   kg: v => v == null || v === '' ? '' : `${fmtNum(Tandas.ed.red(+v), 2)} kg`,
   /* Lee la pauta actual para rellenar el asistente */
   desde(tipo, met, pauta, cambio) {
@@ -608,7 +608,7 @@ Tandas.ed = {
     switch (M.tipo) {
       case 'pausa': { const N = cnt('n'), p = n('pausa') ?? M.pausa;
         return [...Array(N)].map((_, k) => T({ s: k ? undefined : s, r: M.myo ? (k ? 'Las que puedas' : 'Hasta 1 del fallo') : a('r' + k) || a('r0') || '8', rir: k ? undefined : rir, kg: this.kg(kg), d: k < N - 1 ? p : d })); }
-      case 'drop': { const N = cnt('n'), b = Math.min(30, Math.max(20, n('baja') ?? 20)) / 100;   // siempre entre un 20 y un 30 %
+      case 'drop': { const N = cnt('n'), b = Math.min(60, Math.max(5, n('baja') ?? 20)) / 100;   // el % que escribe el coach (pauta habitual: 20-30 %)
         return [...Array(N)].map((_, k) => T({ s: k ? undefined : s, r: a('r') || '10', rir: k ? undefined : rir, kg: kg ? this.kg(kg * Math.pow(1 - b, k)) : undefined, d: k < N - 1 ? 0 : d })); }
       case 'top': { const rm = n('rm'), top = kg || (rm ? rm * 0.9 : null), bk = top ? top * 0.85 : null, v = a('var'), bn = cnt('bn'), bs = Math.max(1, n('bs') || 2), brir = R(a('brir'));
         const L = a('lados') || '2', BL = a('blados') || L, xt = L === '2' ? '' : ' x lado', xl = BL === '2' ? '' : ' x lado';
@@ -650,7 +650,8 @@ Tandas.ed = {
     if (k2) { const p = this.pauta(panel); k2.placeholder = p[1]?.kg ? `Auto: ${p[1].kg}` : ''; }
     const el = panel.querySelector('[data-prev]'); if (!el) return;
     const p = this.pauta(panel);
-    if (M.tipo === 'drop') el.textContent = p.some(t => t.kg) ? `Pesos: ${p.map(t => t.kg || '—').join(' → ')}` : 'Escribe el peso de la 1ª tanda y las bajadas salen solas.';
+    if (M.tipo === 'drop') { const bj = numero(document.querySelector('[data-a="baja"]')?.value), fuera = bj != null && (bj < 20 || bj > 30);
+      el.textContent = p.some(t => t.kg) ? `Pesos: ${p.map(t => t.kg || '—').join(' → ')}${bj != null ? ` · bajada del ${fmtNum(Math.min(60, Math.max(5, bj)), 1)} % por tanda` : ''}${fuera ? ' · fuera de tu pauta habitual (20-30 %)' : ''}` : 'Escribe el peso de la 1ª tanda y las bajadas salen solas.'; }
     if (M.tipo === 'top') el.textContent = p[0].kg ? `Top set ${p[0].kg}${numero(panel.querySelector('[data-a="rm"]').value) ? ' (90 % del 1RM)' : ''} · back-off ${p[1]?.kg || '—'} (−15 %)${p.length > 2 ? ' · ' + p.slice(1).map(t => t.kg).join(' → ') : ''}` : 'Escribe el peso del top set (o el 1RM) y el resto sale solo.';
   },
   /* Conecta el panel con las filas de la pauta del formulario */
