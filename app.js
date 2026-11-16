@@ -3208,7 +3208,7 @@ function patronSemana(f, lunes) {
   let pr = null; try { pr = c ? progDeCiclo(f, P)(c) : null; } catch (e) { }
   return { pr: pr || f.progFull || null, c };
 }
-const tilesDias = (pr, dias) => `<div class="dias-grid">${dias.map(d => `<button type="button" class="dia-tile" data-act="verPlan" data-p="${pr.id}" data-d="${d.id}"><span class="pill gold num">${d.numero}</span><b>${esc(nomDia(d))}</b>${d.foco ? `<span class="small muted">${esc(d.foco)}</span>` : ''}<span class="small muted">${(d.bloques_sesion || []).filter(b => b.tipo === 'fuerza').reduce((t, b) => t + (b.ejercicios_sesion || []).length, 0)} ejercicios</span></button>`).join('')}</div>`;
+const tilesDias = (pr, dias) => `<div class="dias-grid">${dias.map(d => `<button type="button" class="dia-tile" data-act="verPlan" data-p="${pr.id}" data-d="${d.id}" title="Toca para verlo · mantén pulsado para copiarlo"><span class="pill gold num">${d.numero}</span><b>${esc(nomDia(d))}</b>${d.foco ? `<span class="small muted">${esc(d.foco)}</span>` : ''}<span class="small muted">${(d.bloques_sesion || []).filter(b => b.tipo === 'fuerza').reduce((t, b) => t + (b.ejercicios_sesion || []).length, 0)} ejercicios</span></button>`).join('')}</div>`;
 /* Arriba de la pestaña Entreno: el bloque actual (lo que entrena ahora) y su semana patrón, para editarlos a un toque */
 /* Histórico y planificación: cada bloque es un banner plegado; al abrirlo se ven sus entrenos y todas sus semanas */
 function vBloquesHist(f, a) {
@@ -3245,6 +3245,26 @@ function vBloqueTop(f, a) {
     ${dias.length ? tilesDias(cur, dias) : ''}
   </div></details></section>`;
 }
+/* Mantener pulsado un entreno (tarjeta) lo copia al portapapeles de la app, con todo su contenido, para pegarlo en otra semana u otro alumno */
+async function copiarTile(el) {
+  const id = +el.dataset.d; if (!id) return;
+  const { data, error } = await sb.from('dias').select('*,bloques_sesion(*,ejercicios_sesion(*))').eq('id', id).single();
+  if (error || !data) return fallo(error, 'No se ha podido copiar el entreno.');
+  const a0 = S.ficha ? (S.c.perfiles.find(x => x.id === S.ficha.id)?.nombre || '') : '';
+  Clip.poner({ tipo: 'dia', nombre: nomDia(data), origen: a0, dias_semana: null, dias: [data] });
+  if (navigator.vibrate) try { navigator.vibrate(20); } catch (e) { }
+  toast(`Copiado «${nomDia(data)}». Pégalo en otra semana (📥 Pegar aquí) o en otro alumno (barra de abajo · Pegar en…)`);
+}
+async function pegarSemana(l) {
+  const f = S.ficha, c = Clip.hay(); if (!f || !c) return;
+  const fija = semanaFija(f.srv), aj = ctxEnSemana(semanasAj(f), l);
+  try {
+    if (aj) { await Clip.pegarEn(c.dias, aj.id, null, fija); toast('Pegado en esa semana'); await recargarContextosCoach(); await cargarProgramasFicha(f); await abrirEditor(f.id, aj.id); return; }
+    await ajustarSemana(l);   /* crea la copia solo de esa semana y abre su editor */
+    const pid = S.editor?.prog?.id; if (!pid) return;
+    await Clip.pegarEn(c.dias, pid, null, fija); toast('Semana modificada y entreno pegado'); await refrescarEditor();
+  } catch (err) { fallo(err, 'No se ha podido pegar.'); }
+}
 function vSemanasNav(f, a) {
   const L0 = lunesDe(hoyISO()), l = (S.fsem?.aid === a.id && S.fsem.l) || L0, rel = Math.round((fecha(l) - fecha(L0)) / (7 * 864e5));
   const et = rel === 0 ? 'Esta semana' : rel === -1 ? 'Semana anterior' : rel === 1 ? 'Semana próxima' : rel < 0 ? `Hace ${-rel} semanas` : `Dentro de ${rel} semanas`;
@@ -3266,7 +3286,7 @@ function vSemanasNav(f, a) {
         <button class="btn ghost sem-flecha" data-act="fsem" data-d="1" aria-label="Semana siguiente">›</button></div>
       <div class="row" style="gap:8px;flex-wrap:wrap;justify-content:center"><span class="pill ${estado[0]}">${estado[1]}</span>${aj ? `<span class="small muted">${esc(aj.contexto_nombre || '')}</span>` : ''}</div>
       ${dias.length ? tilesDias(pr, dias) : '<div class="empty">Sin entrenamientos en esta semana.</div>'}
-      ${acciones ? `<div class="row" style="gap:8px;flex-wrap:wrap">${acciones}</div>` : ''}
+      ${acciones || (!pasada && Clip.hay()) ? `<div class="row" style="gap:8px;flex-wrap:wrap">${acciones}${!pasada && Clip.hay() ? `<button class="btn sm gold" data-act="semPegar" data-l="${l}">📥 Pegar aquí «${esc(Clip.hay().tipo === 'dia' ? Clip.hay().nombre : Clip.hay().nombre)}»</button>` : ''}</div>` : ''}
       ${fija && !pasada && rel <= 1 ? `<button class="btn sm gold" data-act="avisarSemana" data-al="${a.id}" data-l="${l}" style="align-self:flex-start">🔔 Avisar a ${esc(nom)}: semana lista</button>` : ''}
       <p class="note" style="margin:0">${pasada ? 'Semana pasada: se ve tal como la hizo. Para reutilizarla, cópiala a esta semana o a la próxima.' : aj ? 'Lo que cambies aquí solo afecta a esta semana. La semana patrón y las demás semanas no cambian.' : (fija ? 'Esta semana repite la semana patrón del bloque. Si algo cambia (partido, carga, mover un entreno), pulsa «Modificar solo esta semana».' : 'Esta semana entrena su bloque tal cual. Si algo cambia solo esta semana, pulsa «Modificar solo esta semana».')}</p>
     </div>
@@ -8548,7 +8568,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v388';
+const APP_VER = 'v389';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8998,6 +9018,7 @@ document.addEventListener('click', async e => {
     case 'hacerPatron': await hacerPatron(+b.dataset.id); break;
     case 'avisarSemana': b.disabled = true; await avisarSemana(b.dataset.al, b.dataset.l); b.disabled = false; break;
     case 'semAjustar': b.disabled = true; await ajustarSemana(b.dataset.l, !!b.dataset.ant); b.disabled = false; break;
+    case 'semPegar': b.disabled = true; await pegarSemana(b.dataset.l); b.disabled = false; break;
     case 'semCopiar': b.disabled = true; await ajustarSemana(b.dataset.l, false, +b.dataset.src); b.disabled = false; break;
     case 'fsem': { const aid = S.ficha?.id, L0 = lunesDe(hoyISO()), d = +b.dataset.d, cur = (S.fsem?.aid === aid && S.fsem.l) || L0; S.fsem = { aid, l: d ? sumaDias(cur, 7 * d) : L0 }; if (S.ficha) S.ficha.semFut = S.fsem.l === L0 ? null : S.fsem.l; render(); break; }
     case 'abrirProg': await abrirEditor(S.ficha?.id || S.editor?.alumnoId, +b.dataset.id); break;
@@ -9114,3 +9135,14 @@ document.addEventListener('input', e => {
 document.addEventListener('change', e => { if (e.target.dataset?.fp) { S.fpSel = { ...(S.fpSel || {}), [e.target.dataset.fp]: e.target.value }; render(); return; } if (e.target.id === 'r-fotos') subirFotosComida(e.target); if (e.target.dataset?.foto) subirFoto(e.target); });
 
 arrancar().catch(err => { console.error(err); vistaMensaje('No se ha podido cargar', 'Revisa tu conexión y vuelve a abrir la app.', false); });
+
+/* Mantener pulsada una tarjeta de entreno (o clic derecho en el ordenador) = copiar */
+(() => {
+  let t = null, x0 = 0, y0 = 0, hecho = null;
+  const fin = () => { clearTimeout(t); t = null; };
+  document.addEventListener('pointerdown', e => { const el = e.target.closest && e.target.closest('.dia-tile'); if (!el || S.modo !== 'coach') return; x0 = e.clientX; y0 = e.clientY; fin(); t = setTimeout(() => { t = null; hecho = el; copiarTile(el); }, 520); });
+  document.addEventListener('pointermove', e => { if (t && Math.hypot(e.clientX - x0, e.clientY - y0) > 10) fin(); });
+  ['pointerup', 'pointercancel'].forEach(ev => document.addEventListener(ev, fin, true));
+  document.addEventListener('click', e => { const el = e.target.closest && e.target.closest('.dia-tile'); if (el && el === hecho) { e.preventDefault(); e.stopPropagation(); hecho = null; } }, true);
+  document.addEventListener('contextmenu', e => { const el = e.target.closest && e.target.closest('.dia-tile'); if (el && S.modo === 'coach') { e.preventDefault(); copiarTile(el); } });
+})();
