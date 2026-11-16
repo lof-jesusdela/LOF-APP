@@ -1127,7 +1127,7 @@ function vHoy() {
   ${s.oposicion ? Oposicion.tarjeta(false) : ''}
   ${Acomp.ultimaIndicacion()}
   ${vProximamente(s)}
-  ${s.modulo_futbol ? vFutbolHoy() + vSemanaFutbol(ini, w, p) + (s.modulo_habitos ? Habitos.tarjetaHoy(false) : '') : vRegistroDia(s)}
+  ${s.modulo_futbol ? vFutbolHoy() + vSemanaFutbol(ini, w, p) + (s.modulo_habitos ? Habitos.tarjetaHoy(false) : '') : vRegistroDia(s) + vSemanaAnillos(s)}
   ${vCheckinTarjeta()}
   ${MenuSemana.tarjeta()}
   ${vProcesoGlobal(s)}
@@ -2739,7 +2739,7 @@ function semanaDatos(aid, lunes, src) {
   const pasos = reg.filter(r => r.pasos != null).map(r => r.pasos);
   const chk = (src.checkins || []).find(k => k.alumno_id === aid && k.semana_inicio === lunes);
   const media = k => { const v = ses.filter(x => x[k]).map(x => x[k]); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
-  const ing = ingestasSemana(reg, lunes, (S.c?.servicios || []).find(x => x.alumno_id === aid));
+  const ing = ingestasSemana(reg, lunes, (S.c?.servicios || []).find(x => x.alumno_id === aid) || (S.d?.uid === aid ? S.d.servicio : null));
   const ce = contarEntrenos(ses);
   return { lunes, fin, ses, entrenos: ce.n, ent: ce, reg, pasosMedia: pasos.length ? Math.round(pasos.reduce((a, b) => a + b, 0) / pasos.length) : null, diasPasos: pasos.length, chk, ing, nutri: ing.pct ?? chk?.nutricion_pct ?? null, cansancio: media('cansancio'), poderio: media('poderio') };
 }
@@ -6364,37 +6364,48 @@ function montanitas(vals, col, obj) {
   const linea = obj ? `<line x1="2" x2="${W - 2}" y1="${(base - alto / 1.3).toFixed(1)}" y2="${(base - alto / 1.3).toFixed(1)}" stroke="${col}" stroke-dasharray="4 4" stroke-width="1.2" opacity=".8"/>` : '';
   return `<svg class="rg-mont" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${barras}${linea}</svg>`;
 }
-function vAnillos(a, R, d, detalle) {
-  const w = d.w, dias = [...Array(7)].map((_, i) => sumaDias(R.lunes, i)), srv = d.srv, L = [], filas = [];
+function vAnillos(a, R, d, detalle, yo) {
+  const su = yo ? 'tu' : 'su', w = d.w, dias = [...Array(7)].map((_, i) => sumaDias(R.lunes, i)), hoyF = hoyISO(), FUT = { v: null, t: 'Aún no ha llegado' }, srv = d.srv, L = [], filas = [];
   const fila = (k, tit, val, sub, chart, nota) => `<details class="rg-ban"${detalle ? ' open' : ''}><summary><i style="background:${RG_COL[k]}"></i><span class="grow"><b>${tit}</b><small>${sub}</small></span><b class="num rg-v" style="color:${RG_COL[k]}">${val}</b></summary>${chart}${nota ? `<div class="small muted">${nota}</div>` : ''}</details>`;
   const plana = (k, tit, val, sub) => `<div class="rg-ban rg-plana"><div class="rg-sum"><i style="background:${RG_COL[k]};opacity:.35"></i><span class="grow"><b>${tit}</b><small>${sub}</small></span><b class="num rg-v">${val}</b></div></div>`;
   if (d.dpw) {
     L.push({ tit: 'Entrenos', pct: d.pctE, col: RG_COL.ent });
     const extra = w.entrenos > d.dpw ? ` · +${w.entrenos - d.dpw} extra` : '';
     filas.push(fila('ent', 'Entrenos', `${d.pctE} %`, `${Math.min(w.entrenos, d.dpw)} de ${d.dpw} hechos${extra}`,
-      montanitas(dias.map(f => { const ss = w.ses.filter(x => x.fecha === f); return { v: ss.length ? 100 : 0, t: ss.length ? ss.map(x => nomDia(x.dias)).join(' + ') : 'Sin entreno', et: ss.length > 1 ? '×' + ss.length : '' }; }), RG_COL.ent),
+      montanitas(dias.map(f => { if (f > hoyF) return FUT; const ss = w.ses.filter(x => x.fecha === f); return { v: ss.length ? 100 : 0, t: ss.length ? ss.map(x => nomDia(x.dias)).join(' + ') : 'Sin entreno', et: ss.length > 1 ? '×' + ss.length : '' }; }), RG_COL.ent),
       w.ent?.retomadas ? `${w.ent.retomadas} sesión${w.ent.retomadas === 1 ? '' : 'es'} retomada${w.ent.retomadas === 1 ? '' : 's'}: cuenta una vez.` : ''));
   }
   if (srv?.modulo_nutricion) {
-    const niv = midoCoach(a.id) ? Nutricion.acuerdoDe(planNutriDe(a.id)).nivel : null;
-    if (!midoCoach(a.id)) filas.push(plana('nut', 'Alimentación', '—', esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || '') + ' · aún no se mide'));
+    const mido = yo ? midoAlumno() : midoCoach(a.id), niv = !mido ? null : yo ? Nutricion.acuerdo(S.d).nivel : Nutricion.acuerdoDe(planNutriDe(a.id)).nivel;
+    if (!mido) filas.push(plana('nut', 'Alimentación', '—', esc(Nutricion.FASES[yo ? Nutricion.fase(S.d) : Nutricion.faseCoach(a.id)]?.[0] || '') + ' · aún no se mide'));
     else if (niv === 'ligero') filas.push(plana('nut', 'Alimentación', w.chk?.aplicacion_plan ? { aplicado: '✓', parte: '½', ayuda: '?' }[w.chk.aplicacion_plan] : '—', w.chk?.aplicacion_plan ? esc(aplTxt(w.chk.aplicacion_plan)) + ' · seguimiento ligero' : 'seguimiento ligero · sin check-in'));
     else {
       const pct = w.nutri ?? w.ing.pctReg, n = w.ing.n;
       L.push({ tit: 'Alimentación', pct, col: RG_COL.nut });
-      filas.push(fila('nut', 'Alimentación', pct != null ? pct + ' %' : '—', w.ing.dias ? `${w.ing.dias} de 7 días${w.nutri == null ? ' · pocos datos' : ''}` : 'sin registros',
-        montanitas(dias.map(f => { const r = w.reg.find(x => x.fecha === f && x.ingestas != null); if (!r) return { v: null, t: 'Sin registro' }; const prev = Math.max(1, r.comidas_hechas || n), v = Math.round(Math.min(prev, r.ingestas) / prev * 100); return { v, t: v >= 100 ? 'Cumplió su plan' : `${Math.min(prev, r.ingestas)} de ${prev} comidas` }; }), RG_COL.nut),
-        w.ing.dias < 7 ? 'Los puntos grises son días sin registro: no cuentan como fallo.' : ''));
+      filas.push(fila('nut', 'Alimentación', pct != null ? pct + ' %' : '—', w.ing.dias ? `${w.ing.dias} de 7 días${w.nutri == null && !yo ? ' · pocos datos' : ''}` : 'sin registros',
+        montanitas(dias.map(f => { if (f > hoyF) return FUT; const r = w.reg.find(x => x.fecha === f && x.ingestas != null); if (!r) return { v: null, t: 'Sin registro' }; const prev = Math.max(1, r.comidas_hechas || n), v = Math.round(Math.min(prev, r.ingestas) / prev * 100); return { v, t: v >= 100 ? 'Cumplió su plan' : `${Math.min(prev, r.ingestas)} de ${prev} comidas` }; }), RG_COL.nut),
+        w.ing.dias < 7 ? (yo ? 'Los puntos grises son días sin apuntar.' : 'Los puntos grises son días sin registro: no cuentan como fallo.') : ''));
     }
   }
-  if (conPasos(srv)) {
+  if (conPasos(srv) && !(yo && w.pasosMedia == null && srv?.modulo_habitos && Habitos.tienePasos(hoyISO()))) {
     L.push({ tit: 'Pasos', pct: d.pctP, col: RG_COL.pas });
     filas.push(fila('pas', 'Pasos', w.pasosMedia != null ? fmtNum(w.pasosMedia, 0) : '—', `media · obj. ${fmtNum(d.obj, 0)}`,
-      montanitas(dias.map(f => { const r = w.reg.find(x => x.fecha === f && x.pasos != null); return r ? { v: Math.round(r.pasos / d.obj * 100), t: fmtNum(r.pasos, 0) + ' pasos', et: r.pasos >= 1000 ? Math.round(r.pasos / 1000) + 'k' : '' } : { v: null, t: 'Sin registro' }; }), RG_COL.pas, d.obj),
-      `Registró ${w.diasPasos} de 7 días. La línea discontinua es su objetivo.`));
+      montanitas(dias.map(f => { if (f > hoyF) return FUT; const r = w.reg.find(x => x.fecha === f && x.pasos != null); return r ? { v: Math.round(r.pasos / d.obj * 100), t: fmtNum(r.pasos, 0) + ' pasos', et: r.pasos >= 1000 ? Math.round(r.pasos / 1000) + 'k' : '' } : { v: null, t: 'Sin registro' }; }), RG_COL.pas, d.obj),
+      `${yo ? 'Apuntaste' : 'Registró'} ${w.diasPasos} de 7 días. La línea discontinua es ${su} objetivo.`));
   }
   if (!filas.length) return '<p class="small muted">Sin objetivos medibles esta semana.</p>';
   return `<div class="rg${detalle ? ' rg-grande' : ''}">${L.length ? `<div class="rg-ani">${anillosSvg(L, detalle ? 150 : 104)}</div>` : ''}<div class="rg-filas">${filas.join('')}</div></div>`;
+}
+/* «Tu semana» en Hoy del alumno: los mismos anillos que ve Jesús, por semanas (lunes a domingo) con flechas */
+function vSemanaAnillos(s) {
+  const hoy = hoyISO(), act = lunesDe(hoy), l = S.semAl && S.semAl <= act ? S.semAl : act, uid = S.d.uid;
+  const min = [lunesDe(sumaDias(hoy, -56)), s.inicio ? lunesDe(s.inicio) : null].filter(Boolean).sort().pop();
+  const p = S.d.programaBase || S.d.programa, w = semanaDatos(uid, l, { sesiones: S.d.sesiones, diario: S.d.diario, checkins: S.d.checkins });
+  const dpw = (s.modulo_entreno ?? true) ? dpwEn(uid, l, p?.dias_semana || 0) : 0, obj = objPasos(s);
+  const d = { srv: s, dpw, obj, w, pctE: dpw ? Math.min(100, Math.round(w.entrenos / dpw * 100)) : null, pctP: conPasos(s) && w.pasosMedia != null ? Math.round(w.pasosMedia / obj * 100) : null };
+  let cuerpo; try { cuerpo = vAnillos({ id: uid }, { lunes: l }, d, false, true); } catch (e) { console.warn(e); return ''; }
+  const tit = l === act ? 'Esta semana' : l === sumaDias(act, -7) ? 'Semana pasada' : `Del ${fCorta(l)} al ${fCorta(sumaDias(l, 6))}`;
+  return `<section class="section"><h2>Tu semana</h2><div class="card stack" style="gap:12px"><div class="row rg-nav"><button class="btn ghost sem-flecha" data-act="semAl" data-d="-7" aria-label="Semana anterior"${l <= min ? ' disabled' : ''}>‹</button><div class="grow" style="text-align:center"><b>${esc(tit)}</b><div class="small muted">${esc(fCorta(l))} – ${esc(fCorta(sumaDias(l, 6)))}</div></div><button class="btn ghost sem-flecha" data-act="semAl" data-d="7" aria-label="Semana siguiente"${l >= act ? ' disabled' : ''}>›</button></div>${cuerpo}</div></section>`;
 }
 function vReporteAlumno(a, R, detalle) {
   const d = datosReporte(a, R), w = d.w;
@@ -6417,8 +6428,8 @@ function vReporteAlumno(a, R, detalle) {
 }
 function vReporte() {
   const R = S.reporte, fin = sumaDias(R.lunes, 6);
-  const cab = `<section class="stack"><button class="btn sm ghost" data-act="cerrarReporte" style="align-self:flex-start">← Volver</button><span class="eyebrow">Reporting semanal · semana ${esc(String(numSemanaISO(R.lunes)))} del año</span><h1>Semana del ${esc(fCorta(R.lunes))} al ${esc(fCorta(fin))}</h1>
-    <div class="row" style="gap:8px"><button class="btn sm ghost" data-act="reporteSemana" data-d="-7">‹ Anterior</button>${R.lunes < sumaDias(lunesDe(hoyISO()), -7) ? '<button class="btn sm ghost" data-act="reporteSemana" data-d="7">Siguiente ›</button>' : R.lunes < lunesDe(hoyISO()) ? '<button class="btn sm ghost" data-act="reporteSemana" data-d="7">Semana en curso ›</button>' : ''}</div></section>`;
+  const cab = `<section class="stack"><button class="btn sm ghost" data-act="cerrarReporte" style="align-self:flex-start">← Volver</button><span class="eyebrow">Semana ${esc(String(numSemanaISO(R.lunes)))} del año</span><h1>Reporting semanal</h1>
+    <div class="row rg-nav"><button class="btn ghost sem-flecha" data-act="reporteSemana" data-d="-7" aria-label="Semana anterior">‹</button><div class="grow" style="text-align:center"><b>${R.lunes === lunesDe(hoyISO()) ? 'Semana en curso' : R.lunes === sumaDias(lunesDe(hoyISO()), -7) ? 'Semana pasada' : 'Semana ' + numSemanaISO(R.lunes)}</b><div class="small muted">${esc(fCorta(R.lunes))} – ${esc(fCorta(fin))}</div></div><button class="btn ghost sem-flecha" data-act="reporteSemana" data-d="7" aria-label="Semana siguiente"${R.lunes < lunesDe(hoyISO()) ? '' : ' disabled'}>›</button></div></section>`;
   if (R.cargando) return cab + '<div class="empty">Preparando el reporting…</div>';
   if (R.errorCarga) return cab + `<div class="card stack"><b>No se ha podido cargar el reporting</b><p class="small muted" style="margin:0">Parece un problema de conexión (${esc(R.errorCarga.slice(0, 120))}). Tus datos no se han tocado.</p><button class="btn sm" data-act="reporteSemana" data-d="0" style="align-self:flex-start">Reintentar</button></div>`;
   R.fin = fin;
@@ -8648,7 +8659,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v391';
+const APP_VER = 'v392';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8887,6 +8898,7 @@ document.addEventListener('click', async e => {
     case 'cargaN': S.cargaN = +b.dataset.n; render(); break;
     case 'fTab': { const t0 = b.dataset.t, t = ['plan', 'pagos'].includes(t0) ? 'inicio' : t0; if (t !== t0) S.fBan = t0 === 'pagos' ? 'pagos' : 'plan'; (S.fTab ||= {})[S.ficha.id] = t; } render(); document.querySelector('.ft-tabs')?.scrollIntoView({ block: 'nearest' }); break;
     case 'abrirReporte': await abrirReporte(b.dataset.id || null); break;
+    case 'semAl': { const act = lunesDe(hoyISO()); S.semAl = sumaDias(S.semAl || act, +b.dataset.d); if (S.semAl > act) S.semAl = act; render(); break; }
     case 'reporteSemana': await abrirReporte(S.reporte.alumno, sumaDias(S.reporte.lunes, +b.dataset.d)); break;
     case 'cerrarReporte': { const al = S.reporte?.alumno; S.reporte = null; if (al && S.ficha?.id === al) render(); else render(); window.scrollTo(0, 0); break; }
     case 'reporteFicha': S.reporte = null; await abrirFicha(b.dataset.id); break;
