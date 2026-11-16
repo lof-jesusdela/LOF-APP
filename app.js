@@ -464,10 +464,23 @@ async function cargarAlumno(uid) {
 }
 
 /* ---------- Render principal ---------- */
+/* Menú del logo (alumno): servicios extra (Hábitos), actualizar la app y su cuenta */
+function menuAlumno() {
+  document.getElementById('menu-al')?.remove();
+  const s = S.d?.servicio || {}, d = document.createElement('div'); d.id = 'menu-al';
+  const it = (act, t, ic, tit, sub, cls = '') => `<button type="button" class="m-it ${cls}" data-act="${act}" ${t ? `data-t="${t}"` : ''}><span class="m-ic">${ic}</span><span class="grow"><b>${tit}</b><span>${sub}</span></span></button>`;
+  d.innerHTML = `<div class="m-ov" data-act="menuCerrar"></div><aside class="m-dr"><div class="m-hd"><img src="icons/logo-96.jpg" alt=""><div><span>La Obra Fitness</span><b>Construyendo tu Prime</b></div></div>
+    <span class="m-ey">Servicios extra</span>${s.modulo_habitos ? it('tab', 'habitos', '🔁', 'Hábitos', 'Tu plan de hábitos y pasos') : `<div class="m-it off"><span class="m-ic">🔁</span><span class="grow"><b>Hábitos</b><span>Pregunta a Jesús si te interesa</span></span></div>`}
+    <span class="m-ey">App</span>${it('logoAct', '', '🔄', 'Actualizar la app', 'Coge la última versión', 'az')}${it('cuenta', '', '👤', 'Mi cuenta', 'Datos, avisos, contraseña')}</aside>`;
+  d.addEventListener('click', e => { if (e.target.closest('[data-act]') && !e.target.closest('[data-act="menuCerrar"]')) setTimeout(() => d.remove(), 0); });
+  document.body.appendChild(d);
+}
 function tabsAlumno() {
   const s = S.d.servicio || {}, ci = cierreAlumno();
   if (ci) return ci.cerrado ? [['hoy', 'Inicio']] : [['hoy', 'Inicio'], ['progreso', 'Progreso'], ['coach', 'Contacto']];
-  return [['hoy', 'Hoy'], (s.modulo_entreno ?? true) && ['entreno', 'Entreno'], s.modulo_nutricion && ['nutri', 'Nutrición'], s.modulo_habitos && ['habitos', 'Hábitos'], ['progreso', 'Progreso'], ['coach', 'Contacto']].filter(Boolean);
+  /* Contacto en el centro (destacado); Hábitos pasa al menú del logo («Servicios extra») */
+  const L = [['hoy', 'Hoy'], (s.modulo_entreno ?? true) && ['entreno', 'Entreno'], s.modulo_nutricion && ['nutri', 'Nutrición'], ['progreso', 'Progreso']].filter(Boolean);
+  L.splice(Math.ceil(L.length / 2), 0, ['coach', 'Contacto']); return L;
 }
 
 /* Escritorio (iPad / Mac): barra lateral con la lista de alumnos y fichas a dos columnas */
@@ -529,7 +542,7 @@ function render() {
   const esCoach = S.perfil.rol === 'coach';
   const vistas = { futbol: () => `<section class="stack"><span class="eyebrow">Élite Player</span><h1>Futbolistas</h1></section>${vFutbolCoach() || '<div class="card empty">Sin futbolistas activos.</div>'}`, hoy: vHoy, entreno: vEntreno, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, tests: vProgreso, coach: Acomp.vTuCoach, inicio: vTuDia, habitos: Habitos.vista, alumnos: vAlumnos, pagos: vEconomiaTabs, ejercicios: vEjercicios, plantillas: vPlantillas, metodologia: () => `<div class="seg" role="group" aria-label="Metodología" style="margin-bottom:12px"><button data-act="metSub" data-v="plantillas" aria-pressed="${S.metSub !== 'ejercicios'}">Plantillas</button><button data-act="metSub" data-v="ejercicios" aria-pressed="${S.metSub === 'ejercicios'}">Ejercicios</button></div>` + (S.metSub === 'ejercicios' ? vEjercicios() : vPlantillas()) };
   $('#app').innerHTML = `<header class="top">
-      <button type="button" class="badge" data-act="logoAct" aria-label="Actualizar la app" title="Toca para actualizar la app" style="background:none;border:0;padding:0;cursor:pointer;text-align:left;color:inherit;font:inherit"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : 'Construyendo tu Prime'}</strong></div></button>
+      <button type="button" class="badge" data-act="${coach ? 'logoAct' : 'menuAl'}" aria-label="${coach ? 'Actualizar la app' : 'Menú'}" title="${coach ? 'Toca para actualizar la app' : 'Servicios extra y ajustes'}" style="background:none;border:0;padding:0;cursor:pointer;text-align:left;color:inherit;font:inherit"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : 'Construyendo tu Prime'}</strong></div></button>
       <div class="row" style="gap:8px">${coach && typeof Consultas !== 'undefined' && ['inicio', 'alumnos', 'metodologia', 'pagos'].includes(actual) ? Consultas.vBoton() : ''}${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
       <button class="avatar" data-act="cuenta" aria-label="Mi cuenta">${esCoach ? '<img src="icons/coach.jpg" alt="">' : S.perfil.foto_url ? `<img src="${esc(S.perfil.foto_url)}" alt="">` : esc((S.perfil.nombre || '?').slice(0, 2).toUpperCase())}</button></div>
     </header>${S.prueba ? vBannerPrueba() : S.vista ? vBannerVista() : vBarraYo()}${coach && ANCHO.matches ? vLateral(actual) : !coach && ANCHO.matches ? vLateralAlumno(tabs, actual) : ''}<main id="main" class="${coach ? claseMain() : claseMainAlumno(actual)}">${(S.iaCoach && coach) ? seguro(IA.vCoach) : (S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vDuo() + vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vBarraBloque() + seguro(vFicha) : (!coach && S.ia) ? seguro(IA.vChat) : (!coach && Temperamento.activo()) ? seguro(Temperamento.vista) : seguro(vistas[actual])}</main>${coach ? Clip.barra() : ''}${vBarraEntreno()}${IA.vFab(coach)}`;
@@ -537,7 +550,7 @@ function render() {
   document.body.classList.toggle('modo-alumno', !coach && ANCHO.matches);
   if (coach) aplicarFiltroAl();
   $('#tabs').hidden = false;
-  $('#tabs-in').innerHTML = tabs.map(([k, l]) => `<button data-act="${coach ? 'ctab' : 'tab'}" data-t="${k}" ${actual === k && !((S.ficha || S.editor || S.obj) && coach) ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${!coach && k === 'coach' && nChat() ? `<i class="badge-n">${nChat()}</i>` : ''}${!coach && k === 'hoy' && (pendientesFutbol().length || tocaCheckin()) ? '<i class="badge-dot"></i>' : ''}</button>`).join('');
+  $('#tabs-in').innerHTML = tabs.map(([k, l]) => `<button ${!coach && k === 'coach' ? 'class="tab-c" ' : ''}data-act="${coach ? 'ctab' : 'tab'}" data-t="${k}" ${actual === k && !((S.ficha || S.editor || S.obj) && coach) ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${!coach && k === 'coach' && nChat() ? `<i class="badge-n">${nChat()}</i>` : ''}${!coach && k === 'hoy' && (pendientesFutbol().length || tocaCheckin()) ? '<i class="badge-dot"></i>' : ''}</button>`).join('');
   if (S.dia && ((!coach && S.tab === 'entreno') || (coach && S.obj))) rellenarSesion();
 }
 
@@ -743,12 +756,11 @@ function vRegistroDia(s) {
     ${(() => { const l = S.d.sesiones.filter(x => x.fecha === sel), todos = [S.d.programaBase, S.d.programa, ...(S.d.contextos || []), ...(S.d.alternativos || [])].filter(Boolean).flatMap(p => p.dias || []), dd = esHoy ? diaDeHoy() : null;
       const nom = x => nomDia(todos.find(d => d.id === x.dia_id)) || 'Entreno';
       return `<div class="row"><div class="ico">${svg('entreno')}</div><div class="grow"><span class="small"><b>Entrenamiento</b></span><div class="small ${l.length ? '' : 'muted'}">${l.length ? `<span style="color:var(--ok);font-weight:700">✓ Completado</span> · ${esc([...new Set(l.map(nom))].join(' · '))}` : dd ? `Hoy toca ${esc(nomDia(dd))}: empiézalo en «Lo que toca hoy»` : esHoy && esFlex(S.d.programaBase || S.d.programa) ? 'Aún no has entrenado hoy' : esHoy ? 'Hoy no toca entrenar' : 'Sin entreno registrado ese día'}</div></div></div>`; })()}
-    ${conPasos(s) ? '' : '<!--'}<div class="row"><div class="ico">${svg('pasos')}</div><label class="f grow">Pasos${objPasos(s) ? ` <span class="muted">(objetivo ${fmtNum(objPasos(s), 0)})</span>` : ''}<input id="r-pasos" type="number" inputmode="numeric" min="0" value="${r.pasos ?? ''}" placeholder="Ej. 8500"></label></div>${conPasos(s) ? '' : '-->'}
+    ${conPasos(s) && !(s.modulo_habitos && Habitos.tienePasos(sel)) ? '' : '<!--'}<div class="row"><div class="ico">${svg('pasos')}</div><label class="f grow">Pasos${objPasos(s) ? ` <span class="muted">(objetivo ${fmtNum(objPasos(s), 0)})</span>` : ''}<input id="r-pasos" type="number" inputmode="numeric" min="0" value="${r.pasos ?? ''}" placeholder="Ej. 8500"></label></div>${conPasos(s) && !(s.modulo_habitos && Habitos.tienePasos(sel)) ? '' : '-->'}
     ${s.modulo_nutricion && !midoAlumno() ? `<div class="small muted">🍽 ${Nutricion.fase(S.d) === 'recogida' ? 'Estos días solo apunta lo que comes en tu diario: aún no hay plan que cumplir.' : 'Tu plan de alimentación está en preparación: todavía no se mide nada.'}</div>` : ''}
     ${s.modulo_nutricion ? (() => { const l = Nutricion.ctxDe(S.d.nutri || { plan: [] }); return l.length ? `<div class="stack" style="gap:6px"><span class="small">¿Qué tipo de día ${esHoy ? 'has tenido hoy' : 'tuviste'}?</span><div class="chips">${l.map(c => `<button class="pill ${r.contexto === c.n ? 'blue' : ''}" data-act="ctxDia" data-v="${esc(c.n)}" aria-pressed="${r.contexto === c.n}">${esc(c.n)}</button>`).join('')}</div></div>` : ''; })() : ''}
-    ${midoDiario() ? (() => { const n = comidasDia(s), tot = r.comidas_hechas ?? (r.ingestas != null ? n : null), mx = Math.max(n + 3, tot ?? 0, 6);
-      return `<div class="stack" style="gap:6px"><span class="small">¿Cuántas comidas has hecho ${esHoy ? 'hoy' : 'ese día'}? <span class="muted">(tu plan tiene ${n})</span></span><div class="choice ing" role="group" style="flex-wrap:wrap">${[...Array(mx + 1)].map((_, k) => `<button data-act="comidasHechas" data-v="${k}" aria-pressed="${tot === k}">${k}</button>`).join('')}</div></div>
-      ${tot ? `<div class="stack" style="gap:6px"><span class="small">De esas ${tot}, ¿cuántas han sido buenas, de tu plan? <span class="muted">(el resto, las que se salieron del plan)</span></span><div class="choice ing" role="group" style="flex-wrap:wrap">${[...Array(tot + 1)].map((_, k) => `<button data-act="ingestas" data-v="${k}" aria-pressed="${r.ingestas === k}">${k}</button>`).join('')}</div>${r.ingestas != null ? `<span class="small muted">${r.ingestas} buena${r.ingestas === 1 ? '' : 's'} y ${tot - r.ingestas} ${tot - r.ingestas === 1 ? 'que se salió' : 'que se salieron'} del plan.</span>` : ''}</div>` : ''}`; })() + `
+    ${midoDiario() ? (() => { const n = comidasDia(s), cumple = r.ingestas == null ? null : r.ingestas >= n;   /* Sí = todas las ingestas del plan; No = 0 (así el % de cumplimiento sigue siendo el de siempre) */
+      return `<div class="stack" style="gap:6px"><span class="small">¿Has cumplido tu plan de alimentación ${esHoy ? 'hoy' : 'ese día'}?</span><div class="sino-al" role="group"><button type="button" class="si" data-act="cumplePlan" data-v="1" aria-pressed="${cumple === true}">✓ Sí</button><button type="button" class="no" data-act="cumplePlan" data-v="0" aria-pressed="${cumple === false}">✕ No</button></div><span class="small muted">📷 Las fotos de tus comidas, en la pestaña Nutrición.</span></div>`; })() + `
     <div class="stack" style="gap:8px">${!s.modulo_nutricion ? '' : (() => { const nc = (S.d.nutri?.comidas || []).filter(x => x.fecha === sel).length; return `<button class="btn ghost full" data-act="nuIrDiario" data-f="${sel}">🍽 ${nc ? `${nc} ${nc === 1 ? 'comida apuntada' : 'comidas apuntadas'} · ver tu diario` : 'Apuntar lo que has comido (opcional)'}</button>`; })()}${rutas.length ? `<div class="plan-imgs">${miniFotos(rutas)}</div>` : ''}</div>` : ''}
     ${S.d.servicio?.modulo_habitos ? Habitos.enRegistro(sel) : ''}
     <label class="f">Observaciones${esHoy ? ' del día' : ' de ese día'}<textarea id="r-obs" rows="2" placeholder="Si no llegaste al objetivo, cuéntame por qué; o cualquier cosa del día que quieras que sepa">${esc(r.observacion || '')}</textarea></label>
@@ -1096,7 +1108,7 @@ function vHoy() {
   else toca = `<div class="line"><div class="ico">${svg('cal')}</div><div class="grow"><h3>Hoy toca descanso</h3><div class="small muted">${prox ? `Próximo entreno: ${esc(nomDia(prox))}${prox.titulo ? ' (' + esc(prox.nombre.toLowerCase()) + ')' : ''}` : (conPasos(s) ? 'Aprovecha para moverte y cumplir tus pasos.' : 'Aprovecha para descansar y recuperar.')}</div></div></div>`;
   { const rt = sesionARetomar(), dr = rt && [S.d.programa, S.d.programaBase, ...(S.d.contextos || []), ...(S.d.alternativos || [])].filter(Boolean).flatMap(q => q.dias || []).find(z => z.id === rt.dia_id);
     if (rt && dr && !toca.includes(`data-id="${rt.id}"`)) toca = `<div class="line aprox" style="margin-bottom:8px"><div class="ico gold">${svg('entreno')}</div><div class="grow"><h3>Continuar donde lo dejaste</h3><div class="small muted">${esc(nomDia(dr))} · ${rt.fecha === hoyISO() ? 'hoy' : esc(fLarga(rt.fecha))} · ${rt.series_hechas || 0} de ${rt.series_total || '—'} series</div></div><button class="btn sm gold" data-act="retomar" data-id="${rt.id}">Continuar</button></div>` + toca; }
-  const _ali = s.modulo_nutricion ? `<div class="stack" style="gap:8px"><span class="small muted">¿Cómo ha ido hoy la alimentación?</span><div class="choice" role="group">${[['si', 'Cumplido'], ['parcial', 'A medias'], ['no', 'No cumplido']].map(([v, l]) => `<button data-act="ali" data-v="${v}" aria-pressed="${r.alimentacion === v}">${l}</button>`).join('')}</div></div>` : '';
+  const _ali = s.modulo_nutricion ? `<div class="stack" style="gap:8px"><span class="small muted">¿Cómo ha ido hoy la alimentación?</span><div class="choice" role="group">${[['si', 'Cumplido'], ['no', 'No cumplido']].map(([v, l]) => `<button data-act="ali" data-v="${v}" aria-pressed="${r.alimentacion === v}">${l}</button>`).join('')}</div></div>` : '';
   const dur = s.duracion_semanas, semN = s.inicio ? Math.floor((fecha(hoy) - fecha(s.inicio)) / 6048e5) + 1 : null;
   return `<section class="card hero stack">
     <span class="eyebrow">${esc(fLarga(hoy))}</span>
@@ -1151,11 +1163,31 @@ function vEntreno() {
   const hechoSemana = id => { const l = S.d.sesiones.filter(s => s.dia_id === id && s.fecha >= lunes); return l.find(esCompleta) || l[l.length - 1] || null; };
   const P = proceso(S.d.servicio), Pn = P && !P.antes ? S.d.sesiones.filter(x => x.fecha >= P.cc.ini && x.fecha <= P.cc.fin).length : null;
   return como + `<section class="stack"><span class="eyebrow">${esc(p.nombre)}</span><h1>Entreno</h1>${P && !P.antes && !P.fuera ? `<div class="row" style="flex-wrap:wrap;gap:6px"><span class="pill blue">Ciclo ${P.ciclo}</span><span class="pill gold">Semana ${P.semCiclo} de ${P.cc.sem}</span><span class="pill">${Pn} ${(S.d.programaBase || p).dias_semana ? 'de ' + previstosCiclo(P.cc, S.d.uid, (S.d.programaBase || p).dias_semana) + ' ' : ''}entrenos del ciclo</span></div>` : ''}</section>
-  ${vAvisoContexto()}<section class="section"><div class="card">${p.dias.map(d => `<div class="wk ${esDia(d, hoyN) ? 'today' : ''}"><span class="d">${esc(/^d[ií]a (\d+)/i.test(d.nombre || '') ? 'D' + d.nombre.match(/\d+/)[0] : d.nombre.slice(0, 3))}</span><div class="grow"><h3>${esc(d.titulo || d.foco || d.nombre)}</h3>${tipoDiaDe(d) ? `<span class="pill ${conPartido(d) ? 'gold' : ''}" style="margin:2px 0">${tipoDiaDe(d)[2]} ${tipoDiaDe(d)[1]}</span>` : ''}${conPartido(d) ? (() => { const pt = partidoDelDia(d, S.d.partidos); return pt ? `<div class="small"><b>vs ${esc(pt.rival || 'rival')}</b>${pt.hora ? ' · ' + esc(String(pt.hora).slice(0, 5)) : ''}${pt.lugar ? ' · ' + esc(pt.lugar) : ''}</div>` : ''; })() : ''}<div class="small muted">${d.volumen || d.intensidad ? `${esc(d.volumen || '')} volumen · ${esc(d.intensidad || '')} intensidad` : ''}</div></div>${pillSesion(hechoSemana(d.id))}${d.tipo_dia === 'descanso' && !d.bloques_sesion.length ? '' : `<button class="btn sm ${esDia(d, hoyN) ? '' : 'ghost'}" data-act="abrirDia" data-id="${d.id}">Abrir</button>`}</div>`).join('')}</div></section>
+  ${vEntrenoHoy()}${vAvisoContexto()}<section class="section"><h2>Tus entrenos</h2><div class="card">${p.dias.map(d => `<div class="wk ${esDia(d, hoyN) ? 'today' : ''}"><span class="d">${esc(/^d[ií]a (\d+)/i.test(d.nombre || '') ? 'D' + d.nombre.match(/\d+/)[0] : d.nombre.slice(0, 3))}</span><div class="grow"><h3>${esc(d.titulo || d.foco || d.nombre)}</h3>${tipoDiaDe(d) ? `<span class="pill ${conPartido(d) ? 'gold' : ''}" style="margin:2px 0">${tipoDiaDe(d)[2]} ${tipoDiaDe(d)[1]}</span>` : ''}${conPartido(d) ? (() => { const pt = partidoDelDia(d, S.d.partidos); return pt ? `<div class="small"><b>vs ${esc(pt.rival || 'rival')}</b>${pt.hora ? ' · ' + esc(String(pt.hora).slice(0, 5)) : ''}${pt.lugar ? ' · ' + esc(pt.lugar) : ''}</div>` : ''; })() : ''}<div class="small muted">${d.volumen || d.intensidad ? `${esc(d.volumen || '')} volumen · ${esc(d.intensidad || '')} intensidad` : ''}</div></div>${pillSesion(hechoSemana(d.id))}${d.tipo_dia === 'descanso' && !d.bloques_sesion.length ? '' : `<button class="btn sm ${esDia(d, hoyN) ? '' : 'ghost'}" data-act="abrirDia" data-id="${d.id}">Abrir</button>`}</div>`).join('')}</div></section>
   ${vAlternativos(hechoSemana)}
-  ${vZonasFC()}${vRitmosVAM()}
-  ${vLineaTiempo(S.d.servicio, 'Tus ciclos de entrenamiento', false, p)}
+  ${(() => { const z = vZonasFC() + vRitmosVAM(); return z ? `<section class="section" style="margin-bottom:-12px"><h2>Tus zonas</h2></section>${z}` : ''; })()}
+  ${(() => { const t = vLineaTiempo(S.d.servicio, 'Tus ciclos de entrenamiento', false, p); if (!t) return ''; const P2 = proceso(S.d.servicio);
+    return `<section class="section"><h2>Tus ciclos</h2><details class="card fx-ban"><summary><span class="fx-ban-ic">🧱</span><span class="grow"><b>${P2 && !P2.antes && !P2.fuera ? `Ciclo ${P2.ciclo} de ${P2.ciclos.length} · semana ${P2.semCiclo} de ${P2.cc.sem}` : 'Tus ciclos de entrenamiento'}</b>${P2 && !P2.antes && !P2.fuera ? `<span class="small muted"> · ${P2.sinFin ? '' : Math.round(P2.pctTotal) + ' % del proceso'}</span><div class="track" style="margin-top:6px"><i style="width:${Math.round(Math.min(100, (P2.semCiclo / P2.cc.sem) * 100))}%"></i></div>` : ''}</span></summary><div class="fx-ban-in">${t}</div></details></section>`; })()}
   ${vCalendarioPres()}`;
+}
+/* Lo primero de Entreno: el entreno que le toca HOY (por el día de la semana, su horario o lo que marcó en su check-in). Si hoy no toca, no sale */
+function entrenoDeHoy() {
+  const D = S.d, p = D.programa; if (!p?.dias?.length) return null;
+  const hoy = hoyISO(), lunes = lunesDe(hoy), i = (new Date().getDay() + 6) % 7, DP = p.dias.filter(d => !d.oculto), k = d => norm(d?.titulo || d?.nombre || '');
+  let d = DP.find(x => esDia(x, norm(DSEM_L[i])));
+  if (!d && semanaFija(D.servicio)) { const pl = horarioDe(D.uid).plan || {}, PB = (D.programaBase?.dias || []);
+    d = DP.find(x => { const b = PB.find(z => z.id === x.id) || PB.find(z => k(z) && k(z) === k(x)) || (!PB.length ? x : null); return b && pl[b.numero] !== '' && pl[b.numero] != null && +pl[b.numero] === i; }); }
+  if (!d && !semanaFija(D.servicio)) { try { const todos = [D.programa, D.programaBase, ...(D.contextos || [])].filter(Boolean).flatMap(q => q.dias || []), PS = psDePlan(DP.slice().sort((x, y) => (x.numero || 0) - (y.numero || 0)), lunes, (D.sesiones || []).filter(x => !x.previa && x.fecha < hoy), id => todos.find(z => z.id === id), planDe(lunes)?.dias); d = DP.find(x => PS[x.numero] === i); } catch (e) { } }
+  if (!d || d.tipo_dia === 'descanso') return null;
+  return { d, hecho: (D.sesiones || []).some(s => s.fecha === hoy && s.dia_id === d.id && esCompleta(s)) };
+}
+function vEntrenoHoy() {
+  const t = entrenoDeHoy(); if (!t) return ''; const { d, hecho } = t, P = proceso(S.d.servicio), n = (d.bloques_sesion || []).filter(b => b.tipo === 'fuerza').reduce((s, b) => s + (b.ejercicios_sesion || []).length, 0);
+  return `<section class="section" style="margin-top:8px"><h2>${hecho ? 'Tu entreno de hoy' : 'Empieza tu entreno de hoy'}</h2><div class="hoy-hero">
+    <span class="hh-e">${P && !P.antes && !P.fuera ? `Ciclo ${P.ciclo} · semana ${P.semCiclo} de ${P.cc.sem} · ` : ''}${esc(fLarga(hoyISO()))}</span>
+    <h3>${esc(d.titulo || d.foco || d.nombre)}</h3>${[d.foco && d.titulo ? d.foco : '', d.volumen && 'Volumen ' + d.volumen, d.intensidad && 'intensidad ' + d.intensidad].filter(Boolean).length ? `<p>${esc([d.foco && d.titulo ? d.foco : '', d.volumen && 'Volumen ' + d.volumen, d.intensidad && 'intensidad ' + d.intensidad].filter(Boolean).join(' · '))}</p>` : ''}
+    <div class="hh-chips">${n ? `<span>${n} ejercicios</span>` : ''}${tipoDiaDe(d) ? `<span>${tipoDiaDe(d)[2]} ${tipoDiaDe(d)[1]}</span>` : ''}</div>
+    ${hecho ? '<div class="hh-ok">✓ Ya lo has hecho hoy. ¡Bien!</div>' : `<button class="btn full" data-act="abrirDia" data-id="${d.id}">▶ Empezar entrenamiento</button>`}</div></section>`;
 }
 
 /* Contexto alternativo: entrenos para cuando no puede seguir su bloque (p. ej. en casa sin gimnasio). Siempre visible;
@@ -3539,7 +3571,7 @@ function formWellness(tipo, f, alumnoId) {
     ${q('Fatiga general ahora mismo', escala10('w-fat', d.fatiga, ['1 · Fresco', '10 · Destrozado']))}
     ${q('¿Cómo has dormido esta noche?', `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Me acosté a las<input type="time" id="w-dormir" value="${esc(d.dormir || '')}"></label><label class="f">Me levanté a las<input type="time" id="w-levantar" value="${esc(d.levantar || '')}"></label></div><span class="small muted">Tu horario objetivo: acostarte a las ${esc(objSueno(D.servicio || S.d?.servicio).dormir)} y levantarte a las ${esc(objSueno(D.servicio || S.d?.servicio).levantar)}.</span>`)}
     ${q('Capturas de tu reloj (opcional)', `<span class="small muted">Sueño, frecuencia cardiaca, variabilidad… Puedes subir todas las que quieras.</span><div id="w-gal">${(d.reloj || []).length ? `<b class="small">Ya subidas (${d.reloj.length}):</b>${miniW(d.reloj, true)}` : ''}</div><input type="file" id="w-reloj" accept="image/*,application/pdf" multiple>`)}
-    ${q('¿Cómo ha ido hoy la alimentación?', `<div class="choice" role="group" id="w-ali">${[['si', 'Cumplida'], ['parcial', 'A medias'], ['no', 'No cumplida']].map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${d.alimentacion === v}">${l}</button>`).join('')}</div>`)}`;
+    ${q('¿Cómo ha ido hoy la alimentación?', `<div class="choice" role="group" id="w-ali">${[['si', 'Sí, cumplida'], ['no', 'No']].map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${d.alimentacion === v}">${l}</button>`).join('')}</div>`)}`;
   if (tipo === 'partido') cuerpo = `
     ${pt ? `<p class="small muted">${esc(pt.rival ? 'Contra ' + pt.rival : 'Partido')} · ${esc(fCorta(pt.fecha))}</p>` : ''}
     <label class="f">Minutos jugados<input type="number" id="w-min" inputmode="numeric" value="${d.minutos ?? ''}" placeholder="0 si no jugaste" required></label>
@@ -8568,7 +8600,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v389';
+const APP_VER = 'v390';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8910,6 +8942,7 @@ document.addEventListener('click', async e => {
     case 'guardarDiario': await guardarDiario(); break;
     case 'ingestas': await guardarDiario({ ingestas: +b.dataset.v }); break;
     case 'ctxDia': await guardarDiario({ contexto: b.dataset.v }); break;
+    case 'cumplePlan': { const n = comidasDia(S.d.servicio || {}); await guardarDiario(+b.dataset.v ? { ingestas: n, comidas_hechas: n } : { ingestas: 0, comidas_hechas: n }); break; }
     case 'comidasHechas': await guardarDiario({ comidas_hechas: +b.dataset.v }); break;
     case 'permisoAvisos': try { await Notification.requestPermission(); } catch (e) { } render(); avisoCheckin(); break;
     case 'ali': await guardarDiario({ alimentacion: b.dataset.v }); break;
@@ -9040,6 +9073,8 @@ document.addEventListener('click', async e => {
     case 'pagar': await marcarPagado(+b.dataset.id, b); break;
     case 'deshacerPago': await deshacerPago(+b.dataset.id, b); break;
     case 'recordar': await copiarRecordatorio(+b.dataset.id); break;
+    case 'menuAl': menuAlumno(); break;
+    case 'menuCerrar': document.getElementById('menu-al')?.remove(); break;
     case 'logoAct': { if (S.sesion?.inicio || S.obj || S.editor) { toast('Termina o guarda lo que estás haciendo y vuelve a tocar el logo para actualizar'); break; } toast('Actualizando…'); try { (await navigator.serviceWorker?.getRegistrations() || []).forEach(r => r.unregister()); (await caches.keys()).forEach(k => caches.delete(k)); } catch (e) { } location.replace(location.pathname + '?v=' + Date.now()); break; }
     case 'actualizarApp': toast('Actualizando…'); try { (await navigator.serviceWorker?.getRegistrations() || []).forEach(r => r.unregister()); (await caches.keys()).forEach(k => caches.delete(k)); } catch (e) { } location.replace(location.pathname + '?v=' + Date.now()); break;
     case 'cuenta': if (S.prueba) { await salirPrueba(); break; } if (S.vista) { await salirVista(); break; } vCuenta(); break;
