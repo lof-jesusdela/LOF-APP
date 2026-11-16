@@ -359,6 +359,11 @@ nav.tabs button[aria-current="page"]{color:var(--blue)}
 .wa-nue{color:var(--gold-ink);font-weight:700}
 .wa-badge{min-width:22px;height:22px;border-radius:11px;background:var(--gold);color:var(--ink);font:700 12px/22px inherit;text-align:center;padding:0 6px;flex:none}
 .wa-badge.warn{background:#F2B544}.wa-badge.bad{background:var(--bad);color:#fff}
+.splash{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(180deg,#0B0B0C 0%,#0b1d3f 55%,#0B0B0C 100%);color:#fff;text-align:center;padding:24px}
+.splash img{width:150px;height:150px;border-radius:50%;border:3px solid var(--gold,#D4AF37);box-shadow:0 0 40px rgba(212,175,55,.35)}
+.splash h1{font-family:var(--display);font-weight:800;font-size:34px;letter-spacing:.08em;text-transform:uppercase;color:#fff;margin:26px 0 8px;line-height:1}
+.splash p{margin:0;color:var(--gold,#D4AF37);font-size:13px;letter-spacing:.24em;text-transform:uppercase;font-weight:700}
+.splash small{margin-top:40px;color:#7d8aa5;font-size:13px}
 .login{min-height:100%;display:flex;flex-direction:column;justify-content:center;gap:20px;padding-block:40px}
 .login img{width:96px;height:96px;border-radius:50%;box-shadow:0 0 0 1px var(--line),0 0 28px rgba(0,102,255,.25);align-self:center}
 .err{color:var(--bad);font-size:13px}
@@ -1147,7 +1152,7 @@ body:not(.modo-coach) main .section{margin-top:26px}
 </style>
 </head>
 <body>
-<div class="app" id="app"><div class="login"><img src="icons/logo-96.jpg" alt="LOF"><p class="muted" style="text-align:center">Cargando…</p></div></div>
+<div class="app" id="app"><div class="splash"><img src="icons/icon-512.png" alt="LOF"><h1>La Obra Fitness</h1><p>Construyendo tu Prime</p><small>Cargando…</small></div></div>
 <nav class="tabs" id="tabs" hidden><div class="in" id="tabs-in"></div></nav>
 <div class="timer" id="timer" hidden><div class="in"><div class="clock num" id="t-clock">0:00</div><div class="grow"><div class="lbl" id="t-lbl">Descanso</div><div class="bar"><i id="t-bar" style="width:0"></i></div></div><button data-tm="plus">+15 s</button><button data-tm="skip">Saltar</button></div></div>
 <div class="alarma" id="alarma" hidden role="alertdialog" aria-modal="true" aria-labelledby="al-tit"><div class="al-in">
