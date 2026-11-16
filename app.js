@@ -4107,7 +4107,7 @@ function graficaCargaXL(w, n = 14) {
     if (n <= 14 || i % 2 === n % 2 || f === hoy) s += `<text x="${x + bw / 2}" y="${H - 18}" text-anchor="middle" font-size="11" fill="${f === hoy ? 'var(--blue)' : 'var(--muted)'}" font-weight="${f === hoy ? 700 : 400}">${DS[d.getDay()]}</text><text x="${x + bw / 2}" y="${H - 5}" text-anchor="middle" font-size="10" fill="var(--muted)">${d.getDate()}</text>`; });
   const pts = fat.map((v, i) => v == null ? null : [L + i * bw + bw / 2, yf(v), v]).filter(Boolean);
   if (pts.length > 1) s += `<polyline points="${pts.map(p => p[0] + ',' + p[1]).join(' ')}" fill="none" stroke="var(--fg)" stroke-width="2" stroke-dasharray="5 4" opacity=".75"/>`;
-  pts.forEach(([x, yy, v]) => { s += `<circle cx="${x}" cy="${yy}" r="6" fill="var(--${nivelFat(v) || 'ok'})" stroke="#fff" stroke-width="2"><title>Fatiga ${v}/10</title></circle><text x="${x}" y="${yy - 10}" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--${nivelFat(v) || 'ok'})">${v}</text>`; });
+  pts.forEach(([x, yy, v]) => { s += `<circle cx="${x}" cy="${yy}" r="6" fill="var(--${nivelFat(v) || 'ok'})" stroke="#fff" stroke-width="2"><title>Fatiga ${v}/10</title></circle><text x="${x + 9}" y="${yy + 4}" font-size="11" font-weight="700" fill="var(--${nivelFat(v) || 'ok'})" stroke="#fff" stroke-width="3" paint-order="stroke">${v}</text>`; });
   s += `<text x="${L}" y="11" font-size="10.5" fill="var(--muted)">Carga (min × RPE)</text><text x="${W - R + 30}" y="11" text-anchor="end" font-size="10.5" fill="var(--muted)">Fatiga</text>`;
   return svgW(`0 0 ${W} ${H}`, s, `Carga y fatiga de los últimos ${n} días`);
 }
@@ -4126,7 +4126,7 @@ function graficaSemanas(w) {
   let s = '';
   tot.forEach((v, i) => { const x = 5 + i * bw, act = i === 5, rel = media ? v / media : null, col = act ? 'var(--blue)' : rel != null && rel > 1.3 ? 'var(--warn)' : 'var(--gold)';
     s += `<rect x="${x + bw * .14}" y="${y(v)}" width="${bw * .72}" height="${T + ch - y(v)}" fill="${col}" opacity="${act ? .55 : 1}" rx="4"><title>Semana del ${fCorta(sems[i])}: ${fmtNum(v, 0)}</title></rect><text x="${x + bw / 2}" y="${y(v) - 5}" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--fg)">${v ? fmtNum(v, 0) : ''}</text><text x="${x + bw / 2}" y="${H - 6}" text-anchor="middle" font-size="10" fill="var(--muted)">${act ? 'esta' : fCorta(sems[i])}</text>`; });
-  if (media) s += `<line x1="5" x2="${W - 5}" y1="${y(media)}" y2="${y(media)}" stroke="var(--fg)" stroke-dasharray="5 4" opacity=".6"/><text x="${W - 6}" y="${y(media) - 5}" text-anchor="end" font-size="10" fill="var(--muted)">media 4 semanas</text>`;
+  if (media) s += `<line x1="5" x2="${W - 5}" y1="${y(media)}" y2="${y(media)}" stroke="var(--fg)" stroke-dasharray="5 4" opacity=".6"/><text x="${W - 6}" y="${y(media) + 13}" text-anchor="end" font-size="10" fill="var(--muted)" stroke="#fff" stroke-width="3" paint-order="stroke">media 4 semanas</text>`;
   return svgW(`0 0 ${W} ${H}`, s, 'Carga por semana');
 }
 const sparkFat = w => { const d = [...Array(14)].map((_, i) => sumaDias(hoyISO(), i - 13)), v = d.map(f => wDe(w, f, 'diario')?.datos?.fatiga ?? wDe(w, f, 'lunes')?.datos?.fatiga ?? null), pts = v.map((x, i) => x == null ? null : `${i * 10 + 4},${36 - x * 3.2}`).filter(Boolean);
@@ -8548,7 +8548,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v387';
+const APP_VER = 'v388';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
