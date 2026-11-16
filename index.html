@@ -101,6 +101,12 @@ header.top{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;ali
 .days-l{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;font-size:10px;color:var(--muted);text-align:center}
 .wk{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
 .wk:first-child{border-top:0}
+.wk-ab{cursor:pointer;border-radius:12px}.wk-ab:active{background:var(--surface-2)}.wk-ir{font-size:24px;color:var(--muted);flex:none;line-height:1}
+.btn.rojo,#entreno-barra button.rojo{background:#D93025!important;color:#fff!important;border-color:#D93025!important}
+.es-sem{display:flex;flex-direction:column;gap:6px;align-items:stretch;width:100%;text-align:center;font:inherit;color:inherit;cursor:pointer;padding:12px 8px}
+.es-fila{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;justify-items:center}
+.es-d{display:flex;flex-direction:column;align-items:center;gap:4px}.es-l{font-size:12px;font-weight:800;color:var(--muted);width:22px;height:22px;display:grid;place-items:center;border-radius:50%}
+.es-d.hoy .es-l{background:var(--ink);color:#fff}.es-d.fut svg{opacity:.45}
 .wk .d{width:44px;font-family:var(--display);font-weight:800;font-size:15px;text-transform:uppercase;color:var(--muted)}
 .wk.today .d{color:var(--blue)}
 .ex{display:flex;flex-direction:column;gap:10px}
