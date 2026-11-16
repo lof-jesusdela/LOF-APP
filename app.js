@@ -480,10 +480,10 @@ function menuAlumno() {
 }
 function tabsAlumno() {
   const s = S.d.servicio || {}, ci = cierreAlumno();
-  if (ci) return ci.cerrado ? [['hoy', 'Inicio']] : [['hoy', 'Inicio'], ['progreso', 'Progreso'], ['coach', 'Contacto']];
+  if (ci) return ci.cerrado ? [['hoy', 'Inicio']] : [['hoy', 'Inicio'], ['progreso', 'Progreso'], ['coach', 'Chat']];
   /* Contacto en el centro (destacado); Hábitos pasa al menú del logo («Servicios extra») */
   const L = [['hoy', 'Hoy'], (s.modulo_entreno ?? true) && ['entreno', 'Entreno'], s.modulo_nutricion && ['nutri', 'Nutrición'], ['progreso', 'Progreso']].filter(Boolean);
-  L.splice(Math.ceil(L.length / 2), 0, ['coach', 'Contacto']); return L;
+  L.splice(Math.ceil(L.length / 2), 0, ['coach', 'Chat']); return L;
 }
 
 /* Escritorio (iPad / Mac): barra lateral con la lista de alumnos y fichas a dos columnas */
@@ -529,7 +529,7 @@ function seguro(fn) {
   catch (err) { console.error(err); return `<section class="section"><div class="card stack"><b>No se ha podido abrir esta pantalla</b><p class="small muted">Mándale a Jesús este mensaje: ${esc(String(err && err.message || err).slice(0, 200))}</p></div></section>`; }
 }
 /* Respuestas de Jesús sin leer: globo en «Contacto» y en el icono de la app (si el móvil lo permite) */
-const nChat = () => S.modo !== 'coach' && !S.vista && typeof Consultas !== 'undefined' ? Consultas.sinLeer().length : 0;
+const nChat = () => S.modo !== 'coach' && typeof Consultas !== 'undefined' ? Consultas.sinLeer().length : 0;
 function globoApp() { try { if (S.modo === 'coach' || S.vista || !navigator.setAppBadge) return; const n = nChat(); n ? navigator.setAppBadge(n) : navigator.clearAppBadge(); } catch (e) { } }
 function render() {
   setTimeout(globoApp, 0);
@@ -1113,10 +1113,10 @@ async function refrescarPush() {
   if (S.push !== est) { S.push = est; if (S.tab === 'hoy' && $('#sheet').hidden) render(); }
 }
 function vAvisosHoy() {
-  const av = (S.d?.avisos || [])[0], push = S.push;
+  const av = (S.d?.avisos || []).filter(x => x.tipo !== 'semana')[0], push = S.push;   /* «tu semana está lista» ya va como mensaje de Jesús en el chat */
   let h = '';
   if (av) h += `<section class="section"><div class="card ctx-aviso"><span class="pill gold">${esc(av.titulo || 'Aviso')}</span><div class="grow"><b>${esc(av.cuerpo || '')}</b></div><button class="btn sm" data-act="avisoVisto" data-id="${av.id}" data-t="${av.tipo === 'semana' ? 'entreno' : 'hoy'}">${av.tipo === 'semana' ? 'Ver mi semana ›' : 'Entendido'}</button></div></section>`;
-  if (push === 'falta') h += `<section class="section"><div class="card row" style="gap:10px;flex-wrap:wrap"><div class="grow small"><b>🔔 Activa los avisos</b><div class="muted">Para que te llegue al móvil cuando Jesús deje tu semana lista.</div></div><button class="btn sm" data-act="activarPush">Activar</button></div></section>`;
+  if (push === 'falta') h += `<section class="section"><div class="card row" style="gap:10px;flex-wrap:wrap"><div class="grow small"><b>🔔 Activa los avisos</b><div class="muted">Para que te llegue al móvil cuando Jesús te escriba.</div></div><button class="btn sm" data-act="activarPush">Activar</button></div></section>`;
   else if (push === 'instalar') h += `<section class="section"><div class="card small"><b>🔔 Para recibir avisos en el iPhone</b><div class="muted">Abre la app desde Safari, pulsa Compartir → «Añadir a pantalla de inicio» y ábrela desde el icono. Después podrás activar los avisos.</div></div></section>`;
   return h;
 }
@@ -8769,7 +8769,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v406';
+const APP_VER = 'v407';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
