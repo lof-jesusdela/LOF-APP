@@ -623,7 +623,7 @@ async function avisoCheckin() {
   const k = 'lof-aviso-chk-' + hoyISO(); try { if (localStorage.getItem(k)) return; localStorage.setItem(k, '1'); } catch (e) { }
   try { const reg = await navigator.serviceWorker?.ready; const op = { body: 'Es fin de semana: rellena tu check-in semanal para Jesús. Tarda 2 minutos.', icon: 'icons/icon-192.png', tag: 'checkin' }; reg ? reg.showNotification('Check-in semanal', op) : new Notification('Check-in semanal', op); } catch (e) { }
 }
-/* Avisos del futbolista: check diario, cuestionario del lunes y del partido. Salen al abrir la app, una vez al día por tipo */
+/* Avisos del futbolista: wellness diario, wellness de lunes y del partido. Salen al abrir la app, una vez al día por tipo */
 async function avisoFutbol() {
   if (!S.d?.servicio?.modulo_futbol || !('Notification' in window) || Notification.permission !== 'granted') return;
   const reg = await navigator.serviceWorker?.ready.catch(() => null);
@@ -824,9 +824,9 @@ async function subirFotosComida(input) {
   await guardarDiario({ fotos: rutas });
 }
 function vDiasSinCheck(W) {
-  const hoy = hoyISO(), f = ventanaRegistro().filter(d => d < hoy && !wDe(W, d, 'diario'));
+  const hoy = hoyISO(), f = ventanaRegistro().filter(d => d < hoy && !wDe(W, d, 'diario') && tocaDiario(d, S.d?.partidos, W));
   if (!f.length) return '';
-  return `<div class="stack" style="gap:6px"><span class="small muted">Días sin check diario: rellénalos si se te pasaron</span><div class="chips">${f.map(d => `<button class="pill warn" data-act="wellness" data-t="diario" data-f="${d}">${DIA3[fecha(d).getDay()]} ${fecha(d).getDate()} · rellenar</button>`).join('')}</div></div>`;
+  return `<div class="stack" style="gap:6px"><span class="small muted">Días sin wellness diario: rellénalos si se te pasaron</span><div class="chips">${f.map(d => `<button class="pill warn" data-act="wellness" data-t="diario" data-f="${d}">${DIA3[fecha(d).getDay()]} ${fecha(d).getDate()} · rellenar</button>`).join('')}</div></div>`;
 }
 /* ---------- Zonas de frecuencia cardiaca (visual; el detalle se abre al tocar una zona) ---------- */
 const ZONAS_FC = [
@@ -1073,7 +1073,7 @@ function vPresResumen(srv, lista) {
 }
 /* Check-in semanal como tarjeta con estado y fecha; el formulario se despliega al ir a completarlo */
 function vCheckinTarjeta() {
-  if (S.d.servicio?.modulo_futbol) return '';   // los futbolistas ya rellenan su check diario, el del lunes y el del partido
+  if (S.d.servicio?.modulo_futbol) return '';   // los futbolistas ya rellenan su wellness diario, el del lunes y el del partido
   if (S.chkAbierto) return `<section class="section chk-hoy" id="checkin">${vCheckin(true)}<button class="btn ghost full" data-act="cerrarCheckin" style="margin-top:8px">Cerrar sin enviar</button></section>`;
   /* Solo el domingo: desde el lunes, si no se envió, pasa a «Pendiente» */
   if (new Date().getDay() !== 0 || S.vista || Acomp.estado(S.d.servicio).k === 'pausado') return '';
@@ -3556,15 +3556,17 @@ function molestiasRecientes(w, dias = 4) {
   return w.filter(x => x.fecha >= desde && x.datos?.molestias?.length).map(x => ({ f: x.fecha, z: x.datos.molestias, t: x.datos.molestia_txt }));
 }
 /* Cuestionarios pendientes del jugador */
+/* Wellness diario del futbolista: no toca los lunes (lo cubre el wellness de lunes) ni los días de partido (lo cubre el del partido) */
+const tocaDiario = (f, partidos, w) => (fecha(f).getDay() + 6) % 7 !== 0 && !(partidos || []).some(p => p.fecha === f) && !(w && wDe(w, f, 'partido'));
 function pendientesFutbol() {
   const s = S.d?.servicio; if (!s?.modulo_futbol || S.d.futbolErr) return [];
   const w = S.d.wellness || [], hoy = hoyISO(), dow = (fecha(hoy).getDay() + 6) % 7, out = [];
   const jugados = (S.d.partidos || []).filter(p => p.fecha <= hoy && p.fecha >= sumaDias(hoy, -3) && !wDe(w, p.fecha, 'partido'));
-  jugados.forEach(p => out.push({ t: 'partido', f: p.fecha, txt: `Cuestionario del partido${p.rival ? ' contra ' + p.rival : ''}`, sub: p.fecha === hoy ? 'Rellénalo al terminar: antes, durante y después.' : 'Te falta contarle a Jesús cómo fue.' }));
-  if (dow === 0 && !wDe(w, hoy, 'lunes')) out.push({ t: 'lunes', f: hoy, txt: 'Cuestionario del lunes', sub: 'Tu fatiga tras el fin de semana para ajustar la semana. 1 minuto.' });
+  jugados.forEach(p => out.push({ t: 'partido', f: p.fecha, txt: `Wellness de partido${p.rival ? ' contra ' + p.rival : ''}`, sub: p.fecha === hoy ? 'Rellénalo al terminar: antes, durante y después.' : 'Te falta contarle a Jesús cómo fue.' }));
+  if (dow === 0 && !wDe(w, hoy, 'lunes')) out.push({ t: 'lunes', f: hoy, txt: 'Wellness de lunes', sub: 'Tu fatiga tras el fin de semana para ajustar la semana. 1 minuto.' });
   const dom = dow === 6 ? hoy : dow === 0 ? sumaDias(hoy, -1) : null;
   if (dom && !wDe(w, dom, 'semana')) out.push({ t: 'semana', f: dom, txt: 'Cierre de semana', sub: 'La semana que viene del club (entrenos, horarios, partido). Escríbela o sube una foto o PDF. Así Jesús te deja tu semana lista el lunes.' });
-  if (!wDe(w, hoy, 'diario') && !jugados.some(p => p.fecha === hoy)) out.push({ t: 'diario', f: hoy, txt: 'Check diario', sub: 'Carga con el equipo, tu sesión y tu fatiga. 30 segundos.' });
+  if (!wDe(w, hoy, 'diario') && tocaDiario(hoy, S.d.partidos, w)) out.push({ t: 'diario', f: hoy, txt: 'Wellness diario', sub: 'Carga con el equipo, tu sesión y tu fatiga. 30 segundos.' });
   return out;
 }
 const escala10 = (id, val, ext) => `<div class="escala10" role="group" id="${id}">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => `<button type="button" data-act="escala10" data-v="${n}" aria-pressed="${val === n}">${n}</button>`).join('')}</div>${ext ? `<div class="row small muted"><span class="grow">${ext[0]}</span><span>${ext[1]}</span></div>` : ''}`;
@@ -3669,7 +3671,7 @@ function formWellness(tipo, f, alumnoId) {
     ${q('Foto o PDF de la planificación (opcional)', `${(d.archivos || []).length ? `<span class="small muted">Ya has subido ${d.archivos.length} ${d.archivos.length === 1 ? 'archivo' : 'archivos'}.</span>` : ''}<input type="file" id="w-arch" accept="image/*,application/pdf" multiple>`)}
     ${q('Datos del GPS (opcional)', `${(d.gps || []).length ? `<span class="small muted">Ya has subido ${d.gps.length} ${d.gps.length === 1 ? 'archivo' : 'archivos'}.</span>` : ''}<input type="file" id="w-gps" accept="image/*,application/pdf" multiple>`)}
     ${q('Otros archivos de tu equipo (opcional)', `<span class="small muted">Cualquier otra cosa del club que quieras que vea Jesús.</span>${(d.otros || []).length ? `<span class="small muted">Ya has subido ${d.otros.length} ${d.otros.length === 1 ? 'archivo' : 'archivos'}.</span>` : ''}<input type="file" id="w-otros" accept="image/*,application/pdf" multiple>`)}`;
-  abrirSheet(`<form class="stack" id="f-w"><h2>${{ diario: 'Check diario', partido: 'Cuestionario del partido', lunes: 'Cuestionario del lunes', semana: 'Cierre de semana' }[tipo]}</h2><span class="small muted">${tipo === 'semana' ? 'Semana del ' + esc(fCorta(sumaDias(f, 1))) + ' al ' + esc(fCorta(sumaDias(f, 7))) : esc(fLarga(f))}</span>
+  abrirSheet(`<form class="stack" id="f-w"><h2>${{ diario: 'Wellness diario', partido: 'Wellness de partido', lunes: 'Wellness de lunes', semana: 'Cierre de semana' }[tipo]}</h2><span class="small muted">${tipo === 'semana' ? 'Semana del ' + esc(fCorta(sumaDias(f, 1))) + ' al ' + esc(fCorta(sumaDias(f, 7))) : esc(fLarga(f))}</span>
     ${cuerpo}
     ${tipo === 'semana' ? '' : q('¿Alguna molestia? (opcional)', chipsZonas(d.molestias))}
     <label class="f">${tipo === 'lunes' ? '¿Algo que Jesús deba saber para planificar tu semana?' : tipo === 'semana' ? '¿Algo más que deba saber Jesús? (opcional)' : 'Comentario (opcional)'}<textarea id="w-nota" rows="2">${esc(d.nota || d.molestia_txt || '')}</textarea></label>
@@ -3757,7 +3759,7 @@ function vSemanaFutbol(ini, w, p) {
     <div class="stack" style="gap:8px"><div class="row"><span class="grow small">Entrenamientos completados</span>${big(`${w.entrenos}${p?.dias_semana ? ' / ' + p.dias_semana : ''}`)}</div>${tira(ini, x => w.diasEntreno.has(x) ? 'ok' : '')}</div>
     <div class="stack" style="gap:8px"><div class="row"><span class="grow small">Alimentación: lo que declaras cada día${S.d.servicio?.modulo_nutricion && !midoAlumno() ? ' <span class="muted">(según tu pauta actual, aún sin plan en la app)</span>' : ''}${al.n ? ` <span class="muted">· ${al.n} de 7 días</span>` : ''}</span>${big(al.pct == null ? '—' : al.pct + ' %', al.pct == null ? '' : al.pct >= 85 ? 'ok' : al.pct >= 60 ? 'warn' : 'bad')}</div>${tira(ini, x => ({ si: 'ok', parcial: 'part', no: 'no' }[al.por[x]] || ''))}</div>
     <div class="stack" style="gap:8px"><div class="row"><span class="grow small">Sueño (media · objetivo ${fmtNum(su.meta)} h)</span>${big(su.media == null ? '—' : fmtNum(su.media) + ' h', su.media == null ? '' : su.media >= su.meta - .5 ? 'ok' : 'warn')}</div>${tira(ini, x => su.por[x]?.cls || '')}
-      <div class="small muted">Acostarte ${esc(su.o.dormir)} · levantarte ${esc(su.o.levantar)} → ${su.n ? `en horario ${su.enHorario} de ${su.n} noches` : 'apúntalo en tu check diario'}</div></div>
+      <div class="small muted">Acostarte ${esc(su.o.dormir)} · levantarte ${esc(su.o.levantar)} → ${su.n ? `en horario ${su.enHorario} de ${su.n} noches` : 'apúntalo en tu wellness diario'}</div></div>
     ${vDiasSinCheck(W)}
   </div></section>`;
 }
@@ -3767,7 +3769,7 @@ function alertasFutbol(aid) {
   const { w } = futDe(aid), out = [], hoy = hoyISO(), dow = (fecha(hoy).getDay() + 6) % 7;
   const uf = ultimaFatiga(w); if (uf && uf.f >= sumaDias(hoy, -1) && uf.v === 7) out.push(['bad', `Fatiga ${uf.v}/10 (${fCorta(uf.f)})`]);   /* 8 o más y las molestias van en «salud» (🩹) */
   const C = cargasSemana(w); if (C.acwr != null && C.acwr > 1.5) out.push(['warn', `Subida fuerte de carga (${fmtNum(C.acwr)} veces su media de 4 semanas): mírala junto a molestias y recuperación`]);
-  if (dow <= 1 && !wDe(w, sumaDias(hoy, -dow), 'lunes')) out.push(['warn', 'Sin cuestionario del lunes']);
+  if (dow <= 1 && !wDe(w, sumaDias(hoy, -dow), 'lunes')) out.push(['warn', 'Sin wellness de lunes']);
   if (dow <= 1 && !wDe(w, sumaDias(hoy, -dow - 1), 'semana')) out.push(['warn', 'Sin planificación del equipo']);
   return out;
 }
@@ -3777,7 +3779,7 @@ function checkinSheet(aid, f) {
   const hoy = hoyISO(); f = f || hoy;
   if (aid) {
     const a = S.c.perfiles.find(x => x.id === aid); if (!a) return;
-    const l = (S.c.wellness || []).filter(x => x.alumno_id === aid && x.tipo !== 'semana').sort((x, y) => (y.fecha + y.tipo).localeCompare(x.fecha + x.tipo)).slice(0, 14), TL = { diario: 'Check diario', partido: 'Partido', lunes: 'Lunes' };
+    const l = (S.c.wellness || []).filter(x => x.alumno_id === aid && x.tipo !== 'semana').sort((x, y) => (y.fecha + y.tipo).localeCompare(x.fecha + x.tipo)).slice(0, 14), TL = { diario: 'Wellness diario', partido: 'Partido', lunes: 'Lunes' };
     return abrirSheet(`<div class="stack"><span class="eyebrow">Check-in</span><h2>${esc(a.nombre)}</h2>
       ${l.map(x => `<div class="card stack" style="gap:4px"><div class="row"><b class="grow">${esc(TL[x.tipo] || x.tipo)}</b><span class="small muted">${esc(fCorta(x.fecha))}</span></div><div class="small">${esc(resumenW(x))}</div>${x.datos?.nota ? `<div class="small muted">"${esc(x.datos.nota)}"</div>` : ''}${(x.datos?.reloj || []).length ? `<div class="small muted">Capturas del reloj (${x.datos.reloj.length})</div>${miniW(x.datos.reloj)}` : ''}</div>`).join('') || '<p class="small muted">Aún no ha rellenado ningún check-in.</p>'}
       <button class="btn full" data-act="ficha" data-id="${a.id}">Abrir su ficha</button></div>`);
@@ -3806,7 +3808,7 @@ function controlFut(lunes, modo = 'semana') {
       <div class="small"><b>Planificación del equipo:</b> ${pl ? `${pl.datos?.texto ? esc(pl.datos.texto) : '<span class="muted">sin texto</span>'}${botonesArchivos(pl)}` : '<span class="muted">sin subir</span>'}</div>
       ${pts.length ? `<div class="small"><b>Partido:</b> ${pts.map(p => esc((p.rival ? 'vs ' + p.rival : 'Partido') + ' · ' + fCorta(p.fecha))).join(' · ')}${(() => { const pa = dias.map(f => wDe(w, f, 'partido')).filter(Boolean)[0]; return pa ? ' · ' + esc(resumenW(pa)) : ' · <span class="muted">sin cuestionario</span>'; })()}</div>` : ''}</div>`; };
   abrirSheet(`<div class="stack"><span class="eyebrow">Futbolistas</span><h2>Control semanal</h2>${tabs}${nav}
-    <p class="small muted" style="margin:0">Cada cuadrado es un día: el número es la fatiga del check diario (verde fresco → rojo destrozado); P = partido; vacío = sin rellenar.</p>
+    <p class="small muted" style="margin:0">Cada cuadrado es un día: el número es la fatiga del wellness diario (verde fresco → rojo destrozado); P = partido; vacío = sin rellenar.</p>
     ${fut.map(tarj).join('') || '<p class="small muted">No hay futbolistas activos.</p>'}</div>`);
 }
 /* Cambios de peso que ha decidido el alumno, juntos en su Entrenamiento: cada uno lleva a su sesión */
@@ -3885,7 +3887,7 @@ function alIr(aid, m) {
   const rv = /Revisión mensual (\d+)/.exec(m); if (rv) return irA(aid, { fn: () => formRevision(+rv[1], null) });
   if (/revisi[oó]n(es)? mensual/i.test(m)) { const c = estadoAlumno(S.c.perfiles.find(x => x.id === aid) || {}).control; return irA(aid, c ? { fn: () => formRevision(c.n, null) } : { tab: 'calendario' }); }
   if (/^🩹/.test(m)) { const x = saludDe(aid).find(z => z.s && m.includes(z.m)); if (x) return irA(aid, { fn: () => verSesion(x.s) }); }
-  if (/fatiga|molestia|pico de carga|cuestionario del lunes|planificación del equipo/i.test(m)) return checkinSheet(aid);
+  if (/fatiga|molestia|pico de carga|wellness de lunes|planificación del equipo/i.test(m)) return checkinSheet(aid);
   if (/ha cambiado su peso en/i.test(m) && (S.c.cambiosPeso || []).filter(c => c.alumno_id === aid).length > 1) return irA(aid, { sub: 'entreno', ancla: 'ent-peso' });
   if (/ha cambiado su peso en/i.test(m)) { const x = (S.c.cambiosPeso || []).find(c => c.alumno_id === aid && (!c.ejercicio || m.includes(c.ejercicio))); if (x?.sesion_id) return irA(aid, { fn: () => verSesion(x.sesion_id) }); return irA(aid, { sub: 'entreno' }); }
   if (/pago|cobro/i.test(m)) { const pv = (S.c.pagos || []).filter(p => p.alumno_id === aid && !p.pagado_at && p.vence < hoyISO()).sort((x, y) => x.vence.localeCompare(y.vence))[0]; return irA(aid, { tab: 'pagos', ancla: pv ? 'pago-' + pv.id : null }); }
@@ -3969,7 +3971,7 @@ function vFutbolCoach() {
   if (!fut.length) return '';
   const hoy = hoyISO();
   return `<section class="section"><div class="section-head"><h2>Futbolistas · hoy</h2><div class="row" style="gap:6px"><button class="btn sm gold" data-act="avisarTodos">💬 Avisar a todos: semana lista</button><button class="btn sm" data-act="checkin">Control semanal</button></div></div><div class="card tbl" style="overflow-x:auto"><table class="fut-t"><thead><tr><th>Jugador</th><th>Partido</th><th>Fatiga</th><th>Carga 7 d</th><th>ACWR</th><th>Hoy</th></tr></thead><tbody>
-    ${fut.map(a => { const { w, p } = futDe(a.id), M = mdDe(p), uf = ultimaFatiga(w), C = cargasSemana(w), [na, ta] = nivelAcwr(C.acwr), hecho = wDe(w, hoy, 'diario') || wDe(w, hoy, 'partido'), mol = molestiasRecientes(w, 3).length;
+    ${fut.map(a => { const { w, p } = futDe(a.id), M = mdDe(p), uf = ultimaFatiga(w), C = cargasSemana(w), [na, ta] = nivelAcwr(C.acwr), hecho = tocaDiario(hoy, p, w) ? wDe(w, hoy, 'diario') || wDe(w, hoy, 'partido') : (fecha(hoy).getDay() === 1 ? wDe(w, hoy, 'lunes') : wDe(w, hoy, 'partido')), mol = molestiasRecientes(w, 3).length;
       return `<tr data-act="ficha" data-id="${a.id}" style="cursor:pointer"><td><b>${esc(a.nombre)}</b>${mol ? ' <span class="pill warn">molestia</span>' : ''}</td><td class="small">${M.md ? `<span class="md-chip sm">${esc(M.md)}</span> ` : ''}${esc(M.prox?.rival || '')}</td><td>${uf ? `<span class="pill ${nivelFat(uf.v)}">${uf.v}/10</span>` : '—'}</td><td class="num">${fmtNum(C.aguda, 0)}</td><td>${C.acwr != null ? `<span class="pill ${na}" title="${ta}">${fmtNum(C.acwr)}</span>` : '—'}</td><td>${hecho ? '<span style="color:var(--ok)">✓</span>' : '<span class="muted">pendiente</span>'}</td></tr>`; }).join('')}
   </tbody></table><p class="note">Carga = minutos × esfuerzo (1-10) del equipo, de tu sesión y del partido. Proporción de carga = últimos 7 días frente a su media semanal de las últimas 4 semanas. Indica un cambio relativo de carga, no un diagnóstico ni un riesgo de lesión individual: contrástalo con molestias, recuperación, historial y la calidad de los registros. Solo se calcula con al menos 3 de 4 semanas registradas.</p></div></section>`;
 }
@@ -4070,20 +4072,18 @@ async function hacerPatron(id) {
   } catch (err) { fallo(err, 'No se ha podido cambiar la semana patrón.'); }
 }
 /* «Avisar»: mensaje de Jesús en el chat (tono personal, no una notificación del sistema). Llega al móvil como «Jesús te ha enviado un mensaje» */
-function textoSemana(alumnoId, lunes, k = 0) {
-  const nom = (S.c.perfiles.find(p => p.id === alumnoId)?.nombre || '').split(' ')[0];
-  const fin = sumaDias(lunes, 6), pt = (S.c.partidos || []).filter(x => x.alumno_id === alumnoId && x.fecha >= lunes && x.fecha <= fin).sort((x, y) => x.fecha.localeCompare(y.fecha))[0];
-  const dia = pt ? DIAS[fecha(pt.fecha).getDay()] : '', esta = lunes <= hoyISO();
-  const extra = pt ? ` La he montado pensando en el partido del ${dia}${pt.rival ? ` contra el ${pt.rival}` : ''}, para que llegues fresco y con chispa.` : ' La he cuadrado con lo que tienes con el equipo.';
-  const V = [
-    `¡Ey ${nom}! Ya tienes tu semana lista en la app.${extra} Échale un ojo y si algo no te cuadra me dices por aquí 💪`,
-    `${nom}, te acabo de dejar preparada tu semana${esta ? '' : ' que viene'}.${extra} Cualquier duda o molestia, escríbeme por aquí y lo ajustamos.`,
-    `¡Hola ${nom}! Tu semana ya está montada.${extra} Ve mirándola y me cuentas qué tal 👊`
-  ];
-  return V[((k % V.length) + V.length) % V.length];
+/* Datos que le faltan de esa semana: wellness de partido del fin de semana anterior, el del lunes y el cierre de semana (domingo) */
+function faltaDatosSemana(alumnoId, lunes) {
+  const w = (S.c.wellness || []).filter(x => x.alumno_id === alumnoId), hoy = hoyISO(), dom = sumaDias(lunes, -1);
+  const pts = (S.c.partidos || []).filter(x => x.alumno_id === alumnoId && x.fecha >= sumaDias(lunes, -3) && x.fecha <= dom && x.fecha <= hoy);
+  return pts.some(x => !wDe(w, x.fecha, 'partido')) || (lunes <= hoy && !wDe(w, lunes, 'lunes')) || (dom <= hoy && !wDe(w, dom, 'semana'));
+}
+function textoSemana(alumnoId, lunes) {
+  const fin = sumaDias(lunes, 6), pt = (S.c.partidos || []).some(x => x.alumno_id === alumnoId && x.fecha >= lunes && x.fecha <= fin);
+  return `¿Qué pasa, crack? Ya tienes tu semana lista${faltaDatosSemana(alumnoId, lunes) ? ', a falta de que me termines de enviar los datos referentes a esta semana' : ''}. ${pt ? 'He mirado el partido de este fin de semana y lo he cuadrado.' : 'He mirado lo que tienes con el equipo y lo he cuadrado.'} Recuerda revisar si te falta algo por subirme.`;
 }
 async function avisarSemana(alumnoId, lunes) {
-  const nom = (S.c.perfiles.find(p => p.id === alumnoId)?.nombre || '').split(' ')[0], txt = textoSemana(alumnoId, lunes, Math.floor(Math.random() * 3));
+  const nom = (S.c.perfiles.find(p => p.id === alumnoId)?.nombre || '').split(' ')[0], txt = textoSemana(alumnoId, lunes);
   if (!confirm(`Se le enviará por el chat:\n\n«${txt}»\n\n¿Lo envío?`)) return;
   try { await Consultas.mensajeJesus(alumnoId, txt); toast(`Mensaje enviado a ${nom} por el chat`); render(); }
   catch (err) { fallo(err, 'No se ha podido enviar el mensaje.'); }
@@ -4094,7 +4094,7 @@ function avisarSemanaTodos() {
   const fut = S.c.perfiles.filter(p => p.activo !== false && S.c.servicios.some(x => x.alumno_id === p.id && x.modulo_futbol)).sort((x, y) => (x.nombre || '').localeCompare(y.nombre || ''));
   if (!fut.length) return toast('No hay futbolistas activos');
   abrirSheet(`<form class="stack" id="f-avt"><h2>💬 Avisar: semana lista</h2><p class="small muted" style="margin-top:-6px">Semana del ${esc(fCorta(lunes))} al ${esc(fCorta(sumaDias(lunes, 6)))}. Les llega como mensaje tuyo en el chat. Revisa cada uno: puedes retocarlo o desmarcar a quien no quieras avisar.</p>
-    ${fut.map((a, i) => `<div class="card stack" style="gap:6px;padding:10px"><label class="row small" style="gap:8px"><input type="checkbox" data-av="${a.id}" checked><b>${esc(a.nombre)}</b></label><textarea rows="4" data-avt="${a.id}">${esc(textoSemana(a.id, lunes, i))}</textarea></div>`).join('')}
+    ${fut.map((a, i) => `<div class="card stack" style="gap:6px;padding:10px"><label class="row small" style="gap:8px"><input type="checkbox" data-av="${a.id}" checked><b>${esc(a.nombre)}</b></label><textarea rows="4" data-avt="${a.id}">${esc(textoSemana(a.id, lunes))}</textarea></div>`).join('')}
     <button class="btn full" type="submit">Enviar a ${fut.length}</button></form>`);
   const F = $('#f-avt'), btn = F.querySelector('[type=submit]'), cuenta = () => { const n = F.querySelectorAll('[data-av]:checked').length; btn.textContent = n ? `Enviar a ${n}` : 'Nadie marcado'; btn.disabled = !n; };
   F.addEventListener('change', cuenta);
@@ -4120,7 +4120,7 @@ function vSemanasFutbol(a) {
 function detalleW(x) {
   const d = x.datos || {}, fila = (k, v) => v == null || v === '' ? '' : `<div class="row small" style="gap:8px"><span class="muted" style="width:128px;flex:none">${k}</span><b class="grow">${v}</b></div>`;
   const ali = { si: 'Cumplida', parcial: 'A medias', no: 'No cumplida' }[d.alimentacion];
-  const cab = { diario: 'Check diario', partido: 'Partido', lunes: 'Cuestionario del lunes', semana: 'Planificación del equipo' }[x.tipo] || x.tipo;
+  const cab = { diario: 'Wellness diario', partido: 'Wellness de partido', lunes: 'Wellness de lunes', semana: 'Planificación del equipo' }[x.tipo] || x.tipo;
   let c = '';
   if (x.tipo === 'diario') c = fila('Entreno con el equipo', d.eq_min != null ? (d.eq_min ? `${d.eq_min} min · esfuerzo ${d.eq_rpe ?? '—'}/10` : 'No') : '') + fila('Sesión LOF', d.lof_rpe ? `${d.lof_min || 45} min · esfuerzo ${d.lof_rpe}/10` : 'No') + fila('Fatiga', d.fatiga != null ? d.fatiga + '/10' : '') + fila('Sueño', d.dormir && d.levantar ? `${d.dormir}–${d.levantar} (${fmtNum(horasSueno(d.dormir, d.levantar))} h)` : '') + fila('Alimentación', ali);
   else if (x.tipo === 'partido') c = fila('Minutos', d.minutos) + fila('Antes / durante / después', `${d.antes ?? '—'} / ${d.durante ?? '—'} / ${d.despues ?? '—'}`) + fila('Esfuerzo', d.rpe != null ? d.rpe + '/10' : '');
@@ -8788,7 +8788,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v408';
+const APP_VER = 'v409';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
