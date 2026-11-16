@@ -3375,11 +3375,26 @@ function formRevision(n, id) {
   $('#rv-borr').addEventListener('click', () => guardar(false));
   $('#f-rev').addEventListener('submit', e => { e.preventDefault(); guardar(true); });
 }
+/* Marcar una revisión mensual como hecha poniendo la fecha (sin rellenar todo el formulario) */
+function formRevHecha(n) {
+  const f = S.ficha; if (!f) return;
+  abrirSheet(`<form class="stack" id="f-rvh"><h2>Revisión mensual${n ? ' ' + n : ''} hecha</h2><p class="small muted">Queda como hecha (✓) con esta fecha. Si quieres, luego la abres y completas el acuerdo.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">¿Cuándo la hicisteis?<input type="date" id="rvh-f" value="${hoyISO()}" max="${hoyISO()}" required></label><label class="f">Formato<select id="rvh-t">${['Videollamada', 'Llamada', 'Presencial'].map(v => `<option>${v}</option>`).join('')}</select></label></div>
+    <label class="f">Nota (opcional)<input type="text" id="rvh-r" placeholder="Ej. bien, mantenemos el plan"></label>
+    <button class="btn full" type="submit">✓ Marcar como hecha</button></form>`);
+  $('#f-rvh').addEventListener('submit', async e => { e.preventDefault();
+    const row = { alumno_id: f.id, control_n: n || null, fecha: $('#rvh-f').value, formato: $('#rvh-t').value, resumen: $('#rvh-r').value.trim() || null, estado: 'publicada' };
+    let r = await sb.from('revisiones').insert(row).select().single();
+    if (r.error && /estado/.test(r.error.message || '')) { delete row.estado; r = await sb.from('revisiones').insert(row).select().single(); }
+    if (r.error) return fallo(r.error, 'No se ha podido guardar.');
+    (S.c.revisiones ||= []).unshift(r.data); S.c.revisiones.sort((x, y) => String(y.fecha).localeCompare(String(x.fecha)));
+    cerrarSheet(); toast('Revisión marcada como hecha'); render(); });
+}
 function vRevisionesFicha(a) {
   const l = (S.c.revisiones || []).filter(r => r.alumno_id === a.id);
   const cita = citaRev(a.id), ctl = estadoAlumno(a).control;
   const fijar = `<div class="card stack" style="gap:8px"><div class="small">${cita ? `📅 <b>Revisión reservada:</b> ${esc(fLarga(cita.fecha))}${cita.hora ? ' a las ' + esc(hhmm(cita.hora)) : ''}${/Propuesta/.test(cita.nota || '') ? ' · esperando que confirme' : ''}` : ctl ? `Toca la <b>revisión mensual ${ctl.n}</b>${ctl.atrasada ? ` (desde el ${esc(fCorta(ctl.fecha))})` : ` (${esc(fCorta(ctl.fecha))})`}. Todavía no tiene fecha reservada.` : 'Sin revisión pendiente ahora mismo.'}</div>
-    <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="cmProponer" data-aid="${a.id}">💬 Proponer hora por WhatsApp</button><button class="btn sm ghost" data-act="agendarRev" data-aid="${a.id}">📅 Fijar en la agenda</button></div></div>`;
+    <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="cmProponer" data-aid="${a.id}">💬 Proponer hora por WhatsApp</button><button class="btn sm ghost" data-act="agendarRev" data-aid="${a.id}">📅 Fijar en la agenda</button>${ctl ? `<button class="btn sm ghost" data-act="revHecha" data-n="${ctl.n}">✓ Ya la hice (poner fecha)</button>` : ''}</div></div>`;
   if (!l.length) return `<section class="section"><div class="section-head"><h2>Revisiones mensuales</h2><button class="btn sm ghost" data-act="revision">＋ Revisión</button></div>${fijar}</section>`;
   return `<section class="section"><div class="section-head"><h2>Revisiones mensuales</h2><button class="btn sm ghost" data-act="revision">＋ Revisión</button></div>${fijar}<div class="card">${l.map(r => `<div class="line" data-act="revision" data-id="${r.id}" style="align-items:flex-start;cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(r.fecha))}</span><div class="grow small"><b>${r.control_n ? 'Revisión ' + r.control_n : 'Revisión'}</b>${r.estado === 'borrador' ? ' <span class="pill gold">Borrador · no la ve</span>' : ''} · ${esc(r.formato || '')}${r.sensacion ? ` · se siente <b>${r.sensacion}/10</b>` : ''}${r.prioridad ? `<div><b>Prioridad:</b> ${esc(r.prioridad)}</div>` : ''}${r.resumen ? `<div class="muted">${esc(r.resumen)}</div>` : ''}</div></div>`).join('')}</div></section>`;
 }
@@ -4724,7 +4739,7 @@ function vFichaBase() {
   const ban = (id, n, ico, tit, res, html, abierto = false) => `<details class="fb" data-fb="${id}" ${ab[id] ? 'open' : ''}><summary><span class="fb-n">${n}</span><span class="fb-ico">${ico}</span><div class="grow fb-t"><b>${tit}</b>${res ? `<small>${res}</small>` : ''}</div>${dot(n)}<span class="fb-chev" aria-hidden="true"></span></summary><div class="fb-body">${html}</div></details>`;
   const ultM = f.med[0], pagP = pagos.filter(p => !p.pagado_at), pagV = pagP.filter(p => p.vence < hoy);
   const modE = srv?.modulo_entreno ?? true;
-  const fb1 = `<div class="stack" style="gap:12px">${Acomp.vResumen(f, a)}
+  const fb1 = `<div class="stack" style="gap:12px">
     <div class="card stack" id="ac-pend"><div class="row"><b class="grow">Pendiente de ti</b>${Compromisos.deAlumno(a.id).length ? '' : '<span class="pill ok">✓ Nada pendiente</span>'}</div>${Compromisos.vFicha(a.id, false)}</div>
     <div class="card stack"><div class="row"><b class="grow">Avisos</b>${pend.filter(x => !x.comp).length ? `<span class="pill ${e.nivel}">${pend.filter(x => !x.comp).length}</span>` : '<span class="pill">Sin avisos</span>'}</div>
       ${pend.filter(x => !x.comp).length ? vListaAlertas(a.id, { ...e, items: e.items.filter(x => !x.comp) }, false) : '<p class="small muted" style="margin:0">Señales de su semana (pasos, motivación, cambios de peso…). Las que marcas como vistas pasan al historial.</p>'}
@@ -4857,10 +4872,10 @@ function vFichaBase() {
         const sig = Compromisos.deAlumno(a.id).sort(Compromisos.ordenar)[0], rv = Compromisos.deAlumno(a.id).find(x => x.tipo === 'rev' && !x.futuro);
         return `<div class="card fx-c fx-acuerdo"><div class="fx-ct">Objetivo y acuerdo</div>
           <div class="fx-ac-g"><div><button class="fx-l fx-link" data-act="fIr" data-d="obj">🎯 Objetivo ›</button><p>${esc(obj || 'Sin objetivo escrito')}${ctx?.n ? `<br><span class="muted small">Contexto: ${esc(ctx.n)}</span>` : ''}</p></div>
-          <div>${r0 ? `<button class="fx-l fx-link" data-act="fIr" data-d="rev|${r0.control_n || ''}|${r0.id}">` : '<span class="fx-l">'}🎯 Último acuerdo · foco de la revisión${Foco.de(a.id)?.desde ? ` · ${esc(fCorta(Foco.de(a.id).desde))}` : ''}${r0 ? ' ›</button>' : '</span>'}<div style="margin:4px 0 0">${Foco.de(a.id)?.tipo ? `${Foco.linea(a.id)}<div class="small muted" style="margin-top:2px">Compromiso del alumno hasta la siguiente revisión: ahí verificas que lo cumple.</div>` : `<span class="muted">Sin foco fijado. Se fija en la revisión mensual.</span>${ac ? `<div class="small" style="margin-top:4px">${esc(String(ac.t || '').slice(0, 160))} <span class="muted">· ${esc(ac.src)}</span></div>` : ''}`}</div></div>
+          <div>${r0 ? `<button class="fx-l fx-link" data-act="fIr" data-d="rev|${r0.control_n || ''}|${r0.id}">` : '<button class="fx-l fx-link" data-act="revision">'}🎯 Último acuerdo · foco de la revisión${Foco.de(a.id)?.desde ? ` · ${esc(fCorta(Foco.de(a.id).desde))}` : ''} ›</button><div style="margin:4px 0 0">${Foco.de(a.id)?.tipo ? `${Foco.linea(a.id)}<div class="small muted" style="margin-top:2px">Compromiso del alumno hasta la siguiente revisión: ahí verificas que lo cumple.</div>` : `<span class="muted">Sin foco fijado. Se fija en la revisión mensual.</span>${ac ? `<div class="small" style="margin-top:4px">${esc(String(ac.t || '').slice(0, 160))} <span class="muted">· ${esc(ac.src)}</span></div>` : ''}`}</div></div>
           ${d0 ? `<div><span class="fx-l">🔄 Desde entonces</span>${nov.length ? `<ul class="fx-nov">${nov.slice(0, 4).map(n => `<li>${n.d ? `<button class="fx-link fx-li" data-act="fIr" data-d="${n.d}">${esc(n.t)} <span class="muted small">· ${esc(n.src)} ›</span></button>` : `${esc(n.t)} <span class="muted small">· ${esc(n.src)}</span>`}</li>`).join('')}</ul>` : '<p class="muted">Sin novedades registradas.</p>'}</div>` : ''}
-          <div><span class="fx-l">➡️ Próximo paso</span><p>${sig ? `<button class="fx-link fx-li" data-act="fIr" data-d="${destComp(sig)}">${Compromisos.T[sig.tipo].ico} ${esc(Compromisos.T[sig.tipo].uno)}: ${esc(sig.titulo)} <span class="muted small">· ${Compromisos.venceTxt(sig)} ›</span></button>` : '<span class="muted">Nada pendiente.</span>'}</p></div></div>
-          ${rv ? `<button class="btn sm" data-act="revisionGuiada" data-n="${rv.n}" style="align-self:flex-start">🗓 Empezar revisión mensual ${rv.n}</button>` : ''}</div>`; })();
+          <div><span class="fx-l">➡️ Próximo paso</span><p>${sig ? `<button class="fx-link fx-li" data-act="fIr" data-d="${destComp(sig)}">${Compromisos.T[sig.tipo].ico} ${esc(Compromisos.T[sig.tipo].uno)}: ${esc(sig.titulo)} <span class="muted small">· ${Compromisos.venceTxt(sig)} ›</span></button>` : '<button class="fx-link fx-li" data-act="proxAccion">Nada pendiente · <span class="muted small">✎ apuntar próxima acción ›</span></button>'}</p></div></div>
+          ${rv ? `<div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="revisionGuiada" data-n="${rv.n}">🗓 Empezar revisión mensual ${rv.n}</button><button class="btn sm ghost" data-act="revHecha" data-n="${rv.n}">✓ Ya la hice (poner fecha)</button></div>` : ''}</div>`; })();
       const cProx = l => `<div class="card fx-c"><div class="fx-ct">Próximo</div>${l.length ? `<div class="fx-lista">${l.map(([ic, t, d, , dest]) => `<${dest ? 'button' : 'div'} class="fx-prox ${dest ? 'fx-link fx-tap' : ''}" ${dest ? `data-act="fIr" data-d="${dest}"` : ''}><span class="fx-ic">${ic}</span><span class="grow">${esc(t)}</span><b>${esc(d)}</b></${dest ? 'button' : 'div'}>`).join('')}</div>` : '<div class="fx-vacio">Nada programado</div>'}</div>`;
       const kEnt = (srv?.modulo_entreno ?? true) ? kpi('Entrenos · semana en curso', entTxt(cur.entrenos, dpw), `Semana pasada ${Math.min(pre.entrenos, dpwPre || pre.entrenos)}${dpwPre ? '/' + dpwPre : ''}`, dpw ? Math.min(100, cur.entrenos / dpw * 100) : null, 'checkins') : '';
       if (srv?.modulo_futbol) {
@@ -4886,7 +4901,7 @@ function vFichaBase() {
       const iH = fb9.indexOf('<section class="section"><div class="section-head"><h2>Histórico de pagos</h2>'), pagosB = iH >= 0 ? fb9.slice(0, iH) : fb9, histB = iH >= 0 ? fb9.slice(iH) : '';
       const ab = S.fBan; S.fBan = null;
       const ban = (k, ic, t, sub, html) => `<details class="card fx-ban" id="fban-${k}"${ab === k ? ' open' : ''}><summary><span class="fx-ban-ic">${ic}</span><span class="grow"><b>${t}</b>${sub ? `<span class="small muted"> · ${sub}</span>` : ''}</span></summary><div class="fx-ban-in">${html}</div></details>`;
-      cuerpo += `<div class="stack" style="gap:10px;margin-top:14px">${ban('plan', '📑', 'Plan contratado y bloques', `${esc(srv?.producto || 'Sin plan')}${P && !P.antes && !P.fuera ? ` · semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''}`, fb3)}
+      cuerpo += `<div class="stack" style="gap:10px;margin-top:14px">${ban('plan', '📑', 'Plan contratado y bloques', `${esc(srv?.producto || 'Sin plan')}${P && !P.antes && !P.fuera ? ` · semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''}`, Acomp.vResumen(f, a) + fb3)}
         ${ban('pagos', '💳', 'Pagos y cuotas', pagV.length ? `<span style="color:var(--bad)">${pagV.length} vencida${pagV.length > 1 ? 's' : ''}</span>` : pagP.length ? `próxima ${esc(fCorta(pagP.slice().sort((x, y) => x.vence.localeCompare(y.vence))[0].vence))}` : 'al día', pagosB)}
         ${histB ? ban('hist', '📚', 'Histórico de pagos', '', histB) : ''}</div>`;
       if (ab) setTimeout(() => document.getElementById('fban-' + ab)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
@@ -8468,7 +8483,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v384';
+const APP_VER = 'v385';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8703,6 +8718,7 @@ document.addEventListener('click', async e => {
       toast(`Fotos puestas en ${n} de ${datos.filter(x => x.nombre).length} ejercicios. Revisa cuáles son en ✎ Editar prueba`); await cargarValoraciones(); break; }
     case 'omitir': formOmitir(+b.dataset.es, b.dataset.n); break;
     case 'deshacerOmitir': await deshacerOmitir(+b.dataset.es); break;
+    case 'revHecha': formRevHecha(+b.dataset.n || null); break;
     case 'fTab': { const t0 = b.dataset.t, t = ['plan', 'pagos'].includes(t0) ? 'inicio' : t0; if (t !== t0) S.fBan = t0 === 'pagos' ? 'pagos' : 'plan'; (S.fTab ||= {})[S.ficha.id] = t; } render(); document.querySelector('.ft-tabs')?.scrollIntoView({ block: 'nearest' }); break;
     case 'abrirReporte': await abrirReporte(b.dataset.id || null); break;
     case 'reporteSemana': await abrirReporte(S.reporte.alumno, sumaDias(S.reporte.lunes, +b.dataset.d)); break;
