@@ -136,7 +136,7 @@ const Cuest = (() => {
     if (t === 'esc') return `<div class="stack" style="gap:6px"><b class="small">${esc(l)}</b><div class="cq-esc" role="group" aria-label="${esc(l)}">${[...Array(10)].map((_, i) => `<button type="button" data-cq="${k}" data-v="${i + 1}" aria-pressed="${+v === i + 1}">${i + 1}</button>`).join('')}</div><div class="row small muted"><span class="grow">Nada</span><span>Mucho</span></div></div>`;
     if (t === 'ops' || t === 'multi') return `<div class="stack" style="gap:6px"><b class="small">${esc(l)}${t === 'multi' ? ' <span class="muted" style="font-weight:400">(puedes marcar varias)</span>' : ''}</b><div class="chips">${ops.map(o => `<button type="button" data-cq="${k}" data-v="${esc(o)}" data-multi="${t === 'multi' ? 1 : ''}" aria-pressed="${t === 'multi' ? (v || []).includes(o) : v === o}">${esc(o)}</button>`).join('')}</div></div>`;
     if (t === 'hora') return `<label class="f">${esc(l)}<input type="time" data-cqi="${k}" value="${esc(v || '')}"></label>`;
-    if (t === 'num') return `<label class="f">${esc(l)}<span class="row" style="gap:8px"><input type="number" inputmode="decimal" data-cqi="${k}" value="${esc(v ?? '')}" style="max-width:140px"><span class="small muted">${esc(ayuda || '')}</span></span></label>`;
+    if (t === 'num') return `<label class="f">${esc(l)}<span class="row" style="gap:8px"><input type="number" step="any" inputmode="decimal" data-cqi="${k}" value="${esc(v ?? '')}" style="max-width:140px"><span class="small muted">${esc(ayuda || '')}</span></span></label>`;
     return `<label class="f">${esc(l)}<textarea data-cqi="${k}" rows="2" placeholder="${esc(ayuda || '')}">${esc(v || '')}</textarea></label>`;
   };
   function pintar() {
