@@ -3189,9 +3189,47 @@ const progDeCiclo = (f, P) => c => {
    salvo que la hayas modificado solo para esa semana. Las pasadas quedan como histórico y se pueden copiar. */
 const semanasAj = f => (f?.contextos || []).filter(x => !esBloqueP(x));
 function patronSemana(f, lunes) {
+  if (!semanaFija(f.srv)) { const b = ctxEnSemana((f.contextos || []).filter(esBloqueP), lunes); return { pr: b || f.progFull || null, c: b ? { n: 0, nombre: (b.contexto_nombre || '').replace(/^Bloque · /, '') || 'Bloque', ini: b.contexto_desde, fin: b.contexto_hasta, sem: Math.round((fecha(b.contexto_hasta) - fecha(b.contexto_desde)) / 6048e5 + 1 / 7) } : null }; }
   const P = proceso(f.srv), c = P?.ciclos?.find(x => x.ini <= sumaDias(lunes, 6) && x.fin >= lunes);
   let pr = null; try { pr = c ? progDeCiclo(f, P)(c) : null; } catch (e) { }
   return { pr: pr || f.progFull || null, c };
+}
+const tilesDias = (pr, dias) => `<div class="dias-grid">${dias.map(d => `<button type="button" class="dia-tile" data-act="verPlan" data-p="${pr.id}" data-d="${d.id}"><span class="pill gold num">${d.numero}</span><b>${esc(nomDia(d))}</b>${d.foco ? `<span class="small muted">${esc(d.foco)}</span>` : ''}<span class="small muted">${(d.bloques_sesion || []).filter(b => b.tipo === 'fuerza').reduce((t, b) => t + (b.ejercicios_sesion || []).length, 0)} ejercicios</span></button>`).join('')}</div>`;
+/* Arriba de la pestaña Entreno: el bloque actual (lo que entrena ahora) y su semana patrón, para editarlos a un toque */
+/* Histórico y planificación: cada bloque es un banner plegado; al abrirlo se ven sus entrenos y todas sus semanas */
+function vBloquesHist(f, a) {
+  const hoy = hoyISO(), L0 = lunesDe(hoy), fija = semanaFija(f.srv), aj = semanasAj(f).filter(x => /^Semana del /.test(x.contexto_nombre || ''));
+  let B = [];
+  if (fija) { const P = proceso(f.srv); (P?.ciclos || []).forEach(c => { let pr = null; try { pr = progDeCiclo(f, P)(c); } catch (e) { } B.push({ id: 'c' + c.n, nombre: nomCiclo(c), ini: c.ini, fin: c.fin, pr, sinPlan: c.sinPlan }); }); }
+  else B = (f.contextos || []).filter(esBloqueP).sort((x, y) => x.contexto_desde.localeCompare(y.contexto_desde)).map(c => ({ id: c.id, nombre: (c.contexto_nombre || '').replace(/^Bloque · /, '') || 'Bloque', ini: c.contexto_desde, fin: c.contexto_hasta, pr: c, ctx: c }));
+  const vig = B.find(b => b.ini <= sumaDias(L0, 6) && b.fin >= L0) || (!fija && B.length && B[B.length - 1].fin < L0 ? B[B.length - 1] : null);
+  const banner = b => {
+    const est = b.fin < hoy && b !== vig ? ['', '✓ Terminado'] : b === vig ? ['ok', 'En curso'] : ['blue', 'Programado'];
+    const sems = []; for (let l = lunesDe(b.ini); l <= b.fin && sems.length < 60; l = sumaDias(l, 7)) sems.push(l);
+    const dias = (b.pr?.dias || []).filter(d => !d.oculto).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0));
+    const fila = l => { const c = ctxEnSemana(aj, l), et = l === L0 ? ' · esta semana' : l < L0 ? '' : ' · próxima'; return `<div class="line" ${c ? `data-act="sesionesContexto" data-id="${c.id}" style="cursor:pointer"` : ''}><span class="small num" style="width:120px;flex:none">${esc(fCorta(l))} – ${esc(fCorta(sumaDias(l, 6)))}</span><span class="small grow ${c ? '' : 'muted'}">${c ? '✏️ Modificada solo esa semana' : fija ? '★ Semana patrón' : 'Su bloque, sin cambios'}${et}</span>${c ? '<span class="small muted">✎ ›</span>' : ''}</div>`; };
+    return `<details class="blq-ban card"${b === vig ? ' open' : ''}><summary><div class="row" style="gap:10px;flex-wrap:wrap;align-items:center"><b class="grow">🧱 ${esc(b.nombre)}</b><span class="pill ${est[0]}">${est[1]}</span><span class="small muted">${esc(fCorta(b.ini))} – ${esc(fCorta(b.fin))} · ${sems.length} ${sems.length === 1 ? 'semana' : 'semanas'}</span></div></summary>
+      <div class="stack" style="gap:12px;margin-top:12px">
+        ${b.pr ? `<div class="row" style="gap:6px;flex-wrap:wrap"><span class="small muted grow">${fija ? 'Semana patrón' : 'Entrenos del bloque'}: <b>${esc((b.pr.contexto_nombre || b.pr.nombre || '').replace(/^Bloque · /, ''))}</b></span><button class="btn sm" data-act="abrirProg" data-id="${b.pr.id}">✎ Editar</button>${b.ctx ? `<button class="btn sm ghost" data-act="bloqueEnt" data-id="${b.ctx.id}">Fechas</button>` : ''}${b === vig && b.ctx ? `<button class="btn sm gold" data-act="bloqueSig" data-id="${b.ctx.id}">Terminar y empezar el siguiente</button>` : ''}</div>${dias.length ? tilesDias(b.pr, dias) : ''}` : `<div class="small muted">${b.sinPlan ? 'Semanas sin planificar todavía.' : 'Aún no tiene semana patrón para este bloque: créala desde una semana modificada con «★ Convertir en semana patrón del bloque».'}</div>`}
+        <details><summary class="small">Sus semanas (${sems.length})</summary><div style="margin-top:6px">${sems.map(fila).join('')}</div></details>
+      </div></details>`;
+  };
+  const antes = fija ? [] : (f.programas || []).filter(p => p.id !== vig?.pr?.id);
+  return `<section class="section"><div class="section-head"><h2>Bloques de entrenamiento</h2>${fija ? '<button class="btn sm ghost" data-act="editarBloques">✎ Semanas de los bloques</button>' : '<button class="btn sm" data-act="bloqueEnt">＋ Nuevo bloque</button>'}</div>
+    <div class="stack" style="gap:10px">${B.length ? B.slice().reverse().map(banner).join('') : '<div class="card small muted">Aún no tiene bloques con fechas.</div>'}
+    ${antes.length ? `<details class="blq-ban card"><summary><b>📚 Programas anteriores</b> <span class="small muted">· ${antes.length}</span></summary><div class="row" style="gap:6px;flex-wrap:wrap;margin-top:10px">${antes.slice().reverse().map(p => `<button class="btn sm ghost" data-act="abrirProg" data-id="${p.id}">${esc(p.nombre || 'Programa')}</button>`).join('')}${(f.guardados || []).map(g => `<button class="btn sm ghost" data-act="abrirProg" data-id="${g.id}">🗂 ${esc(g.contexto_nombre || g.nombre || 'Guardado')}</button>`).join('')}</div></details>` : ''}</div></section>`;
+}
+function vBloqueTop(f, a) {
+  const L0 = lunesDe(hoyISO()), fija = semanaFija(f.srv), { pr: pat, c: bl } = patronSemana(f, L0), cur = fija ? pat : progActual(f), esCtx = !!cur?.contexto_desde;
+  const dias = (cur?.dias || []).filter(d => !d.oculto).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0));
+  const semBl = bl ? Math.floor((fecha(L0) - fecha(lunesDe(bl.ini))) / 6048e5) + 1 : null;
+  const edit = !cur ? `<button class="btn sm" data-act="editarPrograma" data-id="${a.id}">Crear ${fija ? 'semana patrón' : 'programa'}</button>` : esCtx && !fija ? `<button class="btn sm" data-act="abrirProg" data-id="${cur.id}">✎ Editar bloque</button>` : `<button class="btn sm" data-act="editarPrograma" data-id="${a.id}">✎ Editar ${fija ? 'semana patrón' : 'bloque'}</button>`;
+  return `<section class="section"><div class="card stack" style="gap:12px">
+    <div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-start"><div class="grow" style="min-width:220px"><span class="eyebrow">${fija ? '★ Bloque actual · semana patrón' : 'Bloque actual'}</span><h3 style="margin:2px 0">${esc(cur ? (cur.contexto_nombre || cur.nombre || '').replace(/^Bloque · /, '') : 'Sin programa')}</h3>
+      <div class="small muted">${[bl && semBl > 0 ? `${esc(bl.nombre || nomCiclo(bl))} · semana ${semBl} de ${bl.sem}` : '', bl ? `hasta el ${esc(fCorta(bl.fin))}` : '', cur ? `${dias.length} ${dias.length === 1 ? 'entrenamiento' : 'entrenamientos'}${cur.dias_semana ? ` · ${cur.dias_semana} días por semana` : ''}` : ''].filter(Boolean).join(' · ')}${fija ? '<br>Se repite cada semana del bloque que no hayas modificado.' : ''}</div></div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">${edit}<button class="btn sm ghost" data-act="asignarPlantilla" data-al="${a.id}">＋ Plantilla</button>${cur ? `<button class="btn sm ghost" data-act="guardarPlantilla" data-id="${cur.id}">Guardar como plantilla</button>` : ''}${!fija ? `<button class="btn sm ghost" data-act="bloqueEnt">＋ Nuevo bloque</button>` : `<button class="btn sm ghost" data-act="editarBloques">✎ Semanas de los bloques</button>`}</div></div>
+    ${dias.length ? tilesDias(cur, dias) : ''}
+  </div></section>`;
 }
 function vSemanasNav(f, a) {
   const L0 = lunesDe(hoyISO()), l = (S.fsem?.aid === a.id && S.fsem.l) || L0, rel = Math.round((fecha(l) - fecha(L0)) / (7 * 864e5));
@@ -3200,11 +3238,12 @@ function vSemanasNav(f, a) {
   const ant = ctxEnSemana(semanasAj(f), sumaDias(l, -7)), nom = (a.nombre || '').split(' ')[0];
   const semBl = bl ? Math.floor((fecha(l) - fecha(lunesDe(bl.ini))) / (7 * 864e5)) + 1 : null;
   const dias = (pr?.dias || []).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0));
-  const estado = aj ? (pasada ? ['', '📚 Histórico · esta semana se modificó'] : ['gold', '✏️ Modificada solo esta semana']) : pat ? (pasada ? ['', '📚 Histórico · se hizo la semana patrón'] : ['blue', '★ Semana patrón del bloque']) : ['', 'Sin programa'];
+  const fija = semanaFija(f.srv), tmp = aj && !/^Semana del /.test(aj.contexto_nombre || '');
+  const estado = tmp ? ['gold', `🌴 Contexto temporal${pasada ? ' · histórico' : ''}`] : aj ? (pasada ? ['', '📚 Histórico · esta semana se modificó'] : ['gold', '✏️ Modificada solo esta semana']) : pat ? (pasada ? ['', `📚 Histórico · ${fija ? 'se hizo la semana patrón' : 'su bloque de entonces'}`] : ['blue', fija ? '★ Semana patrón del bloque' : '🧱 Su bloque, sin cambios']) : ['', 'Sin programa'];
   const destinos = [[L0, 'esta semana'], [sumaDias(L0, 7), 'la próxima']].filter(([d]) => d !== l && !ctxEnSemana(semanasAj(f), d));
   const acciones = pasada
-    ? (aj ? destinos.map(([d, t]) => `<button class="btn sm" data-act="semCopiar" data-src="${aj.id}" data-l="${d}">⧉ Copiar a ${t}</button>`).join('') + `<button class="btn sm ghost" data-act="hacerPatron" data-id="${aj.id}">★ Convertir en semana patrón del bloque</button>` : '')
-    : aj ? `<button class="btn sm" data-act="sesionesContexto" data-id="${aj.id}">✎ Editar esta semana</button><button class="btn sm ghost" data-act="hacerPatron" data-id="${aj.id}">★ Convertir en semana patrón del bloque</button>`
+    ? (aj ? destinos.map(([d, t]) => `<button class="btn sm" data-act="semCopiar" data-src="${aj.id}" data-l="${d}">⧉ Copiar a ${t}</button>`).join('') + `${fija ? `<button class="btn sm ghost" data-act="hacerPatron" data-id="${aj.id}">★ Convertir en semana patrón del bloque</button>` : ''}` : '')
+    : aj ? `<button class="btn sm" data-act="sesionesContexto" data-id="${aj.id}">✎ Editar esta semana</button>${fija && !tmp ? `<button class="btn sm ghost" data-act="hacerPatron" data-id="${aj.id}">★ Convertir en semana patrón del bloque</button>` : ''}`
       : `${pat ? `<button class="btn sm" data-act="semAjustar" data-l="${l}">✎ Modificar solo esta semana</button>` : ''}${ant ? `<button class="btn sm ghost" data-act="semAjustar" data-l="${l}" data-ant="1">⧉ Duplicar la semana anterior</button>` : ''}`;
   return `<section class="section"><div class="section-head"><h2>Semanas de entreno</h2>${rel ? '<button class="btn sm ghost" data-act="fsem" data-d="0">Hoy</button>' : ''}</div>
     <div class="card stack" style="gap:12px">
@@ -3212,13 +3251,12 @@ function vSemanasNav(f, a) {
         <div class="grow" style="text-align:center"><b style="font-size:18px">${et}</b><div class="small muted">del ${esc(fCorta(l))} al ${esc(fCorta(sumaDias(l, 6)))}${bl ? ` · ${esc(nomCiclo(bl))}${semBl > 0 ? ` · semana ${semBl} de ${bl.sem}` : ''}` : ''}</div></div>
         <button class="btn ghost sem-flecha" data-act="fsem" data-d="1" aria-label="Semana siguiente">›</button></div>
       <div class="row" style="gap:8px;flex-wrap:wrap;justify-content:center"><span class="pill ${estado[0]}">${estado[1]}</span>${aj ? `<span class="small muted">${esc(aj.contexto_nombre || '')}</span>` : ''}</div>
-      ${dias.length ? `<div>${dias.map(d => `<div class="line" data-act="verPlan" data-p="${pr.id}" data-d="${d.id}" style="cursor:pointer"><span class="pill gold num">${d.numero}</span><div class="grow"><b class="small">${esc(nomDia(d))}</b>${d.foco ? ` <span class="small muted">· ${esc(d.foco)}</span>` : ''}<div class="small muted">${(d.bloques_sesion || []).filter(b => b.tipo === 'fuerza').reduce((t, b) => t + (b.ejercicios_sesion || []).length, 0)} ejercicios</div></div><span class="small muted">›</span></div>`).join('')}</div>` : '<div class="empty">Sin entrenamientos en esta semana.</div>'}
+      ${dias.length ? tilesDias(pr, dias) : '<div class="empty">Sin entrenamientos en esta semana.</div>'}
       ${acciones ? `<div class="row" style="gap:8px;flex-wrap:wrap">${acciones}</div>` : ''}
-      ${!pasada && rel <= 1 ? `<button class="btn sm gold" data-act="avisarSemana" data-al="${a.id}" data-l="${l}" style="align-self:flex-start">🔔 Avisar a ${esc(nom)}: semana lista</button>` : ''}
-      <p class="note" style="margin:0">${pasada ? 'Semana pasada: se ve tal como la hizo. Para reutilizarla, cópiala a esta semana o a la próxima.' : aj ? 'Lo que cambies aquí solo afecta a esta semana. La semana patrón y las demás semanas no cambian.' : 'Esta semana repite la semana patrón del bloque. Si algo cambia (partido, carga, mover un entreno), pulsa «Modificar solo esta semana».'}</p>
+      ${fija && !pasada && rel <= 1 ? `<button class="btn sm gold" data-act="avisarSemana" data-al="${a.id}" data-l="${l}" style="align-self:flex-start">🔔 Avisar a ${esc(nom)}: semana lista</button>` : ''}
+      <p class="note" style="margin:0">${pasada ? 'Semana pasada: se ve tal como la hizo. Para reutilizarla, cópiala a esta semana o a la próxima.' : aj ? 'Lo que cambies aquí solo afecta a esta semana. La semana patrón y las demás semanas no cambian.' : (fija ? 'Esta semana repite la semana patrón del bloque. Si algo cambia (partido, carga, mover un entreno), pulsa «Modificar solo esta semana».' : 'Esta semana entrena su bloque tal cual. Si algo cambia solo esta semana, pulsa «Modificar solo esta semana».')}</p>
     </div>
-    <div class="card row" style="gap:10px;flex-wrap:wrap;margin-top:8px"><div class="grow" style="min-width:180px"><span class="eyebrow">★ Semana patrón del bloque</span><div><b>${esc(f.progFull?.nombre || 'Sin semana patrón')}</b></div><div class="small muted">Se repite cada semana${(() => { const P = proceso(f.srv), c = P && !P.antes && !P.fuera ? P.cc : null; return c ? ` hasta el ${esc(fCorta(c.fin))} (fin de ${esc(nomCiclo(c))})` : ''; })()}. Cambiarla afecta a todas las semanas que no hayas modificado.</div></div>
-      <button class="btn sm" data-act="editarPrograma" data-id="${a.id}">${f.progFull ? '✎ Editar semana patrón' : 'Crear semana patrón'}</button><button class="btn sm ghost" data-act="fichaSub" data-s="entreno">📚 Histórico</button></div></section>`;
+    </section>`;
 }
 /* Futbolistas: la semana en curso tal como la has ajustado (o la patrón si esta semana no se ha tocado) */
 function vSemanaEnCurso(f, a) {
@@ -4690,7 +4728,7 @@ function vFichaBase() {
     ${srv?.modulo_futbol ? '' : (() => { const B = (f.contextos || []).filter(esBloqueP), c = ctxEnSemana(B, lunesDe(hoyISO())); return `<div class="row small" style="gap:8px;flex-wrap:wrap"><span class="grow">🧱 ${c ? `<b>${esc(c.contexto_nombre)}</b> · ${esc(fCtx(c))}` : B.length ? 'Ahora sin bloque con fechas (programa base)' : 'Sin bloques con fechas'}</span>${c ? `<button class="btn sm gold" data-act="bloqueSig" data-id="${c.id}">Terminar y empezar el siguiente</button>` : ''}<button class="btn sm ghost" data-act="bloqueEnt">＋ Nuevo bloque</button></div>`; })()}
     ${e.control && citaRev(a.id) ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow">📅 <b>Revisión mensual ${e.control.n} reservada:</b> ${esc(fLarga(citaRev(a.id).fecha))}${citaRev(a.id).hora ? ' a las ' + esc(hhmm(citaRev(a.id).hora)) : ''}</div></div>` : e.control ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>Toca su revisión mensual ${e.control.n}</b> (${esc(fCorta(e.control.fecha))}): llamada o videollamada de 10-15 minutos para ver cómo se siente, sus objetivos y su composición corporal.</div><button class="btn sm gold" data-act="revision" data-n="${e.control.n}">Registrar revisión</button></div>` : ''}
   </div></section>`;
-  const fb4 = `${semanaFija(srv) ? vSemanasNav(f, a) : vCalPlanCoach(f, a) + vBloqueActual(f, a)}<div style="padding:0 2px"><button class="btn ghost full" data-act="fichaSub" data-s="entreno">Programas, contextos y zonas de FC ›</button></div>${IA.vFicha(f, a)}`;
+  const fb4 = `<div class="fx-ent">${vBloqueTop(f, a)}${srv?.modulo_futbol ? vCalFut(a) : vCalPlanCoach(f, a)}${vSemanasNav(f, a)}<div style="padding:0 2px"><button class="btn ghost full" data-act="fichaSub" data-s="entreno">📚 Bloques, contextos y zonas de FC · histórico y planificación ›</button></div>${IA.vFicha(f, a)}</div>`;
   /* Su diario de comidas (pestaña Nutrición, con fotos) también cuenta como días apuntados */
   const com7 = (f.comidas || []).filter(x => !x.compartido && x.fecha >= ult7 && x.fecha <= hoy), diasCom = new Set([...com7.map(x => x.fecha), ...S.c.diario.filter(r => r.alumno_id === a.id && r.fecha >= ult7 && r.fecha <= hoy && (r.ingestas != null || (r.fotos || []).length)).map(r => r.fecha)]).size;
   const fotos7 = com7.flatMap(x => fotosDe(x)); if (fotos7.length) pedirFotos(fotos7.slice(-6));
@@ -4845,8 +4883,7 @@ function vFichaSub(f, a) {
     const dpwB = f.prog?.dias_semana || 0, dpw = dpwEn(a.id, lunes, dpwB), dpw4 = [0, 1, 2, 3].reduce((t, k) => t + dpwEn(a.id, sumaDias(lunes, -7 * k), dpwB), 0), P = proceso(srv), linea = s2 => `<div class="line" data-act="verSesion" data-id="${s2.id}" style="cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(s2.fecha))}</span><div class="grow"><div class="small"><b>${esc(nomDia(s2.dias))}</b> · ${esc(s2.dias?.foco || '')} · ${nSeriesReg(s2.registros_series)} series${s2.duracion_min ? ` · ${s2.duracion_min} min` : ''}${s2.cansancio ? ` · cansancio ${s2.cansancio}/5` : ''}${(s2.omitidos || []).length ? ` · ${s2.omitidos.length} no realizado${s2.omitidos.length > 1 ? 's' : ''}` : ''}</div>${s2.nota ? `<div class="small muted">"${esc(s2.nota)}"</div>` : ''}</div><span class="small" style="color:var(--blue-text)">›</span></div>`;
     const semana = f.ses.filter(x => x.fecha >= lunes), bloque = P && !P.antes ? f.ses.filter(x => x.fecha >= P.cc.ini && x.fecha <= P.cc.fin && x.fecha < lunes) : [];
     const unicas = l => new Set(l.map(x => x.fecha + x.dia_id)).size, mes = unicas(f.todas.filter(x => x.fecha >= sumaDias(hoy, -27)));
-    return cab('Entrenamiento') + vCambiosPeso(a.id) + vZonasFC({ vals: f.val, perfil: a, srv, coach: true }) + vRitmosVAM({ vals: f.val, perfil: a, coach: true }) + (() => { const h = vSelectorProgs(a.id, null); return h ? `<section class="section"><div class="card">${h}</div></section>` : ''; })() + (srv?.modulo_futbol ? '' : vBloquesEnt(f, a)) + vContextos(f, a) + `
-    <section class="section"><div class="section-head"><h2>Semana patrón</h2><button class="btn sm" data-act="editarPrograma" data-id="${a.id}">${f.prog ? '✎ Editar' : 'Crear programa'}</button></div><div class="card small">${f.prog ? `<b>${esc(f.prog.nombre)}</b> · ${dpw || '—'} días por semana<div class="muted" style="margin-top:4px">Se repite cada semana que no tenga un contexto temporal. Para que una semana que has preparado pase a ser la patrón, pulsa «⭐ Hacerla semana patrón» en su contexto.</div>` : 'Aún no tiene programa.'}</div></section>
+    return cab('Bloques, contextos y zonas de FC') + vBloquesHist(f, a) + vContextos(f, a) + vCambiosPeso(a.id) + vZonasFC({ vals: f.val, perfil: a, srv, coach: true }) + vRitmosVAM({ vals: f.val, perfil: a, coach: true }) + `
     <section class="section"><h2>Esta semana</h2><div class="card">${dpw ? barra('Entrenos de la semana', unicas(semana), dpw, '') + barra('Últimas 4 semanas', mes, dpw4, '') : ''}${semana.map(linea).join('') || '<div class="empty">Aún no ha entrenado esta semana.</div>'}</div></section>
     ${P && !P.antes ? `<section class="section"><h2>Resto del bloque · ${esc(nomCiclo(P.cc))}</h2><div class="card">${bloque.map(linea).join('') || '<div class="empty">Sin entrenamientos anteriores en este bloque.</div>'}</div></section>` : ''}
     ${vLineaTiempo(srv, 'Ciclos de entrenamiento', true, progDeCiclo(f, P))}
@@ -8396,7 +8433,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v380';
+const APP_VER = 'v381';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8845,7 +8882,7 @@ document.addEventListener('click', async e => {
     case 'avisarSemana': b.disabled = true; await avisarSemana(b.dataset.al, b.dataset.l); b.disabled = false; break;
     case 'semAjustar': b.disabled = true; await ajustarSemana(b.dataset.l, !!b.dataset.ant); b.disabled = false; break;
     case 'semCopiar': b.disabled = true; await ajustarSemana(b.dataset.l, false, +b.dataset.src); b.disabled = false; break;
-    case 'fsem': { const aid = S.ficha?.id, L0 = lunesDe(hoyISO()), d = +b.dataset.d, cur = (S.fsem?.aid === aid && S.fsem.l) || L0; S.fsem = { aid, l: d ? sumaDias(cur, 7 * d) : L0 }; render(); break; }
+    case 'fsem': { const aid = S.ficha?.id, L0 = lunesDe(hoyISO()), d = +b.dataset.d, cur = (S.fsem?.aid === aid && S.fsem.l) || L0; S.fsem = { aid, l: d ? sumaDias(cur, 7 * d) : L0 }; if (S.ficha) S.ficha.semFut = S.fsem.l === L0 ? null : S.fsem.l; render(); break; }
     case 'abrirProg': await abrirEditor(S.ficha?.id || S.editor?.alumnoId, +b.dataset.id); break;
     case 'sesionesContexto': await abrirEditor(S.ficha.id, +b.dataset.id); break;
     case 'edBloque': formBloque(b.dataset.id ? +b.dataset.id : null, b.dataset.dia ? +b.dataset.dia : null); break;
