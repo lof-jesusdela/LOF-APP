@@ -2184,9 +2184,9 @@ function vKpisProgreso(med, obj) {
     let meta = '';
     if (o != null && a != null) { const d = a - o, mant = i0 != null && Math.abs(i0 - o) < 0.05;
       const ok = Math.abs(d) < 0.05 || (i0 != null && ((i0 > o && a <= o) || (i0 < o && a >= o)));
-      meta = mant ? (Math.abs(d) <= 1 ? 'Objetivo: mantener · ✓ en ello' : `Objetivo: mantener ${fmtNum(o)}${u}`) : ok ? `Objetivo ${fmtNum(o)}${u} · ✓ conseguido` : `Objetivo ${fmtNum(o)}${u} · a ${fmtNum(Math.abs(d))}${u}`; }
-    return `<div class="pg-kpi"><b class="num">${dl == null ? '—' : (dl > 0 ? '+' : '') + fmtNum(dl)}</b><span class="pg-l">${l}</span>${meta ? `<span class="pg-o">${meta}</span>` : ''}</div>`; };
-  return `<section class="section"><div class="pg-kpis">${kpi('peso', 'kg de peso', ' kg')}${kpi('grasa_pct', '% de grasa', ' %')}${kpi('cintura', 'cm de cintura', ' cm')}</div><p class="small muted" style="margin:8px 0 0">Cambio desde tu primera medición (${esc(fCorta(med[0].fecha))} ${fecha(med[0].fecha).getFullYear()})${obj?.fecha ? ` · objetivo para el ${esc(fCorta(obj.fecha))}` : ''}.</p></section>`;
+      meta = mant ? (Math.abs(d) <= 1 ? '✓ manteniendo tu objetivo' : `a ${fmtNum(Math.abs(d))}${u.trim()} de tu objetivo`) : ok ? '✓ objetivo conseguido' : `a ${fmtNum(Math.abs(d))}${u.trim() === '%' ? ' %' : u} de tu objetivo`; }
+    return `<div class="pg-kpi"><b class="num">${dl == null ? '—' : (dl > 0 ? '+' : '') + fmtNum(dl)}</b>${meta ? `<span class="pg-o">${meta}</span>` : ''}<span class="pg-l">${l}</span></div>`; };
+  return `<section class="section"><h2>Tus medidas</h2><div class="pg-kpis">${kpi('peso', 'kg de peso', ' kg')}${kpi('grasa_pct', '% de grasa', ' %')}${kpi('cintura', 'cm de cintura', ' cm')}</div><p class="small muted" style="margin:8px 0 0">Cambio desde tu primera medición (${esc(fCorta(med[0].fecha))} ${fecha(med[0].fecha).getFullYear()})${obj?.fecha ? ` · objetivo para el ${esc(fCorta(obj.fecha))}` : ''}.</p></section>`;
 }
 /* El resto del objetivo (si Jesús fijó más medidas que peso, grasa y cintura), plegado y discreto */
 function vObjetivoResto(obj, med) {
@@ -8699,7 +8699,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v400';
+const APP_VER = 'v401';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
