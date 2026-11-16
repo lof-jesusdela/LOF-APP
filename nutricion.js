@@ -607,7 +607,7 @@ const Nutricion = (() => {
      registro no son incidencias. Las métricas salen de fechas que la app ya guarda: no se estima ningún ahorro. */
   function colaRevisiones() {
     const c = S.c || {}, hoy = hoyISO(), L = lunesDe(hoy), lAnt = sumaDias(L, -7), out = [];
-    (c.perfiles || []).filter(p => p.activo !== false).forEach(a => {
+    (c.perfiles || []).filter(p => typeof esCliente === 'function' ? esCliente(p) : p.activo !== false).forEach(a => {
       const srv = (c.servicios || []).find(x => x.alumno_id === a.id); if (!srv?.modulo_nutricion || srv.modulo_futbol && !srv.modulo_nutricion) return;
       const plan = c.planNutri?.[a.id] || [], items = [], add = (tipo, motivo, fecha, accion, ir) => items.push({ tipo, motivo, fecha, accion, resp: 'Jesús', ir: ir || { sub: 'alimentacion' } });
       const A = acuerdoDe(plan), inc = plan.find(x => x.clave === 'incorporacion')?.datos || {}, it = inc.items || {}, publicado = plan.some(x => ENTREGAS.some(([k]) => k === x.clave) && x.visible !== false && tiene(x));
