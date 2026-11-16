@@ -35,7 +35,7 @@ const Compromisos = (() => {
     (c.pagos || []).filter(p => p.alumno_id === aid && !p.pagado_at && p.vence < hoy).forEach(p => add('cobro', p.id, { t: 'pago', vence: p.vence, titulo: `${eur0(p.importe)} · ${p.concepto || 'cuota'}`, m: `Pago vencido: ${p.importe} €`, pago: p.id }));
     // Siguiente bloque de entrenamiento: aviso 7 días antes de que termine el último y no hay otro detrás.
     // Se queda hasta que lo creas; mientras tanto el alumno sigue entrenando el último bloque semana a semana (no se queda sin entreno).
-    if (!srv?.modulo_futbol && !pausa) {
+    if (!semanaFija(srv) && !pausa) {
       const B = (c.contextos || []).filter(x => x.alumno_id === aid && esBloqueP(x)).sort((x, y) => x.contexto_hasta.localeCompare(y.contexto_hasta)), u = B[B.length - 1];
       const finProc = (() => { try { const P = proceso(srv); return P && !P.sinFin ? P.ciclos[P.ciclos.length - 1].fin : null; } catch (e) { return null; } })();
       if (u && u.contexto_hasta <= sumaDias(hoy, 7) && !B.some(x => x.contexto_desde > u.contexto_hasta) && !(finProc && finProc <= u.contexto_hasta)) {
