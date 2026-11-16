@@ -274,7 +274,7 @@ function previstosCiclo(cc, aid, base) {
 const fCtx = c => `${fCorta(c.contexto_desde)} – ${fCorta(c.contexto_hasta)}`;
 const semanasCtx = c => Math.round((fecha(c.contexto_hasta) - fecha(c.contexto_desde)) / 6048e5 + 1 / 7);
 function vAvisoContexto() {
-  const c = S.d?.contexto; if (!c || esBloqueP(c)) return '';
+  const c = S.d?.contexto; if (!c || esBloqueP(c) || S.d?.servicio?.modulo_futbol) return '';
   return `<section class="section"><div class="card ctx-aviso"><span class="pill gold">Semana adaptada</span><div class="grow"><b>${esc(c.contexto_nombre || 'Contexto especial')}</b><div class="small muted">${c.dias_semana} ${c.dias_semana === 1 ? 'entreno' : 'entrenos'} por semana · ${esc(fCtx(c))}. Tu progreso se mide con este plan: cumplirlo es el 100 %.</div></div></div></section>`;
 }
 
@@ -646,7 +646,7 @@ function vBarraIngestas(diario, srv) {
 /* Menú del logo: «Tu semana» (calendario + reporting) y «Tu programa» (proceso de acompañamiento) */
 function vTuSemanaAl() {
   const s = S.d.servicio || {};
-  return `<section class="stack"><span class="eyebrow">Construyendo tu Prime</span><h1>Cómo va tu semana</h1></section>${s.modulo_futbol ? '' : vSemanaAnillos(s)}${s.modulo_futbol ? vCalFutAlumno() : vCalPlanAlumno()}${s.modulo_futbol ? '' : vUltimos7()}`;
+  return `<section class="stack"><span class="eyebrow">Construyendo tu Prime</span><h1>Cómo va tu semana</h1></section>${s.modulo_futbol ? '' : vSemanaAnillos(s)}${s.modulo_futbol ? vCalFutAlumno() : vCalPlanAlumno()}${s.modulo_futbol ? (() => { const ini = sumaDias(hoyISO(), -6); return vSemanaFutbol(ini, semana(ini), S.d.programa); })() : vUltimos7()}`;
 }
 function vTuProgramaAl() {
   const s = S.d.servicio || {}, p = S.d.programaBase || S.d.programa;
@@ -1163,10 +1163,10 @@ function vHoy() {
   ${esWeekCard()}
   ${vPendientesHoy(s)}
   ${!/Hoy toca descanso/.test(toca) || /Continuar donde lo dejaste/.test(toca) ? `<section class="section"><h2>Lo que toca hoy</h2><div class="card">${toca.replace(/<div class="line"><div class="ico">(?:(?!<div class="line).)*Hoy toca descanso[^]*$/s, '')}</div></section>` : ''}
-  ${s.modulo_futbol ? vFutbolHoy() + vSemanaFutbol(ini, w, p) + (s.modulo_habitos ? Habitos.tarjetaHoy(false) : '') : vRegistroDia(s)}
+  ${s.modulo_futbol ? vFutbolHoy() + (s.modulo_habitos ? Habitos.tarjetaHoy(false) : '') : vRegistroDia(s)}
   ${s.oposicion ? Oposicion.tarjeta(false) : ''}
   ${Acomp.ultimaIndicacion()}
-  ${vProximamente(s)}
+  ${s.modulo_futbol ? '' : vProximamente(s)}
   ${vCheckinTarjeta()}
   ${MenuSemana.tarjeta()}
   ${avisoAl('fotos') ? Casos.tarjetaHoy(false) : ''}
@@ -1201,9 +1201,9 @@ function vEntreno() {
   const hechoSemana = id => { const l = S.d.sesiones.filter(s => s.dia_id === id && s.fecha >= lunes); return l.find(esCompleta) || l[l.length - 1] || null; };
   const P = proceso(S.d.servicio), Pn = P && !P.antes ? S.d.sesiones.filter(x => x.fecha >= P.cc.ini && x.fecha <= P.cc.fin).length : null;
   return como + `<section class="stack"><span class="eyebrow">${esc(p.nombre)}</span><h1>Entreno</h1>${P && !P.antes && !P.fuera ? `<div class="row" style="flex-wrap:wrap;gap:6px"><span class="pill blue">Ciclo ${P.ciclo}</span><span class="pill gold">Semana ${P.semCiclo} de ${P.cc.sem}</span><span class="pill">${Pn} ${(S.d.programaBase || p).dias_semana ? 'de ' + previstosCiclo(P.cc, S.d.uid, (S.d.programaBase || p).dias_semana) + ' ' : ''}entrenos del ciclo</span></div>` : ''}</section>
-  ${S.d.servicio?.modulo_futbol ? vCalFutAlumno() : vCalPlanAlumno()}${vEntrenoHoy()}${vAvisoContexto()}<section class="section"><h2>Tus entrenos</h2><div class="card">${p.dias.map(d => { const ab = !(d.tipo_dia === 'descanso' && !d.bloques_sesion.length); return `<div class="wk ${esDia(d, hoyN) ? 'today' : ''}${ab ? ' wk-ab' : ''}"${ab ? ` data-act="abrirDia" data-id="${d.id}" role="button" tabindex="0"` : ''}><span class="d">${esc(/^d[ií]a (\d+)/i.test(d.nombre || '') ? 'D' + d.nombre.match(/\d+/)[0] : d.nombre.slice(0, 3))}</span><div class="grow"><h3>${esc(d.titulo || d.foco || d.nombre)}</h3>${tipoDiaDe(d) ? `<span class="pill ${conPartido(d) ? 'gold' : ''}" style="margin:2px 0">${tipoDiaDe(d)[2]} ${tipoDiaDe(d)[1]}</span>` : ''}${conPartido(d) ? (() => { const pt = partidoDelDia(d, S.d.partidos); return pt ? `<div class="small"><b>vs ${esc(pt.rival || 'rival')}</b>${pt.hora ? ' · ' + esc(String(pt.hora).slice(0, 5)) : ''}${pt.lugar ? ' · ' + esc(pt.lugar) : ''}</div>` : ''; })() : ''}<div class="small muted">${esc(estTxt(d))}</div></div>${pillSesion(hechoSemana(d.id))}${ab ? '<span class="wk-ir">›</span>' : ''}</div>`; }).join('')}</div></section>
+  ${S.d.servicio?.modulo_futbol ? vCalFutAlumno() : vCalPlanAlumno()}${vEntrenoHoy()}${vAvisoContexto()}<section class="section"><h2>Tus entrenos</h2>${S.d.servicio?.modulo_futbol ? `<details class="card fx-ban"><summary><span class="fx-ban-ic">🏋️</span><span class="grow"><b>${p.dias.filter(d => !(d.tipo_dia === 'descanso' && !d.bloques_sesion.length)).length} entrenos</b><span class="small muted"> · toca para verlos</span></span></summary>` : ''}<div class="card${S.d.servicio?.modulo_futbol ? ' fx-in' : ''}">${p.dias.map(d => { const ab = !(d.tipo_dia === 'descanso' && !d.bloques_sesion.length); return `<div class="wk ${esDia(d, hoyN) ? 'today' : ''}${ab ? ' wk-ab' : ''}"${ab ? ` data-act="abrirDia" data-id="${d.id}" role="button" tabindex="0"` : ''}><span class="d">${esc(/^d[ií]a (\d+)/i.test(d.nombre || '') ? 'D' + d.nombre.match(/\d+/)[0] : d.nombre.slice(0, 3))}</span><div class="grow"><h3>${esc(d.titulo || d.foco || d.nombre)}</h3>${tipoDiaDe(d) ? `<span class="pill ${conPartido(d) ? 'gold' : ''}" style="margin:2px 0">${tipoDiaDe(d)[2]} ${tipoDiaDe(d)[1]}</span>` : ''}${conPartido(d) ? (() => { const pt = partidoDelDia(d, S.d.partidos); return pt ? `<div class="small"><b>vs ${esc(pt.rival || 'rival')}</b>${pt.hora ? ' · ' + esc(String(pt.hora).slice(0, 5)) : ''}${pt.lugar ? ' · ' + esc(pt.lugar) : ''}</div>` : ''; })() : ''}<div class="small muted">${esc(estTxt(d))}</div></div>${pillSesion(hechoSemana(d.id))}${ab ? '<span class="wk-ir">›</span>' : ''}</div>`; }).join('')}</div>${S.d.servicio?.modulo_futbol ? '</details>' : ''}</section>
   ${vAlternativos(hechoSemana)}
-  ${(() => { const z = vZonasFC() + vRitmosVAM(); return z ? `<section class="section" style="margin-bottom:-12px"><h2>Tus zonas</h2></section>${z}` : ''; })()}
+  ${(() => { const z = vZonasFC() + vRitmosVAM(); return !z ? '' : S.d.servicio?.modulo_futbol ? `<section class="section"><h2>Tus zonas</h2><details class="card fx-ban"><summary><span class="fx-ban-ic">🫀</span><span class="grow"><b>Zonas de frecuencia cardiaca y ritmos</b><span class="small muted"> · toca para verlas</span></span></summary><div class="fx-in">${z}</div></details></section>` : `<section class="section" style="margin-bottom:-12px"><h2>Tus zonas</h2></section>${z}`; })()}
   ${(() => { const t = vLineaTiempo(S.d.servicio, 'Tus ciclos de entrenamiento', false, p); if (!t) return ''; const P2 = proceso(S.d.servicio);
     return `<section class="section"><h2>Tus ciclos</h2><details class="card fx-ban"><summary><span class="fx-ban-ic">🧱</span><span class="grow"><b>${P2 && !P2.antes && !P2.fuera ? `Ciclo ${P2.ciclo} de ${P2.ciclos.length} · semana ${P2.semCiclo} de ${P2.cc.sem}` : 'Tus ciclos de entrenamiento'}</b>${P2 && !P2.antes && !P2.fuera ? `<span class="small muted"> · ${P2.sinFin ? '' : Math.round(P2.pctTotal) + ' % del proceso'}</span><div class="track" style="margin-top:6px"><i style="width:${Math.round(Math.min(100, (P2.semCiclo / P2.cc.sem) * 100))}%"></i></div>` : ''}</span></summary><div class="fx-ban-in">${t}</div></details></section>`; })()}
   `;
@@ -3372,7 +3372,7 @@ function vSemanasNav(f, a) {
       <div class="row" style="gap:8px;flex-wrap:wrap;justify-content:center"><span class="pill ${estado[0]}">${estado[1]}</span>${aj ? `<span class="small muted">${esc(aj.contexto_nombre || '')}</span>` : ''}</div>
       ${dias.length ? tilesDias(pr, dias) : '<div class="empty">Sin entrenamientos en esta semana.</div>'}
       ${acciones || (!pasada && Clip.hay()) ? `<div class="row" style="gap:8px;flex-wrap:wrap">${acciones}${!pasada && Clip.hay() ? `<button class="btn sm gold" data-act="semPegar" data-l="${l}">📥 Pegar aquí «${esc(Clip.hay().tipo === 'dia' ? Clip.hay().nombre : Clip.hay().nombre)}»</button>` : ''}</div>` : ''}
-      ${fija && !pasada && rel <= 1 ? `<button class="btn sm gold" data-act="avisarSemana" data-al="${a.id}" data-l="${l}" style="align-self:flex-start">🔔 Avisar a ${esc(nom)}: semana lista</button>` : ''}
+      ${fija && !pasada && rel <= 1 ? `<button class="btn sm gold" data-act="avisarSemana" data-al="${a.id}" data-l="${l}" style="align-self:flex-start">💬 Avisar a ${esc(nom)}: semana lista</button>` : ''}
       <p class="note" style="margin:0">${pasada ? 'Semana pasada: se ve tal como la hizo. Para reutilizarla, cópiala a esta semana o a la próxima.' : aj ? 'Lo que cambies aquí solo afecta a esta semana. La semana patrón y las demás semanas no cambian.' : (fija ? 'Esta semana repite la semana patrón del bloque. Si algo cambia (partido, carga, mover un entreno), pulsa «Modificar solo esta semana».' : 'Esta semana entrena su bloque tal cual. Si algo cambia solo esta semana, pulsa «Modificar solo esta semana».')}</p>
     </div>
     </section>`;
@@ -3582,27 +3582,51 @@ function vFutbolHoy() {
       <button class="btn sm ghost" data-act="partido" style="align-self:flex-start">＋ Añadir partido</button>
     </div></section>`;
 }
+/* «Liga · Jornada 12» → { tipo: 'Liga', jornada: 12 } (sin columna nueva: va en «competicion») */
+const compDe = c => { const t = String(c || ''); const j = t.match(/jornada\s*(\d+)/i); return { tipo: /copa/i.test(t) ? 'Copa' : /amist/i.test(t) ? 'Amistoso' : 'Liga', jornada: j ? +j[1] : null }; };
 function formPartido(id, alumnoId, fechaDef = null) {
   const lista = alumnoId ? (S.c.partidos || []) : (S.d.partidos || []), p = id ? lista.find(x => x.id === id) || {} : {};
   abrirSheet(`<form class="stack" id="f-pt"><h2>${id ? 'Partido' : 'Nuevo partido'}</h2>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Fecha<input type="date" id="pt-f" value="${p.fecha || fechaDef || ''}" required></label><label class="f">Hora${inHora('pt-h', p.hora)}</label></div>
-    <label class="f">Rival<input type="text" id="pt-r" value="${esc(p.rival || '')}" placeholder="Ej. Rayo B"></label>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">¿Dónde?<select id="pt-l"><option value="1" ${p.local !== false ? 'selected' : ''}>En casa</option><option value="0" ${p.local === false ? 'selected' : ''}>Fuera</option></select></label><label class="f">Competición<input type="text" id="pt-c" value="${esc(p.competicion || '')}" placeholder="Liga, Copa, amistoso…"></label></div>
+    <label class="f">Rival<input type="text" id="pt-r" list="pt-rl" value="${esc(p.rival || '')}" placeholder="Ej. Rayo B" autocomplete="off"><datalist id="pt-rl">${[...new Set((S.c?.partidos || S.d?.partidos || []).map(x => x.rival).filter(Boolean))].sort().map(r => `<option value="${esc(r)}">`).join('')}</datalist></label>
+    <div class="small muted" id="pt-auto" hidden></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">¿Dónde?<select id="pt-l"><option value="1" ${p.local !== false ? 'selected' : ''}>En casa</option><option value="0" ${p.local === false ? 'selected' : ''}>Fuera</option></select></label><label class="f">Tipo de partido<select id="pt-c">${['Liga', 'Copa', 'Amistoso'].map(v => `<option ${compDe(p.competicion).tipo === v ? 'selected' : ''}>${v}</option>`).join('')}</select></label></div>
+    <label class="f" id="pt-jw">Jornada<select id="pt-j">${[...Array(34)].map((_, i) => `<option value="${i + 1}">Jornada ${i + 1}</option>`).join('')}</select></label>
     <label class="f">Lugar<input type="text" id="pt-lu" value="${esc(p.lugar || '')}" placeholder="Ej. Estadio Pradoviejo"></label>
     <label class="f">Descripción (la ve el jugador)<textarea id="pt-de" rows="2" placeholder="Ej. Partido clave: sal a activarte 45 minutos antes">${esc(p.descripcion || '')}</textarea></label>
     ${!alumnoId ? '' : `<div class="row" style="gap:10px;align-items:center">${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="" style="width:56px;height:56px;border-radius:12px;object-fit:cover">` : ''}<label class="btn sm ghost"><input type="file" id="pt-img" accept="image/*" hidden>📷 ${p.imagen_url ? 'Cambiar imagen' : 'Añadir imagen (escudo, cartel…)'}</label><span class="small muted" id="pt-imgn"></span></div>`}
     <label class="f">Nivel del rival<select id="pt-n">${['', 'Fácil', 'Igualado', 'Exigente'].map(v => `<option ${v === (p.nivel || '') ? 'selected' : ''} value="${v}">${v || '—'}</option>`).join('')}</select></label>
     <button class="btn full" type="submit">Guardar</button>${id ? '<button class="btn ghost full" type="button" id="pt-del" style="color:var(--bad)">Eliminar partido</button>' : ''}</form>`);
   $('#pt-img')?.addEventListener('change', ev => { $('#pt-imgn').textContent = ev.target.files[0] ? ev.target.files[0].name : ''; });
+  /* Memoria de partidos: escudo del rival, campo propio (en casa) o del rival (fuera) y la siguiente jornada de liga */
+  const todos = (S.c?.partidos?.length ? S.c.partidos : S.d?.partidos || []).filter(x => x.id !== id), aid0 = alumnoId || uidSes(), auto = { img: null };
+  const mios = todos.filter(x => x.alumno_id === aid0).sort((x, y) => (y.fecha || '').localeCompare(x.fecha || ''));
+  const recuerda = () => {
+    const r = norm($('#pt-r').value.trim()), local = $('#pt-l').value === '1', msg = [];
+    const vs = r ? todos.filter(x => norm(x.rival || '') === r).sort((x, y) => (y.fecha || '').localeCompare(x.fecha || '')) : [];
+    auto.img = p.imagen_url || vs.find(x => x.imagen_url)?.imagen_url || null;
+    if (!p.imagen_url && auto.img) msg.push(`🛡️ Escudo de ${$('#pt-r').value.trim()} puesto de un partido anterior`);
+    const lu = $('#pt-lu'); if (!lu.dataset.man) { const v = local ? mios.find(x => x.local !== false && x.lugar)?.lugar : vs.find(x => x.local === false && x.lugar)?.lugar; if (v) { lu.value = v; msg.push(`📍 Campo: ${v}`); } else if (!p.lugar) lu.value = ''; }
+    const box = $('#pt-auto'); box.hidden = !msg.length; box.innerHTML = msg.map(esc).join('<br>') + (auto.img && !p.imagen_url ? ` <img src="${esc(auto.img)}" alt="" style="width:32px;height:32px;border-radius:8px;object-fit:cover;vertical-align:middle">` : '');
+  };
+  const jornada = () => { const liga = $('#pt-c').value === 'Liga'; $('#pt-jw').hidden = !liga; if (!liga) return;
+    const prevJ = mios.filter(x => x.fecha < ($('#pt-f').value || '9999') && compDe(x.competicion).jornada).map(x => compDe(x.competicion).jornada)[0];
+    $('#pt-j').value = String(compDe(p.competicion).jornada || Math.min(34, (prevJ || 0) + 1)); };
+  $('#pt-lu').addEventListener('input', e => { e.target.dataset.man = e.target.value ? '1' : ''; });
+  if (p.lugar) $('#pt-lu').dataset.man = '1';
+  $('#pt-r').addEventListener('change', recuerda); $('#pt-r').addEventListener('input', () => { if (todos.some(x => norm(x.rival || '') === norm($('#pt-r').value.trim()))) recuerda(); });
+  $('#pt-l').addEventListener('change', recuerda); $('#pt-c').addEventListener('change', jornada); $('#pt-f').addEventListener('change', jornada);
+  recuerda(); jornada();
   const recargar = async () => { if (alumnoId) { await cargarFutbolCoach(); } else await cargarFutbol(S.user.id, S.d); cerrarSheet(); render(); };
   $('#pt-del')?.addEventListener('click', async () => { if (!confirm('¿Eliminar este partido?')) return; const { error } = await sb.from('partidos').delete().eq('id', id); if (error) return fallo(error); toast('Partido eliminado'); recargar(); });
   $('#f-pt').addEventListener('submit', async e => {
     e.preventDefault();
     const hP = normHora($('#pt-h').value); if (hP === undefined) return toast('Hora no válida: escríbela así, 17:00 o 9:30');
-    const row = { alumno_id: alumnoId || uidSes(), fecha: $('#pt-f').value, hora: hP, rival: $('#pt-r').value.trim() || null, local: $('#pt-l').value === '1', competicion: $('#pt-c').value.trim() || null, nivel: $('#pt-n').value || null };
+    const row = { alumno_id: alumnoId || uidSes(), fecha: $('#pt-f').value, hora: hP, rival: $('#pt-r').value.trim() || null, local: $('#pt-l').value === '1', competicion: $('#pt-c').value === 'Liga' ? `Liga · Jornada ${$('#pt-j').value}` : $('#pt-c').value, nivel: $('#pt-n').value || null };
     const lu = $('#pt-lu').value.trim(), de = $('#pt-de').value.trim(), fi = $('#pt-img')?.files[0];
     if (lu || p.lugar) row.lugar = lu || null; if (de || p.descripcion) row.descripcion = de || null;
     if (fi) { try { row.imagen_url = await subirImagenEj(fi, `partido-${Date.now()}`, 600); } catch (err) { console.error(err); return toast(motivoImg(err)); } }
+    else if (!p.imagen_url && auto.img) row.imagen_url = auto.img;
     let { error } = id ? await sb.from('partidos').update(row).eq('id', id) : await sb.from('partidos').insert(row);
     if (error && /lugar|descripcion|imagen_url/.test(error.message || '')) { delete row.lugar; delete row.descripcion; delete row.imagen_url; ({ error } = id ? await sb.from('partidos').update(row).eq('id', id) : await sb.from('partidos').insert(row)); if (!error) toast('Guardado sin lugar, imagen ni descripción: falta ejecutar el Bloque 49'); }
     if (error) return fallo(error, /partidos/.test(error.message || '') ? 'Falta ejecutar el Bloque 21 en Supabase.' : undefined);
@@ -4045,16 +4069,21 @@ async function hacerPatron(id) {
     toast('Hecho: es su semana patrón'); await recargarContextosCoach(); await cargarProgramasFicha(f); render();
   } catch (err) { fallo(err, 'No se ha podido cambiar la semana patrón.'); }
 }
+/* «Avisar»: mensaje de Jesús en el chat (tono personal, no una notificación del sistema). Llega al móvil como «Jesús te ha enviado un mensaje» */
 async function avisarSemana(alumnoId, lunes) {
-  try {
-    const nom = (S.c.perfiles.find(p => p.id === alumnoId)?.nombre || 'el jugador').split(' ')[0];
-    const reg = { alumno_id: alumnoId, tipo: 'semana', semana_inicio: lunes, titulo: 'Tu semana está lista', cuerpo: 'Jesús ya te ha preparado tu semana de entreno. Échale un vistazo.' };
-    await sb.from('avisos').update({ visto_at: new Date().toISOString() }).eq('alumno_id', alumnoId).eq('tipo', 'semana').is('visto_at', null);
-    const { error } = await sb.from('avisos').insert(reg); if (error) throw error;
-    const r = await sb.functions.invoke('enviar-aviso', { body: { alumno_ids: [alumnoId], titulo: reg.titulo, cuerpo: reg.cuerpo, url: './' } });
-    if (r.error || r.data?.error) { toast(`Aviso dejado en la app de ${nom}. El envío al móvil no está configurado todavía`); return; }
-    toast(r.data?.enviados ? `Aviso enviado al móvil de ${nom}` : `Aviso dejado en la app de ${nom}. Aún no ha activado las notificaciones`);
-  } catch (err) { fallo(err, /avisos|relation/.test(err?.message || '') ? 'Falta ejecutar el Bloque 69 en Supabase.' : 'No se ha podido enviar el aviso.'); }
+  const nom = (S.c.perfiles.find(p => p.id === alumnoId)?.nombre || '').split(' ')[0];
+  const fin = sumaDias(lunes, 6), pt = (S.c.partidos || []).filter(x => x.alumno_id === alumnoId && x.fecha >= lunes && x.fecha <= fin).sort((x, y) => x.fecha.localeCompare(y.fecha))[0];
+  const dia = pt ? DIAS[fecha(pt.fecha).getDay()] : '', esta = lunes <= hoyISO();
+  const extra = pt ? ` La he montado pensando en el partido del ${dia}${pt.rival ? ` contra el ${pt.rival}` : ''}, para que llegues fresco y con chispa.` : ' La he cuadrado con lo que tienes con el equipo.';
+  const V = [
+    `¡Ey ${nom}! Ya tienes tu semana lista en la app.${extra} Échale un ojo y si algo no te cuadra me dices por aquí 💪`,
+    `${nom}, te acabo de dejar preparada tu semana${esta ? '' : ' que viene'}.${extra} Cualquier duda o molestia, escríbeme por aquí y lo ajustamos.`,
+    `¡Hola ${nom}! Tu semana ya está montada.${extra} Ve mirándola y me cuentas qué tal 👊`
+  ];
+  const txt = V[Math.floor(Math.random() * V.length)];
+  if (!confirm(`Se le enviará por el chat:\n\n«${txt}»\n\n¿Lo envío?`)) return;
+  try { await Consultas.mensajeJesus(alumnoId, txt); toast(`Mensaje enviado a ${nom} por el chat`); render(); }
+  catch (err) { fallo(err, 'No se ha podido enviar el mensaje.'); }
 }
 function vSemanasFutbol(a) {
   const f = S.ficha; if (!f || f.id !== a.id) return '';
@@ -4065,7 +4094,7 @@ function vSemanasFutbol(a) {
     ${(() => { const dup = []; (f.contextos || []).forEach((x, i, l) => l.slice(i + 1).forEach(y => { if (x.contexto_desde <= y.contexto_hasta && y.contexto_desde <= x.contexto_hasta) dup.push([x, y]); })); return dup.map(([x, y]) => `<div class="aprox small" style="border-color:var(--bad)">⚠️ Hay <b>dos semanas ajustadas</b> que se cruzan: «${esc(x.contexto_nombre)}» (nº ${x.id}) y «${esc(y.contexto_nombre)}» (nº ${y.id}). El jugador solo ve una. Abre la que no quieras y elimínala. <span class="row" style="gap:6px;margin-top:6px"><button class="btn sm ghost" data-act="sesionesContexto" data-id="${x.id}">✎ Nº ${x.id}</button><button class="btn sm ghost" data-act="sesionesContexto" data-id="${y.id}">✎ Nº ${y.id}</button><button class="btn sm ghost" data-act="editarContexto" data-id="${x.id}">Eliminar nº ${x.id}…</button><button class="btn sm ghost" data-act="editarContexto" data-id="${y.id}">Eliminar nº ${y.id}…</button></span></div>`).join(''); })()}
     ${semanas.map(([l, et]) => { const c = ctxEnSemana(f.contextos, l), ant = ctxEnSemana(f.contextos, sumaDias(l, -7));
       return `<div class="line" style="flex-wrap:wrap;gap:6px"><div class="grow" style="min-width:170px"><b>${et}</b> <span class="small muted">· del ${esc(fCorta(l))} al ${esc(fCorta(sumaDias(l, 6)))}</span><div class="small ${c ? '' : 'muted'}">${c ? '✓ Ajustada: ' + esc(c.contexto_nombre || '') : 'Con el programa base'}</div></div>
-      <button class="btn sm gold" data-act="avisarSemana" data-al="${a.id}" data-l="${l}">🔔 Avisar: semana lista</button>${c ? `<button class="btn sm ghost" data-act="sesionesContexto" data-id="${c.id}">✎ Editar sus sesiones</button>` : `<button class="btn sm" data-act="semAjustar" data-l="${l}">Ajustar esta semana</button>${ant ? `<button class="btn sm ghost" data-act="semAjustar" data-l="${l}" data-ant="1">Duplicar la anterior</button>` : ''}`}</div>`; }).join('')}
+      <button class="btn sm gold" data-act="avisarSemana" data-al="${a.id}" data-l="${l}">💬 Avisar: semana lista</button>${c ? `<button class="btn sm ghost" data-act="sesionesContexto" data-id="${c.id}">✎ Editar sus sesiones</button>` : `<button class="btn sm" data-act="semAjustar" data-l="${l}">Ajustar esta semana</button>${ant ? `<button class="btn sm ghost" data-act="semAjustar" data-l="${l}" data-ant="1">Duplicar la anterior</button>` : ''}`}</div>`; }).join('')}
     ${hechas.length ? `<div class="small muted">Semanas ajustadas: ${hechas.map(c => `<button class="pill" data-act="sesionesContexto" data-id="${c.id}">${esc(fCorta(c.contexto_desde))}</button>`).join(' ')}</div>` : ''}</div></section>`;
 }
 /* Calendario semanal del jugador: toca un día y ves lo que rellenó */
@@ -8740,7 +8769,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v405';
+const APP_VER = 'v406';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
