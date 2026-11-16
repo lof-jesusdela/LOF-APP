@@ -925,7 +925,7 @@ const Bienvenida = {
   reciente() { const c = S.perfil?.consentimiento_at; return !!c && c.slice(0, 10) >= sumaDias(hoyISO(), -28); },
   pantallas() {
     const s = S.d?.servicio || {}, P = proceso(s), p = S.d?.programaBase || S.d?.programa, dpw = p?.dias_semana || p?.dias?.length || 0, fF = iso => fecha(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' });
-    const mods = [(s.modulo_entreno ?? true) && 'entrenamiento personalizado', s.modulo_nutricion && 'plan de alimentación', (s.modulo_presencial || s.sesiones_incluidas) && `${s.sesiones_incluidas ? s.sesiones_incluidas + ' ' : ''}sesiones presenciales con Jesús`, s.valoracion_inicial && 'valoración inicial presencial', s.valoracion_final && 'valoración final comparativa', s.modulo_futbol && 'seguimiento de futbolista (Élite Player)', 'hábitos'].filter(Boolean);
+    const mods = [(s.modulo_entreno ?? true) && 'entrenamiento personalizado', s.modulo_nutricion && 'plan de alimentación', (s.modulo_presencial || s.sesiones_incluidas) && `${s.sesiones_incluidas ? s.sesiones_incluidas + ' ' : ''}entrenamientos personales con Jesús`, s.valoracion_inicial && 'valoración inicial presencial', s.valoracion_final && 'valoración final comparativa', s.modulo_futbol && 'seguimiento de futbolista (Élite Player)', s.modulo_habitos && 'programa de hábitos'].filter(Boolean);
     const fin = finProceso(P);
     return [
       ['🎯', 'Lo que has contratado', `<p><b>${esc(s.producto || 'Tu proceso de acompañamiento')}</b>${s.duracion_semanas ? ` · ${s.duracion_semanas} semanas` : ''}.</p>${s.inicio ? `<p class="small">Empieza el ${esc(fF(s.inicio))}${fin ? ` y termina el ${esc(fF(fin))}` : ''}${P && !P.antes && !P.fuera && !P.sinFin ? `. Ahora estás en la semana ${P.semana} de ${P.total}` : ''}.</p>` : ''}<p class="small">Incluye: ${esc(mods.join(', '))}.</p>${objetivoDe(S.d?.ruta) ? `<div class="aprox small"><b>Tu objetivo:</b> ${esc(objetivoDe(S.d.ruta))}</div>` : ''}`],
@@ -5361,7 +5361,7 @@ function formServicio() {
     <div class="aprox stack small" id="sv-cambio" style="gap:8px" hidden><span id="sv-cambio-t"></span>
       <label class="row" style="gap:8px"><input type="checkbox" id="sv-cmb" checked style="width:20px;height:20px;flex:none"> <span>Es un cambio de programa: guardar el anterior en su historial</span></label>
       <label class="f" id="sv-cmbf-w">El nuevo programa empezó el<input type="date" id="sv-cmbf" value="${hoyISO()}"></label></div>
-    <div class="card stack" style="padding:12px;gap:10px"><b class="small">Tipo de programa</b>
+    <div class="card stack" style="padding:12px;gap:10px"><b class="small">Tipo de programa${s.id ? ' · ajústalo a medida' : ''}</b>${s.id ? `<span class="small muted" style="margin-top:-6px">Cambia la modalidad, los meses, los entrenamientos, las valoraciones o lo que lleva sin crear un programa nuevo: no toca su tarifa ni sus pagos. El reporting usa la modalidad (online, híbrido o presencial) y el alumno ve justo lo que dejes aquí.</span>` : ''}
       <div class="chips" id="sv-mod">${Object.entries(TIPOS_PROG).map(([k, l]) => `<button type="button" class="pill" data-v="${k}">${l}</button>`).join('')}</div>
       <div class="chips" id="sv-ptipo" hidden><button type="button" class="pill" data-v="bono">Bono de sesiones</button><button type="button" class="pill" data-v="plan">Plan con objetivos (3, 6 o 10 meses)</button></div>
       <div class="stack" id="sv-modulos-w" style="gap:4px" hidden><span class="small muted">Lleva</span><div class="chips" id="sv-lleva"><button type="button" class="pill" data-v="ent">Entrenamiento</button><button type="button" class="pill" data-v="ali">Alimentación</button><button type="button" class="pill" data-v="ambas">Ambas</button></div></div>
@@ -5472,7 +5472,10 @@ function formServicio() {
   };
   $('#sv-cmb').addEventListener('change', aplicaTarifa); $('#sv-cmbf').addEventListener('change', aplicaTarifa);
   $('#sv-p0').value = s.inicio && s.inicio >= hoyISO() ? s.inicio : ($('#sv-ini').value || hoyISO());
-  $('#sv-genp').checked = !s.id || !((S.c.pagos || []).filter(x => x.alumno_id === S.ficha.id && !x.pagado_at).length);
+  /* Editar un servicio que ya existe NO crea pagos nuevos salvo que cambies de tarifa (los ajustes a medida no tocan lo cobrado) */
+  const sinPend = () => !((S.c.pagos || []).filter(x => x.alumno_id === S.ficha.id && !x.pagado_at).length);
+  $('#sv-genp').checked = !s.id;
+  $('#sv-tar').addEventListener('change', () => { if (s.id) $('#sv-genp').checked = ($('#sv-tar').value || '') !== (s.tarifa || '') && sinPend(); });
   $('#sv-tar').addEventListener('change', aplicaTarifa); ['#sv-mn', '#sv-mp', '#sv-mc', '#sv-m0'].forEach(q => $(q).addEventListener('input', pintaMano));
   $('#sv-forma').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; pg.forma = b.dataset.v; if (tarifa()?.bonusUnico) aplicaTarifa(); else pintaPago(); });
   ['#sv-b24', '#sv-xali'].forEach(q => $(q).addEventListener('change', aplicaTarifa));
@@ -8334,7 +8337,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v371';
+const APP_VER = 'v372';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
