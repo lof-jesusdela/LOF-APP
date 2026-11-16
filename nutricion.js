@@ -297,7 +297,7 @@ const Nutricion = (() => {
         ${ops.length ? `<span class="eyebrow">3 · Opciones de tu plan</span>${ops.slice(0, S.nOpsTodas ? 99 : 3).map(o => `<div class="nu-op"><b class="small">${esc(o.n || 'Opción')}</b>${(o.ingr || []).length ? `<ul class="small">${o.ingr.map(x => `<li>${esc(x.n)}${x.q ? ' · ' + cantTxt(x.n, x.q) : ''}</li>`).join('')}</ul>` : ''}${o.prep ? `<div class="small muted">${esc(o.prep)}</div>` : ''}</div>`).join('')}${ops.length > 3 && !S.nOpsTodas ? `<button class="linkbtn small" data-act="nuOpsTodas" style="align-self:flex-start">Ver las ${ops.length} opciones</button>` : ''}`
           : mImg ? `<p class="small" style="margin:0">Tus opciones para esta comida están en las láminas de tus menús.</p><button class="btn sm ghost" data-act="nuDoc" data-k="menus" style="align-self:flex-start">🍽️ Ver mis menús</button>` : '<p class="small muted" style="margin:0">Aún no tienes menús escritos para esta comida: monta tu plato con la calculadora o con tus equivalencias.</p>'}
         <span class="eyebrow">4 · ¿Quieres cambiar algo?</span>
-        <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="nuCalc" data-ctx="${i}" data-k="${k}">🧮 Monta otra comida con estas cantidades</button>${tiene(docDe(n, 'equivalencias')) ? `<button class="btn sm ghost" data-act="nuEqIng" data-k="${k}">✋ Equivalencias de ${esc(it.n.toLowerCase())}</button>` : ''}</div></div>
+        <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="nuCalc" data-ctx="${i}" data-k="${k}">🧮 Calculadora de cantidades</button>${tiene(docDe(n, 'equivalencias')) ? `<button class="btn sm ghost" data-act="nuEqIng" data-k="${k}">✋ Equivalencias de ${esc(it.n.toLowerCase())}</button>` : ''}</div></div>
       ${dev ? `<div class="nu-dev small"><span class="eyebrow">5 · Tu prioridad ahora</span><div>${esc(dev.prioridad || dev.ajuste)}</div><span class="muted">Jesús · revisión de la semana del ${esc(fCorta(dev.semana_inicio))}</span></div>` : ''}
       <div class="row" style="gap:8px;flex-wrap:wrap">${ir('menus', '🍽️ Todos mis menús')}${ir('platos', '🥗 Montar un plato')}</div></div></section>`;
   }
@@ -812,6 +812,21 @@ const Nutricion = (() => {
     ['Jamón york en lonchas (listo para comer)', 100, 18, 1.5, 2.5, 'P', ['loncha', 'lonchas', 20]],
     ['Soja en grano cocida', 170, 17, 10, 9, 'P', ['taza', 'tazas', 190]],
     ['Edamame cocido y desgranado', 121, 12, 9, 5, 'P', ['taza', 'tazas', 155]],
+    ['Muslo o contramuslo de pollo sin piel en crudo', 120, 19.5, 0, 4.5, 'P', ['muslo', 'muslos', 100]],
+    ['Carne picada de ternera magra (≤ 5 % grasa) en crudo', 135, 21, 0, 5.5, 'P', ['ración tamaño palma', 'raciones tamaño palma', 130]],
+    ['Carne picada mixta (cerdo y ternera) en crudo', 230, 17, 0, 18, 'P', ['ración tamaño palma', 'raciones tamaño palma', 130]],
+    ['Hamburguesa de ternera fresca en crudo', 215, 17, 2, 15, 'P', ['hamburguesa', 'hamburguesas', 110]],
+    ['Hamburguesa de pollo o pavo fresca en crudo', 140, 17, 3, 6.5, 'P', ['hamburguesa', 'hamburguesas', 100]],
+    ['Solomillo de cerdo en crudo', 110, 21, 0, 2.5, 'P', ['filete tamaño palma', 'filetes tamaño palma', 130]],
+    ['Conejo en crudo', 135, 21, 0, 5.5, 'P', ['ración', 'raciones', 150]],
+    ['Dorada o lubina en crudo', 100, 19, 0, 2.5, 'P', ['filete mediano', 'filetes medianos', 150]],
+    ['Pulpo cocido', 165, 30, 4.4, 2, 'P', ['ración', 'raciones', 120]],
+    ['Atún en aceite (escurrido)', 190, 26, 0, 9.5, 'P', ['lata pequeña', 'latas pequeñas', 60]],
+    ['Sardinas en lata (escurridas)', 210, 24, 0, 12.5, 'P', ['lata', 'latas', 85]],
+    ['Salchichas de pollo o pavo', 165, 12.5, 3, 11.5, 'P', ['salchicha', 'salchichas', 40]],
+    ['Seitán', 125, 22, 5, 2, 'P', ['ración tamaño palma', 'raciones tamaño palma', 100]],
+    ['Requesón', 96, 11, 3.5, 4, 'P', ['cucharada colmada', 'cucharadas colmadas', 30]],
+    ['Queso fresco tipo Burgos light', 85, 12.5, 4, 2, 'P', ['loncha gruesa', 'lonchas gruesas', 50]],
     // hidratos
     ['Arroz blanco cocido', 130, 2.7, 28, 0.3, 'C', ['taza', 'tazas', 190]],
     ['Arroz integral cocido', 112, 2.6, 23, 0.9, 'C', ['taza', 'tazas', 190]],
@@ -862,6 +877,22 @@ const Nutricion = (() => {
     ['Cerezas', 63, 1.1, 16, 0.2, 'C', ['taza', 'tazas', 140]],
     ['Frambuesas', 52, 1.2, 12, 0.7, 'C', ['taza', 'tazas', 125]],
     ['Dátiles', 280, 2.5, 66, 0.4, 'C', ['dátil', 'dátiles', 8]],
+    ['Pan de barra (baguette)', 261, 8.5, 51.5, 1.6, 'C', ['trozo de 4 dedos', 'trozos de 4 dedos', 40]],
+    ['Biscotes o pan tostado', 400, 12, 73, 6, 'C', ['biscote', 'biscotes', 8]],
+    ['Cereales de desayuno tipo corn flakes', 375, 7, 84, 0.9, 'C', ['taza', 'tazas', 30]],
+    ['Muesli sin azúcar añadido', 370, 10, 62, 7, 'C', ['cuenco pequeño', 'cuencos pequeños', 40]],
+    ['Galletas tipo María', 440, 7, 74, 12, 'C', ['galleta', 'galletas', 6.5]],
+    ['Tortitas de maíz', 380, 8, 79, 3, 'C', ['tortita', 'tortitas', 8]],
+    ['Harina de avena', 375, 13, 60, 7, 'C', ['cacito', 'cacitos', 30]],
+    ['Crema de arroz (en polvo)', 370, 7, 82, 0.8, 'C', ['cacito', 'cacitos', 30]],
+    ['Pasta fresca rellena cruda (tortellini, raviolis…)', 280, 11, 45, 6, 'C', ['taza', 'tazas', 100]],
+    ['Ciruela', 46, 0.7, 11.4, 0.3, 'C', ['ciruela', 'ciruelas', 65]],
+    ['Higos frescos', 74, 0.8, 19, 0.3, 'C', ['higo', 'higos', 50]],
+    ['Albaricoque', 48, 1.4, 11, 0.4, 'C', ['albaricoque', 'albaricoques', 35]],
+    ['Nectarina', 44, 1.1, 10.5, 0.3, 'C', ['nectarina mediana', 'nectarinas medianas', 140]],
+    ['Granada (granos)', 83, 1.7, 19, 1.2, 'C', ['taza', 'tazas', 175]],
+    ['Pasas', 300, 3, 79, 0.5, 'C', ['cucharada', 'cucharadas', 10]],
+    ['Mermelada', 250, 0.4, 60, 0.1, 'C', ['cucharada', 'cucharadas', 15]],
     ['Miel', 304, 0.3, 82, 0, 'C', ['cucharada', 'cucharadas', 20]],
     // grasas
     ['Aceite de oliva virgen extra', 884, 0, 0, 100, 'G', ['cucharada', 'cucharadas', 13.5]],
@@ -887,7 +918,20 @@ const Nutricion = (() => {
     ['Crema de pistacho o almendra 100 %', 600, 22, 20, 50, 'G', ['cucharada rasa', 'cucharadas rasas', 15]],
     ['Cacao puro 100 % (polvo)', 228, 20, 58, 14, 'G', ['cucharada rasa', 'cucharadas rasas', 5]],
     ['Hígado de bacalao en conserva (escurrido)', 613, 4, 0, 67, 'G', ['cucharada en trozos', 'cucharadas en trozos', 15]],
+    ['Aceite de girasol', 884, 0, 0, 100, 'G', ['cucharada', 'cucharadas', 13.5]],
+    ['Mayonesa', 680, 1, 1, 75, 'G', ['cucharada', 'cucharadas', 15]],
+    ['Queso crema (tipo Philadelphia)', 225, 5.4, 4.3, 21, 'G', ['cucharada', 'cucharadas', 15]],
+    ['Nata para cocinar (18 % grasa)', 190, 2.8, 4, 18, 'G', ['cucharada', 'cucharadas', 15]],
+    ['Hummus', 166, 8, 14, 10, 'G', ['cucharada colmada', 'cucharadas colmadas', 30]],
     // lácteos y verdura
+    ['Leche desnatada', 34, 3.4, 4.9, 0.1, 'L', ['vaso', 'vasos', 250]],
+    ['Bebida de soja sin azúcar', 33, 3.3, 0.7, 1.8, 'L', ['vaso', 'vasos', 250]],
+    ['Bebida de avena', 46, 0.7, 7, 1.5, 'L', ['vaso', 'vasos', 250]],
+    ['Yogur natural', 61, 3.5, 4.7, 3.3, 'L', ['envase', 'envases', 125]],
+    ['Yogur natural desnatado', 42, 4.5, 6, 0.1, 'L', ['envase', 'envases', 125]],
+    ['Queso fresco tipo Burgos', 174, 15, 4, 11, 'L', ['loncha gruesa', 'lonchas gruesas', 50]],
+    ['Queso de cabra (rulo)', 290, 18, 1, 24, 'L', ['rodaja', 'rodajas', 20]],
+    ['Queso parmesano', 392, 33, 0, 28, 'L', ['cucharada rallado', 'cucharadas rallado', 5]],
     ['Leche semidesnatada', 46, 3.3, 4.8, 1.6, 'L', ['vaso', 'vasos', 250]],
     ['Leche entera', 64, 3.2, 4.7, 3.6, 'L', ['vaso', 'vasos', 250]],
     ['Kéfir natural', 60, 3.3, 4, 3.5, 'L', ['vaso pequeño', 'vasos pequeños', 200]],
@@ -899,7 +943,9 @@ const Nutricion = (() => {
     ['Mozzarella rallada', 300, 22, 2, 22, 'L', ['ración (2-3 cucharadas rasas)', 'raciones (2-3 cucharadas rasas)', 20]],
     ['Verdura variada (ensalada, brócoli, judías…)', 30, 2, 4, 0.3, 'V', ['plato', 'platos', 250]],
     ['Calabaza o zanahoria cocida', 25, 0.8, 5, 0.1, 'V', ['taza', 'tazas', 150]],
-    ['Tomates cherry', 18, 0.9, 3.9, 0.2, 'V', ['tomate cherry', 'tomates cherry', 12]]
+    ['Tomates cherry', 18, 0.9, 3.9, 0.2, 'V', ['tomate cherry', 'tomates cherry', 12]],
+    ['Tomate', 18, 0.9, 3.9, 0.2, 'V', ['tomate mediano', 'tomates medianos', 120]],
+    ['Champiñones', 22, 3.1, 3.3, 0.3, 'V', ['taza', 'tazas', 100]]
   ].map(([n, kcal, p, c, gr, t, u]) => ({ n, kcal, p, c, g: gr, t, u }));
   const FRAC = [[0, ''], [0.25, '¼'], [1 / 3, '⅓'], [0.5, '½'], [2 / 3, '⅔'], [0.75, '¾']];
   function equivVisual(a, gramos) {
@@ -934,6 +980,15 @@ const Nutricion = (() => {
     'Dátiles': [1, 6, 1, 'ud'], 'Miel': [5, 30, 5],
     'Aceite de oliva virgen extra': [0, 20, 5], 'Aguacate (pulpa)': [0, 140, 10], 'Nueces': [0, 30, 5], 'Almendras': [0, 30, 5],
     'Crema de cacahuete 100 %': [0, 30, 5], 'Aceitunas': [0, 15, 1, 'ud'], 'Queso curado': [0, 3, 1, 'ud'], 'Chocolate negro 85 %': [0, 3, 1, 'ud'],
+    'Muslo o contramuslo de pollo sin piel en crudo': [90, 260], 'Carne picada de ternera magra (≤ 5 % grasa) en crudo': [90, 250], 'Carne picada mixta (cerdo y ternera) en crudo': [80, 200],
+    'Hamburguesa de ternera fresca en crudo': [1, 2, 1, 'ud'], 'Hamburguesa de pollo o pavo fresca en crudo': [1, 2, 1, 'ud'], 'Solomillo de cerdo en crudo': [90, 250], 'Conejo en crudo': [100, 280],
+    'Dorada o lubina en crudo': [100, 300], 'Pulpo cocido': [80, 250], 'Atún en aceite (escurrido)': [1, 3, 1, 'ud'], 'Sardinas en lata (escurridas)': [1, 2, 1, 'ud'], 'Salchichas de pollo o pavo': [1, 4, 1, 'ud'],
+    'Seitán': [80, 220], 'Requesón': [50, 250, 25], 'Queso fresco tipo Burgos light': [50, 250, 25],
+    'Pan de barra (baguette)': [1, 4, 1, 'ud'], 'Biscotes o pan tostado': [2, 8, 1, 'ud'], 'Cereales de desayuno tipo corn flakes': [20, 80, 5], 'Muesli sin azúcar añadido': [20, 100, 5],
+    'Galletas tipo María': [2, 8, 1, 'ud'], 'Tortitas de maíz': [2, 6, 1, 'ud'], 'Harina de avena': [20, 120, 5], 'Crema de arroz (en polvo)': [20, 120, 5], 'Pasta fresca rellena cruda (tortellini, raviolis…)': [80, 250],
+    'Ciruela': [1, 4, 1, 'ud'], 'Higos frescos': [1, 4, 1, 'ud'], 'Albaricoque': [1, 5, 1, 'ud'], 'Nectarina': [0.5, 2, 0.5, 'ud'], 'Granada (granos)': [50, 250], 'Pasas': [5, 40, 5], 'Mermelada': [5, 30, 5],
+    'Aceite de girasol': [0, 20, 5], 'Mayonesa': [0, 30, 5], 'Queso crema (tipo Philadelphia)': [0, 45, 15], 'Nata para cocinar (18 % grasa)': [0, 60, 15], 'Hummus': [0, 100, 10],
+    'Yogur natural': [1, 2, 1, 'ud'], 'Yogur natural desnatado': [1, 2, 1, 'ud'], 'Queso de cabra (rulo)': [0, 3, 1, 'ud'], 'Queso parmesano': [0, 20, 5],
   };
   /* Límites en gramos: { min, max, paso, ud, comp } */
   function lim(a) {
@@ -1079,7 +1134,7 @@ const Nutricion = (() => {
           <button type="button" class="btn full" id="calc-diario">🍽 Apuntar este plato en mi diario</button></div>` : ''}
         <p class="note">Cantidades orientativas con valores medios de tablas de composición: la marca, la receta y la cocción los cambian. Si tu plan de Jesús dice otra cantidad, manda la de tu plan.</p>`;
     };
-    abrirSheet(`<div class="stack"><h2>🧮 Calcula tu plato</h2><div id="calc-cuerpo" class="stack" style="gap:14px"></div><button type="button" class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
+    abrirSheet(`<div class="stack"><h2>🧮 Calculadora de cantidades</h2><div id="calc-cuerpo" class="stack" style="gap:14px"></div><button type="button" class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
     pinta();
     const cuerpo = $('#calc-cuerpo');
     const add = nom => { const a = ALI.find(x => norm(x.n) === norm(nom)) || ALI.find(x => norm(x.n).includes(norm(nom))); if (!a) return toast('No encuentro ese alimento: prueba con otro nombre'); if (st.sel.some(s => s.a.n === a.n)) return; if (st.sel.length >= 5) return toast('Máximo 5 alimentos'); st.sel.push({ a }); pinta(); };
@@ -1229,7 +1284,7 @@ Reglas: "reparto" lleva una fila por ingesta con sus propias kcal, p, c y g (cad
       <div class="nu-guia">${gu.alimentos.map(a => `<div class="nu-gf ${a.comp ? 'comp' : ''}"><div class="grow"><b>${esc(a.n)}</b>${a.est ? ` <span class="muted small">· ${esc(a.est)}</span>` : ''}<div class="small muted">${esc(a.eq || '')}${a.eq && !a.comp && fac && Math.abs(fac - 1) > 0.05 ? ` <b>×${fmtNum(Math.round(fac * 4) / 4, 2)}</b>` : ''}${a.comp ? ' · acompañamiento' : ''}</div></div><b class="num">${cant(a)}</b></div>`).join('')}</div>
       ${gu.nota ? `<div class="nu-quedate small"><b>Quédate con esto</b><br>${esc(gu.nota)}</div>` : ''}
       ${md ? `<p class="small muted" style="margin:0">Tus medidas: taza ${md.taza_ml ?? '—'} ml · cucharada ${md.cucharada_ml ?? '—'} ml${md.cucharadita_ml ? ' · cucharadita ' + md.cucharadita_ml + ' ml' : ''}${md.palma ? ' · palma: ' + esc(md.palma) : ''}. Medidas aproximadas: no son intercambios exactos.</p>` : ''}
-      <button class="btn ghost" data-act="nuCalc">🧮 Calcula tu plato con otros alimentos</button></div></section>`;
+      <button class="btn ghost" data-act="nuCalc">🧮 Calculadora de cantidades</button></div></section>`;
   }
   function vMenus(x, n) {
     const l = ctxDe(n), i = Math.min(selCtx(n), Math.max(0, l.length - 1)), c = l[i], ms = x.datos.menus, mios = c ? ms.filter(m => !m.ctx || norm(m.ctx) === norm(c.n)) : ms, ver = mios.length ? mios : ms;
