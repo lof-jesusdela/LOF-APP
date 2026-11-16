@@ -4090,22 +4090,87 @@ function formEquipo(aid) {
     const { error } = await sb.from('ajustes_privados').upsert([{ clave: 'equipo_' + aid, valor: v }, { clave: 'plansem_' + aid, valor: v2 }], { onConflict: 'clave' });
     if (error && !sv?.horario) return fallo(error, 'No se ha podido guardar.'); S.c.fiscal['equipo_' + aid] = v; S.c.fiscal['plansem_' + aid] = v2; cerrarSheet(); toast('Horario de la semana guardado' + aviso); render(); });
 }
+/* ---------- Futbolista · pestaña Check-ins: primero lo visual (gráficas), luego el detalle ---------- */
+const svgW = (vb, body, lbl) => `<svg viewBox="${vb}" role="img" aria-label="${esc(lbl)}" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;display:block">${body}</svg>`;
+function graficaCargaXL(w, n = 14) {
+  const hoy = hoyISO(), dias = [...Array(n)].map((_, i) => sumaDias(hoy, i - n + 1)), cs = dias.map(f => cargaDia(w, f));
+  const fat = dias.map(f => wDe(w, f, 'diario')?.datos?.fatiga ?? wDe(w, f, 'lunes')?.datos?.fatiga ?? null);
+  const W = 760, H = 270, L = 44, R = 34, T = 18, B = 34, ch = H - T - B, cw = W - L - R, bw = cw / n, max = Math.ceil(Math.max(400, ...cs.map(c => c.total)) / 200) * 200;
+  const y = v => T + ch - v / max * ch, yf = v => T + ch - v / 10 * ch, DS = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+  let s = '';
+  [0, .25, .5, .75, 1].forEach(k => { const v = max * k, yy = y(v); s += `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}" stroke="var(--line)" stroke-width="1"/><text x="${L - 6}" y="${yy + 4}" text-anchor="end" font-size="11" fill="var(--muted)">${fmtNum(v, 0)}</text><text x="${W - R + 6}" y="${yf(k * 10) + 4}" font-size="11" fill="var(--muted)">${k * 10}</text>`; });
+  dias.forEach((f, i) => { const x = L + i * bw, d = fecha(f);
+    if (f === hoy) s += `<rect x="${x}" y="${T}" width="${bw}" height="${ch}" fill="var(--blue)" opacity=".06"/>`;
+    if (d.getDay() === 1 && i) s += `<line x1="${x}" x2="${x}" y1="${T}" y2="${T + ch}" stroke="var(--muted)" stroke-dasharray="2 4" opacity=".5"/>`;
+    let y0 = T + ch; [['eq', 'var(--blue)'], ['lof', 'var(--gold)'], ['pa', 'var(--bad)']].forEach(([k, col]) => { const h = cs[i][k] / max * ch; if (h) { y0 -= h; s += `<rect x="${x + bw * .18}" y="${y0}" width="${bw * .64}" height="${h}" fill="${col}" rx="3"><title>${fCorta(f)} · ${k === 'eq' ? 'Equipo' : k === 'lof' ? 'Sesión LOF' : 'Partido'}: ${fmtNum(cs[i][k], 0)}</title></rect>`; } });
+    if (cs[i].total && n <= 21) s += `<text x="${x + bw / 2}" y="${y0 - 5}" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--fg)">${fmtNum(cs[i].total, 0)}</text>`;
+    if (n <= 14 || i % 2 === n % 2 || f === hoy) s += `<text x="${x + bw / 2}" y="${H - 18}" text-anchor="middle" font-size="11" fill="${f === hoy ? 'var(--blue)' : 'var(--muted)'}" font-weight="${f === hoy ? 700 : 400}">${DS[d.getDay()]}</text><text x="${x + bw / 2}" y="${H - 5}" text-anchor="middle" font-size="10" fill="var(--muted)">${d.getDate()}</text>`; });
+  const pts = fat.map((v, i) => v == null ? null : [L + i * bw + bw / 2, yf(v), v]).filter(Boolean);
+  if (pts.length > 1) s += `<polyline points="${pts.map(p => p[0] + ',' + p[1]).join(' ')}" fill="none" stroke="var(--fg)" stroke-width="2" stroke-dasharray="5 4" opacity=".75"/>`;
+  pts.forEach(([x, yy, v]) => { s += `<circle cx="${x}" cy="${yy}" r="6" fill="var(--${nivelFat(v) || 'ok'})" stroke="#fff" stroke-width="2"><title>Fatiga ${v}/10</title></circle><text x="${x}" y="${yy - 10}" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--${nivelFat(v) || 'ok'})">${v}</text>`; });
+  s += `<text x="${L}" y="11" font-size="10.5" fill="var(--muted)">Carga (min × RPE)</text><text x="${W - R + 30}" y="11" text-anchor="end" font-size="10.5" fill="var(--muted)">Fatiga</text>`;
+  return svgW(`0 0 ${W} ${H}`, s, `Carga y fatiga de los últimos ${n} días`);
+}
+function graficaSueno(w, srv, n = 14) {
+  const hoy = hoyISO(), ini = sumaDias(hoy, -(n - 1)), su = resumenSueno(w, srv, ini, hoy), dias = [...Array(n)].map((_, i) => sumaDias(ini, i));
+  const W = 360, H = 170, L = 26, B = 24, T = 14, ch = H - T - B, bw = (W - L - 6) / n, y = v => T + ch - Math.min(12, v) / 12 * ch, COL = { ok: 'var(--ok)', part: 'var(--gold)', no: 'var(--bad)' };
+  let s = [4, 8, 12].map(v => `<line x1="${L}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${L - 4}" y="${y(v) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${v}h</text>`).join('');
+  dias.forEach((f, i) => { const r = su.por[f], x = L + i * bw; if (r) s += `<rect x="${x + bw * .15}" y="${y(r.h)}" width="${bw * .7}" height="${T + ch - y(r.h)}" fill="${COL[r.cls]}" rx="3"><title>${fCorta(f)}: ${fmtNum(r.h)} h${r.enH ? ' · en horario' : ''}</title></rect>`;
+    if (i % 2 === (n - 1) % 2) s += `<text x="${x + bw / 2}" y="${H - 6}" text-anchor="middle" font-size="9.5" fill="var(--muted)">${fecha(f).getDate()}</text>`; });
+  s += `<line x1="${L}" x2="${W}" y1="${y(su.meta)}" y2="${y(su.meta)}" stroke="var(--blue)" stroke-width="2" stroke-dasharray="6 4"/><text x="${W - 2}" y="${y(su.meta) - 5}" text-anchor="end" font-size="10.5" font-weight="700" fill="var(--blue)">objetivo ${fmtNum(su.meta)} h</text>`;
+  return { svg: svgW(`0 0 ${W} ${H}`, s, 'Horas de sueño'), su };
+}
+function graficaSemanas(w) {
+  const L0 = lunesDe(hoyISO()), sems = [5, 4, 3, 2, 1, 0].map(k => sumaDias(L0, -7 * k)), tot = sems.map(l => [...Array(7)].reduce((t, _, i) => t + cargaDia(w, sumaDias(l, i)).total, 0));
+  const W = 360, H = 170, T = 18, B = 24, ch = H - T - B, bw = (W - 10) / 6, max = Math.max(1000, ...tot), y = v => T + ch - v / max * ch, prev = tot.slice(1, 5), media = prev.reduce((a, b) => a + b, 0) / (prev.filter(Boolean).length || 1);
+  let s = '';
+  tot.forEach((v, i) => { const x = 5 + i * bw, act = i === 5, rel = media ? v / media : null, col = act ? 'var(--blue)' : rel != null && rel > 1.3 ? 'var(--warn)' : 'var(--gold)';
+    s += `<rect x="${x + bw * .14}" y="${y(v)}" width="${bw * .72}" height="${T + ch - y(v)}" fill="${col}" opacity="${act ? .55 : 1}" rx="4"><title>Semana del ${fCorta(sems[i])}: ${fmtNum(v, 0)}</title></rect><text x="${x + bw / 2}" y="${y(v) - 5}" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--fg)">${v ? fmtNum(v, 0) : ''}</text><text x="${x + bw / 2}" y="${H - 6}" text-anchor="middle" font-size="10" fill="var(--muted)">${act ? 'esta' : fCorta(sems[i])}</text>`; });
+  if (media) s += `<line x1="5" x2="${W - 5}" y1="${y(media)}" y2="${y(media)}" stroke="var(--fg)" stroke-dasharray="5 4" opacity=".6"/><text x="${W - 6}" y="${y(media) - 5}" text-anchor="end" font-size="10" fill="var(--muted)">media 4 semanas</text>`;
+  return svgW(`0 0 ${W} ${H}`, s, 'Carga por semana');
+}
+const sparkFat = w => { const d = [...Array(14)].map((_, i) => sumaDias(hoyISO(), i - 13)), v = d.map(f => wDe(w, f, 'diario')?.datos?.fatiga ?? wDe(w, f, 'lunes')?.datos?.fatiga ?? null), pts = v.map((x, i) => x == null ? null : `${i * 10 + 4},${36 - x * 3.2}`).filter(Boolean);
+  return pts.length > 1 ? svgW('0 0 140 40', `<polyline points="${pts.join(' ')}" fill="none" stroke="var(--fg)" stroke-width="2" opacity=".6"/>${v.map((x, i) => x == null ? '' : `<circle cx="${i * 10 + 4}" cy="${36 - x * 3.2}" r="2.6" fill="var(--${nivelFat(x) || 'ok'})"/>`).join('')}`, 'Fatiga 14 días') : ''; };
+const sparkCarga = w => { const d = [...Array(7)].map((_, i) => sumaDias(hoyISO(), i - 6)), c = d.map(f => cargaDia(w, f).total), m = Math.max(1, ...c);
+  return svgW('0 0 140 40', c.map((v, i) => `<rect x="${i * 20 + 3}" y="${38 - v / m * 34}" width="14" height="${v / m * 34}" rx="2" fill="var(--gold)"/>`).join(''), 'Carga 7 días'); };
+const gaugeAcwr = r => { const x = v => 6 + Math.min(2, Math.max(0, v)) / 2 * 128;
+  return svgW('0 0 140 34', `<rect x="6" y="12" width="128" height="10" rx="5" fill="var(--line)"/><rect x="${x(.8)}" y="12" width="${x(1.3) - x(.8)}" height="10" fill="var(--ok)" opacity=".75"/><rect x="${x(1.3)}" y="12" width="${x(1.5) - x(1.3)}" height="10" fill="var(--warn)" opacity=".75"/><rect x="${x(1.5)}" y="12" width="${x(2) - x(1.5)}" height="10" rx="0" fill="var(--bad)" opacity=".6"/>${r != null ? `<circle cx="${x(r)}" cy="17" r="7" fill="var(--fg)" stroke="#fff" stroke-width="2"/>` : ''}<text x="${x(.8)}" y="33" font-size="8" fill="var(--muted)" text-anchor="middle">0,8</text><text x="${x(1.3)}" y="33" font-size="8" fill="var(--muted)" text-anchor="middle">1,3</text>`, 'Proporción de carga'); };
 function vFutbolFicha(a) {
   const { w, p } = futDe(a.id), M = mdDe(p), C = cargasSemana(w), [na, ta] = nivelAcwr(C.acwr), uf = ultimaFatiga(w);
   const ult = w.slice().sort((x, y) => (y.fecha + y.tipo).localeCompare(x.fecha + x.tipo)).slice(0, 40);
-  return vCalFut(a) + vSemanaCal(a) + `<section class="section"><div class="section-head"><h2>Competición y fatiga</h2><button class="btn sm ghost" data-act="partido" data-al="${a.id}">＋ Partido</button></div>
-    <div class="card stack">
-      <div class="row"><span class="md-chip">${esc(M.md || '—')}</span><div class="grow"><b>${esc(M.txt)}</b>${M.prox ? `<div class="small muted">${esc(M.prox.rival || 'Partido')} · ${esc(fCorta(M.prox.fecha))}${M.prox.hora ? ' · ' + esc(M.prox.hora) : ''}${M.prox.nivel ? ' · rival ' + esc(M.prox.nivel.toLowerCase()) : ''}</div>` : ''}</div></div>
-      <div class="kpis"><div class="kpi"><div class="l">Fatiga</div><b class="num" style="color:var(--${nivelFat(uf?.v) || 'fg'})">${uf ? uf.v + '/10' : '—'}</b></div><div class="kpi"><div class="l">Carga 7 días</div><b class="num">${fmtNum(C.aguda, 0)}</b></div><div class="kpi"><div class="l">ACWR</div><b class="num" style="color:var(--${na || 'fg'})">${C.acwr != null ? fmtNum(C.acwr) : '—'}</b><div class="small muted">${ta}</div></div></div>
-      ${(() => { const sw = w.filter(x => x.tipo === 'semana' && x.fecha >= sumaDias(hoyISO(), -8)).sort((a, b) => b.fecha.localeCompare(a.fecha))[0]; return sw ? `<div class="aprox small"><b>Semana del equipo · del ${esc(fCorta(sumaDias(sw.fecha, 1)))} al ${esc(fCorta(sumaDias(sw.fecha, 7)))}</b>${sw.datos?.texto ? `<div class="pre" style="margin-top:4px">${esc(sw.datos.texto)}</div>` : ''}${sw.datos?.nota ? `<div class="muted">"${esc(sw.datos.nota)}"</div>` : ''}${botonesArchivos(sw)}</div>` : ((fecha(hoyISO()).getDay() + 6) % 7 <= 1 ? '<div class="small muted">Aún no ha compartido la planificación de su equipo para esta semana.</div>' : ''); })()}
-      ${(() => { const srv = S.c.servicios.find(x => x.alumno_id === a.id), i7 = sumaDias(hoyISO(), -6), su = resumenSueno(w, srv, i7, hoyISO()), al = resumenAliW(w, i7, hoyISO());
-        return `<div class="row small" style="gap:14px;flex-wrap:wrap"><span>Sueño 7 d: <b>${su.media == null ? '—' : fmtNum(su.media) + ' h'}</b> (objetivo ${fmtNum(su.meta)} h)</span><span>En horario: <b>${su.n ? su.enHorario + '/' + su.n : '—'}</b></span><span>Alimentación: <b>${al.pct == null ? '—' : al.pct + ' %'}</b></span></div>`; })()}
-      <div class="chart">${graficaCarga(w)}</div>
+  const srv = S.c.servicios.find(x => x.alumno_id === a.id), nC = S.cargaN || 14, G = graficaSueno(w, srv, 14), al = resumenAliW(w, sumaDias(hoyISO(), -13), hoyISO());
+  const aliDots = [...Array(14)].map((_, i) => sumaDias(hoyISO(), i - 13)).map(f => { const v = al.por[f]; return `<span class="fchk-dot" title="${esc(fCorta(f))}: ${v === 'si' ? 'cumplida' : v === 'parcial' ? 'a medias' : v === 'no' ? 'no cumplida' : 'sin dato'}" style="background:${v === 'si' ? 'var(--ok)' : v === 'parcial' ? 'var(--gold)' : v === 'no' ? 'var(--bad)' : 'var(--line)'}"></span>`; }).join('');
+  const kpi = (t, v, sub, vis, col) => `<div class="card fchk-kpi"><span class="fx-l">${t}</span><b style="${col ? `color:var(--${col})` : ''}">${v}</b><span class="small muted">${sub}</span>${vis ? `<div class="fchk-vis">${vis}</div>` : ''}</div>`;
+  return `<div class="fx-ent fchk">
+    <div class="fchk-kpis">
+      <div class="card fchk-kpi fchk-md"><span class="fx-l">Partido</span><div class="row" style="gap:10px;align-items:center"><span class="md-chip">${esc(M.md || '—')}</span><div><b style="font-size:16px">${esc(M.txt)}</b>${M.prox ? `<div class="small muted">${esc(M.prox.rival || 'Partido')} · ${esc(fCorta(M.prox.fecha))}${M.prox.hora ? ' · ' + esc(M.prox.hora) : ''}${M.prox.nivel ? ' · rival ' + esc(M.prox.nivel.toLowerCase()) : ''}</div>` : ''}</div></div><button class="btn sm ghost" data-act="partido" data-al="${a.id}" style="align-self:flex-start;margin-top:auto">＋ Partido</button></div>
+      ${kpi('Fatiga', uf ? `${uf.v}<small>/10</small>` : '—', uf ? `último registro ${esc(fCorta(uf.f))}` : 'sin registros', sparkFat(w), nivelFat(uf?.v))}
+      ${kpi('Carga · 7 días', fmtNum(C.aguda, 0), 'minutos × esfuerzo (RPE)', sparkCarga(w))}
+      ${kpi('Proporción de carga', C.acwr != null ? fmtNum(C.acwr, 2) + '<small>×</small>' : '—', esc(ta), gaugeAcwr(C.acwr), na)}
+    </div>
+    <section class="card stack fchk-big"><div class="row" style="gap:8px;flex-wrap:wrap;align-items:center"><h2 class="grow" style="margin:0">Carga y fatiga</h2><div class="seg">${[14, 28].map(k => `<button class="${nC === k ? 'on' : ''}" data-act="cargaN" data-n="${k}">${k} días</button>`).join('')}</div></div>
+      ${graficaCargaXL(w, nC)}
+      <div class="row small muted" style="gap:14px;flex-wrap:wrap"><span><i class="ley" style="background:var(--blue)"></i>Equipo</span><span><i class="ley" style="background:var(--gold)"></i>Sesión LOF</span><span><i class="ley" style="background:var(--bad)"></i>Partido</span><span><i class="ley" style="background:var(--ok);border-radius:50%"></i>Fatiga (1-10, eje derecho)</span><span>┆ lunes</span></div></section>
+    <div class="fchk-2">
+      <section class="card stack"><div class="row"><h3 class="grow" style="margin:0">Carga por semana</h3><span class="small muted">últimas 6</span></div>${graficaSemanas(w)}<span class="small muted">En naranja, semanas más de un 30 % por encima de su media.</span></section>
+      <section class="card stack"><div class="row"><h3 class="grow" style="margin:0">Sueño · 14 días</h3><span class="small"><b>${G.su.media == null ? '—' : fmtNum(G.su.media) + ' h'}</b> de media · en horario ${G.su.n ? G.su.enHorario + '/' + G.su.n : '—'}</span></div>${G.svg}
+        <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap"><span class="small" style="width:110px">Alimentación <b>${al.pct == null ? '—' : al.pct + ' %'}</b></span><div class="fchk-dots">${aliDots}</div></div></section>
+    </div>
+    ${vCalFut(a)}
+    <div class="fchk-2">
+      <div>${vSemanaCal(a)}</div>
+      <section class="card stack"><h3 style="margin:0">Esta semana</h3>
+        ${(() => { const sw = w.filter(x => x.tipo === 'semana' && x.fecha >= sumaDias(hoyISO(), -8)).sort((a, b) => b.fecha.localeCompare(a.fecha))[0]; return sw ? `<div class="aprox small"><b>Semana del equipo · del ${esc(fCorta(sumaDias(sw.fecha, 1)))} al ${esc(fCorta(sumaDias(sw.fecha, 7)))}</b>${sw.datos?.texto ? `<div class="pre" style="margin-top:4px">${esc(sw.datos.texto)}</div>` : ''}${sw.datos?.nota ? `<div class="muted">"${esc(sw.datos.nota)}"</div>` : ''}${botonesArchivos(sw)}</div>` : ((fecha(hoyISO()).getDay() + 6) % 7 <= 1 ? '<div class="small muted">Aún no ha compartido la planificación de su equipo para esta semana.</div>' : ''); })()}
+        <div><span class="eyebrow">Respuestas de esta semana</span>${ult.filter(x => x.fecha >= lunesDe(hoyISO())).map(x => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(x.fecha))}</span><div class="grow small"><b>${{ diario: 'Diario', partido: 'Partido', lunes: 'Lunes', semana: 'Cierre de semana' }[x.tipo]}</b> · ${esc(resumenW(x))}${x.datos?.nota ? `<div class="muted">"${esc(x.datos.nota)}"</div>` : ''}${botonesArchivos(x)}</div></div>`).join('') || '<div class="empty">Esta semana todavía no ha respondido.</div>'}${(() => { const ant = ult.filter(x => x.fecha < lunesDe(hoyISO())); return ant.length ? `<details style="margin-top:8px"><summary class="small"><b>Ver histórico (${ant.length})</b></summary>${ant.map(x => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(x.fecha))}</span><div class="grow small"><b>${{ diario: 'Diario', partido: 'Partido', lunes: 'Lunes', semana: 'Cierre de semana' }[x.tipo]}</b> · ${esc(resumenW(x))}${x.datos?.nota ? `<div class="muted">"${esc(x.datos.nota)}"</div>` : ''}${botonesArchivos(x)}</div></div>`).join('')}</details>` : ''; })()}</div>
+
+      </section>
+    </div>
+    <details class="card fx-ban"><summary><span class="fx-ban-ic">✎</span><span class="grow"><b>Añadir o editar respuestas</b><span class="small muted"> · por si te las pasa por otro medio${p.length ? ` · ${p.length} partidos` : ''}</span></span></summary><div class="fx-ban-in stack" style="gap:12px">
       <div class="stack" style="gap:8px"><span class="eyebrow">Añadir o editar respuestas (por si te las pasa por otro medio)</span>
         <div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end"><label class="f grow" style="min-width:150px">Semana del lunes<select id="fs-sem-${a.id}">${[0, 1, 2, 3].map(i => { const l = sumaDias(lunesDe(hoyISO()), -7 * i); return `<option value="${l}">${esc(fCorta(l))}${i ? '' : ' (esta semana)'}</option>`; }).join('')}</select></label><button class="btn sm" data-act="wellnessSem" data-t="lunes" data-al="${a.id}">✎ Check del lunes</button><button class="btn sm" data-act="wellnessSem" data-t="semana" data-al="${a.id}">✎ Cierre de semana</button></div></div>
-      <div><span class="eyebrow">Respuestas de esta semana</span>${ult.filter(x => x.fecha >= lunesDe(hoyISO())).map(x => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(x.fecha))}</span><div class="grow small"><b>${{ diario: 'Diario', partido: 'Partido', lunes: 'Lunes', semana: 'Cierre de semana' }[x.tipo]}</b> · ${esc(resumenW(x))}${x.datos?.nota ? `<div class="muted">"${esc(x.datos.nota)}"</div>` : ''}${botonesArchivos(x)}</div></div>`).join('') || '<div class="empty">Esta semana todavía no ha respondido.</div>'}${(() => { const ant = ult.filter(x => x.fecha < lunesDe(hoyISO())); return ant.length ? `<details style="margin-top:8px"><summary class="small"><b>Ver histórico (${ant.length})</b></summary>${ant.map(x => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(x.fecha))}</span><div class="grow small"><b>${{ diario: 'Diario', partido: 'Partido', lunes: 'Lunes', semana: 'Cierre de semana' }[x.tipo]}</b> · ${esc(resumenW(x))}${x.datos?.nota ? `<div class="muted">"${esc(x.datos.nota)}"</div>` : ''}${botonesArchivos(x)}</div></div>`).join('')}</details>` : ''; })()}</div>
       ${p.length ? `<details><summary class="small"><b>Partidos (${p.length})</b></summary>${p.slice().reverse().map(x => `<div class="line" data-act="partido" data-al="${a.id}" data-id="${x.id}" style="cursor:pointer"><span class="small num" style="width:64px">${esc(fCorta(x.fecha))}</span><span class="small grow">${esc(x.rival || 'Partido')}${x.competicion ? ' · ' + esc(x.competicion) : ''}${x.minutos != null ? ` · ${x.minutos}′` : ''}</span></div>`).join('')}</details>` : ''}
-    </div></section>`;
+    </div></details>
+  </div>`;
 }
 /* ---------- Alumno de prueba: ver una plantilla tal como la vería un alumno, sin cuenta y sin guardar nada ----------
    Mientras dura, las lecturas y escrituras van a una base de datos en memoria (sb.from / sb.storage se sustituyen). */
@@ -8483,7 +8548,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v386';
+const APP_VER = 'v387';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8719,6 +8784,7 @@ document.addEventListener('click', async e => {
     case 'omitir': formOmitir(+b.dataset.es, b.dataset.n); break;
     case 'deshacerOmitir': await deshacerOmitir(+b.dataset.es); break;
     case 'revHecha': formRevHecha(+b.dataset.n || null); break;
+    case 'cargaN': S.cargaN = +b.dataset.n; render(); break;
     case 'fTab': { const t0 = b.dataset.t, t = ['plan', 'pagos'].includes(t0) ? 'inicio' : t0; if (t !== t0) S.fBan = t0 === 'pagos' ? 'pagos' : 'plan'; (S.fTab ||= {})[S.ficha.id] = t; } render(); document.querySelector('.ft-tabs')?.scrollIntoView({ block: 'nearest' }); break;
     case 'abrirReporte': await abrirReporte(b.dataset.id || null); break;
     case 'reporteSemana': await abrirReporte(S.reporte.alumno, sumaDias(S.reporte.lunes, +b.dataset.d)); break;
