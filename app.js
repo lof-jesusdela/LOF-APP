@@ -2177,6 +2177,24 @@ function vGraficaComp(med, perfil, obj) {
 }
 /* Objetivo de composición corporal (se fija en la valoración inicial) */
 const CAMPOS_OBJ = [['peso', 'Peso', ' kg'], ['grasa_pct', '% de grasa', ' %'], ['grasa_kg', 'Kilos de grasa', ' kg'], ['cintura', 'Cintura', ' cm'], ['cadera', 'Cadera', ' cm'], ['abd_bajo', 'Abdomen bajo', ' cm'], ['pectoral', 'Pectoral', ' cm'], ['hombros', 'Hombros', ' cm'], ['brazo_d', 'Brazo dcho.', ' cm'], ['brazo_i', 'Brazo izdo.', ' cm'], ['muslo_d', 'Muslo dcho.', ' cm'], ['muslo_i', 'Muslo izdo.', ' cm'], ['gemelo_d', 'Gemelo dcho.', ' cm'], ['gemelo_i', 'Gemelo izdo.', ' cm']];
+/* Progreso del alumno: peso, % de grasa y cintura destacados (cambio desde la 1ª medición) y, debajo, a cuánto está de su objetivo */
+function vKpisProgreso(med, obj) {
+  const m = conKgGrasa(med), ult = k => { const p = serie(m, k); return p.length ? p[p.length - 1].v : null; }, pri = k => { const p = serie(m, k); return p.length ? p[0].v : null; };
+  const kpi = (k, l, u) => { const p = serie(med, k), dl = delta(p), a = ult(k), i0 = pri(k), o = obj?.[k] != null ? Number(obj[k]) : null;
+    let meta = '';
+    if (o != null && a != null) { const d = a - o, mant = i0 != null && Math.abs(i0 - o) < 0.05;
+      const ok = Math.abs(d) < 0.05 || (i0 != null && ((i0 > o && a <= o) || (i0 < o && a >= o)));
+      meta = mant ? (Math.abs(d) <= 1 ? 'Objetivo: mantener · ✓ en ello' : `Objetivo: mantener ${fmtNum(o)}${u}`) : ok ? `Objetivo ${fmtNum(o)}${u} · ✓ conseguido` : `Objetivo ${fmtNum(o)}${u} · a ${fmtNum(Math.abs(d))}${u}`; }
+    return `<div class="pg-kpi"><b class="num">${dl == null ? '—' : (dl > 0 ? '+' : '') + fmtNum(dl)}</b><span class="pg-l">${l}</span>${meta ? `<span class="pg-o">${meta}</span>` : ''}</div>`; };
+  return `<section class="section"><div class="pg-kpis">${kpi('peso', 'kg de peso', ' kg')}${kpi('grasa_pct', '% de grasa', ' %')}${kpi('cintura', 'cm de cintura', ' cm')}</div><p class="small muted" style="margin:8px 0 0">Cambio desde tu primera medición (${esc(fCorta(med[0].fecha))} ${fecha(med[0].fecha).getFullYear()})${obj?.fecha ? ` · objetivo para el ${esc(fCorta(obj.fecha))}` : ''}.</p></section>`;
+}
+/* El resto del objetivo (si Jesús fijó más medidas que peso, grasa y cintura), plegado y discreto */
+function vObjetivoResto(obj, med) {
+  if (!obj) return ''; const otros = CAMPOS_OBJ.filter(([k]) => obj[k] != null && !['peso', 'grasa_pct', 'cintura'].includes(k));
+  if (!otros.length && !obj.nota) return '';
+  const o2 = { ...obj }; ['peso', 'grasa_pct', 'cintura'].forEach(k => delete o2[k]);
+  return `<details class="small pg-resto"><summary>Resto de tu objetivo${otros.length ? ` · ${otros.map(x => x[1].toLowerCase()).join(', ')}` : ''}</summary>${vObjetivoComp(o2, med, false)}</details>`;
+}
 function vObjetivoComp(obj, med, coach) {
   if (!obj) return coach ? `<div class="card stack"><b>🎯 Objetivo de composición corporal</b><p class="small muted">Sin objetivo todavía. Fíjalo en la valoración inicial: cuánta grasa tiene que perder y qué perímetros quieres mantener.</p><button class="btn sm" data-act="objetivoComp" style="align-self:flex-start">Fijar objetivo</button></div>` : '';
   const m = conKgGrasa(med), ext = (k, i) => { const p = serie(m, k); return p.length ? p[i < 0 ? p.length - 1 : 0].v : null; };
@@ -2229,12 +2247,12 @@ function vProgreso() {
   const k = c => { const p = serie(med, c), dl = delta(p); return dl == null ? '—' : (dl > 0 ? '+' : '') + fmtNum(dl); };
   return `<section class="stack"><span class="eyebrow">Tu evolución</span><h1>Progreso</h1><button class="btn" data-act="misMedidas" style="align-self:flex-start">＋ Añadir mis medidas</button></section>
   ${objetivoDe(S.d.ruta) ? `<section class="section"><div class="card stack"><span class="eyebrow">Tu objetivo</span><div class="small">${esc(objetivoDe(S.d.ruta))}</div></div></section>` : ''}
-  ${med.length ? `<section class="section"><div class="kpis"><div class="kpi"><div class="v num">${k('peso')}</div><div class="l">kg de peso</div></div><div class="kpi"><div class="v num">${k('grasa_pct')}</div><div class="l">% de grasa</div></div><div class="kpi"><div class="v num">${k('cintura')}</div><div class="l">cm de cintura</div></div></div><p class="small muted">Cambio desde tu primera medición (${esc(fCorta(med[0].fecha))} ${fecha(med[0].fecha).getFullYear()}).</p></section>` : ''}
-  <section class="section">${vGraficaComp(med, S.perfil, S.d.medObj) || '<div class="card empty">Aún no hay mediciones. Jesús las añadirá en tu próximo control mensual.</div>'}${vObjetivoComp(S.d.medObj, med, false)}
+  ${med.length ? vKpisProgreso(med, S.d.medObj) : ''}
+  <section class="section">${vGraficaComp(med, S.perfil, S.d.medObj) || '<div class="card empty">Aún no hay mediciones. Jesús las añadirá en tu próximo control mensual.</div>'}${vObjetivoResto(S.d.medObj, med)}
   </section>
   ${vRevisionProgreso()}
-  ${vTestsProgreso()}
-  ${Casos.vSeccionAlumno()}`;
+  ${Casos.vSeccionAlumno()}
+  ${vTestsProgreso()}`;
 }
 
 /* Revisión mensual en Progreso, junto a las mediciones: próxima revisión (cita reservada o semana que toca) y la última */
@@ -8681,7 +8699,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v399';
+const APP_VER = 'v400';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}

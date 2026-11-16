@@ -279,13 +279,14 @@ const Nutricion = (() => {
     const M = docDe(n, 'menus')?.datos?.menus || [], k = norm(nomIng);
     return (M.find(m => norm(m.ctx) === norm(c.n) && norm(m.ing) === k) || M.find(m => !m.ctx && norm(m.ing) === k) || { ops: [] }).ops;
   }
+  const ICO_CALC = '<svg class="ico-calc" viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="2.5" width="15" height="19" rx="2.5"/><rect x="7.5" y="5.5" width="9" height="4" rx="1"/><path d="M8 13h.01M12 13h.01M16 13h.01M8 16.5h.01M12 16.5h.01M16 16.5h.01M8 19.5h.01M12 19.5h4"/></svg>';
   function vHoyCtx(n, d) {
     const l = ctxDe(n); if (!l.length) return '';
     const i = Math.min(selCtx(n), l.length - 1), c = l[i], ing = +c.ing || comidasDia(d?.servicio), sems = semanasDe(n), auto = ctxPorSemana(n);
     const P = comidasPlan(c, ing), k = S.nIng != null && S.nIng < P.n ? S.nIng : comidaAhora(P), it = P.items[k], ops = opcionesPlan(n, c, it.n), mImg = (docDe(n, 'menus')?.imagenes || []).length;
     const ir = (kk, t) => tiene(docDe(n, kk)) ? `<button class="btn sm ghost" data-act="nuDoc" data-k="${kk}">${t}</button>` : '';
     const dev = (d?.devoluciones || []).find(x => x.prioridad || x.ajuste);
-    return `<section class="section"><div class="card stack nu-hoy nu-plato"><div class="nu-plato-cab"><span class="nu-plato-ic">🧮</span><div><h2>Te ayudo a montar tu plato</h2><span class="small muted">Dime qué día tienes y qué comida quieres resolver: te calculo las cantidades con lo que tengas en casa.</span></div></div>
+    return `<section class="section"><div class="card stack nu-hoy nu-plato"><div class="nu-plato-cab"><span class="nu-plato-ic">${ICO_CALC}</span><div><h2>Te ayudo a montar tu plato</h2><span class="small muted">Dime qué día tienes y qué comida quieres resolver: te calculo las cantidades con lo que tengas en casa.</span></div></div>
       <span class="eyebrow">1 · ¿Qué tipo de día tienes hoy?</span>
       <div class="chips" role="group" aria-label="Contexto de hoy">${l.map((x, kk) => `<button class="pill ${kk === i ? 'blue' : ''}" data-act="nuCtx" data-i="${kk}" aria-pressed="${kk === i}">${esc(x.n)}</button>`).join('')}</div>
       ${sems.length > 1 ? `<div class="row small" style="gap:6px;flex-wrap:wrap;align-items:center"><span class="muted">Esta semana:</span>${sems.map((p, kk) => `<button class="pill ${kk === semSel(n) ? 'gold' : ''}" data-act="nuSem" data-i="${kk}">${esc(p.nombre || 'Semana ' + (kk + 1))}</button>`).join('')}</div>` : ''}
@@ -1141,7 +1142,7 @@ const Nutricion = (() => {
   function formPlato() {
     const d = S.modo === 'coach' && S.ficha ? datosPrevia(S.ficha) : S.d, n = d?.nutri || vacio(), l = ctxDe(n);
     if (!l.length) return toast('Aún no tienes contextos con macros en tu plan');
-    abrirSheet(`<div class="stack"><h2>🧮 Calculadora de cantidades</h2><div id="calc-cuerpo" class="stack" style="gap:14px"></div><button type="button" class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
+    abrirSheet(`<div class="stack"><h2>${ICO_CALC} Calculadora de cantidades</h2><div id="calc-cuerpo" class="stack" style="gap:14px"></div><button type="button" class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
     calcEn($('#calc-cuerpo'), null);
   }
   /* Calculadora dentro de «Te ayudo a montar tu plato»: usa el tipo de día y la comida elegidos en la tarjeta (se monta tras cada render) */
@@ -1320,7 +1321,7 @@ Reglas: "reparto" lleva una fila por ingesta con sus propias kcal, p, c y g (cad
       <div class="nu-guia">${gu.alimentos.map(a => `<div class="nu-gf ${a.comp ? 'comp' : ''}"><div class="grow"><b>${esc(a.n)}</b>${a.est ? ` <span class="muted small">· ${esc(a.est)}</span>` : ''}<div class="small muted">${esc(a.eq || '')}${a.eq && !a.comp && fac && Math.abs(fac - 1) > 0.05 ? ` <b>×${fmtNum(Math.round(fac * 4) / 4, 2)}</b>` : ''}${a.comp ? ' · acompañamiento' : ''}</div></div><b class="num">${cant(a)}</b></div>`).join('')}</div>
       ${gu.nota ? `<div class="nu-quedate small"><b>Quédate con esto</b><br>${esc(gu.nota)}</div>` : ''}
       ${md ? `<p class="small muted" style="margin:0">Tus medidas: taza ${md.taza_ml ?? '—'} ml · cucharada ${md.cucharada_ml ?? '—'} ml${md.cucharadita_ml ? ' · cucharadita ' + md.cucharadita_ml + ' ml' : ''}${md.palma ? ' · palma: ' + esc(md.palma) : ''}. Medidas aproximadas: no son intercambios exactos.</p>` : ''}
-      <button class="btn ghost" data-act="nuCalc">🧮 Calculadora de cantidades</button></div></section>`;
+      <button class="btn ghost" data-act="nuCalc">${ICO_CALC} Calculadora de cantidades</button></div></section>`;
   }
   function vMenus(x, n) {
     const l = ctxDe(n), i = Math.min(selCtx(n), Math.max(0, l.length - 1)), c = l[i], ms = x.datos.menus, mios = c ? ms.filter(m => !m.ctx || norm(m.ctx) === norm(c.n)) : ms, ver = mios.length ? mios : ms;
