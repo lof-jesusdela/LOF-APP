@@ -34,6 +34,11 @@ const Consultas = (() => {
   async function cargarAlumno(uid, D) {
     const r = await sb.from('consultas').select('*').eq('alumno_id', uid).order('creado_at', { ascending: false }).limit(60);
     D.consultas = r.error ? [] : (r.data || []); D.consultasErr = !!r.error;
+    /* Doble check gris para Jesús: sus mensajes ya han llegado al móvil del alumno */
+    if (!S.vista && !S.prueba && uid === S.user?.id) {
+      const nuevos = D.consultas.filter(c => c.respuesta && !c.entregado_at && 'entregado_at' in c);
+      if (nuevos.length) { const ahora = new Date().toISOString(); nuevos.forEach(c => c.entregado_at = ahora); sb.from('consultas').update({ entregado_at: ahora }).in('id', nuevos.map(c => c.id)).then(() => { }, () => { }); }
+    }
   }
   async function cargarCoach() {
     const r = await sb.from('consultas').select('*').order('creado_at', { ascending: false }).limit(600);
@@ -77,12 +82,14 @@ const Consultas = (() => {
     if (m.sys) return `<div class="wa-sys">${esc(m.txt)} · ${esc(hora(m.t))}</div>`;
     const mio = m.de === yo, c = m.c, [, ico, t] = tm(c.tema);
     const chip = m.de === 'al' && ico ? `<div class="wa-chip">${ico} ${esc(t)}${c.ejercicio ? ' · ' + esc(c.ejercicio) : ''}${c.urgente ? ' · le limita' : ''}</div>` : '';
-    const tick = !mio ? '' : m.de === 'al' ? (c.estado === 'abierta' ? '<span class="wa-tk">✓</span>' : '<span class="wa-tk leido">✓✓</span>') : `<span class="wa-tk ${c.visto_alumno_at ? 'leido' : ''}">✓✓</span>`;
+    const tick = !mio ? '' : m.de === 'al' ? '<span class="wa-tk">✓</span>'
+      : c.visto_alumno_at ? '<span class="wa-tk leido">✓✓</span>' : c.entregado_at ? '<span class="wa-tk">✓✓</span>' : '<span class="wa-tk">✓</span>';
+    const leidoTxt = yo === 'je' && m.de === 'je' && c.visto_alumno_at ? (() => { const d = new Date(c.visto_alumno_at); return `<div class="wa-leido">Leído ${d.toDateString() === new Date().toDateString() ? 'hoy' : 'el ' + d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} a las ${d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</div>`; })() : '';
     const ej = m.de === 'al' && yo === 'je' ? ejDeMsg(c) : null;
     const ejHtml = ej ? `<button type="button" class="wa-ejref" data-act="cq" data-q="fotourl" data-u="${esc(ej.imagen_url || '')}">${ej.imagen_url ? `<img src="${esc(ej.imagen_url)}" alt="" loading="lazy">` : '<span class="ph">🏋️</span>'}<b>${esc(ej.nombre)}</b></button>` : '';
     const foto = m.de === 'al' && c.foto ? `<button type="button" class="wa-foto" data-act="cq" data-q="foto" data-p="${esc(c.foto)}"><img data-foto="${esc(c.foto)}" alt="Foto"></button>` : '';
     const marca = MARCA_AV.test(m.txt || ''), txt = marca ? m.txt.replace(MARCA_AV, '').trim() : m.txt;
-    return `<div class="wa-msg ${mio ? 'mio' : ''}${yo === 'je' ? ' pulsable' : ''}"${yo === 'je' ? ` data-cid="${c.id}" data-de="${m.de}"` : ''}>${chip}${ejHtml}${foto}${txt && !(foto && txt === '📷') ? `<span class="wa-txt">${esc(txt)}</span>` : ''}${marca ? vAvisosMsg(yo) : ''}<span class="wa-hr">${esc(hora(m.t))}${tick}</span></div>`;
+    return `<div class="wa-msg ${mio ? 'mio' : ''}${yo === 'je' ? ' pulsable' : ''}"${yo === 'je' ? ` data-cid="${c.id}" data-de="${m.de}"` : ''}>${chip}${ejHtml}${foto}${txt && !(foto && txt === '📷') ? `<span class="wa-txt">${esc(txt)}</span>` : ''}${marca ? vAvisosMsg(yo) : ''}<span class="wa-hr">${esc(hora(m.t))}${tick}</span></div>${leidoTxt}`;
   }
   function hilo(L, yo) {
     const M = mensajes(L, yo === 'je'); let ult = '';
@@ -261,7 +268,7 @@ const Consultas = (() => {
   }
   function vAvisoHoy() {
     const n = sinLeer().length; if (!n) return '';
-    return `<section class="section"><div class="card wa-fila" data-act="cq" data-q="abrir" style="cursor:pointer">${avatarJ}<div class="grow"><b>Jesús te ha respondido</b><div class="small muted">${n} ${n === 1 ? 'mensaje nuevo' : 'mensajes nuevos'} · toca para leer</div></div><span class="wa-badge">${n}</span></div></section>`;
+    return `<section class="section"><div class="card wa-fila" data-act="cq" data-q="abrir" style="cursor:pointer">${avatarJ}<div class="grow"><b>${sinLeer().every(c => c.texto && c.tema !== 'jesus') ? 'Jesús te ha respondido' : n === 1 ? 'Jesús te ha enviado un mensaje' : 'Tienes mensajes de Jesús'}</b><div class="small muted">${n} ${n === 1 ? 'mensaje nuevo' : 'mensajes nuevos'} · toca para leer</div></div><span class="wa-badge">${n}</span></div></section>`;
   }
 
   /* Preguntas de fin de entreno → mismas consultas */
@@ -438,7 +445,7 @@ Jesús
     const ahora = new Date().toISOString();
     const { data, error } = await sb.from('consultas').insert({ alumno_id: aid, tema: 'jesus', texto: null, respuesta: m.txt, estado: 'respondida', respondida_at: ahora }).select().single();
     if (error) return fallo(error, 'No se ha podido reenviar.');
-    S.c.consultas.unshift(data); avisarAlumno(aid, m.txt); toast(`Reenviado a ${(nombreAl(aid) || '').split(' ')[0]}`); render();
+    S.c.consultas.unshift(data); avisarAlumno(aid, m.txt, '💬 Jesús te ha enviado un mensaje'); toast(`Reenviado a ${(nombreAl(aid) || '').split(' ')[0]}`); render();
   }
   async function borrarMsg(cid, de, b) {
     const m = msgDe(cid, de); if (!m) return;
@@ -465,9 +472,9 @@ Jesús
       <div class="wa-pie">El alumno ve: «Te responde Jesús en persona, como tarde en tu revisión semanal». Tu objetivo interno: &lt; 48 h.${L.some(c => c.estado === 'abierta' && !/^wa_/.test(c.tema)) ? ' · <button type="button" class="wa-link" data-act="cq" data-q="cerrar">Marcar como atendido sin responder</button>' : ''}</div></div>`);
   }
   /* Notificación al móvil del alumno cuando Jesús responde (como un WhatsApp) */
-  function avisarAlumno(aid, txt) {
+  function avisarAlumno(aid, txt, titulo = '💬 Jesús te ha respondido') {
     if (S.vista || S.prueba) return;
-    sb.functions.invoke('enviar-aviso', { body: { alumno_ids: [aid], titulo: '💬 Jesús te ha respondido', cuerpo: String(txt || '').slice(0, 120), url: './', tag: 'lof-chat' } }).catch(() => { });
+    sb.functions.invoke('enviar-aviso', { body: { alumno_ids: [aid], titulo, cuerpo: String(txt || '').slice(0, 120), url: './', tag: 'lof-chat' } }).catch(() => { });
   }
   async function guardaResp(cerrar) {
     const aid = S.cqAl, txt = document.getElementById('cq-resp')?.value.trim(), ahora = new Date().toISOString();
@@ -483,7 +490,7 @@ Jesús
       const { error } = await sb.from('consultas').update(cambio).eq('id', ult.id); if (error) return fallo(error, 'No se ha podido enviar.'); Object.assign(ult, cambio); avisarAlumno(aid, txt);
     } else {
       const { data, error } = await sb.from('consultas').insert({ alumno_id: aid, tema: 'jesus', texto: null, respuesta: txt, estado: 'respondida', respondida_at: ahora }).select().single();
-      if (error) return fallo(error, 'No se ha podido enviar.'); S.c.consultas.unshift(data); avisarAlumno(aid, txt);
+      if (error) return fallo(error, 'No se ha podido enviar.'); S.c.consultas.unshift(data); avisarAlumno(aid, txt, '💬 Jesús te ha enviado un mensaje');
     }
     abrirHilo(aid); render();
   }
