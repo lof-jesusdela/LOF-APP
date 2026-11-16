@@ -1112,6 +1112,31 @@ const Nutricion = (() => {
   const evita = n => typeof Cuest !== 'undefined' ? Cuest.excluye(n, S.modo === 'coach' ? S.ficha?.cuest : S.d?.cuest) : null;
   const buscaAli = nom => ALI.find(x => norm(x.n) === norm(nom)) || ALI.find(x => norm(x.n).startsWith(norm(nom)));
   const st0 = () => ({ ctx: null, k: 0, sel: [] });
+  /* Botones por macro en la calculadora: cada alimento va en el grupo de su macro predominante
+     (los lácteos según de dónde salen la mayoría de sus kcal) y, dentro, por familias de la compra */
+  const CATS = [['P', '🍗', 'Proteínas'], ['C', '🍚', 'Carbohidratos'], ['G', '🥑', 'Grasas'], ['V', '🥦', 'Verduras']];
+  const catDe = a => { if (a.t !== 'L') return a.t; const e = { P: 4 * a.p, C: 4 * a.c, G: 9 * a.g }; return Object.keys(e).sort((x, y) => e[y] - e[x])[0]; };
+  const FAM = {
+    P: [['Carnes', /pollo|pavo|ternera|cerdo|cordero|conejo|hamburguesa|carne|cecina|jam[oó]n|h[ií]gado|salchicha|lomo|solomillo/i], ['Pescados y marisco', /salm[oó]n|pescado|at[uú]n|gamba|caballa|sardina|marisco|calamar|molusco|dorada|pulpo/i], ['Huevos y lácteos', /huevo|clara|queso|yogur|reques[oó]n|leche|k[eé]fir/i], ['Vegetales y otros', /./]],
+    C: [['Cereales y pan', /^(?!bebida)(?=.*(?:arroz|pasta|pan |pan$|avena|tortita|cusc[uú]s|quinoa|[ñn]oqui|ma[ií]z|cereales|muesli|galleta|biscote|harina|wrap|tortilla))/i], ['Patata y tubérculos', /patata|boniato|yuca/i], ['Legumbres', /lenteja|garbanzo|alubia|guisante/i], ['Lácteos', /leche|yogur|bebida|k[eé]fir/i], ['Dulces', /miel|mermelada|d[aá]til|pasas/i], ['Fruta', /./]],
+    G: [['Aceites y grasas para cocinar', /aceite|mantequilla|nata|mayonesa|bacon/i], ['Frutos secos, semillas y cremas', /nuez|nueces|almendra|cacahuete|pistacho|anacardo|avellana|semilla|crema de|frutos secos/i], ['Quesos y lácteos', /^(?!leche de coco)(?=.*(?:queso|mozzarella|gouda|yogur|k[eé]fir|leche|bebida))/i], ['Aguacate, aceitunas y otros', /./]],
+    V: [['Verduras', /./]]
+  };
+  /* Orden cotidiano dentro de cada familia: primero lo que más se compra */
+  const ORD = [/^pollo/i, /^muslo/i, /^pavo \(/i, /^ternera/i, /^carne picada de ternera/i, /^hamburguesa/i, /^lomo|^solomillo/i, /picada mixta/i, /^conejo/i, /^cordero/i, /^pavo en lonchas|^jam[oó]n york/i, /^jam[oó]n serrano|^cecina/i,
+    /^pescado blanco|^dorada/i, /^salm[oó]n en crudo/i, /^at[uú]n al natural|^at[uú]n en aceite/i, /^sardinas|^caballa en lata|^salm[oó]n en lata/i, /^gambas|^calamar|^pulpo/i,
+    /^huevo|^claras/i, /^queso fresco batido|^yogur alto|^reques|burgos light/i, /^tofu|^proteína en polvo/i,
+    /^arroz blanco|^pasta cocida|^pasta corta|^pasta larga/i, /^arroz integral|^pasta integral/i, /^pan /i, /^copos de avena|^harina de avena/i, /^tortitas/i, /^patata/i, /^boniato/i, /^lentejas|^garbanzos|^alubias/i,
+    /^pl[aá]tano|^manzana|^naranja|^mandarina|^pera$|^kiwi/i, /^fresas|^ar[aá]ndanos|^uvas|^melocot|^sand|^mel[oó]n/i,
+    /^aceite de oliva/i, /^aguacate/i, /^nueces|^almendras|^frutos secos/i, /^crema de cacahuete/i, /^aceitunas/i, /^leche semi|^leche desnatada|^leche entera/i, /^yogur natural|^yogur griego/i, /^queso semicurado|^queso fresco tipo burgos$|^queso curado/i, /^verdura variada/i, /^tomate/i];
+  const rango = a => { const i = ORD.findIndex(re => re.test(a.n)); return i < 0 ? 99 : i; };
+  function vCategorias(st, evita) {
+    const botones = `<div class="calc-cats">${CATS.map(([k, ic, t]) => `<button type="button" class="calc-cat${st.cat === k ? ' on' : ''}" data-ccat="${k}" aria-expanded="${st.cat === k}"><span>${ic}</span>${t}</button>`).join('')}</div>`;
+    if (!st.cat) return botones;
+    const lista = ALI.filter(a => catDe(a) === st.cat && !evita(a.n)), usados = new Set(), grupos = FAM[st.cat].map(([nom, re]) => { const g = lista.filter(a => !usados.has(a.n) && re.test(a.n)).sort((x, y) => rango(x) - rango(y) || ALI.indexOf(x) - ALI.indexOf(y)); g.forEach(a => usados.add(a.n)); return [nom, g]; }).filter(([, g]) => g.length);
+    const pill = a => { const ya = st.sel.some(x => x.a.n === a.n); return `<button type="button" class="pill${ya ? ' blue' : ''}" data-cadd="${esc(a.n)}"${ya ? ' aria-pressed="true"' : ''}>${ya ? '✓' : '＋'} ${esc(a.n)}</button>`; };
+    return botones + `<div class="calc-lista">${grupos.map(([nom, g]) => `<div class="stack" style="gap:6px"><span class="eyebrow">${esc(nom)}</span><div class="chips">${g.map(pill).join('')}</div></div>`).join('')}</div>`;
+  }
   function formPlato() {
     const d = S.modo === 'coach' && S.ficha ? datosPrevia(S.ficha) : S.d, n = d?.nutri || vacio(), l = ctxDe(n);
     if (!l.length) return toast('Aún no tienes contextos con macros en tu plan');
@@ -1124,7 +1149,7 @@ const Nutricion = (() => {
           <div class="calc-obj small">Objetivo de ${esc(obj.nombre.toLowerCase())}: <b>${fmtNum(obj.kcal, 0)} kcal</b> · P ${fmtNum(obj.p, 0)} g · C ${fmtNum(obj.c, 0)} g · G ${fmtNum(obj.g, 0)} g <span class="muted">(${ORIGEN_TXT[obj.origen]})</span>${obj.faltan.length ? `<br><span style="color:var(--warn)">Tu plan no indica ${obj.faltan.map(m => NOM_M[m]).join(' ni ')} para esta comida: esa parte no se calcula.</span>` : ''}</div></div>
         <div class="stack" style="gap:6px"><span class="small"><b>¿Qué quieres comer?</b> <span class="muted">Elige una proteína, un hidrato y una grasa (y verdura si quieres)</span></span>
           <input type="search" id="calc-q" list="calc-ali" placeholder="Escribe un alimento: pollo, arroz, aguacate…" autocomplete="off"><datalist id="calc-ali">${ALI.map(a => `<option value="${esc(a.n)}">`).join('')}</datalist>
-          <div class="chips">${['Pollo (pechuga) cocinado', 'Arroz blanco cocido', 'Patata cocida', 'Huevo entero', 'Aceite de oliva virgen extra', 'Verdura variada (ensalada, brócoli, judías…)'].filter(x => !st.sel.some(s => s.a.n === x) && !evita(x)).map(x => `<button type="button" class="pill" data-cadd="${esc(x)}">＋ ${esc(x.split(' (')[0])}</button>`).join('')}</div></div>
+          ${vCategorias(st, evita)}</div>
         ${r ? `<div class="calc-res">${st.sel.map((s, i) => `<div class="calc-al"><div class="grow"><b>${esc(s.a.n)}</b><span>${r.gr[i] ? equivVisual(s.a, r.gr[i]) : 'No hace falta: ya lo cubren los demás alimentos'}</span>${evita(s.a.n) ? `<small class="calc-cena">⚠ En tus preferencias: ${esc(evita(s.a.n))}</small>` : ''}${(() => { const av = esCena ? avisoCena(s.a) : null; return av ? `<small class="calc-cena">⚠ ${esc(av.m)}</small><span class="calc-alt">Mejor: ${av.alt.map(x => { const o = buscaAli(x); return o ? `<button type="button" class="pill" data-calt="${i}|${esc(o.n)}">${esc(o.n.split(' (')[0])}</button>` : ''; }).join('')}</span>` : ''; })()}${r.gr[i] ? `<small class="calc-ap">Aporta P ${fmtNum(s.a.p * r.gr[i] / 100, 0)} · C ${fmtNum(s.a.c * r.gr[i] / 100, 0)} · G ${fmtNum(s.a.g * r.gr[i] / 100, 0)} g</small>` : ''}${descuento(st.sel, r.gr, i)}</div><div class="calc-g"><b class="num">${r.gr[i] ? fmtNum(r.gr[i], 0) + ' g' : '—'}</b>${s.fijo != null ? '<small>fijado</small>' : s.a.t === 'V' || s.a.t === 'L' ? '<small>1 ración</small>' : ''}</div><button type="button" class="btn sm ghost" data-cfix="${i}" aria-label="Fijar cantidad">✎</button><button type="button" class="btn sm ghost" data-cdel="${i}" aria-label="Quitar">✕</button></div>`).join('')}
           ${(() => { const E = estadoAjuste(st.sel, r, obj), [cl, tx] = NIVEL_AJ[E.nivel]; return `<div class="calc-tot small">Total: <b>${fmtNum(r.tot.kcal, 0)} kcal</b> · P ${fmtNum(r.tot.p, 0)} g · C ${fmtNum(r.tot.c, 0)} g · G ${fmtNum(r.tot.g, 0)} g <span class="pill ${cl}">${tx}</span></div>
             ${E.nivel !== 'encaja' ? `<p class="small" style="margin:0">${esc(difTxt(E.d))} respecto a tu ${esc(obj.nombre.toLowerCase())}${E.causa ? `, sobre todo por los ${fmtNum(E.causa.fijo, 0)} g de ${esc(E.causa.n.split(' (')[0].toLowerCase())} que has puesto tú` : ''}.${E.nivel === 'margen' ? ' Puedes comerlo así.' : ''}${E.causa ? ` <button type="button" class="linkbtn" data-cprop="${E.causa.i}">Usar la propuesta: ${fmtNum(E.causa.prop, 0)} g</button>` : ''}</p>` : ''}
@@ -1143,6 +1168,7 @@ const Nutricion = (() => {
       if (t.dataset.cctx != null) { st.ctx = +t.dataset.cctx; pinta(); }
       else if (t.dataset.ck != null) { st.k = +t.dataset.ck; pinta(); }
       else if (t.dataset.calt) { const [i, nom] = t.dataset.calt.split('|'), a = buscaAli(nom); if (a && st.sel[+i]) { if (st.sel.some((x, j) => j !== +i && x.a.n === a.n)) st.sel.splice(+i, 1); else st.sel[+i] = { a }; pinta(); } }
+      else if (t.dataset.ccat) { st.cat = st.cat === t.dataset.ccat ? null : t.dataset.ccat; pinta(); }
       else if (t.dataset.cadd) add(t.dataset.cadd);
       else if (t.dataset.cprop != null) { const s = st.sel[+t.dataset.cprop]; if (s) { s.fijo = null; pinta(); } }
       else if (t.dataset.cver != null) { S.nCtx = st.ctx; S.nIng = +t.dataset.cver; S.nDoc = null; cerrarSheet(); S.tab = 'nutri'; render(); }
