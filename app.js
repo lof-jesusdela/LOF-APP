@@ -646,7 +646,7 @@ function vBarraIngestas(diario, srv) {
 /* Menú del logo: «Tu semana» (calendario + reporting) y «Tu programa» (proceso de acompañamiento) */
 function vTuSemanaAl() {
   const s = S.d.servicio || {};
-  return `<section class="stack"><span class="eyebrow">Construyendo tu Prime</span><h1>Tu semana</h1></section>${s.modulo_futbol ? vCalFutAlumno() : vCalPlanAlumno()}${s.modulo_futbol ? '' : vSemanaAnillos(s)}`;
+  return `<section class="stack"><span class="eyebrow">Construyendo tu Prime</span><h1>Tu semana</h1></section>${s.modulo_futbol ? vCalFutAlumno() : vCalPlanAlumno()}${s.modulo_futbol ? '' : vSemanaAnillos(s) + vUltimos7()}`;
 }
 function vTuProgramaAl() {
   const s = S.d.servicio || {}, p = S.d.programaBase || S.d.programa;
@@ -2232,9 +2232,7 @@ function vProgreso() {
   ${med.length ? `<section class="section"><div class="kpis"><div class="kpi"><div class="v num">${k('peso')}</div><div class="l">kg de peso</div></div><div class="kpi"><div class="v num">${k('grasa_pct')}</div><div class="l">% de grasa</div></div><div class="kpi"><div class="v num">${k('cintura')}</div><div class="l">cm de cintura</div></div></div><p class="small muted">Cambio desde tu primera medición (${esc(fCorta(med[0].fecha))} ${fecha(med[0].fecha).getFullYear()}).</p></section>` : ''}
   <section class="section">${vGraficaComp(med, S.perfil, S.d.medObj) || '<div class="card empty">Aún no hay mediciones. Jesús las añadirá en tu próximo control mensual.</div>'}${vObjetivoComp(S.d.medObj, med, false)}
   </section>
-  ${vUltimos7()}
   ${vRevisionProgreso()}
-  ${med.length ? `<section class="section"><h2>Mediciones</h2><div class="card tbl"><table><thead><tr><th>Fecha · método</th><th>Peso (kg)</th><th>% grasa</th><th>Cintura (cm)</th><th>Cadera (cm)</th></tr></thead><tbody>${med.slice().reverse().map(m => `<tr><td>${esc(fCorta(m.fecha))} ${String(fecha(m.fecha).getFullYear()).slice(2)}${m.metodo ? `<div class="small muted">${esc(m.metodo)}</div>` : ''}</td><td class="num">${fmtNum(m.peso)}</td><td class="num">${fmtNum(m.grasa_pct)}</td><td class="num">${fmtNum(m.cintura)}</td><td class="num">${fmtNum(m.cadera)}</td></tr>`).join('')}</tbody></table></div></section>` : ''}
   ${vTestsProgreso()}
   ${Casos.vSeccionAlumno()}`;
 }
@@ -7525,11 +7523,11 @@ function vEvolucion(val, lista, coach) {
     ${vacio ? '<p class="small muted" style="margin:0">Todavía no hay pruebas con datos comparables entre los dos tests.</p>' : `${bloque('✅ Mejoras', 'ok', ev.mej)}${bloque('⚠️ Puntos a mejorar', 'warn', ev.baj)}${bloque('⚖️ Desequilibrios entre lados', 'bad', ev.asim)}${bloque('➖ Sin cambios', 'muted', ev.igual)}`}
     ${coach && !vacio ? `<div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="evoCopiar" data-id="${val.id}">Copiar informe</button><button class="btn sm ghost" data-act="evoAnadir" data-id="${val.id}">Añadirlo al informe del test</button></div>` : ''}</div>`;
 }
-function vInforme(val, lista, coach) {
+function vInforme(val, lista, coach, sinEvo) {
   return `<div class="card hero stack"><span class="eyebrow">${esc(fLarga(val.fecha))} ${fecha(val.fecha).getFullYear()}${val.origen === 'alumno' ? ' · registrado por el alumno' : ''}</span><h2 style="color:#fff">${esc(val.nombre)}</h2>
       ${val.resumen ? `<div class="stack" style="gap:6px;border-top:1px solid rgba(255,255,255,.14);padding-top:12px"><span class="eyebrow">Informe · valoración de todo el contexto</span><div class="small pre">${esc(val.resumen)}</div></div>` : `<div class="small muted">${coach ? 'Escribe aquí el informe general con "Editar informe".' : 'Jesús añadirá aquí el informe de la valoración.'}</div>`}
       <div class="row" style="gap:8px;flex-wrap:wrap">${coach ? `<button class="btn sm gold" data-act="editarValoracion" data-id="${val.id}">✎ Editar informe</button><button class="btn sm ghost" data-act="nuevaPrueba" data-id="${val.id}" style="background:#fff;color:#0B0B0C">＋ Añadir prueba</button>` : ''}<button class="btn sm ghost" data-act="pdfValoracion" data-id="${val.id}" style="background:#fff;color:#0B0B0C">⬇ Descargar informe en PDF</button></div></div>
-    ${vEvolucion(val, lista, coach)}
+    ${sinEvo ? '' : vEvolucion(val, lista, coach)}
     <h2 style="margin-top:6px">Pruebas</h2>
     ${(val.pruebas || []).map(p => vPrueba(p, lista, val, coach)).join('') || '<div class="card empty">Aún no hay pruebas en esta valoración.</div>'}`;
 }
@@ -7662,8 +7660,13 @@ function vTestsProgreso() {
   const l = S.d.valoraciones || [];
   const btTP = S.obj ? '' : '<button class="btn sm ghost" data-act="testPropio">＋ Hacerme un test</button>';
   if (!l.length) return `<section class="section"><div class="section-head"><h2>Tests</h2>${btTP}</div><div class="card empty">Al empezar tu proceso Jesús te hará el test inicial. Aquí verás tu informe y el resultado de cada prueba.</div></section>`;
-  const inf = l.filter(v => v.origen !== 'alumno').length ? l.filter(v => v.origen !== 'alumno') : l, sel = inf.find(v => v.id === S.valSel) || inf[0];
-  return `<section class="section"><div class="section-head"><h2>Tests</h2>${btTP}</div>${inf.length > 1 ? `<div class="chips" style="gap:6px;margin-bottom:10px">${inf.map(v => `<button class="pill ${v.id === sel.id ? 'blue' : ''}" data-act="verValoracion" data-id="${v.id}">${esc(v.nombre)} · ${esc(fCorta(v.fecha))}</button>`).join('')}</div>` : ''}${vInforme(sel, l, false)}${vTestsPropios()}</section>`;
+  /* Plegado: al tocar se elige la valoración (inicial, final…) y, si hay más de una, la comparativa */
+  const inf = (l.filter(v => v.origen !== 'alumno').length ? l.filter(v => v.origen !== 'alumno') : l).slice().sort((x, y) => x.fecha.localeCompare(y.fecha));
+  const comp = S.valSel === 'comp' && inf.length > 1, sel = comp ? null : inf.find(v => v.id === S.valSel) || inf[inf.length - 1], ult = inf[inf.length - 1];
+  const chips = `<div class="chips" style="gap:6px">${inf.map(v => `<button class="pill ${sel && v.id === sel.id ? 'blue' : ''}" data-act="verValoracion" data-id="${v.id}">${esc(v.nombre)} · ${esc(fCorta(v.fecha))}</button>`).join('')}${inf.length > 1 ? `<button class="pill ${comp ? 'gold' : ''}" data-act="verValoracion" data-id="comp">📊 Comparativa</button>` : ''}</div>`;
+  const cuerpo = comp ? (vEvolucion(ult, l, false) || '<div class="card empty">Todavía no hay pruebas con datos comparables entre tus tests.</div>') : vInforme(sel, l, false, true);
+  return `<section class="section"><h2>Tests</h2><details class="card fx-ban tests-ban"${S.testsAb ? ' open' : ''}><summary><span class="fx-ban-ic">🧪</span><span class="grow"><b>${inf.length > 1 ? `${inf.length} valoraciones` : esc(inf[0].nombre)}</b><small class="muted"> · última el ${esc(fCorta(ult.fecha))}${inf.length > 1 ? ' · con comparativa' : ''}</small></span></summary>
+    <div class="stack" style="gap:12px;margin-top:10px">${chips}${cuerpo}${vTestsPropios()}${btTP ? `<div>${btTP}</div>` : ''}</div></details></section>`;
 }
 
 /* Coach: tests en la ficha */
@@ -8671,7 +8674,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v397';
+const APP_VER = 'v398';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8887,7 +8890,7 @@ document.addEventListener('click', async e => {
     case 'recDeshacer': await Negocio.hechoRec(+b.dataset.id, false); break;
     case 'abrirDiaAlt': { const c = (S.d.alternativos || []).find(x => x.id === +b.dataset.p), d = c?.dias.find(x => x.id === +b.dataset.id); if (d) await abrirDia(d.id, { dia: d }); break; }
     case 'altToggle': await altToggle(+b.dataset.id, b.dataset.v === '1'); break;
-    case 'verValoracion': S.valSel = +b.dataset.id; render(); break;
+    case 'verValoracion': S.valSel = b.dataset.id === 'comp' ? 'comp' : +b.dataset.id; S.testsAb = true; render(); break;
     case 'nuevaValoracion': formValoracion(); break;
     case 'abrirValoracion': S.valEd = +b.dataset.id; render(); window.scrollTo(0, 0); break;
     case 'cerrarValoracion': S.valEd = null; render(); window.scrollTo(0, 0); break;
