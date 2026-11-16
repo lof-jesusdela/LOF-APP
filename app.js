@@ -3980,13 +3980,13 @@ const planSem = id => horarioDe(id).plan, horarioEq = id => horarioDe(id).eq;
 const diasProg = (f, lunes) => { const pr = ctxEnSemana(f.contextos || [], lunes || lunesDe(hoyISO())) || f.progFull || f.prog; return (pr?.dias || []).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0)); };
 function vCalFut(a) {
   const f = S.ficha, { w, p } = futDe(a.id);
-  return vCalSemana({ w, p, ses: f.ses, pres: f.pres, todos: [f.progFull, f.prog, ...(f.contextos || [])].flatMap(x => x?.dias || []), DP: diasProg(f, f.semFut || lunesDe(hoyISO())), H: horarioEq(a.id), PS: planSem(a.id), lunes: f.semFut || lunesDe(hoyISO()), aid: a.id });
+  return vCalSemana({ w, p, ses: f.ses, pres: f.pres, todos: [f.progFull, f.prog, ...(f.contextos || [])].flatMap(x => x?.dias || []), DP: diasProg(f, f.semFut || lunesDe(hoyISO())), PB: (f.progFull?.dias || []).filter(d => !d.oculto), H: horarioEq(a.id), PS: planSem(a.id), lunes: f.semFut || lunesDe(hoyISO()), aid: a.id });
 }
 /* Lo mismo en la app del futbolista, arriba de «Hoy»: toca una sesión tuya para abrirla */
 function vCalFutAlumno() {
   const D = S.d, h = horarioDe(D.uid), lunes = S.semFutA || lunesDe(hoyISO()), pr = ctxEnSemana(D.contextos || [], lunes) || D.programa;   /* la semana ajustada de ESA semana, como la ve el coach */
   return vCalSemana({ w: D.wellness || [], p: D.partidos || [], ses: D.sesiones || [], pres: D.presenciales || [], todos: [D.programa, D.programaBase, ...(D.contextos || []), ...(D.alternativos || [])].filter(Boolean).flatMap(q => q.dias || []),
-    DP: (pr?.dias || []).filter(d => !d.oculto).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0)), H: h.eq, PS: h.plan, lunes, alumno: true });
+    DP: (pr?.dias || []).filter(d => !d.oculto).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0)), PB: (D.programaBase?.dias || []).filter(d => !d.oculto), H: h.eq, PS: h.plan, lunes, alumno: true });
 }
 /* Alumnos que no son futbolistas: su semana con lo que planificó (plan_semana) o, si el programa va por días de la semana, por esos días */
 /* Qué día de la semana le toca cada día del programa: por el nombre del día, o por los días que marcó en su check-in (plan_semana), sin contar los que ya hizo */
@@ -4017,26 +4017,39 @@ function vCalPlanAlumno() {
   return vCalSemana({ w: [], p: [], ses, pres: D.presenciales || [], todos, DP, H: {}, PS, lunes, alumno: true, fut: false })
     .replace('</div></section>', sinPlan && usaPlan() ? `<div class="small muted">Planifica tus días de entreno de esta semana y aquí verás qué te toca cada día.</div></div></section>` : '</div></section>');
 }
-function vCalSemana({ w, p, ses = [], pres = [], todos, DP, H, PS, lunes, aid, alumno, fut = true }) {
+function vCalSemana({ w, p, ses = [], pres = [], todos, DP, H, PS, PB, lunes, aid, alumno, fut = true }) {
   const hoy = hoyISO(), L = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'], dDe = id => todos.find(d => d.id === id);
+  /* Futbolistas: en qué día de la semana cae cada entreno.
+     1) Si el entreno se llama como un día de la semana (Lunes, Jueves…), ese día: es lo que fijas en el editor.
+     2) Si no, el horario de la semana (que guarda el nº de día de la semana patrón): se busca el mismo entreno por su nombre,
+        así una semana modificada (con otros números) no coloca un entreno en el día de otro. */
+  const esFut = fut, kDia = d => norm(d?.titulo || d?.nombre || ''), ixN = d => [0, 1, 2, 3, 4, 5, 6].find(k => esDia(d, norm(DSEM_L[k])));
+  const wd = x => { if (!fut) return PS[x.numero] !== '' && PS[x.numero] != null ? +PS[x.numero] : null;
+    const n = ixN(x); if (n != null) return n;
+    const base = (PB || []).find(z => z.id === x.id) || (PB || []).find(z => kDia(z) && kDia(z) === kDia(x)) || (!(PB || []).length ? x : null);
+    return base && PS[base.numero] !== '' && PS[base.numero] != null ? +PS[base.numero] : null; };
+  const mismo = (a1, b1) => a1 && b1 && (a1.id === b1.id || (kDia(a1) && kDia(a1) === kDia(b1)));
+  /* Orden dentro del día: activación antes del partido, recuperación después */
+  const fase = d => { const t = norm([d?.titulo, d?.nombre, d?.foco].filter(Boolean).join(' ')); return /post.?partido|regenera|recupera|descarga/.test(t) ? 2 : /pre.?partido|activaci|dia de partido/.test(t) ? 0 : 1; };
   const lab = d => { const t = d.titulo || (/^d[ií]a \d+$/i.test(d.nombre || '') ? '' : d.nombre); return `Día ${d.numero || ''}${t ? ' · ' + t : ''}`; };
   const nomDia = id => { const d = dDe(id); return d ? lab(d) : 'Sesión'; };
   { const vistos = new Set(); ses = ses.filter(x => { const k = x.fecha + '|' + (x.previa ? 'p' : '') + (dDe(x.dia_id)?.numero ?? 'i' + x.dia_id); if (vistos.has(k)) return false; vistos.add(k); return true; }); }   /* el mismo día de entreno registrado dos veces en una fecha sale una sola */
   const chipP = x => alumno ? chip('#0f766e', '⚽ Partido', esc([hhmm(x.hora), x.rival].filter(Boolean).join(' · ')))
     : `<button type="button" data-act="partido" data-al="${aid}" data-id="${x.id}" style="display:block;width:100%;text-align:left;border:0;border-radius:8px;padding:5px 7px;background:#0f766e;color:#fff;font-size:12px;line-height:1.25;cursor:pointer"><b>⚽ Partido</b><div style="opacity:.9">${esc([hhmm(x.hora), x.rival].filter(Boolean).join(' · '))}</div><div style="opacity:.9;font-weight:700">Editar ›</div></button>`;
   const chip = (c, t, sub, op, id) => `<${id && alumno ? `button type="button" data-act="abrirDia" data-id="${id}"` : 'div'} style="display:block;width:100%;text-align:left;border:0;border-radius:8px;padding:5px 7px;background:${c};color:#fff;opacity:${op ? .55 : 1};font-size:12px;line-height:1.25${id && alumno ? ';cursor:pointer' : ''}"><b>${t}</b>${sub ? `<div style="opacity:.9">${sub}</div>` : ''}${id && alumno ? '<div style="opacity:.9;font-weight:700">Abrir ›</div>' : ''}</${id && alumno ? 'button' : 'div'}>`;
-  const col = [...Array(7)].map((_, i) => { const d = sumaDias(lunes, i), M = mdDe(p, d), fut = d > hoy, out = [];
+  const col = [...Array(7)].map((_, i) => { const d = sumaDias(lunes, i), M = mdDe(p, d), fut = d > hoy, out = [], antes = [], despues = [];
+    const conPt = p.some(x => x.fecha === d), sitio = dia => !conPt ? out : fase(dia) === 0 ? antes : fase(dia) === 2 ? despues : out;
     p.filter(x => x.fecha === d).forEach(x => out.push(chipP(x)));
     const dd = wDe(w, d, 'diario');
     if (dd?.datos?.eq_min) out.push(chip('#2563eb', '🏟 Equipo', `${dd.datos.eq_min} min${dd.datos.eq_rpe ? ' · RPE ' + dd.datos.eq_rpe : ''}`));
     else if (H[i] != null && !p.some(x => x.fecha === d) && !(dd && dd.datos?.eq_min === 0)) out.push(chip('#2563eb', '🏟 Equipo', esc(H[i] || 'previsto'), true));
-    ses.filter(x => x.fecha === d && !x.previa).forEach(x => out.push(chip('#c2410c', '💪 ' + (alumno ? 'Tu sesión' : 'LOF'), esc(nomDia(x.dia_id)) + (x.estado === 'parcial' ? ' · a medias' : ' · hecha'), false, x.dia_id)));
+    ses.filter(x => x.fecha === d && !x.previa).forEach(x => sitio(dDe(x.dia_id)).push(chip('#c2410c', '💪 ' + (alumno ? 'Tu sesión' : 'LOF'), esc(nomDia(x.dia_id)) + (x.estado === 'parcial' ? ' · a medias' : ' · hecha'), false, x.dia_id)));
     if (!ses.some(x => x.fecha === d) && dd?.datos?.lof_rpe) out.push(chip('#c2410c', '💪 LOF', `RPE ${dd.datos.lof_rpe}`));
-    DP.filter(x => PS[x.numero] !== '' && PS[x.numero] != null && +PS[x.numero] === i).forEach(x => { const hecho = ses.some(z => z.fecha >= lunes && z.fecha <= sumaDias(lunes, 6) && dDe(z.dia_id)?.numero === x.numero);   /* si ya lo hizo otro día de esa semana, no sale como pendiente */
-      if (!hecho) out.push(chip('#c2410c', '💪 ' + (alumno ? 'Tu sesión' : 'LOF'), esc(lab(x)) + (d < hoy ? ' · no hecho' : ''), true, x.id)); });
+    DP.filter(x => wd(x) === i).forEach(x => { const hecho = ses.some(z => z.fecha >= lunes && z.fecha <= sumaDias(lunes, 6) && (esFut ? mismo(dDe(z.dia_id), x) : dDe(z.dia_id)?.numero === x.numero));   /* si ya lo hizo otro día de esa semana, no sale como pendiente */
+      if (!hecho) sitio(x).push(chip('#c2410c', '💪 ' + (alumno ? 'Tu sesión' : 'LOF'), esc(lab(x)) + (d < hoy ? ' · no hecho' : ''), true, x.id)); });
     pres.filter(x => x.fecha === d && x.estado !== 'cancelada').forEach(x => out.push(chip('#7c3aed', alumno ? '📍 Con Jesús' : '📍 Contigo', esc([hhmm(x.hora), x.tipo].filter(Boolean).join(' · ')), x.estado === 'programada' && fut)));
     return `<div class="stack" style="gap:5px;min-width:0;padding:6px;border-radius:10px;background:${d === hoy ? 'var(--surface-2, #eef3ff)' : 'transparent'};border:1px solid var(--line)">
-      <div style="text-align:center"><b class="small">${L[i]} ${+d.slice(8)}</b>${fut && M.md ? `<div class="small" style="font-weight:700;color:${M.md === 'MD' ? '#0f766e' : 'var(--muted)'}">${M.md}</div>` : ''}</div>${out.join('') || '<span class="small muted" style="text-align:center">—</span>'}</div>`; }).join('');
+      <div style="text-align:center"><b class="small">${L[i]} ${+d.slice(8)}</b>${fut && M.md ? `<div class="small" style="font-weight:700;color:${M.md === 'MD' ? '#0f766e' : 'var(--muted)'}">${M.md}</div>` : ''}</div>${[...antes, ...out, ...despues].join('') || '<span class="small muted" style="text-align:center">—</span>'}</div>`; }).join('');
   const nav = k => `data-act="${alumno ? 'futSemA' : 'futSem'}" data-l="${sumaDias(lunes, k)}"`;
   return `<section class="section" style="grid-column:1/-1;column-span:all;-webkit-column-span:all"><div class="section-head"><h2>${alumno ? 'Tu semana' : 'Calendario de la semana'}</h2><span class="row" style="gap:6px">${alumno || !fut ? '' : `<button class="btn sm ghost" data-act="partido" data-al="${aid}">＋ Partido</button><button class="btn sm ghost" data-act="futEquipo" data-al="${aid}">🗓 Horario de la semana</button>`}<button class="btn sm ghost" ${nav(-7)} aria-label="Semana anterior">◀</button><button class="btn sm ghost" ${nav(7)} aria-label="Semana siguiente">▶</button></span></div>
     <div class="card stack"><div class="small muted">Del ${esc(fCorta(lunes))} al ${esc(fCorta(sumaDias(lunes, 6)))}${lunes === lunesDe(hoy) ? ' · esta semana' : ''} · claro = previsto, fuerte = hecho${alumno ? ' · toca tu sesión para abrirla' : ''}</div>
@@ -8455,7 +8468,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v383';
+const APP_VER = 'v384';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
