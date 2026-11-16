@@ -5226,7 +5226,7 @@ function cambioMed(k, ant, nue, obj) {
   return { d, juicio, txt: (d > 0 ? '+' : d < 0 ? '−' : '') + fmtNum(Math.abs(d)) + uMed(k), col: juicio === 'mejor' ? 'ok' : juicio === 'peor' ? 'warn' : 'muted' };
 }
 const medAnterior = (lista, f, sinId) => (lista || []).filter(m => m.fecha < f && m.id !== sinId).sort((a, b) => a.fecha.localeCompare(b.fecha)).pop() || null;
-function formMedicion(editId) {
+function formMedicion(editId, op = {}) {
   const per = S.c.perfiles.find(p => p.id === S.ficha.id) || {}, primera = !editId && !(S.ficha.med || []).length, ed = editId ? (S.ficha.med || []).find(m => m.id === +editId || m.id === editId) : null;
   const c = [['peso', 'Peso (kg)'], ['cuello', 'Cuello'], ['cintura', 'Cintura'], ['cadera', 'Cadera'], ['abd_bajo', 'Abdomen bajo'], ['pectoral', 'Pectoral'], ['hombros', 'Hombros'], ['brazo_d', 'Brazo contraído dcho.'], ['brazo_i', 'Brazo contraído izdo.'], ['muslo_d', 'Muslo dcho.'], ['muslo_i', 'Muslo izdo.'], ['gemelo_d', 'Gemelo dcho.'], ['gemelo_i', 'Gemelo izdo.']];
   abrirSheet(`<form class="stack" id="f-med"><h2>${ed ? 'Editar medición' : 'Nueva medición'}</h2><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Fecha<input type="date" id="m-fecha" value="${hoyISO()}"></label><label class="f">Método<select id="m-met">${METODOS_MED.map(x => `<option>${x}</option>`).join('')}</select></label></div>
@@ -5270,7 +5270,7 @@ function formMedicion(editId) {
     let { error } = ed ? await sb.from('mediciones').update(row).eq('id', ed.id) : await guardarMedicion(row);
     if (ed && error && /metodo/.test(error.message || '')) { delete row.metodo; ({ error } = await sb.from('mediciones').update(row).eq('id', ed.id)); }
     if (error) { bt.disabled = false; return fallo(error, 'No se ha podido guardar la medición: ' + (error.message || 'revisa la conexión')); }
-    const cmp = compara(); cerrarSheet(); toast(`${ed ? 'Medición actualizada' : 'Medición guardada'}${cmp.mej.length ? ` · ✅ ${cmp.mej.length} ${cmp.mej.length === 1 ? 'mejora' : 'mejoras'}` : ''}`); await abrirFicha(S.ficha.id); abrirSub('composicion');
+    const cmp = compara(); cerrarSheet(); toast(`${ed ? 'Medición actualizada' : 'Medición guardada'}${cmp.mej.length ? ` · ✅ ${cmp.mej.length} ${cmp.mej.length === 1 ? 'mejora' : 'mejoras'}` : ''}${op.conRev ? ' · ahora la revisión' : ''}`); await abrirFicha(S.ficha.id); abrirSub('composicion'); if (op.conRev) { let n = null; try { n = estadoAlumno(S.c.perfiles.find(p => p.id === S.ficha.id) || { id: S.ficha.id }).control?.n || null; } catch (_) {} formRevision(n, null); }
     if (primera && !S.ficha.medObj) { toast('Valoración inicial guardada: ahora fija su objetivo'); formObjetivoComp(); }
     else if (!ed && !primera) preguntaRevisionTrasMedicion();
   });
@@ -8699,7 +8699,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v403';
+const APP_VER = 'v404';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -9113,7 +9113,8 @@ document.addEventListener('click', async e => {
     case 'nuevoApartado': formApartado(b.dataset.sec, null); break;
     case 'cerrarPlan': S.verPlan = null; render(); window.scrollTo(0, 0); break;
     case 'verSesion': await verSesion(+b.dataset.id); break;
-    case 'nuevaMedicion': formMedicion(); break;
+    case 'nuevaMedicion': abrirSheet(`<div class="stack"><h2>Nueva medición</h2><p class="small muted" style="margin:0">¿Es solo una medición o también es su revisión mensual? Si hay revisión, al guardar las medidas se abre la revisión para rellenar el foco y los acuerdos.</p><button class="btn full" data-act="medTipo" data-v="rev">📋 Medición + revisión mensual</button><button class="btn ghost full" data-act="medTipo" data-v="sola">📏 Solo medición</button></div>`); break;
+    case 'medTipo': cerrarSheet(); formMedicion(null, { conRev: b.dataset.v === 'rev' }); break;
     case 'editarMedicion': formMedicion(b.dataset.id); break;
     case 'objetivoComp': formObjetivoComp(); break;
     case 'misMedidas': formMisMedidas(); break;

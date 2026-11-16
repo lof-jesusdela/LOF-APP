@@ -268,7 +268,7 @@ const Consultas = (() => {
   }
   function vAvisoHoy() {
     const n = sinLeer().length; if (!n) return '';
-    return `<section class="section"><div class="card wa-fila" data-act="cq" data-q="abrir" style="cursor:pointer">${avatarJ}<div class="grow"><b>${sinLeer().every(c => c.texto && c.tema !== 'jesus') ? 'Jesús te ha respondido' : n === 1 ? 'Jesús te ha enviado un mensaje' : 'Tienes mensajes de Jesús'}</b><div class="small muted">${n} ${n === 1 ? 'mensaje nuevo' : 'mensajes nuevos'} · toca para leer</div></div><span class="wa-badge">${n}</span></div></section>`;
+    return `<section class="section"><div class="card wa-fila wa-nuevo" data-act="cq" data-q="abrir" style="cursor:pointer">${avatarJ}<div class="grow"><b>${sinLeer().every(c => c.texto && c.tema !== 'jesus') ? 'Jesús te ha respondido' : n === 1 ? 'Jesús te ha enviado un mensaje' : 'Tienes mensajes de Jesús'}</b><div class="small muted">${n} ${n === 1 ? 'mensaje nuevo' : 'mensajes nuevos'} · toca para leer</div></div><span class="wa-badge">${n}</span></div></section>`;
   }
 
   /* Preguntas de fin de entreno → mismas consultas */
