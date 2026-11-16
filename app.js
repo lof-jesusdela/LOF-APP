@@ -1305,8 +1305,7 @@ function vEjercicio(e, i, ro) {
     ${e.aproximacion_631 && !ro ? vAprox(e) : ''}
     ${ro && !plan ? resumenEjCerrado(ro, e) : ''}
     ${tandas && !ro ? Tandas.vista(e, ej, sp) : tandas ? Tandas.vistaRO(e, ro) : ''}
-    ${!tandas && !ro ? (() => { const rr = [...new Set(grupos.flatMap(g => g.tramos.map(t => t.rir ?? g.tramos[0].rir ?? e.rir)).filter(x => x != null && x !== '').map(String))]; return rr.length ? `<div class="rp-rir">${Tandas.ICO.rir}<div><b>Esfuerzo indicado · RIR ${esc(rr.join(' / '))}</b><span class="small">${esc(rr.length === 1 ? Tandas.rirTxt(rr[0]) : 'RIR = repeticiones que deberían quedarte en reserva al terminar cada serie.')}</span></div></div>` : ''; })() : ''}
-    ${!ro && !tandas ? (() => { const t0 = grupos[0]?.tramos[0] || {}, kg = sp ? '' : (kgDe(t0) || kg0), rp = repsPh(t0.r), ri = t0.rir ?? e.rir; return `<div class="small pauta-l"><b>Pautado:</b> ${e.series} × ${esc(rp || '—')}${kg ? ' · ' + esc(kg) + ' kg' : ''}${grupos.some(g => g.tramos.length > 1) ? ' · con tramos' : ''}<span class="muted"> · en gris en cada serie. Escribe solo lo que cambie; al marcar ✓ se guarda.</span></div>`; })() : ''}
+    ${!ro && !tandas ? (() => { const t0 = grupos[0]?.tramos[0] || {}, kg = sp ? '' : (kgDe(t0) || kg0), rp = repsPh(t0.r), ri = t0.rir ?? e.rir; const rr = [...new Set(grupos.flatMap(g => g.tramos.map(t => t.rir ?? g.tramos[0].rir ?? e.rir)).filter(x => x != null && x !== '').map(String))]; return `<div class="small pauta-l"><b>Pautado:</b> ${e.series} × ${esc(rp || '—')}${kg ? ' · ' + esc(kg) + ' kg' : ''}${rr.length ? ` <button class="rp-rir-chip" data-act="rir" data-r="${esc(rr.length === 1 ? rr[0] : '')}">RIR ${esc(rr.join(' / '))} ⓘ</button>` : ''}${grupos.some(g => g.tramos.length > 1) ? ' · con tramos' : ''}<span class="muted"> · en gris en cada serie. Escribe solo lo que cambie; al marcar ✓ se guarda.</span></div>`; })() : ''}
     ${tandas ? '' : `<div class="sets"><span class="h">Nº</span><span class="h">Kg</span><span class="h">Reps</span><span class="h">${plan ? '' : 'Hecha'}</span>${filas}</div>`}
     ${plan ? '' : ro ? (com ? `<div class="ex-com small"><b>Comentario:</b> ${esc(com)}</div>` : '') : `<div class="ex-com-w" id="com-${e.id}">${com ? `<div class="ex-com small">${esc(com)} <button class="linkbtn small" data-act="comentarEj" data-es="${e.id}">Editar</button></div>` : `<button class="linkbtn small" data-act="comentarEj" data-es="${e.id}">＋ Comentario sobre este ejercicio</button>`}</div>`}
   </div>`;
@@ -6346,6 +6345,57 @@ function datosReporte(a, R) {
   const score = [pctE, srv?.modulo_nutricion && midoCoach(a.id) && Nutricion.acuerdoDe(planNutriDe(a.id)).nivel === 'habitual' ? w.nutri : null, pctP].filter(v => v != null);
   return { srv, dpw, obj, w, P, pctE, pctP, nivel, coment, pres, control: controlEnSemana(srv, R.lunes), score: score.length ? Math.min(...score) : 100 };
 }
+/* ---------- Reporting con anillos (estilo reloj de actividad) ----------
+   Un anillo por objetivo del alumno (entrenos, alimentación, pasos). Al tocar el banner de cada anillo se abren sus barras de lunes a domingo. */
+const RG_COL = { ent: '#F0386B', nut: '#6DBE26', pas: '#18AFD3' };
+function anillosSvg(L, tam) {
+  const g = Math.round(tam * .105), sep = Math.max(2, Math.round(tam * .03)), c0 = tam / 2; let r = c0 - g / 2 - 1;
+  const arcs = L.map(x => { const c = 2 * Math.PI * r, p = Math.max(0, Math.min(100, x.pct ?? 0));
+    const o = `<circle cx="${c0}" cy="${c0}" r="${r.toFixed(1)}" fill="none" stroke="${x.col}" stroke-opacity=".17" stroke-width="${g}"/>${p ? `<circle cx="${c0}" cy="${c0}" r="${r.toFixed(1)}" fill="none" stroke="${x.col}" stroke-width="${g}" stroke-linecap="round" stroke-dasharray="${(c * p / 100).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 ${c0} ${c0})"/>` : ''}`;
+    r -= g + sep; return o; }).join('');
+  return `<svg class="rg-svg" width="${tam}" height="${tam}" viewBox="0 0 ${tam} ${tam}" role="img" aria-label="${esc(L.map(x => x.tit + ' ' + (x.pct ?? '—') + ' %').join(', '))}">${arcs}</svg>`;
+}
+/* Barras de la semana (lunes a domingo): v = 0-100 (null = sin dato), obj = línea del objetivo */
+function montanitas(vals, col, obj) {
+  const W = 280, H = 92, base = 70, alto = 60, paso = W / 7, bw = 24;
+  const barras = vals.map((x, i) => { const cx = paso * i + paso / 2, v = x.v;
+    const cuerpo = v == null ? `<circle cx="${cx}" cy="${base - 3}" r="2.5" fill="#B8B8B8"/>` : `<rect x="${cx - bw / 2}" y="${base - alto}" width="${bw}" height="${alto}" rx="5" fill="${col}" fill-opacity=".12"/>${v > 0 ? `<rect x="${cx - bw / 2}" y="${(base - alto * Math.min(v, 130) / 130 * (obj ? 1 : 1.3)).toFixed(1)}" width="${bw}" height="${(alto * Math.min(v, 130) / 130 * (obj ? 1 : 1.3)).toFixed(1)}" rx="5" fill="${col}" fill-opacity="${obj && v < 100 ? .55 : 1}"/>` : ''}`;
+    return `<g><title>${esc(x.t || '')}</title>${cuerpo}<text x="${cx}" y="${H - 6}" text-anchor="middle" font-size="12" fill="currentColor" opacity=".6">${DSEM[i] || ''}</text>${x.et ? `<text x="${cx}" y="${base - alto - 3 < 8 ? 9 : base - alto - 3}" text-anchor="middle" font-size="10" fill="currentColor" opacity=".55">${esc(x.et)}</text>` : ''}</g>`; }).join('');
+  const linea = obj ? `<line x1="2" x2="${W - 2}" y1="${(base - alto / 1.3).toFixed(1)}" y2="${(base - alto / 1.3).toFixed(1)}" stroke="${col}" stroke-dasharray="4 4" stroke-width="1.2" opacity=".8"/>` : '';
+  return `<svg class="rg-mont" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${barras}${linea}</svg>`;
+}
+function vAnillos(a, R, d, detalle) {
+  const w = d.w, dias = [...Array(7)].map((_, i) => sumaDias(R.lunes, i)), srv = d.srv, L = [], filas = [];
+  const fila = (k, tit, val, sub, chart, nota) => `<details class="rg-ban"${detalle ? ' open' : ''}><summary><i style="background:${RG_COL[k]}"></i><span class="grow"><b>${tit}</b><small>${sub}</small></span><b class="num rg-v" style="color:${RG_COL[k]}">${val}</b></summary>${chart}${nota ? `<div class="small muted">${nota}</div>` : ''}</details>`;
+  const plana = (k, tit, val, sub) => `<div class="rg-ban rg-plana"><div class="rg-sum"><i style="background:${RG_COL[k]};opacity:.35"></i><span class="grow"><b>${tit}</b><small>${sub}</small></span><b class="num rg-v">${val}</b></div></div>`;
+  if (d.dpw) {
+    L.push({ tit: 'Entrenos', pct: d.pctE, col: RG_COL.ent });
+    const extra = w.entrenos > d.dpw ? ` · +${w.entrenos - d.dpw} extra` : '';
+    filas.push(fila('ent', 'Entrenos', `${d.pctE} %`, `${Math.min(w.entrenos, d.dpw)} de ${d.dpw} hechos${extra}`,
+      montanitas(dias.map(f => { const ss = w.ses.filter(x => x.fecha === f); return { v: ss.length ? 100 : 0, t: ss.length ? ss.map(x => nomDia(x.dias)).join(' + ') : 'Sin entreno', et: ss.length > 1 ? '×' + ss.length : '' }; }), RG_COL.ent),
+      w.ent?.retomadas ? `${w.ent.retomadas} sesión${w.ent.retomadas === 1 ? '' : 'es'} retomada${w.ent.retomadas === 1 ? '' : 's'}: cuenta una vez.` : ''));
+  }
+  if (srv?.modulo_nutricion) {
+    const niv = midoCoach(a.id) ? Nutricion.acuerdoDe(planNutriDe(a.id)).nivel : null;
+    if (!midoCoach(a.id)) filas.push(plana('nut', 'Alimentación', '—', esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || '') + ' · aún no se mide'));
+    else if (niv === 'ligero') filas.push(plana('nut', 'Alimentación', w.chk?.aplicacion_plan ? { aplicado: '✓', parte: '½', ayuda: '?' }[w.chk.aplicacion_plan] : '—', w.chk?.aplicacion_plan ? esc(aplTxt(w.chk.aplicacion_plan)) + ' · seguimiento ligero' : 'seguimiento ligero · sin check-in'));
+    else {
+      const pct = w.nutri ?? w.ing.pctReg, n = w.ing.n;
+      L.push({ tit: 'Alimentación', pct, col: RG_COL.nut });
+      filas.push(fila('nut', 'Alimentación', pct != null ? pct + ' %' : '—', w.ing.dias ? `${w.ing.dias} de 7 días${w.nutri == null ? ' · pocos datos' : ''}` : 'sin registros',
+        montanitas(dias.map(f => { const r = w.reg.find(x => x.fecha === f && x.ingestas != null); if (!r) return { v: null, t: 'Sin registro' }; const prev = Math.max(1, r.comidas_hechas || n), v = Math.round(Math.min(prev, r.ingestas) / prev * 100); return { v, t: v >= 100 ? 'Cumplió su plan' : `${Math.min(prev, r.ingestas)} de ${prev} comidas` }; }), RG_COL.nut),
+        w.ing.dias < 7 ? 'Los puntos grises son días sin registro: no cuentan como fallo.' : ''));
+    }
+  }
+  if (conPasos(srv)) {
+    L.push({ tit: 'Pasos', pct: d.pctP, col: RG_COL.pas });
+    filas.push(fila('pas', 'Pasos', w.pasosMedia != null ? fmtNum(w.pasosMedia, 0) : '—', `media · obj. ${fmtNum(d.obj, 0)}`,
+      montanitas(dias.map(f => { const r = w.reg.find(x => x.fecha === f && x.pasos != null); return r ? { v: Math.round(r.pasos / d.obj * 100), t: fmtNum(r.pasos, 0) + ' pasos', et: r.pasos >= 1000 ? Math.round(r.pasos / 1000) + 'k' : '' } : { v: null, t: 'Sin registro' }; }), RG_COL.pas, d.obj),
+      `Registró ${w.diasPasos} de 7 días. La línea discontinua es su objetivo.`));
+  }
+  if (!filas.length) return '<p class="small muted">Sin objetivos medibles esta semana.</p>';
+  return `<div class="rg${detalle ? ' rg-grande' : ''}">${L.length ? `<div class="rg-ani">${anillosSvg(L, detalle ? 150 : 104)}</div>` : ''}<div class="rg-filas">${filas.join('')}</div></div>`;
+}
 function vReporteAlumno(a, R, detalle) {
   const d = datosReporte(a, R), w = d.w;
   const caja = (t, v, sub, niv) => `<div class="kpi rep ${niv}"><div class="l">${t}</div><b class="num">${v}</b><div class="small muted">${sub}</div></div>`;
@@ -6353,9 +6403,7 @@ function vReporteAlumno(a, R, detalle) {
   const com = detalle ? d.coment : d.coment.slice(0, 4);
   return `<div class="card stack"><div class="row"><div class="grow"><h3>${esc(a.nombre)}</h3><div class="small muted">${semTxt}</div></div>${detalle ? '' : `<button class="btn sm ghost" data-act="abrirReporte" data-id="${a.id}">Ver</button>`}</div>
     <div class="aprox small stack" style="gap:3px"><span>🎯 <b>Foco de esta persona</b></span>${Foco.linea(a.id)}</div>
-    <div class="kpis">${caja('Entrenos', d.dpw ? `${Math.min(w.entrenos, d.dpw)}/${d.dpw}` : w.entrenos, d.pctE != null ? `${d.pctE} %${w.entrenos > d.dpw ? ` · +${w.entrenos - d.dpw} extra` : ''}${w.ent?.retomadas ? ` · ${w.ent.retomadas} retomada${w.ent.retomadas === 1 ? '' : 's'} (cuenta una vez)` : ''}` : 'sin plan', d.nivel(d.pctE))}
-      ${d.srv?.modulo_nutricion && midoCoach(a.id) && Nutricion.acuerdoDe(planNutriDe(a.id)).nivel === 'ligero' ? caja('Alimentación', w.chk?.aplicacion_plan ? { aplicado: '✓', parte: '½', ayuda: '?' }[w.chk.aplicacion_plan] : '—', w.chk?.aplicacion_plan ? esc(aplTxt(w.chk.aplicacion_plan)) + ' · seguimiento ligero' : 'seguimiento ligero · sin check-in', w.chk?.aplicacion_plan === 'aplicado' ? 'ok' : w.chk?.aplicacion_plan ? 'warn' : '') : d.srv?.modulo_nutricion && !midoCoach(a.id) ? caja('Alimentación', '—', esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || '') + ' · no se mide', '') : d.srv?.modulo_nutricion ? caja('Alimentación', w.nutri != null ? w.nutri + ' %' : '—', w.ing.dias ? `${w.ing.hechas}/${w.ing.posibles} ingestas de ${w.ing.dias} día${w.ing.dias > 1 ? 's' : ''} registrado${w.ing.dias > 1 ? 's' : ''} · ${w.nutri != null ? evalNutri(w.nutri)[1] : `pocos datos para valorar (mín. ${MIN_DIAS_NUTRI} días)`}` : w.chk?.nutricion_pct != null ? 'según su check-in' : 'sin días registrados', evalNutri(w.nutri)?.[0] || '') : ''}
-      ${!conPasos(d.srv) ? '' : caja('Pasos', w.pasosMedia != null ? fmtNum(w.pasosMedia, 0) : '—', `obj. ${fmtNum(d.obj, 0)} · ${w.diasPasos}/7 días`, d.nivel(d.pctP))}</div>
+    ${vAnillos(a, R, d, detalle)}
     ${d.srv?.modulo_nutricion && midoCoach(a.id) && (w.chk?.aplicacion_plan || w.ing.dias < 7) ? `<div class="small muted">${w.chk?.aplicacion_plan ? `Aplicación declarada: <b>${esc(aplTxt(w.chk.aplicacion_plan))}</b>` : 'Aplicación declarada: sin respuesta'}${Nutricion.acuerdoDe(planNutriDe(a.id)).nivel === 'habitual' ? ` · comidas marcadas en ${w.ing.dias} de 7 días · ${7 - w.ing.dias} sin información` : ''}</div>` : ''}
     ${w.cansancio || w.poderio || w.chk ? `<div class="row small muted" style="flex-wrap:wrap;gap:8px">${w.cansancio ? `<span class="pill">Cansancio medio ${fmtNum(w.cansancio)}/5</span>` : ''}${w.poderio ? `<span class="pill">Poderío medio ${fmtNum(w.poderio)}/5</span>` : ''}${w.chk ? `<span class="pill">Motivación ${w.chk.motivacion}/10 · implicación ${w.chk.implicacion}/10</span>` : '<span class="pill warn">Sin check-in</span>'}</div>` : ''}
     ${(() => { if (!conSeguimiento(d.srv) || !w.chk) return ''; const dv = (S.c.devoluciones || []).find(x => x.alumno_id === a.id && x.semana_inicio === R.lunes), cm = Compromisos.buscar(`dev:${a.id}:${R.lunes}`);
@@ -8600,7 +8648,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v390';
+const APP_VER = 'v391';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -8935,6 +8983,8 @@ document.addEventListener('click', async e => {
     case 'rpAbrir': Tandas.abrir(+b.dataset.es, +b.dataset.n); break;
     case 'tramo': { const d = +b.dataset.d; if (d > 0) startTimer(d, 'Pausa · ' + b.dataset.lbl); else toast('Sin pausa: sigue con el siguiente tramo'); break; }
     case 'aprox': { b.classList.add('on'); const dos = b.dataset.dos ? ` con ${b.dataset.dos}` : ''; if (b.dataset.j === '2') startTimer(60, 'Descanso tras la aproximación 6·3·1'); else toast(b.dataset.j === '0' ? `Ahora 3 repeticiones${dos} (${b.dataset.dos ? 'el 90 % de tu máximo con las dos' : 'tu peso objetivo'})` : `Ahora 1 repetición${dos}, un 10 % más`); break; }
+    case 'rir': { const r = b.dataset.r, propio = (S.d?.metodos || {}).RIR;
+      abrirSheet(`<div class="stack"><span class="eyebrow">Esfuerzo</span><h2>RIR${r ? ' ' + esc(r) : ''}</h2>${r ? `<p class="aprox" style="margin:0"><b>${esc(Tandas.rirTxt(r))}</b></p>` : ''}<p class="pre" style="margin:0">${esc(propio || 'RIR son las repeticiones que te quedan en reserva al terminar la serie: las que todavía podrías hacer con buena técnica si siguieras.\n\nRIR 0: no podrías hacer ni una más.\nRIR 1: te quedaría 1.\nRIR 2: te quedarían 2.\n\nElige el peso para llegar al final de la serie con ese margen. Si te sobran más, sube el peso; si no llegas a las repeticiones, bájalo.')}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`); break; }
     case 'metodo': { const n = b.dataset.n; abrirSheet(`<div class="stack"><span class="eyebrow">Método</span><h2>${esc(n)}</h2><p class="pre">${esc((S.d?.metodos || {})[n] || Tandas.MET[n]?.info || 'Pregúntale a Jesús por este método.')}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`); break; }
     case 'terminar': terminar(); break;
     case 'retomar': { const x = S.d.sesiones.find(z => z.id === +b.dataset.id); if (x) await abrirDia(x.dia_id, { sesionId: x.id, fecha: x.fecha, dia: [S.d.programa, S.d.programaBase, ...(S.d.contextos || []), ...(S.d.alternativos || [])].filter(Boolean).flatMap(q => q.dias || []).find(z => z.id === x.dia_id) }); break; }

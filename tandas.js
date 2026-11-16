@@ -235,7 +235,6 @@ const Tandas = {
     return `<div class="rp-met small">${info.map(x => `<span>${esc(x)}</span>`).join('')}</div>
       ${pos ? `<div class="rp-rir">${this.ICO.rir}<div><b>Posición a mantener</b><span class="small">${esc(pos)}</span></div></div>` : ''}
       ${eT || (eS && N > 1) ? `<div class="rp-desc">${this.ICO.reloj}${eT ? `<div><span class="small">Entre ${M.tipo === 'uni' || M.tipo === 'ucontraste' ? 'lados' : 'tandas'}:</span><b>${esc(eT)}</b></div>` : ''}${eT && eS && N > 1 ? '<div class="rp-sep"></div>' : ''}${eS && N > 1 ? `<div><span class="small">Entre series:</span><b>${esc(eS)}</b></div>` : ''}</div>` : ''}
-      ${rirUnico ? `<div class="rp-rir">${this.ICO.rir}<div><b>Esfuerzo indicado · RIR ${esc(rirUnico)}</b><span class="small">${esc(this.rirTxt(rirUnico))}</span></div></div>` : rirs.some(x => x != null) ? `<div class="rp-rir">${this.ICO.rir}<div><b>Esfuerzo indicado</b><span class="small">El RIR cambia según la ${M.tipo === 'doble' ? 'vuelta' : 'tanda'}: lo verás junto a cada una. RIR = repeticiones que deberían quedarte en reserva.</span></div></div>` : ''}
       <div class="rp-wrap" id="rpw-${e.id}">${html}</div>`;
   },
   ICO: {
@@ -245,7 +244,7 @@ const Tandas = {
   kgPlan(x, sp) { return sp ? '' : x.kg === '' ? '' : kgDe(x); },
   cabParte(x, rirUnico, sp, k) {
     const o = this.objetivo(x), kgP = this.kgPlan(x, sp);
-    return `<span class="muted"> · Objetivo: ${esc(o.txt)}${x.auto ? ' · baja un 20 %' : (!sp && x.kg === '' && k > 0) ? ' · baja el peso' : ''}</span>${rirUnico === undefined && x.rir != null && x.rir !== '' ? ` <span class="rp-rir-chip">RIR ${esc(String(x.rir))}</span>` : ''}${x.rg ? ` <span class="rp-rg">📐 ${esc(x.rg)}</span>` : ''}`;
+    return `<span class="muted"> · Objetivo: ${esc(o.txt)}${x.auto ? ' · baja un 20 %' : (!sp && x.kg === '' && k > 0) ? ' · baja el peso' : ''}</span>${rirUnico === undefined && x.rir != null && x.rir !== '' ? ` <button class="rp-rir-chip" data-act="rir" data-r="${esc(String(x.rir))}">RIR ${esc(String(x.rir))} ⓘ</button>` : ''}${x.rg ? ` <span class="rp-rg">📐 ${esc(x.rg)}</span>` : ''}`;
   },
   campos(e, fila, n, x, sp, una, rirUnico, t = {}) {
     const z = S.sesion, id = `${fila}-${x.p}`, u = z.ultimos[id], v = z.valores[id], bor = z.borr || {}, o = this.objetivo(x), kgP = this.kgPlan(x, sp), bajada = !sp && x.kg === '' && x.p > 0;
@@ -254,7 +253,7 @@ const Tandas = {
     const phKg = kgP ? fmtNum(numero(kgP), 2) : (bajada ? 'baja un 20–30 %' : u?.kg != null ? fmtNum(u.kg, 2) : '—'), phRp = o.iso ? (o.num ?? (u?.repeticiones ?? '—')) : (o.ph || (x.myo ? '—' : (u?.repeticiones ?? '—')));
     const nom = this.nomParte(x), lblR = o.iso ? 'Segundos' : 'Reps realizadas';
     return `<div class="rp-parte${una ? ' una' : ''}">
-      ${una ? '' : `<div class="rp-pt">${x.lado && !t.lado ? this.chipLado(x.lado) : ''}${x.vuelta ? `<b>${x.vuelta}ª vuelta</b>` : ''}${x.tipo ? `<b>${esc(this.TIPO[x.tipo])}</b>` : ''}<span class="muted">Objetivo: ${esc(o.txt)}</span>${rirUnico === undefined && x.rir != null && x.rir !== '' ? `<span class="rp-rir-chip">RIR ${esc(String(x.rir))}</span>` : ''}${x.rg ? `<span class="rp-rg">📐 ${esc(x.rg)}</span>` : ''}</div>`}
+      ${una ? '' : `<div class="rp-pt">${x.lado && !t.lado ? this.chipLado(x.lado) : ''}${x.vuelta ? `<b>${x.vuelta}ª vuelta</b>` : ''}${x.tipo ? `<b>${esc(this.TIPO[x.tipo])}</b>` : ''}<span class="muted">Objetivo: ${esc(o.txt)}</span>${rirUnico === undefined && x.rir != null && x.rir !== '' ? `<button class="rp-rir-chip" data-act="rir" data-r="${esc(String(x.rir))}">RIR ${esc(String(x.rir))} ⓘ</button>` : ''}${x.rg ? `<span class="rp-rg">📐 ${esc(x.rg)}</span>` : ''}</div>`}
       <div class="rp-campos${sp ? ' uno' : ''}">
         ${sp ? '' : `<label>Peso (kg)<span class="kg-w"><input id="kg-${id}" data-tanda="1" data-row="${fila}" data-plan="${esc(kgP)}"${bajada ? ' data-bajada="1"' : ''} type="text" inputmode="decimal" placeholder="${esc(phKg)}" value="${esc(val('kg', 'kg'))}" aria-label="Peso en kilos, serie ${n}${nom ? ', ' + esc(nom) : ''}"></span></label>`}
         <label>${lblR}${o.iso ? '<span class="iso-w">' : ''}<input id="rp-${id}" data-tanda="1" data-row="${fila}" data-obj="${o.num ?? ''}"${o.iso ? ' data-iso="1"' : ''} type="text" inputmode="numeric" placeholder="${esc(String(phRp))}" value="${esc(val('rp', 'repeticiones'))}" aria-label="${lblR}, serie ${n}${nom ? ', ' + esc(nom) : ''}">${o.iso ? `<button type="button" class="iso-go" data-act="isoCrono" data-in="rp-${id}" data-obj="${o.num ?? ''}" data-lbl="${esc((ejDe(e).nombre || '') + ' · serie ' + n + (nom ? ' · ' + nom : ''))}" data-pos="${esc(x.pos || '')}" aria-label="Cronometrar">⏱</button></span>` : ''}</label>

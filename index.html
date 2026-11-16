@@ -129,6 +129,23 @@ header.top{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;ali
 .rp-rir-ic{width:30px;height:30px;flex:none;fill:var(--gold)}
 .rp-rg{display:inline-block;background:#E8F0FB;border:1px solid rgba(40,90,170,.35);color:#1E4A8A;border-radius:10px;padding:2px 9px;font-size:13px;font-weight:700;margin:3px 0 0 4px}
 .rp-rir-chip{display:inline-block;background:#FBF3DC;border:1px solid rgba(212,175,55,.45);color:#6E5410;border-radius:999px;padding:1px 8px;font-size:12px;font-weight:700;margin-left:4px}
+button.rp-rir-chip{font-family:inherit;line-height:1.6;cursor:pointer;vertical-align:baseline}
+.rg{display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px;align-items:start}
+.rg-ani{padding-top:2px}.rg-svg{display:block}
+.rg-filas{display:flex;flex-direction:column;gap:6px;min-width:0}
+.rg-ban{border:1px solid var(--line);border-radius:12px;background:var(--card,#fff);overflow:hidden}
+.rg-ban>summary,.rg-sum{list-style:none;display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer}
+.rg-ban>summary::-webkit-details-marker{display:none}
+.rg-ban>summary::after{content:'›';font-size:18px;opacity:.4;transition:transform .2s}
+.rg-ban[open]>summary::after{transform:rotate(90deg)}
+.rg-ban i{width:10px;height:10px;border-radius:50%;flex:none}
+.rg-ban b{font-size:14px;display:block;line-height:1.2}.rg-ban small{display:block;font-size:12px;opacity:.65;line-height:1.3}
+.rg-v{font-family:var(--display);font-size:19px!important;white-space:nowrap}
+.rg-ban .grow{min-width:0}
+.rg-mont{display:block;box-sizing:border-box;width:100%;height:auto;max-height:110px;padding:2px 6px 0}
+.rg-ban>.small{padding:0 10px 8px}
+.rg-plana .rg-sum{cursor:default}
+@media (max-width:520px){.rg-grande{grid-template-columns:1fr}.rg-grande .rg-ani{justify-self:center}}
 .rp-wrap{display:flex;flex-direction:column;gap:10px;margin-top:12px}
 .rp-serie{border:1.5px solid var(--line);border-radius:16px;background:var(--surface);overflow:hidden}
 .rp-serie.abierta{border:2px solid var(--blue)}
