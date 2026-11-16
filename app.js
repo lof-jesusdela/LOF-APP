@@ -5437,7 +5437,14 @@ function diasEfectivos(srv, f) {
   return d;
 }
 /* Duración contratada en semanas: la del servicio o, si falta, la de sus meses */
-const durContratada = srv => srv?.fin_manual && srv?.inicio ? Math.max(1, Math.ceil((diasEfectivos(srv, srv.fin_manual) + 1) / 7)) : (srv?.duracion_semanas || (srv?.meses ? semanasDeMeses(srv.meses) : null));
+/* Duración contratada en semanas. Las extensiones con semanas siempre cuentan: si la fecha de fin puesta a mano o la duración
+   se quedaron por detrás de la última extensión, manda el fin de la extensión (así nunca sale «terminado» con una ampliación en curso) */
+const finExtMax = srv => (Array.isArray(srv?.extensiones) ? srv.extensiones : []).map(x => x?.hasta || (x?.desde && +x.semanas ? sumaDias(x.desde, x.semanas * 7 - 1) : null)).filter(Boolean).sort().pop() || null;
+const durContratada = srv => {
+  const base = srv?.fin_manual && srv?.inicio ? Math.max(1, Math.ceil((diasEfectivos(srv, srv.fin_manual) + 1) / 7)) : (srv?.duracion_semanas || (srv?.meses ? semanasDeMeses(srv.meses) : null));
+  const fe = srv?.inicio ? finExtMax(srv) : null; if (!fe) return base;
+  const w = Math.max(1, Math.ceil((diasEfectivos(srv, fe) + 1) / 7)); return base ? Math.max(base, w) : w;
+};
 function proceso(srv, f = hoyISO()) {
   if (!srv?.inicio) return null;
   const dias = diasEfectivos(srv, f), semana = Math.floor(dias / 7) + 1;
@@ -5456,7 +5463,7 @@ function proceso(srv, f = hoyISO()) {
       ciclos.push({ n: c, sem, ini: realDe(srv, n0), fin: realDe(srv, sumaDias(n0, sem * 7 - 1)), s0: (c - 1) * SEM_CICLO + 1 });
     }
   }
-  const antes = dias < 0, finManual = srv.fin_manual || null, fuera = semana > total || (!!finManual && f > finManual);
+  const fe = finExtMax(srv), antes = dias < 0, finManual = srv.fin_manual ? (fe && fe > srv.fin_manual ? fe : srv.fin_manual) : null, fuera = semana > total || (!!finManual && f > finManual);
   const cc0 = antes ? ciclos[0] : ciclos.find(c => semana >= c.s0 && semana < c.s0 + c.sem) || ciclos[ciclos.length - 1];
   const ciclo = cc0.n, cc = cc0;
   const semCiclo = antes ? 0 : Math.max(1, Math.min(cc.sem, semana - cc.s0 + 1));
@@ -6605,7 +6612,7 @@ function formExtEditar(i) {
     $('#xe-h').addEventListener('input', () => { const d = $('#xe-d').value, h = $('#xe-h').value; if (d && h && h >= d) $('#xe-s').value = Math.max(1, Math.round((fecha(h) - fecha(d)) / 864e5 / 7 + 1 / 7)); });
   }
   const guarda = async (nuevaL, dSem, dSes) => {
-    const up = { extensiones: nuevaL }; if (dSem) up.duracion_semanas = Math.max(1, (srv.duracion_semanas || 0) + dSem); if (dSes) up.sesiones_incluidas = Math.max(0, (srv.sesiones_incluidas || 0) + dSes);
+    const up = { extensiones: nuevaL }; if (dSem) { up.duracion_semanas = Math.max(1, (srv.duracion_semanas || 0) + dSem); if (srv.fin_manual) up.fin_manual = sumaDias(srv.fin_manual, dSem * 7); } if (dSes) up.sesiones_incluidas = Math.max(0, (srv.sesiones_incluidas || 0) + dSes);
     const { error } = await sb.from('servicios').update(up).eq('id', srv.id); if (error) return $('#xe-err').textContent = error.message || 'No se ha podido guardar';
     try { await ajustarBloquesFin(srv.alumno_id || S.ficha.id, up.duracion_semanas ?? srv.duracion_semanas); } catch (err) { console.error(err); toast('Ampliación guardada, pero no se han podido ajustar sus bloques'); }
     cerrarSheet(); toast('Ampliación actualizada'); const sub = S.fichaSub; await cargarCoach(); await abrirFicha(S.ficha.id); if (sub) await abrirSub(sub);
@@ -6726,7 +6733,7 @@ function formExtension() {
     if (cuotasX.length) { let { error: ep } = await sb.from('pagos').insert(cuotasX.map(c => ({ ...c, concepto: conceptoDe(f.id, c.concepto), alumno_id: pagadorDe(f.id), tarifa: tX.id })));
       if (ep && /tarifa/.test(ep.message || '')) ({ error: ep } = await sb.from('pagos').insert(cuotasX.map(c => ({ ...c, concepto: conceptoDe(f.id, c.concepto), alumno_id: pagadorDe(f.id) })))); if (ep) toast('Las cuotas no se han podido crear: ' + (ep.message || '')); }
     const ext = [...extensionesDe(srv), { nombre, semanas: sem, desde, tipo: ex.tipo, ...(sesPT ? { sesiones: sesPT } : {}), ...(xtra ? { extra: xtra } : {}), ...(ex.tipo === 'pt' ? { frecuencia: ex.op, sesiones: sesPT } : {}), ...(ex.tipo === 'online' ? { meses: ex.op } : {}) }];
-    const upd = { duracion_semanas: total + sem, extensiones: ext }; if (sesPT) Object.assign(upd, { sesiones_incluidas: (srv.sesiones_incluidas || 0) + sesPT, modulo_presencial: true });
+    const upd = { duracion_semanas: total + sem, extensiones: ext }; if (srv.fin_manual) upd.fin_manual = sumaDias(desde, sem * 7 - 1) > srv.fin_manual ? sumaDias(desde, sem * 7 - 1) : srv.fin_manual; if (sesPT) Object.assign(upd, { sesiones_incluidas: (srv.sesiones_incluidas || 0) + sesPT, modulo_presencial: true });
     let { error } = await sb.from('servicios').update(upd).eq('id', srv.id);
     if (error) return fallar(error, /extensiones/.test(error.message || '') ? 'Falta ejecutar el Bloque 50 en Supabase.' : undefined);
     // Bloques: si aún no tenía, se crean los del proceso original (como los ve ahora) y luego los de la extensión
@@ -8674,7 +8681,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v398';
+const APP_VER = 'v399';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
