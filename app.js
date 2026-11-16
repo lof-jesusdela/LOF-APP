@@ -552,6 +552,7 @@ function render() {
   $('#tabs').hidden = false;
   $('#tabs-in').innerHTML = tabs.map(([k, l]) => `<button ${!coach && k === 'coach' ? 'class="tab-c" ' : ''}data-act="${coach ? 'ctab' : 'tab'}" data-t="${k}" ${actual === k && !((S.ficha || S.editor || S.obj) && coach) ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${!coach && k === 'coach' && nChat() ? `<i class="badge-n">${nChat()}</i>` : ''}${!coach && k === 'hoy' && (pendientesFutbol().length || tocaCheckin()) ? '<i class="badge-dot"></i>' : ''}</button>`).join('');
   if (S.dia && ((!coach && S.tab === 'entreno') || (coach && S.obj))) rellenarSesion();
+  if (document.getElementById('calc-inline')) Nutricion.montarCalc();
 }
 
 /* ---------- Métricas ---------- */
@@ -8659,7 +8660,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v395';
+const APP_VER = 'v396';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}

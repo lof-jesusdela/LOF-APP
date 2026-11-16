@@ -285,7 +285,8 @@ const Nutricion = (() => {
     const P = comidasPlan(c, ing), k = S.nIng != null && S.nIng < P.n ? S.nIng : comidaAhora(P), it = P.items[k], ops = opcionesPlan(n, c, it.n), mImg = (docDe(n, 'menus')?.imagenes || []).length;
     const ir = (kk, t) => tiene(docDe(n, kk)) ? `<button class="btn sm ghost" data-act="nuDoc" data-k="${kk}">${t}</button>` : '';
     const dev = (d?.devoluciones || []).find(x => x.prioridad || x.ajuste);
-    return `<section class="section"><div class="card stack nu-hoy"><span class="eyebrow">1 · ¿Qué tipo de día tienes hoy?</span>
+    return `<section class="section"><div class="card stack nu-hoy nu-plato"><div class="nu-plato-cab"><span class="nu-plato-ic">🧮</span><div><h2>Te ayudo a montar tu plato</h2><span class="small muted">Dime qué día tienes y qué comida quieres resolver: te calculo las cantidades con lo que tengas en casa.</span></div></div>
+      <span class="eyebrow">1 · ¿Qué tipo de día tienes hoy?</span>
       <div class="chips" role="group" aria-label="Contexto de hoy">${l.map((x, kk) => `<button class="pill ${kk === i ? 'blue' : ''}" data-act="nuCtx" data-i="${kk}" aria-pressed="${kk === i}">${esc(x.n)}</button>`).join('')}</div>
       ${sems.length > 1 ? `<div class="row small" style="gap:6px;flex-wrap:wrap;align-items:center"><span class="muted">Esta semana:</span>${sems.map((p, kk) => `<button class="pill ${kk === semSel(n) ? 'gold' : ''}" data-act="nuSem" data-i="${kk}">${esc(p.nombre || 'Semana ' + (kk + 1))}</button>`).join('')}</div>` : ''}
       ${auto === i ? '<p class="small muted" style="margin:0">📅 Es el que te toca hoy según tu semana tipo. Si tu día ha cambiado, toca otro.</p>' : ''}
@@ -293,13 +294,13 @@ const Nutricion = (() => {
       <details class="small"><summary>Tu día completo: ${c.kcal ? fmtNum(+c.kcal, 0) + ' kcal' : ''} · P ${g(c.p)} · C ${g(c.c)} · G ${g(c.g)}</summary>${vMacros(c, ing)}</details>
       ${P.n > 1 ? `<span class="eyebrow" style="margin-top:4px">2 · ¿Qué comida quieres resolver?</span><div class="chips" role="group" aria-label="Comida">${P.items.map((x, kk) => `<button class="pill ${kk === k ? 'blue' : ''}" data-act="nuIng" data-i="${kk}" aria-pressed="${kk === k}">${esc(x.n)}</button>`).join('')}</div>` : ''}
       <div class="nu-comida stack" style="gap:8px"><div class="row" style="gap:8px;align-items:baseline"><b class="grow">${esc(it.n)}</b><span class="small num">${esc(fmtObj(it))}</span></div>
-        ${P.origen === 'iguales' && P.n > 1 ? '<span class="small muted">Orientativo: tu día dividido entre tus comidas.</span>' : ''}
-        ${ops.length ? `<span class="eyebrow">3 · Opciones de tu plan</span>${ops.slice(0, S.nOpsTodas ? 99 : 3).map(o => `<div class="nu-op"><b class="small">${esc(o.n || 'Opción')}</b>${(o.ingr || []).length ? `<ul class="small">${o.ingr.map(x => `<li>${esc(x.n)}${x.q ? ' · ' + cantTxt(x.n, x.q) : ''}</li>`).join('')}</ul>` : ''}${o.prep ? `<div class="small muted">${esc(o.prep)}</div>` : ''}</div>`).join('')}${ops.length > 3 && !S.nOpsTodas ? `<button class="linkbtn small" data-act="nuOpsTodas" style="align-self:flex-start">Ver las ${ops.length} opciones</button>` : ''}`
-          : mImg ? `<p class="small" style="margin:0">Tus opciones para esta comida están en las láminas de tus menús.</p><button class="btn sm ghost" data-act="nuDoc" data-k="menus" style="align-self:flex-start">🍽️ Ver mis menús</button>` : '<p class="small muted" style="margin:0">Aún no tienes menús escritos para esta comida: monta tu plato con la calculadora o con tus equivalencias.</p>'}
-        <span class="eyebrow">4 · ¿Quieres cambiar algo?</span>
-        <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="nuCalc" data-ctx="${i}" data-k="${k}">🧮 Calculadora de cantidades</button>${tiene(docDe(n, 'equivalencias')) ? `<button class="btn sm ghost" data-act="nuEqIng" data-k="${k}">✋ Equivalencias de ${esc(it.n.toLowerCase())}</button>` : ''}</div></div>
-      ${dev ? `<div class="nu-dev small"><span class="eyebrow">5 · Tu prioridad ahora</span><div>${esc(dev.prioridad || dev.ajuste)}</div><span class="muted">Jesús · revisión de la semana del ${esc(fCorta(dev.semana_inicio))}</span></div>` : ''}
-      <div class="row" style="gap:8px;flex-wrap:wrap">${ir('menus', '🍽️ Todos mis menús')}${ir('platos', '🥗 Montar un plato')}</div></div></section>`;
+        ${P.origen === 'iguales' && P.n > 1 ? '<span class="small muted">Orientativo: tu día dividido entre tus comidas.</span>' : ''}</div>
+      <div id="calc-inline" class="stack calc-inline" style="gap:14px" data-ctx="${i}" data-k="${k}"></div></div></section>
+    ${dev ? `<section class="section"><div class="nu-dev small card"><span class="eyebrow">Tu prioridad ahora</span><div>${esc(dev.prioridad || dev.ajuste)}</div><span class="muted">Jesús · revisión de la semana del ${esc(fCorta(dev.semana_inicio))}</span></div></section>` : ''}
+    <section class="section"><div class="card stack"><span class="eyebrow">Tu plan para ${esc(it.n.toLowerCase())}</span>
+      ${ops.length ? `${ops.slice(0, S.nOpsTodas ? 99 : 3).map(o => `<div class="nu-op"><b class="small">${esc(o.n || 'Opción')}</b>${(o.ingr || []).length ? `<ul class="small">${o.ingr.map(x => `<li>${esc(x.n)}${x.q ? ' · ' + cantTxt(x.n, x.q) : ''}</li>`).join('')}</ul>` : ''}${o.prep ? `<div class="small muted">${esc(o.prep)}</div>` : ''}</div>`).join('')}${ops.length > 3 && !S.nOpsTodas ? `<button class="linkbtn small" data-act="nuOpsTodas" style="align-self:flex-start">Ver las ${ops.length} opciones</button>` : ''}`
+        : mImg ? '<p class="small" style="margin:0">Tus opciones para esta comida están en las láminas de tus menús.</p>' : '<p class="small muted" style="margin:0">Aún no tienes menús escritos para esta comida: móntala con la calculadora de arriba o con tus equivalencias.</p>'}
+      <div class="row" style="gap:8px;flex-wrap:wrap">${mImg && !ops.length ? '<button class="btn sm ghost" data-act="nuDoc" data-k="menus">🍽️ Ver mis menús</button>' : ''}${tiene(docDe(n, 'equivalencias')) ? `<button class="btn sm ghost" data-act="nuEqIng" data-k="${k}">✋ Equivalencias de ${esc(it.n.toLowerCase())}</button>` : ''}${ir('menus', '🍽️ Todos mis menús')}${ir('platos', '🥗 Montar un plato')}</div></div></section>`;
   }
   function vDocs(docs) {
     if (!docs.length) return S.d && fase(S.d) ? '' : `<section class="section"><div class="card stack"><b>Tu plan está en camino</b><p class="small muted" style="margin:0">Jesús está preparando tu plan. Aquí tendrás tu contexto, tus menús, las equivalencias visuales, cómo construir tus platos y tu suplementación.</p></div></section>`;
@@ -1140,14 +1141,25 @@ const Nutricion = (() => {
   function formPlato() {
     const d = S.modo === 'coach' && S.ficha ? datosPrevia(S.ficha) : S.d, n = d?.nutri || vacio(), l = ctxDe(n);
     if (!l.length) return toast('Aún no tienes contextos con macros en tu plan');
-    const st = S.calc ||= st0(); if (st.ctx == null || st.ctx >= l.length) st.ctx = Math.min(selCtx(n), l.length - 1);
+    abrirSheet(`<div class="stack"><h2>🧮 Calculadora de cantidades</h2><div id="calc-cuerpo" class="stack" style="gap:14px"></div><button type="button" class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
+    calcEn($('#calc-cuerpo'), null);
+  }
+  /* Calculadora dentro de «Te ayudo a montar tu plato»: usa el tipo de día y la comida elegidos en la tarjeta (se monta tras cada render) */
+  function montarCalc() {
+    const el = document.getElementById('calc-inline'); if (!el || el.dataset.ok) return; el.dataset.ok = '1';
+    try { calcEn(el, { ctx: +el.dataset.ctx, k: +el.dataset.k }); } catch (e) { console.warn('[calculadora]', e); el.innerHTML = '<p class="small muted">No se ha podido abrir la calculadora. Prueba con el botón de tus equivalencias.</p>'; }
+  }
+  function calcEn(cuerpo, fijo) {
+    const d = S.modo === 'coach' && S.ficha ? datosPrevia(S.ficha) : S.d, n = d?.nutri || vacio(), l = ctxDe(n);
+    if (!l.length) return;
+    const st = S.calc ||= st0(); if (fijo) { st.ctx = Math.min(fijo.ctx, l.length - 1); st.k = fijo.k; } else if (st.ctx == null || st.ctx >= l.length) st.ctx = Math.min(selCtx(n), l.length - 1);
     const pinta = () => {
       const c = l[st.ctx], P = comidasPlan(c, comidasDia(d?.servicio)), nI = P.n, kk = Math.min(st.k, nI - 1), obj = objetivoComida(c, kk, nI);
       const r = st.sel.length ? calcular(st.sel, obj) : null, esCena = esCenaIng(P, kk);
-      $('#calc-cuerpo').innerHTML = `<div class="stack" style="gap:6px"><span class="small"><b>¿Qué tipo de día es?</b></span><div class="chips">${l.map((x, i) => `<button type="button" class="pill ${i === st.ctx ? 'blue' : ''}" data-cctx="${i}">${esc(x.n)}</button>`).join('')}</div></div>
+      cuerpo.innerHTML = `${fijo ? (obj.faltan.length ? `<div class="calc-obj small" style="color:var(--warn)">Tu plan no indica ${obj.faltan.map(m => NOM_M[m]).join(' ni ')} para esta comida: la calculadora lo deja en 0.</div>` : '') : `<div class="stack" style="gap:6px"><span class="small"><b>¿Qué tipo de día es?</b></span><div class="chips">${l.map((x, i) => `<button type="button" class="pill ${i === st.ctx ? 'blue' : ''}" data-cctx="${i}">${esc(x.n)}</button>`).join('')}</div></div>
         <div class="stack" style="gap:6px"><span class="small"><b>¿Qué comida?</b></span><div class="chips">${P.items.map((x, i) => `<button type="button" class="pill ${i === kk ? 'blue' : ''}" data-ck="${i}">${esc(x.n)}</button>`).join('')}</div>
-          <div class="calc-obj small">Objetivo de ${esc(obj.nombre.toLowerCase())}: <b>${fmtNum(obj.kcal, 0)} kcal</b> · P ${fmtNum(obj.p, 0)} g · C ${fmtNum(obj.c, 0)} g · G ${fmtNum(obj.g, 0)} g <span class="muted">(${ORIGEN_TXT[obj.origen]})</span>${obj.faltan.length ? `<br><span style="color:var(--warn)">Tu plan no indica ${obj.faltan.map(m => NOM_M[m]).join(' ni ')} para esta comida: esa parte no se calcula.</span>` : ''}</div></div>
-        <div class="stack" style="gap:6px"><span class="small"><b>¿Qué quieres comer?</b> <span class="muted">Elige una proteína, un hidrato y una grasa (y verdura si quieres)</span></span>
+          <div class="calc-obj small">Objetivo de ${esc(obj.nombre.toLowerCase())}: <b>${fmtNum(obj.kcal, 0)} kcal</b> · P ${fmtNum(obj.p, 0)} g · C ${fmtNum(obj.c, 0)} g · G ${fmtNum(obj.g, 0)} g <span class="muted">(${ORIGEN_TXT[obj.origen]})</span>${obj.faltan.length ? `<br><span style="color:var(--warn)">Tu plan no indica ${obj.faltan.map(m => NOM_M[m]).join(' ni ')} para esta comida: esa parte no se calcula.</span>` : ''}</div></div>`}
+        <div class="stack" style="gap:6px">${fijo ? '<span class="eyebrow">3 · ¿Qué quieres comer?</span><span class="small muted">Elige una proteína, un hidrato y una grasa (y verdura si quieres) y te calculo las cantidades.</span>' : '<span class="small"><b>¿Qué quieres comer?</b> <span class="muted">Elige una proteína, un hidrato y una grasa (y verdura si quieres)</span></span>'}
           <input type="search" id="calc-q" list="calc-ali" placeholder="Escribe un alimento: pollo, arroz, aguacate…" autocomplete="off"><datalist id="calc-ali">${ALI.map(a => `<option value="${esc(a.n)}">`).join('')}</datalist>
           ${vCategorias(st, evita)}</div>
         ${r ? `<div class="calc-res">${st.sel.map((s, i) => `<div class="calc-al"><div class="grow"><b>${esc(s.a.n)}</b><span>${r.gr[i] ? equivVisual(s.a, r.gr[i]) : 'No hace falta: ya lo cubren los demás alimentos'}</span>${evita(s.a.n) ? `<small class="calc-cena">⚠ En tus preferencias: ${esc(evita(s.a.n))}</small>` : ''}${(() => { const av = esCena ? avisoCena(s.a) : null; return av ? `<small class="calc-cena">⚠ ${esc(av.m)}</small><span class="calc-alt">Mejor: ${av.alt.map(x => { const o = buscaAli(x); return o ? `<button type="button" class="pill" data-calt="${i}|${esc(o.n)}">${esc(o.n.split(' (')[0])}</button>` : ''; }).join('')}</span>` : ''; })()}${r.gr[i] ? `<small class="calc-ap">Aporta P ${fmtNum(s.a.p * r.gr[i] / 100, 0)} · C ${fmtNum(s.a.c * r.gr[i] / 100, 0)} · G ${fmtNum(s.a.g * r.gr[i] / 100, 0)} g</small>` : ''}${descuento(st.sel, r.gr, i)}</div><div class="calc-g"><b class="num">${r.gr[i] ? fmtNum(r.gr[i], 0) + ' g' : '—'}</b>${s.fijo != null ? '<small>fijado</small>' : s.a.t === 'V' || s.a.t === 'L' ? '<small>1 ración</small>' : ''}</div><button type="button" class="btn sm ghost" data-cfix="${i}" aria-label="Fijar cantidad">✎</button><button type="button" class="btn sm ghost" data-cdel="${i}" aria-label="Quitar">✕</button></div>`).join('')}
@@ -1159,9 +1171,7 @@ const Nutricion = (() => {
           <button type="button" class="btn full" id="calc-diario">🍽 Apuntar este plato en mi diario</button></div>` : ''}
         <p class="note">Cantidades orientativas con valores medios de tablas de composición: la marca, la receta y la cocción los cambian. Si tu plan de Jesús dice otra cantidad, manda la de tu plan.</p>`;
     };
-    abrirSheet(`<div class="stack"><h2>🧮 Calculadora de cantidades</h2><div id="calc-cuerpo" class="stack" style="gap:14px"></div><button type="button" class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
     pinta();
-    const cuerpo = $('#calc-cuerpo');
     const add = nom => { const a = ALI.find(x => norm(x.n) === norm(nom)) || ALI.find(x => norm(x.n).includes(norm(nom))); if (!a) return toast('No encuentro ese alimento: prueba con otro nombre'); if (st.sel.some(s => s.a.n === a.n)) return; if (st.sel.length >= 5) return toast('Máximo 5 alimentos'); st.sel.push({ a }); pinta(); };
     cuerpo.addEventListener('click', async ev => {
       const t = ev.target.closest('button'); if (!t) return;
@@ -1181,7 +1191,7 @@ const Nutricion = (() => {
         const { error } = await sb.from('comidas_registro').insert({ alumno_id: S.user.id, fecha: hoyISO(), momento: 'Otro', contexto: c.n,
           alimentos: st.sel.map((s, i) => ({ n: s.a.n, q: `${fmtNum(r.gr[i], 0)} g`, g: Math.round(r.gr[i]), origen: s.fijo != null ? 'alumno' : 'app' })), encaja: null,
           nota: `Calculado con la app para ${P.items[kk].n.toLowerCase()} · objetivo ${fmtNum(ob.kcal, 0)} kcal (P ${fmtNum(ob.p, 0)} · C ${fmtNum(ob.c, 0)} · G ${fmtNum(ob.g, 0)}, ${ORIGEN_TXT[ob.origen]}) · total ${fmtNum(r.tot.kcal, 0)} kcal (P ${fmtNum(r.tot.p, 0)} · C ${fmtNum(r.tot.c, 0)} · G ${fmtNum(r.tot.g, 0)}) · ${NIVEL_AJ[E.nivel][1].replace(/^[✓≈] /, '').toLowerCase()}${st.sel.some(s => s.fijo != null) ? ' · cantidades puestas por el alumno: ' + st.sel.filter(s => s.fijo != null).map(s => s.a.n.split(' (')[0].toLowerCase()).join(', ') : ''}` });
-        if (error) return fallo(error, AVISO); cerrarSheet(); toast('Apuntado en tu diario'); await cargar(S.user.id, S.d); render();
+        if (error) return fallo(error, AVISO); if (fijo) st.sel = []; else cerrarSheet(); toast('Apuntado en tu diario'); await cargar(S.user.id, S.d); render();
       }
     });
     cuerpo.addEventListener('change', ev => { if (ev.target.id === 'calc-q' && ev.target.value.trim()) { add(ev.target.value.trim()); } });
@@ -1421,5 +1431,5 @@ Reglas: "reparto" lleva una fila por ingesta con sus propias kcal, p, c y g (cad
       '\nCONCLUSIONES DE JESÚS', ...CONC.filter(([k]) => c[k]).map(([k, tt]) => `${tt}: ${c[k]}`), (c.pasos || []).length ? 'Primeros pasos:\n' + c.pasos.map((p, i) => `${i + 1}. ${p}`).join('\n') : ''].filter(v => v !== '').join('\n');
     try { await navigator.clipboard.writeText(t); toast('Copiado: pégalo en ChatGPT junto al resto de su información'); } catch (e) { abrirSheet(`<div class="stack"><h2>Copia este texto</h2><textarea rows="16" style="font-size:12px">${esc(t)}</textarea></div>`); }
   }
-  return { estadoAjuste, esCalc, colaRevisiones, metricasNutri, acuerdo, acuerdoDe, flexTxt, tarjetaTemporal, vSeguimientoCoach: aislar(vSeguimientoCoach), comidasPlan, txtReparto, nombresIng, coherencia, versionCtx, vCoherencia: aislar(vCoherencia), lineaCoh, fase, faseDe, faseCoach, mide, FASES, vSemana7: aislar(vSemana7), formImportar, formPlato, calcular, avisoCena, ALI, objetivoComida, equivVisual, vIncCoach: aislar(vIncCoach), formInc, esInc, guardarResumen, vista: aislar(vista), vCoach: aislar(vCoach), cargar, cargarFicha, cargarCoach, datosPrevia, nuevasDe, DOCS, esPdf, ctxDe };
+  return { montarCalc, estadoAjuste, esCalc, colaRevisiones, metricasNutri, acuerdo, acuerdoDe, flexTxt, tarjetaTemporal, vSeguimientoCoach: aislar(vSeguimientoCoach), comidasPlan, txtReparto, nombresIng, coherencia, versionCtx, vCoherencia: aislar(vCoherencia), lineaCoh, fase, faseDe, faseCoach, mide, FASES, vSemana7: aislar(vSemana7), formImportar, formPlato, calcular, avisoCena, ALI, objetivoComida, equivVisual, vIncCoach: aislar(vIncCoach), formInc, esInc, guardarResumen, vista: aislar(vista), vCoach: aislar(vCoach), cargar, cargarFicha, cargarCoach, datosPrevia, nuevasDe, DOCS, esPdf, ctxDe };
 })();
