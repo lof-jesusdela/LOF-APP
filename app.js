@@ -469,9 +469,12 @@ function menuAlumno() {
   document.getElementById('menu-al')?.remove();
   const s = S.d?.servicio || {}, d = document.createElement('div'); d.id = 'menu-al';
   const it = (act, t, ic, tit, sub, cls = '') => `<button type="button" class="m-it ${cls}" data-act="${act}" ${t ? `data-t="${t}"` : ''}><span class="m-ic">${ic}</span><span class="grow"><b>${tit}</b><span>${sub}</span></span></button>`;
+  const P = proceso(s), pres = !!vCalendarioPres();
+  const prog = `<button type="button" class="m-it m-prog" data-act="tab" data-t="proceso"><span class="m-ic">🏁</span><span class="grow"><b>Tu programa</b>${P && !P.sinFin ? `<span>${P.antes ? 'Empieza pronto' : P.fuera ? 'Completado' : `Semana ${P.semana} de ${P.total}`} · ${P.antes ? 0 : P.fuera ? 100 : P.pctTotal} %</span><span class="m-bar"><i style="width:${P.antes ? 0 : P.fuera ? 100 : P.pctTotal}%"></i></span>` : `<span>${P ? `Semana ${P.semana}` : 'Tu proceso con Jesús'}</span>`}</span></button>`;
   d.innerHTML = `<div class="m-ov" data-act="menuCerrar"></div><aside class="m-dr"><div class="m-hd"><img src="icons/logo-96.jpg" alt=""><div><span>La Obra Fitness</span><b>Construyendo tu Prime</b></div></div>
+    ${prog}${(s.modulo_entreno ?? true) || s.modulo_futbol ? it('tab', 'semana', '📅', 'Tu semana', 'Calendario y reporting semanal') : ''}${pres ? it('tab', 'sesiones', '🤝', 'Tus sesiones con Jesús', 'Entrenamientos presenciales') : ''}
     <span class="m-ey">Servicios extra</span>${s.modulo_habitos ? it('tab', 'habitos', '🔁', 'Hábitos', 'Tu plan de hábitos y pasos') : `<div class="m-it off"><span class="m-ic">🔁</span><span class="grow"><b>Hábitos</b><span>Pregunta a Jesús si te interesa</span></span></div>`}
-    <span class="m-ey">App</span>${it('logoAct', '', '🔄', 'Actualizar la app', 'Coge la última versión', 'az')}${it('cuenta', '', '👤', 'Mi cuenta', 'Datos, avisos, contraseña')}</aside>`;
+    <span class="m-ey">App</span>${it('cuenta', '', '👤', 'Mi cuenta', 'Datos, avisos, contraseña')}${it('logoAct', '', '🔄', 'Actualizar la app', 'Coge la última versión', 'az')}</aside>`;
   d.addEventListener('click', e => { if (e.target.closest('[data-act]') && !e.target.closest('[data-act="menuCerrar"]')) setTimeout(() => d.remove(), 0); });
   document.body.appendChild(d);
 }
@@ -540,7 +543,7 @@ function render() {
   const tabs = coach ? [['inicio', 'Tu día'], ['alumnos', 'Alumnos'], ['metodologia', 'Metodología'], ['pagos', 'Negocio']] : tabsAlumno();
   const actual = coach ? S.ctab : (cierreAlumno() && !tabs.some(t => t[0] === S.tab) ? 'hoy' : S.tab);
   const esCoach = S.perfil.rol === 'coach';
-  const vistas = { futbol: () => `<section class="stack"><span class="eyebrow">Élite Player</span><h1>Futbolistas</h1></section>${vFutbolCoach() || '<div class="card empty">Sin futbolistas activos.</div>'}`, hoy: vHoy, entreno: vEntreno, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, tests: vProgreso, coach: Acomp.vTuCoach, inicio: vTuDia, habitos: Habitos.vista, alumnos: vAlumnos, pagos: vEconomiaTabs, ejercicios: vEjercicios, plantillas: vPlantillas, metodologia: () => `<div class="seg" role="group" aria-label="Metodología" style="margin-bottom:12px"><button data-act="metSub" data-v="plantillas" aria-pressed="${S.metSub !== 'ejercicios'}">Plantillas</button><button data-act="metSub" data-v="ejercicios" aria-pressed="${S.metSub === 'ejercicios'}">Ejercicios</button></div>` + (S.metSub === 'ejercicios' ? vEjercicios() : vPlantillas()) };
+  const vistas = { futbol: () => `<section class="stack"><span class="eyebrow">Élite Player</span><h1>Futbolistas</h1></section>${vFutbolCoach() || '<div class="card empty">Sin futbolistas activos.</div>'}`, hoy: vHoy, entreno: vEntreno, semana: vTuSemanaAl, proceso: vTuProgramaAl, sesiones: () => `<section class="stack"><span class="eyebrow">Presenciales</span><h1>Tus sesiones con Jesús</h1></section>${vCalendarioPres() || '<div class="card empty">No tienes sesiones presenciales.</div>'}`, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, tests: vProgreso, coach: Acomp.vTuCoach, inicio: vTuDia, habitos: Habitos.vista, alumnos: vAlumnos, pagos: vEconomiaTabs, ejercicios: vEjercicios, plantillas: vPlantillas, metodologia: () => `<div class="seg" role="group" aria-label="Metodología" style="margin-bottom:12px"><button data-act="metSub" data-v="plantillas" aria-pressed="${S.metSub !== 'ejercicios'}">Plantillas</button><button data-act="metSub" data-v="ejercicios" aria-pressed="${S.metSub === 'ejercicios'}">Ejercicios</button></div>` + (S.metSub === 'ejercicios' ? vEjercicios() : vPlantillas()) };
   $('#app').innerHTML = `<header class="top">
       <button type="button" class="badge" data-act="${coach ? 'logoAct' : 'menuAl'}" aria-label="${coach ? 'Actualizar la app' : 'Menú'}" title="${coach ? 'Toca para actualizar la app' : 'Servicios extra y ajustes'}" style="background:none;border:0;padding:0;cursor:pointer;text-align:left;color:inherit;font:inherit"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : 'Construyendo tu Prime'}</strong></div></button>
       <div class="row" style="gap:8px">${coach && typeof Consultas !== 'undefined' && ['inicio', 'alumnos', 'metodologia', 'pagos'].includes(actual) ? Consultas.vBoton() : ''}${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
@@ -639,6 +642,16 @@ function vBarraIngestas(diario, srv) {
   return `<div class="stack" style="gap:8px"><div class="row"><span class="grow small">Alimentación esta semana</span>${ev ? `<span class="pill ${ev[0]}">${ev[1]}</span>` : ''}<b class="num" style="font-family:var(--display);font-size:20px">${I.hechas}/${I.total}</b></div>
     <div class="track gordo ing"><i style="width:${ancho}%;background:${col}"></i></div>
     <div class="small muted">${dias ? `En los días que has registrado llevas ${I.hechas} de ${posibles} comidas (${ritmo} %). Objetivo: 85 % o más.` : `Cada comida saludable de tu plan suma. Objetivo: 85 % o más de las ${I.total} de la semana.`}</div>${sinReg ? `<div class="small" style="color:var(--muted)">⚪ ${sinReg} ${sinReg === 1 ? 'día' : 'días'} sin registrar: no cuentan como fallo, rellénalos cuando puedas.</div>` : ''}</div>`;
+}
+/* Menú del logo: «Tu semana» (calendario + reporting) y «Tu programa» (proceso de acompañamiento) */
+function vTuSemanaAl() {
+  const s = S.d.servicio || {};
+  return `<section class="stack"><span class="eyebrow">Construyendo tu Prime</span><h1>Tu semana</h1></section>${s.modulo_futbol ? vCalFutAlumno() : vCalPlanAlumno()}${s.modulo_futbol ? '' : vSemanaAnillos(s)}`;
+}
+function vTuProgramaAl() {
+  const s = S.d.servicio || {}, p = S.d.programaBase || S.d.programa;
+  const t = p ? vLineaTiempo(s, 'Tus ciclos de entrenamiento', false, p) : '';
+  return `<section class="stack"><span class="eyebrow">Construyendo tu Prime</span><h1>Tu programa</h1></section>${vProcesoGlobal(s) || '<div class="card empty">Jesús aún no ha fijado la fecha de inicio de tu proceso.</div>'}${t || ''}`;
 }
 function vProcesoGlobal(srv) {
   const P = proceso(srv); if (!P) return '';
@@ -1117,7 +1130,6 @@ function vHoy() {
       <p class="frase-hoy">${esc(S.perfil.frase_motivacion || FRASE_DEF)}</p></div>${avatarDe(S.perfil, 72)}</div>
     ${objetivoDe(S.d.ruta) ? `<div style="border-top:1px solid rgba(255,255,255,.14);padding-top:12px" class="stack"><span class="eyebrow">Tu objetivo</span><div class="small">${esc(objetivoDe(S.d.ruta))}</div></div>` : ''}
   </section>
-  ${s.modulo_futbol ? vCalFutAlumno() : (s.modulo_entreno ?? true) ? vCalPlanAlumno() : ''}
   ${Acomp.tarjetaEstadoHoy()}
   ${vAvisoContexto()}
   ${vAvisosHoy()}
@@ -1125,13 +1137,12 @@ function vHoy() {
   ${esWeekCard()}
   ${vPendientesHoy(s)}
   <section class="section"><h2>Lo que toca hoy</h2><div class="card">${toca}</div></section>
+  ${s.modulo_futbol ? vFutbolHoy() + vSemanaFutbol(ini, w, p) + (s.modulo_habitos ? Habitos.tarjetaHoy(false) : '') : vRegistroDia(s) + vSemanaAnillos(s)}
   ${s.oposicion ? Oposicion.tarjeta(false) : ''}
   ${Acomp.ultimaIndicacion()}
   ${vProximamente(s)}
-  ${s.modulo_futbol ? vFutbolHoy() + vSemanaFutbol(ini, w, p) + (s.modulo_habitos ? Habitos.tarjetaHoy(false) : '') : vRegistroDia(s) + vSemanaAnillos(s)}
   ${vCheckinTarjeta()}
   ${MenuSemana.tarjeta()}
-  ${vProcesoGlobal(s)}
   ${avisoAl('fotos') ? Casos.tarjetaHoy(false) : ''}
   ${Temperamento.tarjetaHoy()}
   ${s.modulo_futbol || !s.modulo_habitos ? '' : Habitos.tarjetaHoy(true)}
@@ -1164,12 +1175,12 @@ function vEntreno() {
   const hechoSemana = id => { const l = S.d.sesiones.filter(s => s.dia_id === id && s.fecha >= lunes); return l.find(esCompleta) || l[l.length - 1] || null; };
   const P = proceso(S.d.servicio), Pn = P && !P.antes ? S.d.sesiones.filter(x => x.fecha >= P.cc.ini && x.fecha <= P.cc.fin).length : null;
   return como + `<section class="stack"><span class="eyebrow">${esc(p.nombre)}</span><h1>Entreno</h1>${P && !P.antes && !P.fuera ? `<div class="row" style="flex-wrap:wrap;gap:6px"><span class="pill blue">Ciclo ${P.ciclo}</span><span class="pill gold">Semana ${P.semCiclo} de ${P.cc.sem}</span><span class="pill">${Pn} ${(S.d.programaBase || p).dias_semana ? 'de ' + previstosCiclo(P.cc, S.d.uid, (S.d.programaBase || p).dias_semana) + ' ' : ''}entrenos del ciclo</span></div>` : ''}</section>
-  ${vEntrenoHoy()}${vAvisoContexto()}<section class="section"><h2>Tus entrenos</h2><div class="card">${p.dias.map(d => `<div class="wk ${esDia(d, hoyN) ? 'today' : ''}"><span class="d">${esc(/^d[ií]a (\d+)/i.test(d.nombre || '') ? 'D' + d.nombre.match(/\d+/)[0] : d.nombre.slice(0, 3))}</span><div class="grow"><h3>${esc(d.titulo || d.foco || d.nombre)}</h3>${tipoDiaDe(d) ? `<span class="pill ${conPartido(d) ? 'gold' : ''}" style="margin:2px 0">${tipoDiaDe(d)[2]} ${tipoDiaDe(d)[1]}</span>` : ''}${conPartido(d) ? (() => { const pt = partidoDelDia(d, S.d.partidos); return pt ? `<div class="small"><b>vs ${esc(pt.rival || 'rival')}</b>${pt.hora ? ' · ' + esc(String(pt.hora).slice(0, 5)) : ''}${pt.lugar ? ' · ' + esc(pt.lugar) : ''}</div>` : ''; })() : ''}<div class="small muted">${d.volumen || d.intensidad ? `${esc(d.volumen || '')} volumen · ${esc(d.intensidad || '')} intensidad` : ''}</div></div>${pillSesion(hechoSemana(d.id))}${d.tipo_dia === 'descanso' && !d.bloques_sesion.length ? '' : `<button class="btn sm ${esDia(d, hoyN) ? '' : 'ghost'}" data-act="abrirDia" data-id="${d.id}">Abrir</button>`}</div>`).join('')}</div></section>
+  ${S.d.servicio?.modulo_futbol ? vCalFutAlumno() : vCalPlanAlumno()}${vEntrenoHoy()}${vAvisoContexto()}<section class="section"><h2>Tus entrenos</h2><div class="card">${p.dias.map(d => `<div class="wk ${esDia(d, hoyN) ? 'today' : ''}"><span class="d">${esc(/^d[ií]a (\d+)/i.test(d.nombre || '') ? 'D' + d.nombre.match(/\d+/)[0] : d.nombre.slice(0, 3))}</span><div class="grow"><h3>${esc(d.titulo || d.foco || d.nombre)}</h3>${tipoDiaDe(d) ? `<span class="pill ${conPartido(d) ? 'gold' : ''}" style="margin:2px 0">${tipoDiaDe(d)[2]} ${tipoDiaDe(d)[1]}</span>` : ''}${conPartido(d) ? (() => { const pt = partidoDelDia(d, S.d.partidos); return pt ? `<div class="small"><b>vs ${esc(pt.rival || 'rival')}</b>${pt.hora ? ' · ' + esc(String(pt.hora).slice(0, 5)) : ''}${pt.lugar ? ' · ' + esc(pt.lugar) : ''}</div>` : ''; })() : ''}<div class="small muted">${d.volumen || d.intensidad ? `${esc(d.volumen || '')} volumen · ${esc(d.intensidad || '')} intensidad` : ''}</div></div>${pillSesion(hechoSemana(d.id))}${d.tipo_dia === 'descanso' && !d.bloques_sesion.length ? '' : `<button class="btn sm ${esDia(d, hoyN) ? '' : 'ghost'}" data-act="abrirDia" data-id="${d.id}">Abrir</button>`}</div>`).join('')}</div></section>
   ${vAlternativos(hechoSemana)}
   ${(() => { const z = vZonasFC() + vRitmosVAM(); return z ? `<section class="section" style="margin-bottom:-12px"><h2>Tus zonas</h2></section>${z}` : ''; })()}
   ${(() => { const t = vLineaTiempo(S.d.servicio, 'Tus ciclos de entrenamiento', false, p); if (!t) return ''; const P2 = proceso(S.d.servicio);
     return `<section class="section"><h2>Tus ciclos</h2><details class="card fx-ban"><summary><span class="fx-ban-ic">🧱</span><span class="grow"><b>${P2 && !P2.antes && !P2.fuera ? `Ciclo ${P2.ciclo} de ${P2.ciclos.length} · semana ${P2.semCiclo} de ${P2.cc.sem}` : 'Tus ciclos de entrenamiento'}</b>${P2 && !P2.antes && !P2.fuera ? `<span class="small muted"> · ${P2.sinFin ? '' : Math.round(P2.pctTotal) + ' % del proceso'}</span><div class="track" style="margin-top:6px"><i style="width:${Math.round(Math.min(100, (P2.semCiclo / P2.cc.sem) * 100))}%"></i></div>` : ''}</span></summary><div class="fx-ban-in">${t}</div></details></section>`; })()}
-  ${vCalendarioPres()}`;
+  `;
 }
 /* Lo primero de Entreno: el entreno que le toca HOY (por el día de la semana, su horario o lo que marcó en su check-in). Si hoy no toca, no sale */
 function entrenoDeHoy() {
@@ -8660,7 +8671,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v396';
+const APP_VER = 'v397';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
