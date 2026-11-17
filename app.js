@@ -2466,7 +2466,7 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
     ${fila('🎥', `<button type="button" class="linkbtn" id="pg-meet" style="align-self:flex-start">Crear enlace de Google Meet nuevo</button>`, 'pg-meetw')}
     ${fila('📍', `<span class="small muted" id="pg-l-t">Ubicación</span><input type="text" id="pg-l" class="gc-in" placeholder="Añade una ubicación">`)}
     ${fila('☰', `<textarea id="pg-n" rows="4" class="gc-in" placeholder="Añade una descripción (la ve en su app y en el evento de Google Calendar)"></textarea><label class="row small" style="gap:8px"><input type="checkbox" id="pg-def" style="width:18px;height:18px"> Guardar descripción y ubicación por defecto para <b id="pg-def-t">Entrenamiento</b></label>`)}
-    ${gcalOn() ? fila('📅', `<span class="small muted">Se guarda sola en tu Google Calendar.</span><label class="row small" style="gap:8px"><input type="checkbox" id="pg-av" style="width:18px;height:18px"> Enviar invitación o aviso por correo a los alumnos (Google)</label><input type="checkbox" id="pg-g" hidden>`)
+    ${gcalOn() ? fila('📅', `<span class="small muted">Se guarda sola en tu Google Calendar.</span><label class="row small" style="gap:8px"><input type="checkbox" id="pg-av" checked style="width:18px;height:18px"> Enviar invitación o aviso por correo a los alumnos (Google)</label><input type="checkbox" id="pg-g" hidden>`)
       : fila('📅', `<label class="row small" style="gap:8px"><input type="checkbox" id="pg-g" style="width:18px;height:18px"> Abrir también Google Calendar para añadirla al momento</label>`)}
     ${P0 ? fila('✔', `<select id="pg-e" class="gc-in">${Object.entries(PRES_EST).map(([k, l]) => `<option value="${k}" ${P0.estado === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`) : ''}
     <p class="err" id="pg-err"></p><button class="btn full" type="submit">${P0 ? 'Guardar cambios' : 'Guardar'}</button>
@@ -8788,7 +8788,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v411';
+const APP_VER = 'v412';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
