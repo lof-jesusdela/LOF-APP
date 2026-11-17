@@ -1195,7 +1195,7 @@ async function guardarDiario(extra = {}) {
 function vEntreno() {
   const p = S.d.programa;
   if (!p) return '<div class="empty">Jesús está preparando tu programa.</div>';
-  if (S.dia) return vSesion();
+  if (S.dia && !(S.entVer && enCurso())) return vSesion();
   const como = S.obj ? `<div class="cerrada" style="margin-bottom:10px"><span class="pill gold">Entrenando a</span><span class="small grow">${esc(S.obj.nombre)} · ${S.obj.fecha && S.obj.fecha !== hoyISO() ? esc(fLarga(S.obj.fecha)) + ' · ' : ''}${S.obj.presencial ? 'canjea 1 sesión presencial al terminar' : 'lo que apuntes se guarda en su ficha'}</span><button class="btn sm ghost" data-act="editarProgramaObj" style="background:#fff">✎ Programa</button><button class="btn sm ghost" data-act="salirComo" style="background:#fff">Salir</button></div>` : '';
   const lunes = lunesDe(hoyISO()), hoyN = norm(DIAS[new Date().getDay()]);
   const hechoSemana = id => { const l = S.d.sesiones.filter(s => s.dia_id === id && s.fecha >= lunes); return l.find(esCompleta) || l[l.length - 1] || null; };
@@ -1627,7 +1627,7 @@ async function volverEntreno() {
     if (S.obj) await aparcarOSalir();
     S.propio = { d: S.d, dia: S.dia, sesion: S.sesion, tab: S.tab };
     Object.assign(S, { obj: a.obj, d: a.d, dia: a.dia, sesion: a.sesion, aparcado: null, modo: 'coach', ficha: null, editor: null, reporte: null, factura: null, verSes: null, verPlan: null });
-  } else if (S.dia) { if (S.obj) await aparcarOSalir(); S.modo = S.perfil.rol === 'coach' && S.modo === 'coach' ? 'alumno' : S.modo; S.tab = 'entreno'; }
+  } else if (S.dia) { S.entVer = false; if (S.obj) await aparcarOSalir(); S.modo = S.perfil.rol === 'coach' && S.modo === 'coach' ? 'alumno' : S.modo; S.tab = 'entreno'; }
   cerrarSheet(); render(); window.scrollTo(0, 0);
 }
 function vBarraEntreno() {
@@ -1635,7 +1635,7 @@ function vBarraEntreno() {
   let t = '';
   if (S.reanudar && !S.dia && !S.aparcado && !S.obj) return `<div id="entreno-barra"><span class="grow">🏋️ Entreno sin terminar${S.reanudar.alumnoId !== S.user.id ? ' · ' + esc((S.c?.perfiles.find(p => p.id === S.reanudar.alumnoId)?.nombre || '').split(' ')[0]) : ''}</span><button type="button" data-act="descartarEntreno" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.6)">Descartar</button><button type="button" data-act="reanudarEntreno">Reanudar ▶</button></div>`;
   if (S.aparcado && !S.obj) t = `🏋️ Entrenando con <b>${esc(S.aparcado.obj.nombre.split(' ')[0])}</b> · ${esc(S.aparcado.dia?.titulo || S.aparcado.dia?.nombre || '')}`;
-  else if (!S.obj && S.dia && !S.sesion?.editar && ((S.modo === 'coach') || (S.modo === 'alumno' && S.tab !== 'entreno'))) t = `🏋️ ${S.modo === 'coach' ? 'Tu entreno' : 'Entreno'} en curso · ${esc(S.dia.titulo || S.dia.nombre || '')}`;
+  else if (!S.obj && S.dia && !S.sesion?.editar && ((S.modo === 'coach') || (S.modo === 'alumno' && (S.tab !== 'entreno' || S.entVer)))) t = `🏋️ ${S.modo === 'coach' ? 'Tu entreno' : 'Entreno'} en curso · ${esc(S.dia.titulo || S.dia.nombre || '')}`;
   return t ? `<div id="entreno-barra"><span class="grow">${t}</span>${S.modo === 'alumno' && !S.aparcado ? '<button type="button" class="rojo" data-act="descartarEntreno">Salir</button>' : ''}<button type="button" data-act="volverEntreno">Continuar entreno ▶</button></div>` : '';
 }
 async function editarSesionCerrada() {
@@ -1911,6 +1911,11 @@ function pintarCrono() {
 setInterval(() => { const t = $('#crono-t'); if (t && S.sesion?.inicio) t.textContent = fmtCrono(Date.now() - S.sesion.inicio); }, 1000);
 
 async function abrirDia(id, op = {}) {
+  if (enCurso() && !S.obj && !op.editar) {   /* un solo entreno a la vez: el mismo se retoma; otro no se abre hasta terminar o salir */
+    if (S.dia?.id === id) { S.entVer = false; S.tab = 'entreno'; render(); window.scrollTo(0, 0); return; }
+    return toast(`Tienes un entreno en curso (${S.dia?.titulo || S.dia?.nombre || 'sin terminar'}). Termínalo o pulsa «Salir» para empezar otro.`);
+  }
+  S.entVer = false;
   S.dia = op.dia || S.d.programa.dias.find(d => d.id === id);
   const fechaS = op.fecha || S.obj?.fecha || hoyISO(), editar = !!op.editar;
   const prev = S.sesion?.diaId === id && S.sesion.fecha === fechaS && !!S.sesion.editar === editar ? S.sesion : null;   // al volver a la misma sesión se conserva lo escrito sin confirmar
@@ -8824,7 +8829,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v413';
+const APP_VER = 'v414';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -9023,13 +9028,13 @@ document.addEventListener('click', async e => {
     case 'histAvisos': histAvisos(b.dataset.id); break;
     case 'duoIr': await duoIr(b.dataset.id); break;
     case 'tab': S.ia = false; if (b.dataset.t === 'checkin') { S.tab = 'hoy'; S.dia = null; render(); $('#checkin')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break; }
-      S.tab = b.dataset.t; if (!enCurso()) { S.dia = null; S.sesion = null; } S.chipsCargados = false; render(); window.scrollTo(0, 0); break;
+      if (!(b.dataset.t === 'entreno' && S.tab === 'entreno')) S.entVer = false; S.tab = b.dataset.t; if (!enCurso()) { S.dia = null; S.sesion = null; S.entVer = false; } S.chipsCargados = false; render(); window.scrollTo(0, 0); break;
     case 'sinWhatsapp': toast('Jesús aún no ha puesto su WhatsApp en la app'); break;
     case 'metSub': S.metSub = b.dataset.v; render(); window.scrollTo(0, 0); break;
     case 'ctab': S.alFoco = null; if (S.obj) await aparcarOSalir(); S.iaCoach = false; S.reporte = null; S.factura = null; S.ctab = b.dataset.t; S.ficha = null; S.editor = null; render(); window.scrollTo(0, 0); break;
     case 'modo': if (S.obj) await aparcarOSalir(); S.iaCoach = false; S.ia = false; S.modo = b.dataset.v; S.ficha = null; S.editor = null; S.fichaSub = null; if (S.modo === 'coach') await cargarCoach(); else if (S.perfil?.rol === 'coach' && !S.prueba && !S.vista) await cargarAlumno(S.user.id); render(); window.scrollTo(0, 0); break;
     case 'abrirDia': await abrirDia(+b.dataset.id); break;
-    case 'cerrarDia': if (enCurso()) { S.tab = 'hoy'; toast('Tu entreno sigue en curso: vuelve desde la barra azul'); } else { S.dia = null; S.sesion = null; } render(); break;
+    case 'cerrarDia': if (enCurso()) { S.tab = 'entreno'; S.entVer = true; } else { S.dia = null; S.sesion = null; S.entVer = false; } render(); window.scrollTo(0, 0); break;
     case 'reanudarEntreno': await reanudarEntreno(); break;
     case 'descartarEntreno': await descartarEntreno(); break;
     case 'salirParcial': { const x = (S.d?.sesiones || []).find(z => z.id === +b.dataset.id); if (!x || esCompleta(x)) break;
