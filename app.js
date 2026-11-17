@@ -1551,13 +1551,49 @@ const enCurso = () => !!(S.dia && S.sesion && !S.sesion.editar && !S.sesion.finM
 function detectarEntrenoEnCurso() {
   S.reanudar = null; if (S.dia || S.aparcado || S.obj || !S.user) return;
   const ahora = Date.now(), coach = S.perfil?.rol === 'coach', ids = new Set([S.user.id, ...(coach ? (S.c?.perfiles || []).map(p => p.id) : [])]);
-  let mejor = null;
+  let mejor = null; const vencidos = [];
   try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i), m = /^lof-ini-([0-9a-f-]{36})-(\d+)-(\d{4}-\d{2}-\d{2})$/.exec(k || ''); if (!m) continue;
-    const ini = +localStorage.getItem(k); if (!ini) continue; if (ahora - ini > 12 * 3600 * 1000) { localStorage.removeItem(k); continue; }
-    if (!ids.has(m[1])) continue; if (!mejor || ini > mejor.ini) mejor = { alumnoId: m[1], diaId: +m[2], fecha: m[3], ini }; } } catch (e) { }
+    const ini = +localStorage.getItem(k); if (!ini) continue; if (ahora - ini > 12 * 3600 * 1000) { localStorage.removeItem(k); }
+    if (!ids.has(m[1])) continue; if (ahora - ini >= LIM_ENTRENO_MIN * 60000) { vencidos.push({ alumnoId: m[1], diaId: +m[2], fecha: m[3], ini }); continue; } if (!mejor || ini > mejor.ini) mejor = { alumnoId: m[1], diaId: +m[2], fecha: m[3], ini }; } } catch (e) { }
   if (mejor && mejor.alumnoId === S.user.id) { const ya = (S.d?.sesiones || []).find(x => x.dia_id === mejor.diaId && x.fecha === mejor.fecha && x.inicio_at && x.duracion_min); if (ya) { try { localStorage.removeItem(`lof-ini-${mejor.alumnoId}-${mejor.diaId}-${mejor.fecha}`); } catch (e) { } mejor = null; } }
-  S.reanudar = mejor;
+  S.reanudar = mejor; vencidos.forEach(cerrarEntrenoVencido);
 }
+/* Entreno que se queda abierto más de 2 h 30: se cierra solo con lo que haya apuntado (la duración queda en 150 min, porque la hora real de fin no se sabe) */
+const LIM_ENTRENO_MIN = 150, _cerrando = new Set();
+const textoLimite = () => `${Math.floor(LIM_ENTRENO_MIN / 60)} h ${LIM_ENTRENO_MIN % 60} min`;
+async function cerrarEntrenoVencido(x) {   /* sin abrir el entreno (app cerrada o en otra pestaña): se completa su fila en la base de datos */
+  const k = `lof-ini-${x.alumnoId}-${x.diaId}-${x.fecha}`; if (_cerrando.has(k)) return; _cerrando.add(k);
+  try {
+    const r = await sb.from('sesiones_hechas').select('id,estado,series_hechas,series_total,duracion_min,previa').eq('alumno_id', x.alumnoId).eq('dia_id', x.diaId).eq('fecha', x.fecha);
+    if (r.error) throw r.error;
+    for (const f of (r.data || []).filter(z => !z.previa && !z.duracion_min)) {
+      const est = { duracion_min: LIM_ENTRENO_MIN, inicio_at: new Date(x.ini).toISOString(), estado: f.series_total && (f.series_hechas || 0) < f.series_total ? 'parcial' : 'completa' };
+      const u = await conRespaldo(() => sb.from('sesiones_hechas').update(est).eq('id', f.id), () => sb.from('sesiones_hechas').update({ estado: est.estado }).eq('id', f.id)); if (u.error) throw u.error;
+      Object.assign((S.d?.sesiones || []).find(z => z.id === f.id) || {}, est);
+    }
+    try { localStorage.removeItem(k); } catch (e) { }
+    if (S.reanudar && S.reanudar.alumnoId === x.alumnoId && S.reanudar.diaId === x.diaId && S.reanudar.fecha === x.fecha) S.reanudar = null;
+    if (!S.dia) { toast(`Un entreno llevaba más de ${textoLimite()} abierto y se ha cerrado solo`); render(); }
+  } catch (err) { console.error(err); } finally { _cerrando.delete(k); }
+}
+async function cerrarEntrenoSolo() {   /* con el entreno abierto en pantalla: guarda lo apuntado, sin el formulario final */
+  if (!S.dia || !S.sesion?.inicio || S.sesion.editar || S.sesion.finMin || S.obj) return;
+  if (Date.now() - S.sesion.inicio < LIM_ENTRENO_MIN * 60000 || S.sesion._cierra || document.querySelector('[data-act="guardarSesion"]')) return;
+  S.sesion._cierra = true;
+  try {
+    const hay = S.sesion.id || Object.keys(S.sesion.valores || {}).length;
+    if (hay) {
+      const id = await asegurarSesion(), c = conteoSeries(S.dia, S.sesion);
+      const cambios = { duracion_min: LIM_ENTRENO_MIN, inicio_at: new Date(S.sesion.inicio).toISOString(), estado: !c.total || c.hechas >= c.total ? 'completa' : 'parcial', series_hechas: c.hechas, series_total: c.total };
+      const { error } = await conRespaldo(() => sb.from('sesiones_hechas').update(cambios).eq('id', id), () => sb.from('sesiones_hechas').update({ estado: cambios.estado }).eq('id', id)); if (error) throw error;
+      Object.assign(S.d.sesiones.find(s => s.id === id) || {}, cambios);
+    }
+    try { localStorage.removeItem(claveCrono()); } catch (e) { } S.reanudar = null;
+    stopTimer(); S.dia = null; S.sesion = null; S.tab = 'hoy';
+    toast(hay ? `Entreno cerrado solo tras ${textoLimite()}: se ha guardado lo que apuntaste` : `Entreno cerrado solo tras ${textoLimite()}: no había nada apuntado`); render(); window.scrollTo(0, 0);
+  } catch (err) { if (S.sesion) S.sesion._cierra = false; console.error(err); }
+}
+setInterval(cerrarEntrenoSolo, 30000);
 /* Entreno empezado por error (o que ya no se va a hacer): se descarta, se borra lo apuntado y NO cuenta como hecho */
 async function descartarEntreno() {
   const dentro = !!(S.dia && S.sesion), x = dentro ? { alumnoId: uidSes(), diaId: S.dia.id, fecha: S.sesion.fecha || hoyISO() } : S.reanudar; if (!x) return;
@@ -8788,7 +8824,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v412';
+const APP_VER = 'v413';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
