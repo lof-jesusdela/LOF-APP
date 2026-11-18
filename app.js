@@ -1206,6 +1206,7 @@ function vEntreno() {
   ${(() => { const z = vZonasFC() + vRitmosVAM(); return !z ? '' : S.d.servicio?.modulo_futbol ? `<section class="section"><h2>Tus zonas</h2><details class="card fx-ban"><summary><span class="fx-ban-ic">🫀</span><span class="grow"><b>Zonas de frecuencia cardiaca y ritmos</b><span class="small muted"> · toca para verlas</span></span></summary><div class="fx-in">${z}</div></details></section>` : `<section class="section" style="margin-bottom:-12px"><h2>Tus zonas</h2></section>${z}`; })()}
   ${(() => { const t = vLineaTiempo(S.d.servicio, 'Tus ciclos de entrenamiento', false, p); if (!t) return ''; const P2 = proceso(S.d.servicio);
     return `<section class="section"><h2>Tus ciclos</h2><details class="card fx-ban"><summary><span class="fx-ban-ic">🧱</span><span class="grow"><b>${P2 && !P2.antes && !P2.fuera ? `Ciclo ${P2.ciclo} de ${P2.ciclos.length} · semana ${P2.semCiclo} de ${P2.cc.sem}` : 'Tus ciclos de entrenamiento'}</b>${P2 && !P2.antes && !P2.fuera ? `<span class="small muted"> · ${P2.sinFin ? '' : Math.round(P2.pctTotal) + ' % del proceso'}</span><div class="track" style="margin-top:6px"><i style="width:${Math.round(Math.min(100, (P2.semCiclo / P2.cc.sem) * 100))}%"></i></div>` : ''}</span></summary><div class="fx-ban-in">${t}</div></details></section>`; })()}
+  ${S.obj ? '' : vCalendarioPres()}
   `;
 }
 /* Lo primero de Entreno: el entreno que le toca HOY (por el día de la semana, su horario o lo que marcó en su check-in). Si hoy no toca, no sale */
@@ -7033,6 +7034,16 @@ async function confirmarCancelPres(id) {
   cerrarSheet(); toast('Sesión cancelada'); await cargarAlumno(S.user.id); render();
 }
 /* Calendario de próximas sesiones presenciales (pestaña Entreno) */
+/* Histórico de entrenamientos con Jesús: nº de sesión del bono, fecha y hora, para que el alumno compruebe los que lleva */
+function historicoPres() {
+  const srv = S.d.servicio, lista = S.d.presenciales || [], D = datosPres(srv, lista), orden = [...D.hechas, ...D.prox], previas = D.hechas.filter(p => p.previa).length;
+  const filas = orden.map((p, i) => ({ p, k: i + 1 })).filter(x => !x.p.previa).reverse();
+  abrirSheet(`<div class="stack"><h2>Histórico de entrenamientos</h2>
+    ${D.total ? `<p class="small"><b>${D.hechas.length} de ${D.total}</b> entrenamientos hechos${D.prox.length ? ` · ${D.prox.length} ${D.prox.length === 1 ? 'reservado' : 'reservados'}` : ''} · te ${D.quedan === 1 ? 'queda' : 'quedan'} <b>${D.quedan}</b> ${D.quedan === 1 ? 'disponible' : 'disponibles'}.</p>` : ''}
+    ${filas.length ? filas.map(({ p, k }) => { const hecha = cuentaPres(p); return `<div class="line"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">Entrenamiento ${k}${D.total ? ' de ' + D.total : ''}</b><div class="small muted">${esc(fLargaP(p))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</div></div><span class="pill ${hecha ? 'ok' : 'blue'}">${hecha ? '✓ Hecho' : 'Reservado'}</span></div>`; }).join('') : '<p class="small muted">Todavía no hay entrenamientos con Jesús registrados.</p>'}
+    ${previas ? `<div class="line"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">${previas === 1 ? 'Entrenamiento 1' : 'Entrenamientos 1–' + previas}</b><div class="small muted">Hechos antes de usar la app</div></div><span class="pill ok">✓ Hecho${previas > 1 ? 's' : ''}</span></div>` : ''}
+    <button class="btn full" data-act="cerrarSheet">Cerrar</button></div>`);
+}
 function vCalendarioPres() {
   const l = (S.d.presenciales || []).filter(p => p.estado === 'programada' && p.fecha >= hoyISO()).sort(ordPres);
   const srv = S.d.servicio; if (!l.length && !srv?.modulo_presencial && !srv?.sesiones_incluidas) return '';
@@ -7041,9 +7052,10 @@ function vCalendarioPres() {
   const celda = d => { const ps = porDia[d], pas = d < hoyISO(); return `<${ps ? `button data-act="verPres" data-id="${ps[0].id}"` : 'div'} class="cal-d ${ps ? 'con' : ''} ${d === hoyISO() ? 'hoy' : ''} ${pas ? 'pas' : ''}"><b>${fecha(d).getDate()}</b>${ps ? `<span>${hhmm(ps[0].hora) || '●'}</span>` : ''}</${ps ? 'button' : 'div'}>`; };
   const mes = fecha(ini).toLocaleDateString('es-ES', { month: 'long' }), mes2 = fecha(dias[27]).toLocaleDateString('es-ES', { month: 'long' });
   return `<section class="section"><div class="section-head"><h2>Tus entrenamientos presenciales con Jesús</h2><span class="small muted">${esc(mes === mes2 ? mes : mes + ' – ' + mes2)}</span></div><div class="card stack">
+    ${(() => { if (!srv?.sesiones_incluidas) return ''; const D = datosPres(srv, S.d.presenciales || []); return `<div class="small"><b class="num" style="font-family:var(--display);font-size:22px">${D.quedan}</b> ${D.quedan === 1 ? 'entrenamiento disponible' : 'entrenamientos disponibles'} <span class="muted">· ${D.hechas.length} de ${D.total} hechos${D.prox.length ? ` · ${D.prox.length} ${D.prox.length === 1 ? 'reservado' : 'reservados'}` : ''}</span></div>`; })()}
     <div class="cal">${['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(x => `<span class="cal-h">${x}</span>`).join('')}${dias.map(celda).join('')}</div>
     ${l.length ? l.map(p => `<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">${esc(fLargaP(p))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</b><div class="small muted">${esc(p.tipo || 'Entrenamiento presencial con Jesús')}</div></div><span class="small" style="color:var(--blue-text)">›</span></div>`).join('') : '<p class="small muted">No tienes sesiones reservadas.</p>'}
-    ${S.obj ? '' : '<button class="btn sm" data-act="reservarPres" style="align-self:flex-start">Reservar sesión</button>'}
+    <div class="row" style="gap:8px;flex-wrap:wrap">${S.obj ? '' : '<button class="btn sm" data-act="reservarPres">Reservar sesión</button>'}${srv?.sesiones_incluidas || (S.d.presenciales || []).some(cuentaPres) ? '<button class="btn sm ghost" data-act="historicoPres">📋 Histórico de entrenamientos</button>' : ''}</div>
   </div></section>`;
 }
 const etiquetaDia = d => `${d.nombre}${d.foco ? ' · ' + d.foco : ''}`;
@@ -8846,7 +8858,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v416';
+const APP_VER = 'v417';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -9130,6 +9142,7 @@ document.addEventListener('click', async e => {
     case 'escala': document.querySelectorAll(`#${b.dataset.g} button`).forEach(x => x.setAttribute('aria-pressed', x === b)); break;
     case 'editarSesion': await editarSesionCerrada(); break;
     case 'entrenarAhora': formEntrenarCon(b.dataset.id); break;
+    case 'historicoPres': historicoPres(); break;
     case 'verPres': verPres(+b.dataset.id); break;
     case 'reservarPres': await reservarPres(); break;
     case 'sincCal': await sincronizarCalendly(true); break;
