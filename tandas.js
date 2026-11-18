@@ -209,7 +209,7 @@ const Tandas = {
     const rirUnico = undefined;   // con método el RIR se ve junto a cada tanda (sin repetirlo arriba)
     const entreT = SER.flatMap(s => s.tandas.slice(0, -1).map(t => t.d ?? 0)), entreS = SER.slice(0, -1).map(s => s.tandas[s.tandas.length - 1].d ?? 60);
     const primera = SER.findIndex((s, i) => this.estadoSerie(z, s, `${e.id}-${i + 1}`).est !== 'on');
-    if (!(e.id in abiertas)) abiertas[e.id] = primera < 0 ? -1 : primera + 1;
+    if (!(e.id in abiertas)) abiertas[e.id] = -1;   // todas plegadas: el alumno toca la que va a hacer
     const M0 = M, html = SER.map((s, si) => {
       const n = si + 1, fila = `${e.id}-${n}`, ultS = n === N, nT = s.tandas.length, M = s.M || M0;
       const tandas = s.tandas.map((t, k) => {
@@ -224,11 +224,12 @@ const Tandas = {
           ${M.myo && k > 0 ? `<button class="linkbtn small rp-corte" data-act="tandaCortar" data-es="${e.id}" data-n="${n}" data-k="${k}">No llego a 4 repeticiones · termino aquí la serie</button>` : ''}
           <div class="rp-ok small" hidden><span class="rp-ok-t">✓ Guardada</span><span class="muted"> · para corregir, cambia el número</span> <button class="linkbtn small" data-act="tandaQuitar" data-es="${e.id}" data-n="${n}" data-k="${k}">Quitar</button></div>
           <div class="rp-cortada small muted" hidden>No hecha: terminaste la serie antes <button class="linkbtn small" data-act="tandaCortar" data-es="${e.id}" data-n="${n}" data-k="-1">Deshacer</button></div>
+          ${!ult ? this.sepTanda(M, t, sig, d) : ''}
         </div>`;
       }).join('');
       return `<div class="rp-serie" id="rps-${fila}" data-es="${e.id}" data-n="${n}" data-t="${s.T}"${s.etq ? ` data-etq="${esc(s.etq)}"` : ''}>
         <button class="rp-cab" data-act="rpAbrir" data-es="${e.id}" data-n="${n}" aria-expanded="false"><span class="grow"><span class="rp-tit"></span><span class="rp-sub small"></span></span><span class="rp-chev" aria-hidden="true"></span></button>
-        <div class="rp-cuerpo">${tandas}</div></div>`;
+        <div class="rp-cuerpo">${tandas}${(() => { const lt = s.tandas[nT - 1], lb = ultS ? 'Terminar ejercicio' : lt.ss ? `Serie hecha · ${lt.ss}` : 'Serie hecha'; return `<button class="btn rp-fin" data-act="serieTandas" data-es="${e.id}" data-n="${n}" data-lbl="${esc(lb)}">${esc(lb)}</button>`; })()}</div></div>`;
     }).join('');
     const eT = this.rango(entreT, true), eS = this.rango(entreS, true);
     const rit = partes.find(x => x.ritmo)?.ritmo, info = [rit ? `Ritmo de ejecución: ${rit}` : M.tempo ? this.TEMPO : ''].filter(Boolean), pos = partes.find(x => x.pos)?.pos;
@@ -236,6 +237,45 @@ const Tandas = {
       ${pos ? `<div class="rp-rir">${this.ICO.rir}<div><b>Posición a mantener</b><span class="small">${esc(pos)}</span></div></div>` : ''}
       ${eT || (eS && N > 1) ? `<div class="rp-desc">${this.ICO.reloj}${eT ? `<div><span class="small">Entre ${M.tipo === 'uni' || M.tipo === 'ucontraste' ? 'lados' : 'tandas'}:</span><b>${esc(eT)}</b></div>` : ''}${eT && eS && N > 1 ? '<div class="rp-sep"></div>' : ''}${eS && N > 1 ? `<div><span class="small">Entre series:</span><b>${esc(eS)}</b></div>` : ''}</div>` : ''}
       <div class="rp-wrap" id="rpw-${e.id}">${html}</div>`;
+  },
+  mpTxt(s) { return s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : `${s} s`; },
+  CRONO: '<svg class="rp-crono" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13.5" r="7.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 9.5v4l2.5 1.5M9.5 3h5M12 3v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  /* Entre dos tandas: micro pausa voluntaria (cronómetro que se vacía) o aviso de que sigue sin pausa */
+  sepTanda(M, t, sig, d) {
+    if (d > 0) return `<button type="button" class="rp-mp" data-act="microPausa" data-d="${d}" aria-label="Cronometrar la micro pausa de ${this.mpTxt(d)}"><span class="fl"></span><span class="tx"><span>${this.CRONO} Micro pausa</span><b class="ct">${this.mpTxt(d)}</b></span></button>`;
+    const tx = (M.tipo === 'drop' || M.tipo === 'top') ? 'Baja el peso y sigue, sin pausa' : (sig?.lado && t.lado) ? 'Cambia de lado, sin pausa' : sig?.tipo ? `Al ${this.TIPO[sig.tipo].toLowerCase()}, sin pausa` : 'Sigue, sin pausa';
+    return `<div class="rp-baja">↓ ${esc(tx)}</div>`;
+  },
+  mpReset(b) { b._tm = null; b.classList.remove('fin'); const fl = b.querySelector('.fl'); fl.style.transition = 'none'; fl.style.width = '100%'; b.querySelector('.ct').textContent = this.mpTxt(+b.dataset.d); },
+  microPausa(b) {
+    if (b._tm) { clearInterval(b._tm); return this.mpReset(b); }
+    document.querySelectorAll('.rp-mp').forEach(x => { if (x !== b && x._tm) { clearInterval(x._tm); this.mpReset(x); } });
+    const fl = b.querySelector('.fl'), ct = b.querySelector('.ct'), tot = +b.dataset.d; let r = tot;
+    fl.style.transition = 'none'; fl.style.width = '100%'; void fl.offsetWidth; fl.style.transition = `width ${tot}s linear`; fl.style.width = '0%'; ct.textContent = this.mpTxt(r);
+    b._tm = setInterval(() => {
+      if (!b.isConnected) { clearInterval(b._tm); b._tm = null; return; }
+      r--; ct.textContent = r > 0 ? this.mpTxt(r) : '¡Ya!';
+      if (r <= 0) { clearInterval(b._tm); b._tm = null; b.classList.add('fin'); fl.style.transition = 'none'; fl.style.width = '100%'; try { navigator.vibrate?.(200); } catch (e) { } setTimeout(() => { if (b.isConnected) this.mpReset(b); }, 1600); }
+    }, 1000);
+  },
+  /* Todas las tandas de la serie se guardan de una vez; el descanso entre series arranca al terminar */
+  async confirmarSerie(b) {
+    const z = S.sesion, es = +b.dataset.es, n = +b.dataset.n, fila = `${es}-${n}`, e = this.ejercicio(es), s = e && this.estructura(e)[n - 1]; if (!s) return;
+    z.guard ||= {}; const gk = `s-${fila}`; if (z.guard[gk]) return;
+    const c = this.corte(fila), ts = s.tandas.map((t, k) => ({ t, k })).filter(({ t, k }) => (c == null || k < c) && !this.tandaHecha(z, fila, t)); if (!ts.length) return;
+    for (const { t } of ts) for (const x of t.partes) {
+      const rpI = document.getElementById(`rp-${fila}-${x.p}`); if (!rpI || this.hecha(z, fila, x.p)) continue;
+      if ((numero(rpI.value) ?? valPh(rpI)) == null) { toast(`Escribe ${rpI.dataset.iso ? 'los segundos' : 'las repeticiones'} que has hecho${s.tandas.length > 1 ? ' en cada tanda' : ''}`); rpI.focus(); return; }
+    }
+    z.guard[gk] = true; b.disabled = true; b.textContent = 'Guardando…';
+    const ultK = ts[ts.length - 1].k;
+    try {
+      for (const { t, k } of ts) {
+        const tb = document.querySelector(`#rpt-${fila}-${k} .rp-btn`); if (!tb) break;
+        await this.confirmar(tb, { sinDescanso: k !== ultK, callado: k !== ultK });
+        if (!this.tandaHecha(z, fila, t)) break;
+      }
+    } finally { z.guard[gk] = false; this.pintar(es); }
   },
   ICO: {
     reloj: '<svg class="rp-reloj" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 6.5V12l3.5 2.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
@@ -272,6 +312,7 @@ const Tandas = {
         const { req, h, est } = this.estadoSerie(z, s, fila), abierta = ab === n, c = this.corte(fila), etq = s.etq ? ` · ${s.etq}` : '';
         el.classList.toggle('on', est === 'on'); el.classList.toggle('parcial', est === 'parcial'); el.classList.toggle('abierta', abierta);
         el.querySelector('.rp-cab').setAttribute('aria-expanded', abierta ? 'true' : 'false');
+        const fb = el.querySelector('.rp-fin'); if (fb) { fb.hidden = est === 'on'; if (!z.guard?.[`s-${fila}`]) { fb.disabled = false; fb.textContent = fb.dataset.lbl; } }
         const res = s.tandas.flatMap(t => t.partes).map(x => { const v = z.valores[`${fila}-${x.p}`]; return v ? `${x.lado || ''}${x.lado ? ' ' : ''}${v.kg != null ? fmtNum(v.kg, 2) + '×' : ''}${v.repeticiones ?? '—'}${x.tipo === 'iso' ? 's' : ''}` : null; }).filter(Boolean).join(' · ');
         const uds = s.tandas.length === 1 && s.tandas[0].partes.length > 1 ? 'partes' : (s.tandas.some(t => t.lado) ? 'lados' : 'tandas');
         const tot = uds === 'partes' ? req.length : s.tandas.filter((t, k) => c == null || k < c).length;
@@ -293,7 +334,7 @@ const Tandas = {
   abrir(es, n) { const z = S.sesion; z.abiertas ||= {}; z.abiertas[es] = z.abiertas[es] === +n ? -1 : +n; this.pintar(es); },
 
   /* ---------- Confirmar una tanda: guarda lo realizado (todas sus partes) y arranca el descanso que toca ---------- */
-  async confirmar(b) {
+  async confirmar(b, op = {}) {
     const z = S.sesion, es = +b.dataset.es, n = +b.dataset.n, k = +b.dataset.k, fila = `${es}-${n}`, id = `${fila}-${k}`;
     const e = this.ejercicio(es), s = this.estructura(e)[n - 1], t = s?.tandas[k]; if (!t) return;
     z.guard ||= {};
@@ -324,8 +365,8 @@ const Tandas = {
     }
     z.guard[id] = false;
     if (!guardada) return;
-    this.descanso(b, e);
-    this.trasGuardar(e, n, k, sid, L);
+    if (!op.sinDescanso) this.descanso(b, e);
+    this.trasGuardar(e, n, k, sid, L, op.callado);
   },
   descanso(b, e) {
     const z = S.sesion, d = +b.dataset.d, tipo = b.dataset.tipo, nom = ejDe(e || {}).nombre || '';
@@ -380,7 +421,7 @@ const Tandas = {
     }
     this.repartir(es, n, s, L, i, w, false);
   },
-  trasGuardar(e, n, k, sid, L) {
+  trasGuardar(e, n, k, sid, L, callado) {
     const z = S.sesion, es = e.id, SER = this.estructura(e), s = SER[n - 1], fila = `${es}-${n}`;
     // El peso realizado pasa a la misma parte de la siguiente tanda o serie (si la pauta es la misma), como valor editable; las reps nunca se copian
     L.forEach(q => {
@@ -404,13 +445,13 @@ const Tandas = {
     /* Superserie normal: con la serie terminada se salta al ejercicio unido (o al primero, para la serie siguiente), con o sin pausa entre ellos */
     else if (this.estadoSerie(z, s, fila).est === 'on' && (S.nav?.cadena?.[es] || []).length > 1) { const sig = siguienteFila(es, n); if (sig && sig[0] !== es) return irAFila(sig[0], sig[1]); }
     foco = foco || document.getElementById(`rpt-${fila}-${k + 1}`) || document.getElementById(`rpt-${es}-${n + 1}-0`);
-    if (foco && z.abiertas[es] !== -1) foco.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (foco && z.abiertas[es] !== -1 && !callado) foco.scrollIntoView({ behavior: 'smooth', block: 'center' });
   },
   serieHecha(e, n, sid) {
     const z = S.sesion, es = e.id, SER = this.estructura(e), s = SER[n - 1], fila = `${es}-${n}`;
     z.regs[fila] = this.requeridas(s, fila).map(p => z.valores[`${fila}-${p}`]?.id).filter(Boolean);
     const sig = SER.findIndex((x, i) => this.estadoSerie(z, x, `${es}-${i + 1}`).est !== 'on');
-    (z.abiertas ||= {})[es] = sig < 0 ? -1 : sig + 1;
+    (z.abiertas ||= {})[es] = -1;
     sid ||= z.id;
     if (sid && !z.editar) { actualizarConteo(sid); Peso.revisar(es, fila, s.T, sid); }
   },
