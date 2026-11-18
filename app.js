@@ -2445,6 +2445,23 @@ async function gcalSync(ids = [], borrar = [], avisar = false) {
     if (error || data?.error) return toast('Google Calendar no se ha actualizado: ' + (data?.error || error.message || 'error'));
     if (data?.errores?.length) toast('Google Calendar: ' + data.errores[0]); } catch (e) { toast('Google Calendar no se ha actualizado'); }
 }
+/* Puntual (se puede quitar): invita por Google Calendar a los alumnos de todas sus sesiones desde mañana; antes la invitación solo salía al programar con la casilla marcada */
+async function invitarTodosGcal() {
+  if (!gcalOn()) return toast('Activa antes «Sincronizar al instante con mi Google Calendar»');
+  await cargarPresCoach();
+  const des = sumaDias(hoyISO(), 1), vistos = new Set(), l = (S.c.presenciales || []).filter(x => x.alumno_id && x.fecha >= des && x.estado !== 'cancelada').filter(x => { const k = x.grupo || 'i' + x.id; if (vistos.has(k)) return false; vistos.add(k); return true; });
+  if (!l.length) return toast('No hay sesiones con alumno desde mañana');
+  const als = new Set((S.c.presenciales || []).filter(x => x.alumno_id && x.fecha >= des && x.estado !== 'cancelada').map(x => x.alumno_id)), sin = [...als].filter(id => !(S.c.perfiles || []).find(p => p.id === id)?.email);
+  if (!confirm(`Se enviará la invitación de Google a ${als.size} alumnos por ${l.length} sesiones (desde el ${fLarga(des)}). Cada sesión es un correo. ¿Enviar?`)) return;
+  toast('Enviando invitaciones…');
+  let ok = 0; const err = [];
+  for (let i = 0; i < l.length; i += 15) {
+    try { const { data, error } = await sb.functions.invoke('gcal-sync', { body: { ids: l.slice(i, i + 15).map(x => x.id), borrar: [], avisar: true } });
+      if (error || data?.error) { err.push(data?.error || error.message || 'error'); break; } ok += data?.ok || 0; if (data?.errores?.length) err.push(...data.errores); } catch (e) { err.push('sin conexión'); break; }
+  }
+  await cargarPresCoach(); if (S.ficha) await cargarPres();
+  toast(err.length ? `Google Calendar: ${ok} sesiones enviadas. Fallo: ${err[0]}` : `Invitaciones enviadas: ${ok} sesiones${sin.length ? `. ${sin.length} alumnos sin email` : ''}`);
+}
 const gcalIdsDe = l => [...new Set((l || []).map(x => x.gcal_id).filter(Boolean))];
 /* Qué número de entrenamiento del bono es esta sesión (cuenta las de antes de la app); null si no es un entreno con bono */
 function numSesion(p) {
@@ -2683,7 +2700,7 @@ function verAgenda(desplaza = 0) {
     <div class="seg ag-vistas">${AG_VISTAS.map(([k, t]) => `<button class="${k === vista ? 'on' : ''}" data-act="agendaVista" data-v="${k}">${t}</button>`).join('')}</div>
     <div class="row" style="gap:6px"><button class="btn sm ghost" data-act="agendaMover" data-d="-1" aria-label="Anterior">‹</button><b class="small grow" style="text-align:center">${esc(rango)}</b>${ini <= hoy && hoy <= fin ? '' : '<button class="btn sm ghost" data-act="agendaHoy">Hoy</button>'}<button class="btn sm ghost" data-act="agendaMover" data-d="1" aria-label="Siguiente">›</button></div>
     ${cuerpo}
-    <div class="card stack" style="gap:6px"><b class="small">📲 Tus sesiones en Google Calendar</b><span class="small muted">${S.c.fiscal?.agenda_token ? 'Ya tienes tu enlace de suscripción.' : 'Suscríbete una vez y te llegan solas todas las sesiones (las tuyas y las de Calendly).'}</span><button class="btn sm ghost" data-act="agendaSuscribir" style="align-self:flex-start">${S.c.fiscal?.agenda_token ? 'Ver enlace y pasos' : 'Configurar'}</button>
+    <div class="card stack" style="gap:6px"><b class="small">📲 Tus sesiones en Google Calendar</b><span class="small muted">${S.c.fiscal?.agenda_token ? 'Ya tienes tu enlace de suscripción.' : 'Suscríbete una vez y te llegan solas todas las sesiones (las tuyas y las de Calendly).'}</span><button class="btn sm ghost" data-act="agendaSuscribir" style="align-self:flex-start">${S.c.fiscal?.agenda_token ? 'Ver enlace y pasos' : 'Configurar'}</button>${gcalOn() ? '<button class="btn sm" data-act="invitarTodosGcal" style="align-self:flex-start">✉️ Invitar a los alumnos a sus sesiones (desde mañana)</button>' : ''}
       <label class="row small" style="gap:8px;margin-top:6px"><input type="checkbox" data-act="gcalToggle" ${gcalOn() ? 'checked' : ''} style="width:20px;height:20px"> <span><b>Sincronizar al instante con mi Google Calendar</b> (crear, mover y borrar se ve en segundos; necesita la función gcal-sync)</span></label></div></div>`);
   if (S.proponer) document.querySelector('.ag-vistas')?.insertAdjacentHTML('beforebegin', `<div class="aprox row small" style="gap:8px;flex-wrap:wrap;align-items:center"><span class="grow">📅 <b>Elige el hueco</b> para la revisión de <b>${esc((S.c.perfiles.find(x => x.id === S.proponer.aid)?.nombre || '').split(' ')[0])}</b>: toca un día y una hora libres.</span><button class="btn sm ghost" data-act="agendaPropCancelar">Cancelar</button></div>`);
   const g = $('#ag-grid'); if (!g) return;
@@ -8829,7 +8846,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v414';
+const APP_VER = 'v415';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -9197,6 +9214,7 @@ document.addEventListener('click', async e => {
     case 'futEquipo': formEquipo(b.dataset.al); break;
     case 'verRadar': Radar.ver(); break;
     case 'pagaPor': break;
+    case 'invitarTodosGcal': await invitarTodosGcal(); break;
     case 'gcalToggle': { const v = b.checked ? '1' : '0', { error } = await sb.from('ajustes_privados').upsert({ clave: 'gcal_sync', valor: v }, { onConflict: 'clave' }); if (error) { b.checked = !b.checked; fallo(error); break; } (S.c.fiscal ||= {}).gcal_sync = v; toast(v === '1' ? 'Sincronización con Google Calendar activada' : 'Sincronización desactivada'); if (v === '1') { const fut = (S.c.presenciales || []).filter(p => p.fecha >= hoyISO() && p.estado !== 'cancelada' && !p.gcal_id).map(p => p.id); if (fut.length && confirm(`¿Paso ya a tu Google Calendar las ${fut.length} citas que tienes desde hoy? (sin enviar correos)`)) { toast('Pasando citas a Google Calendar…'); await gcalSync(fut, [], false); await cargarPresCoach(); toast('Citas pasadas a Google Calendar'); } } break; }
     case 'radarOk': await Radar.atendido(b.dataset.id); break;
     case 'radarAviso': await Radar.avisar([b.dataset.id], b.dataset.n); break;
