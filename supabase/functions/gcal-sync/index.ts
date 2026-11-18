@@ -13,16 +13,17 @@ async function token() {
   const j = await r.json(); if (!j.access_token) throw new Error("Google no ha dado acceso: revisa GOOGLE_CLIENT_ID / SECRET / REFRESH_TOKEN (" + (j.error_description || j.error || r.status) + ")"); return j.access_token as string;
 }
 const hm = (h: string) => String(h).slice(0, 5);
-// Color del evento igual que en la agenda de la app: primero el tipo (valoración, revisión, tarea, negocio) y, si es un entreno normal, su estado
+// Color del evento (colorId de Google Calendar): primero el tipo y, si es un entreno normal, su estado
 const hoyMadrid = () => new Date().toLocaleDateString("en-CA", { timeZone: TZ });
-const colorDe = (x: any, hoy: string) => {
+const colorDe = (x: any, _hoy: string) => {
   const t = x.tipo || "";
-  if (/valora/i.test(t)) return "5";            // Valoración · amarillo (Banana)
-  if (/revisi/i.test(t)) return "3";            // Revisión · morado (Grape)
-  if (/^tarea/i.test(t)) return "7";            // Tarea · turquesa (Peacock)
-  if (/^pti|primera|entrevista|reuni/i.test(t) || !x.alumno_id) return "8";   // Negocio · gris (Graphite)
-  if (x.estado === "programada" && x.fecha < hoy) return "10";                 // Hecha · verde (Basil)
-  return ({ dada: "10", tarde: "6", falta: "11" } as Record<string, string>)[x.estado] || "9";   // Hecha · aviso < 24 h · no vino · reservada (azul Blueberry)
+  if (/valora/i.test(t)) return "3";                       // Valoración · rosa (Grape, el más cercano)
+  if (/revisi/i.test(t)) return "4";                       // Revisión (presencial u online) · salmón (Flamingo)
+  if (/^tarea/i.test(t)) return "9";                       // Tarea · azul eléctrico (Blueberry)
+  if (/^pti|entrevista/i.test(t)) return "11";             // PTI y entrevista · rojo (Tomato)
+  if (/primera|reuni/i.test(t) || !x.alumno_id) return "7"; // Negocio · azul turquesa (Peacock)
+  if (x.estado === "tarde" || x.estado === "falta") return "8";   // Aviso < 24 h y no vino · negro (Graphite, el más oscuro de Google)
+  return "6";                                              // Entreno (reservado o hecho) · naranja (Tangerine)
 };
 const finDe = (f: string, h: string, min: number) => { const [a, b] = hm(h).split(":").map(Number), t = a * 60 + b + min, d = new Date(f + "T00:00:00Z"); d.setUTCMinutes(t); return d.toISOString().slice(0, 16).replace("Z", ""); };
 const diaSig = (f: string) => { const d = new Date(f + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10); };
