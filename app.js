@@ -1310,7 +1310,7 @@ function vEjercicio(e, i, ro) {
     return [...Array(g.s)].map(() => {
       n++; const r = `${e.id}-${n}`;
       if (ro && !plan) return filaCerrada(ro, r, n, T, sp);
-      return tr.map((t, k) => {
+      const cells = tr.map((t, k) => {
         const ult = k === T - 1, id = `${r}-${k}`, kgP = t.kg === '' ? '↓' : kgDe(t) || kgDe(t0) || kg0, rpP = repsPh(t.r || t0.r), riP = t.rir ?? (ult ? t0.rir ?? e.rir ?? '' : '');
         const pausa = !ult && t.d ? (plan ? `<span class="small muted">${seg(t.d)}</span>` : `<button class="pausa" data-act="tramo" data-d="${t.d}" data-lbl="${esc(ej.nombre)} · pausa">${seg(t.d)}</button>`) : '<span></span>';
         const nc = `<span class="num muted nlab" data-row="${r}" ${k === 0 && !plan ? `id="row-${r}"` : ''}>${k === 0 ? n : t.lado ? '' : '↳'}${t.lado ? `<i>${t.lado}</i>` : ''}</span>`;
@@ -1321,6 +1321,7 @@ function vEjercicio(e, i, ro) {
             : `<input id="rp-${id}" data-row="${r}" type="text" inputmode="numeric" placeholder="${esc(rpP)}" aria-label="Repeticiones serie ${n}${T > 1 ? ' tramo ' + (k + 1) : ''}">`)
           + (ult ? `<button class="chk" id="ck-${r}" data-act="serie" data-es="${e.id}" data-n="${n}" data-t="${T}" data-sp="${sp ? 1 : 0}" data-d="${descanso}" data-lbl="${esc(ej.nombre)} · serie ${n}" aria-label="Serie ${n} hecha">${CHK}</button>` : pausa);
       }).join('');
+      return plan ? cells : `<div class="ser-g" data-es="${e.id}" data-n="${n}"><button type="button" class="ser-h" data-act="serAb" data-es="${e.id}" data-n="${n}" aria-label="Abrir la serie ${n}"><span>Serie ${n}</span><span class="ser-r">⌄</span></button>${cells}</div>`;
     }).join('');
   }).join('');
   const vid = ej.video_url ? `<a class="btn sm" href="${esc(ej.video_url)}" target="_blank" rel="noopener">▶ Vídeo</a>` : `<button class="btn sm ghost" data-act="sinVideo">▶ Vídeo</button>`;
@@ -1330,9 +1331,7 @@ function vEjercicio(e, i, ro) {
   const sup = cadena && cadena.length > 1 ? (cadena[cadena.length - 1] === e.id ? 'Superserie · último' : 'Superserie') : '';
   const aj = ajustesMaquina(e.ajustes);
   const com = ((ro ? ro.ses?.comentarios : S.sesion?.comentarios) || []).find(c => c.es === e.id)?.texto;
-  return `<div class="card ex ${om ? 'omitido' : ''}" id="ex-${e.id}">
-    ${om ? bannerOmitido(om, !ro) : ''}
-    <div class="ex-tit"><span class="exn num">${i}</span><h3>${esc(ej.nombre)}</h3></div>
+  const topViejo = () => `
     ${ej.imagen_url || ej.musculo_img_url ? `<div class="imgs">${ej.imagen_url ? `<button class="img" data-act="verImagen" data-src="${esc(ej.imagen_url)}" aria-label="Ver imagen del ejercicio"><img src="${esc(ej.imagen_url)}" alt="${esc(ej.nombre)}" loading="lazy" onerror="this.parentNode.hidden=true"><span>Ejercicio</span></button>` : ''}${ej.musculo_img_url ? `<button class="img${laminaDe(ej.musculo_img_url) ? ' lam' : ''}" data-act="verImagen" data-src="${esc(ej.musculo_img_url)}" aria-label="Ver músculo objetivo"><img src="${esc(ej.musculo_img_url)}" alt="Músculo objetivo${laminaDe(ej.musculo_img_url) ? ': ' + esc(laminaNombre(laminaDe(ej.musculo_img_url))) : ''}" loading="lazy" onerror="this.parentNode.hidden=true"><span>Músculo objetivo</span></button>` : ''}</div>` : ''}
     <div class="row" style="align-items:flex-start"><div class="grow">${!ej.musculo_img_url && ej.musculo ? `<div class="small muted">${esc(ej.musculo)}</div>` : ''}</div><div class="stack" style="gap:6px;align-items:flex-end">${vid}${ro ? '' : `<button class="btn sm ghost omitir-b" data-act="omitir" data-es="${e.id}" data-n="${esc(ej.nombre)}">No lo hago</button>`}</div></div>
     <div class="chips ex-chips"><span class="pill ex-series">${e.series} ${e.series === 1 ? 'serie' : 'series'}</span>${tandas ? '' : `<span class="pill">${desc ? 'Descanso ' + seg(desc) : 'Sin descanso'}</span>`}${(() => { const ms = Tandas.metodosSeries(e); if (!ms.length) return e.metodos ? `<button class="pill ex-met" data-act="metodo" data-n="${esc(e.metodos.nombre)}">${esc(e.metodos.nombre)} ⓘ</button>` : '';
@@ -1341,11 +1340,34 @@ function vEjercicio(e, i, ro) {
     ${(() => { const mt = e.material ?? ej.material, mi = e.material_img_url ?? ej.material_img_url; return mt || mi ? `<div class="row a-medida small" style="gap:10px;align-items:center">${mi ? String(mi).split(';').filter(Boolean).map(u => `<button class="img mat-img" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver imagen del material"><img src="${esc(u)}" alt="Material" loading="lazy" onerror="this.parentNode.hidden=true"></button>`).join('') : ''}${mt ? `<span><b>Material:</b> ${esc(mt)}</span>` : '<span><b>Material</b></span>'}</div>` : ''; })()}
     ${aj.length ? `<div class="small a-medida"><b>Tus ajustes:</b> ${aj.map(esc).join(' · ')}</div>` : ''}
     ${e.nota ? `<div class="small ex-nota"><b>Nota de Jesús:</b> ${esc(e.nota)}</div>` : ''}
+`;
+  const topNuevo = () => {
+    const lam = laminaDe(ej.musculo_img_url);
+    const mus = ej.musculo_img_url ? `<button class="ex-mus" data-act="verImagen" data-src="${esc(ej.musculo_img_url)}" aria-label="Ver músculo objetivo"><img src="${esc(ej.musculo_img_url)}" alt="Músculo objetivo${lam ? ': ' + esc(laminaNombre(lam)) : ''}" loading="lazy" onerror="this.parentNode.hidden=true"><span>Músculo objetivo</span></button>` : ej.musculo ? `<div class="ex-mus ex-mus-t small">${esc(ej.musculo)}</div>` : '';
+    const foto = ej.imagen_url ? `<div class="ex-foto"><button class="ex-f" data-act="verImagen" data-src="${esc(ej.imagen_url)}" aria-label="Ver imagen del ejercicio"><img src="${esc(ej.imagen_url)}" alt="${esc(ej.nombre)}" loading="lazy" onerror="this.parentNode.hidden=true"></button><span class="ex-vid">${vid}</span></div>` : `<div class="ex-vid-fila">${vid}</div>`;
+    const ms = Tandas.metodosSeries(e), sr = x => x.de === x.a ? `${x.de}ª` : `${x.de}ª–${x.a}ª`;
+    const met = !ms.length ? (e.metodos ? `<button class="pill ex-met" data-act="metodo" data-n="${esc(e.metodos.nombre)}">Método: ${esc(e.metodos.nombre)} ⓘ</button>` : '')
+      : '<button class="pill ex-met" data-act="metodo" data-n="Series mixtas">Series mixtas ⓘ</button>' + ms.map(x => x.mt === 'Normal' ? `<span class="pill">${sr(x)} serie${x.de === x.a ? '' : 's'}: dinámico</span>` : `<button class="pill ex-met" data-act="metodo" data-n="${esc(x.mt)}">${sr(x)} serie${x.de === x.a ? '' : 's'}: ${esc(x.mt)} ⓘ</button>`).join('');
+    const chips = `<span class="pill ex-series">${e.series} ${e.series === 1 ? 'serie' : 'series'}</span>${met}${tandas ? '' : `<span class="pill">${desc ? 'Descanso ' + seg(desc) : 'Sin descanso'}</span>`}`;
+    const th = (u, alt) => `<button class="ex-ti" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver imagen: ${esc(alt)}"><img src="${esc(u)}" alt="${esc(alt)}" loading="lazy" onerror="this.parentNode.hidden=true"></button>`;
+    const tl = [], ag = AGARRES.find(x => x[0] === e.agarre);
+    if (ag) { const u = S.agarres?.[ag[0]]; tl.push(`<div class="ex-t">${u ? th(u, 'Agarre ' + ag[1]) : ''}<span><b>Agarre:</b> ${ag[1]}</span></div>`); }
+    const mt = e.material ?? ej.material, mi = e.material_img_url ?? ej.material_img_url;
+    if (mt || mi) tl.push(`<div class="ex-t">${mi ? `<div class="ex-tg">${String(mi).split(';').filter(Boolean).map(u => th(u, 'Material')).join('')}</div>` : ''}<span>${mt ? `<b>Material:</b> ${esc(mt)}` : '<b>Material</b>'}</span></div>`);
+    if (aj.length) tl.push(`<div class="ex-t clamp" data-act="tlAbrir"><span class="ex-ti ex-ti-i" aria-hidden="true">⚙</span><span><b>Tus ajustes:</b> ${aj.map(esc).join(' · ')}</span></div>`);
+    return foto + `<div class="ex-fila"><div class="ex-izq"><div class="chips ex-chips">${chips}</div></div>${mus}</div>` + (tl.length ? `<div class="ex-medida">${tl.join('')}</div>` : '');
+  };
+  const notaJ = e.nota ? `<div class="small ex-nota"><b>Comentario de Jesús:</b> ${esc(e.nota)}</div>` : '';
+  return `<div class="card ex ${om ? 'omitido' : ''}" id="ex-${e.id}">
+    ${om ? bannerOmitido(om, !ro) : ''}
+    <div class="ex-tit"><span class="exn num">${i}</span><h3>${esc(ej.nombre)}</h3></div>
+    ${ro ? topViejo() : topNuevo()}
     ${e.aproximacion_631 && !ro ? vAprox(e) : ''}
     ${ro && !plan ? resumenEjCerrado(ro, e) : ''}
     ${tandas && !ro ? Tandas.vista(e, ej, sp) : tandas ? Tandas.vistaRO(e, ro) : ''}
     ${!ro && !tandas ? (() => { const t0 = grupos[0]?.tramos[0] || {}, kg = sp ? '' : (kgDe(t0) || kg0), rp = repsPh(t0.r), ri = t0.rir ?? e.rir; const rr = [...new Set(grupos.flatMap(g => g.tramos.map(t => t.rir ?? g.tramos[0].rir ?? e.rir)).filter(x => x != null && x !== '').map(String))]; return `<div class="small pauta-l"><b>Pautado:</b> ${e.series} × ${esc(rp || '—')}${kg ? ' · ' + esc(kg) + ' kg' : ''}${rr.length ? ` <button class="rp-rir-chip" data-act="rir" data-r="${esc(rr.length === 1 ? rr[0] : '')}">RIR ${esc(rr.join(' / '))} ⓘ</button>` : ''}${grupos.some(g => g.tramos.length > 1) ? ' · con tramos' : ''}<span class="muted"> · en gris en cada serie. Escribe solo lo que cambie; al marcar ✓ se guarda.</span></div>`; })() : ''}
     ${tandas ? '' : `<div class="sets"><span class="h">Nº</span><span class="h">Kg</span><span class="h">Reps</span><span class="h">${plan ? '' : 'Hecha'}</span>${filas}</div>`}
+    ${ro ? '' : notaJ}
     ${plan ? '' : ro ? (com ? `<div class="ex-com small"><b>Comentario:</b> ${esc(com)}</div>` : '') : `<div class="ex-com-w" id="com-${e.id}">${com ? `<div class="ex-com small">${esc(com)} <button class="linkbtn small" data-act="comentarEj" data-es="${e.id}">Editar</button></div>` : `<button class="linkbtn small" data-act="comentarEj" data-es="${e.id}">＋ Comentario sobre este ejercicio</button>`}</div>`}
   </div>`;
 }
@@ -1497,9 +1519,10 @@ function vAprox(e) {
   const man = String(e.aprox_kgs ?? '').split(';').map(x => parseFloat(x.replace(',', '.')));
   const filas = lado ? [[6, 'Ligero · la mitad del peso de las 3'], [3, `Unos ${AP.max ? fmtNum(redAprox(AP.max * 0.9), 2) + ' kg, ' : ''}el 90 % de tu máximo a dos ${lado === 'pies' ? 'piernas' : 'manos'}`], [1, 'Un 10 % más que las 3']]
     : [[6, 'Peso ligero'], [3, 'Peso objetivo'], [1, 'Por encima del objetivo']];
-  return `<div class="aprox"><span class="eyebrow">Aproximación 6·3·1 · antes de empezar${lado ? ' · con ' + (lado === 'pies' ? 'los dos pies' : 'las dos manos') : ''}</span>
-    ${lado ? `<div class="small" style="color:var(--gold,inherit);font-weight:700">⚠ Aunque el ejercicio sea unilateral, la aproximación se hace SIEMPRE con ${dos}${e.aprox_kg > 0 ? ' (peso indicado por Jesús)' : man.some(x => x > 0) ? ' (pesos indicados por Jesús)' : ''}. Los pesos son los de mover con las dos a la vez, no los de una ${lado === 'pies' ? 'pierna' : 'mano'}${AP.max ? `: con ${fmtNum(kgRef(e), 2)} kg a una ${lado === 'pies' ? 'pierna' : 'mano'}, tu máximo con las dos ronda los ${fmtNum(redAprox(AP.max), 2)} kg` : ''}.</div>` : ''}<div class="small">Al terminar la repetición única, descansa 1 minuto y empieza tus series.</div>
-    ${filas.map(([n, t], j) => `<div class="ap-row"><span class="ap-n num">${n}</span><span class="small">${n === 1 ? '1 repetición' : n + ' repeticiones'}${lado ? ` · <b>con ${lado === 'pies' ? 'los dos pies' : 'las dos manos'}</b>` : ''}<br><span class="muted">${t}</span></span><b class="ap-kg num">${man[j] > 0 ? fmtNum(man[j], 2) + ' kg' : AP.kg[j] ? fmtNum(AP.kg[j], 2) + ' kg' : 'como 1.ª serie'}</b><button class="chk" data-act="aprox" data-j="${j}"${lado ? ` data-dos="${lado === 'pies' ? 'los dos pies' : 'las dos manos'}"` : ''} aria-label="Hecha">${CHK}</button></div>`).join('')}
+  const kgTxt = j => man[j] > 0 ? fmtNum(man[j], 2) + ' kg' : AP.kg[j] ? fmtNum(AP.kg[j], 2) + ' kg' : '1.ª serie';
+  return `<div class="aprox ap-h"><div class="ap-top"><span class="eyebrow">Aproximación previa a las series${lado ? ' · con ' + (lado === 'pies' ? 'los dos pies' : 'las dos manos') : ''}</span><span class="ap-ok">✓ Aproximación hecha</span></div>
+    ${lado ? `<div class="small" style="color:var(--gold,inherit);font-weight:700">⚠ Aunque el ejercicio sea unilateral, la aproximación se hace SIEMPRE con ${dos}${e.aprox_kg > 0 ? ' (peso indicado por Jesús)' : man.some(x => x > 0) ? ' (pesos indicados por Jesús)' : ''}. Los pesos son los de mover con las dos a la vez, no los de una ${lado === 'pies' ? 'pierna' : 'mano'}${AP.max ? `: con ${fmtNum(kgRef(e), 2)} kg a una ${lado === 'pies' ? 'pierna' : 'mano'}, tu máximo con las dos ronda los ${fmtNum(redAprox(AP.max), 2)} kg` : ''}.</div>` : ''}
+    <div class="ap-btns">${filas.map(([n], j) => `<button type="button" class="ap-b" data-act="aprox" data-j="${j}"${lado ? ` data-dos="${lado === 'pies' ? 'los dos pies' : 'las dos manos'}"` : ''} aria-label="${n === 1 ? '1 repetición' : n + ' repeticiones'}, ${kgTxt(j)}. Marcar como hecha"><b>${n}</b><small>${n === 1 ? 'rep' : 'reps'}</small><span>${kgTxt(j)}</span></button>`).join('')}</div>
   </div>`;
 }
 /* El coach entra en el entreno de un alumno (en directo o para corregir una sesión) */
@@ -1781,19 +1804,45 @@ function cicloSesion0() {
 const Guia = {
   activo() { try { return localStorage.getItem('lof-guia') !== 'completa'; } catch (e) { return true; } },
   cambiar() { try { localStorage.setItem('lof-guia', this.activo() ? 'completa' : 'guiada'); } catch (e) { } S.paso = null; render(); },
-  barra() { return `<div class="guia-barra row" id="guia-barra"><span class="small grow" id="guia-txt"></span><button class="linkbtn small" data-act="guiaModo">${this.activo() ? 'Ver sesión completa' : 'Ver paso a paso'}</button></div>`; },
+  barra() {
+    if (!this.activo()) return `<div class="guia-barra row" id="guia-barra"><span class="small grow" id="guia-txt"></span><button class="linkbtn small" data-act="guiaModo">Ver paso a paso</button></div>`;
+    return `<div class="guia-top" id="guia-barra"><div class="gt-nav"><button class="gt-b" data-act="guiaPaso" data-d="-1" aria-label="Paso anterior">‹</button><span class="small grow" id="guia-txt"></span><button class="gt-b azul" data-act="guiaPaso" data-d="1" aria-label="Paso siguiente">›</button></div>
+      <button class="gt-ver" data-act="guiaModo"><span>☰ Ver sesión completa</span><span aria-hidden="true">›</span></button>
+      <div class="gt-prg" role="progressbar" aria-label="Avance del entrenamiento" aria-valuemin="0" aria-valuemax="100" id="guia-pb"><div class="gt-track"><i id="guia-prg"></i></div><b id="guia-pct">0%</b></div></div>`;
+  },
+  series() {
+    const guiado = this.activo() && !S.sesion?.editar;
+    document.querySelectorAll('#ses-pasos .ex').forEach(ex => {
+      const gs = [...ex.querySelectorAll('.ser-g')]; if (!gs.length) return;
+      const ap = ex.querySelector('.ap-h');
+      if (!guiado) { gs.forEach(g => g.classList.remove('cerr')); ap?.classList.remove('hecha'); return; }
+      const es = ex.id.replace('ex-', ''), hechas = gs.map(g => !!g.querySelector('.chk.on'));
+      const apOk = !ap || [...ap.querySelectorAll('.ap-b')].every(x => x.classList.contains('on')) || hechas.some(Boolean);
+      ap?.classList.toggle('hecha', apOk);
+      let ab = S.serAb?.[es]; if (ab == null || !gs[ab - 1]) ab = hechas.findIndex(h => !h) + 1;
+      if (!apOk) ab = 0;
+      gs.forEach((g, i) => {
+        g.classList.toggle('cerr', i + 1 !== ab);
+        const r = g.querySelector('.ser-r'), f = `${es}-${i + 1}`; if (!r) return;
+        if (hechas[i]) { const kg = document.getElementById(`kg-${f}-0`), rp = document.getElementById(`rp-${f}-0`), k = kg ? (kg.value || kg.placeholder) : '', q = rp ? (rp.value || rp.placeholder) : ''; r.textContent = `✓ ${k ? k + ' kg × ' : ''}${q}`; }
+        else r.textContent = '⌄';
+      });
+    });
+  },
   pasos() { return [...document.querySelectorAll('#ses-pasos .paso-u')]; },
   hecho(el) { const c = el.querySelectorAll('.chk[data-act="serie"], .rp-serie'); return c.length ? [...c].every(x => x.classList.contains('on')) : false; },
   pintar() {
     const P = this.pasos(), txt = document.getElementById('guia-txt'); if (!P.length) return;
+    this.series();
+    if (S.dia && S.sesion) { const c = conteoSeries(S.dia, S.sesion), pc = c.total ? Math.min(100, Math.round(c.hechas / c.total * 100)) : 0, b = document.getElementById('guia-prg'); if (b) { b.style.width = pc + '%'; document.getElementById('guia-pct').textContent = pc + '%'; document.getElementById('guia-pb')?.setAttribute('aria-valuenow', pc); } }
     if (S.paso == null || S.paso >= P.length) { const i = P.findIndex(x => !this.hecho(x)); S.paso = i < 0 ? 0 : i; }
     if (this.activo()) { P.forEach((x, i) => x.classList.toggle('actual', i === S.paso)); document.querySelectorAll('#ses-pasos > .paso').forEach(x => x.classList.toggle('con-actual', !!x.querySelector('.paso-u.actual'))); }
     document.querySelector('.guia-nav')?.toggleAttribute('hidden', P.length < 2);
     const hechos = P.filter(x => this.hecho(x)).length, el = P[S.paso];
-    if (txt) txt.innerHTML = this.activo() ? `<b>Paso ${S.paso + 1} de ${P.length}</b> · ${esc(el.dataset.pasoN)} ${esc(el.dataset.pasoT)} <span class="muted">· ${hechos} completados</span>` : `${P.length} bloques · ${hechos} completados`;
+    if (txt) txt.innerHTML = this.activo() ? `<b>Paso ${S.paso + 1} de ${P.length}</b> <span class="muted">· ${hechos} completados</span>` : `${P.length} bloques · ${hechos} completados`;
     const sig = document.getElementById('guia-sig'); if (sig) { sig.textContent = S.paso === P.length - 1 ? 'Último paso ✓' : this.hecho(el) ? 'Siguiente ▶ (hecho)' : 'Siguiente ▶'; sig.disabled = S.paso === P.length - 1; sig.classList.toggle('gold', this.hecho(el)); }
   },
-  mover(d) { const P = this.pasos(); S.paso = Math.max(0, Math.min(P.length - 1, (S.paso || 0) + d)); this.pintar(); document.getElementById('guia-barra')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  mover(d) { const P = this.pasos(); S.paso = Math.max(0, Math.min(P.length - 1, (S.paso || 0) + d)); this.pintar(); document.getElementById('guia-barra')?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -8); }
 };
 /* ---------- Portada del entreno: antes de empezar, una vista con imagen por temática, datos y todos los bloques de un vistazo ---------- */
 /* Temáticas de portada: [clave, nombre, sexos] · 'hm' = foto de chico y de chica · 'h' / 'm' = solo una · '' = una sola foto común */
@@ -1887,8 +1936,8 @@ function vSesion() {
     <span class="eyebrow">${esc(S.d.programa?.nombre || '')} · ${esc(d.nombre)}</span><h1>${esc(d.titulo || d.foco || d.nombre)}</h1>
     ${cicloSesion()}
     ${conPartido(d) ? (() => { const pt = (S.d.partidos || []).find(x => x.fecha === S.sesion?.fecha) || partidoDelDia(d, S.d.partidos); return pt ? `<div class="card stack md-card"><span class="eyebrow">🏟️ Día de partido</span>${vPartidoMini(pt)}${pt.descripcion ? `<p class="small" style="margin:0">${esc(pt.descripcion)}</p>` : ''}${pt.imagen_url ? `<button class="img" data-act="verImagen" data-src="${esc(pt.imagen_url)}" aria-label="Ver imagen del partido" style="align-self:flex-start"><img src="${esc(pt.imagen_url)}" alt="" style="max-height:160px;border-radius:12px"></button>` : ''}</div>` : ''; })() : ''}
-    <div class="card stack"><span class="eyebrow">Objetivo de hoy</span><div class="small">${esc(d.objetivo || '')}</div>
-    <div class="kpis"><div class="kpi"><div class="l">Duración</div><b>${estimaDia(d).min ? '~' + estimaDia(d).min + ' min' : '—'}</b></div><div class="kpi"><div class="l">Intensidad</div><b>${esc(estimaDia(d).intens || '—')}</b></div><div class="kpi"><div class="l">Foco</div><b>${esc(d.foco || '—')}</b></div></div></div></section>
+    ${ini && Guia.activo() ? '' : `<div class="card stack"><span class="eyebrow">Objetivo de hoy</span><div class="small">${esc(d.objetivo || '')}</div>
+    <div class="kpis"><div class="kpi"><div class="l">Duración</div><b>${estimaDia(d).min ? '~' + estimaDia(d).min + ' min' : '—'}</b></div><div class="kpi"><div class="l">Intensidad</div><b>${esc(estimaDia(d).intens || '—')}</b></div><div class="kpi"><div class="l">Foco</div><b>${esc(d.foco || '—')}</b></div></div></div>`}</section>
   ${Guia.barra()}
   <section class="section ${Guia.activo() ? 'guiado' : ''}" id="ses-pasos">${vBloquesDia(d, cont)}
   ${Guia.activo() ? '<div class="row guia-nav" style="gap:8px;margin:4px 0 12px"><button class="btn ghost grow" data-act="guiaPaso" data-d="-1">◀ Anterior</button><button class="btn grow" data-act="guiaPaso" data-d="1" id="guia-sig">Siguiente ▶</button></div>' : ''}
@@ -1996,9 +2045,10 @@ function actualizarConteo(sid) {
 }
 async function toggleSerie(b) {
   const es = +b.dataset.es, n = +b.dataset.n, T = +b.dataset.t, fila = `${es}-${n}`, z = S.sesion;
+  if (S.serAb) delete S.serAb[es];
   if (b.classList.contains('on')) {
-    if (Cola.quitar(S.dia.id, z.fecha, fila)) { marcar(b, fila, false); b.classList.remove('pend'); return; }
-    const ids = z.regs[fila] || []; marcar(b, fila, false); delete z.regs[fila];
+    if (Cola.quitar(S.dia.id, z.fecha, fila)) { marcar(b, fila, false); b.classList.remove('pend'); Guia.series(); return; }
+    const ids = z.regs[fila] || []; marcar(b, fila, false); delete z.regs[fila]; Guia.series();
     if (ids.length) { const { error } = await sb.from('registros_series').delete().in('id', ids); if (error) fallo(error); }
     return;
   }
@@ -2009,7 +2059,7 @@ async function toggleSerie(b) {
       kg: kg ? (numero(kg.value) ?? valPh(kg) ?? u.kg ?? null) : null, repeticiones: numero(rp.value) ?? valPh(rp) ?? u.repeticiones ?? null,
       rir: (() => { const ri = document.getElementById(`ri-${fila}-${k}`); return ri ? numero(ri.value) ?? valPh(ri) ?? u.rir ?? null : null; })() };
   });
-  marcar(b, fila, true); setTimeout(() => Guia.pintar(), 0);
+  marcar(b, fila, true); Guia.series(); setTimeout(() => Guia.pintar(), 0);
   const d = z.editar ? 0 : +b.dataset.d;
   if (z.editar) { } else if (d > 0) startTimer(d, 'Descanso · ' + b.dataset.lbl); else toast('Sin descanso: sigue con el siguiente');
   const sig = siguienteFila(es, n); if (sig) irAFila(sig[0], sig[1]);
@@ -8873,7 +8923,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v418';
+const APP_VER = 'v419';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -9215,7 +9265,9 @@ document.addEventListener('click', async e => {
     case 'tandaCortar': Tandas.cortar(b); break;
     case 'rpAbrir': Tandas.abrir(+b.dataset.es, +b.dataset.n); break;
     case 'tramo': { const d = +b.dataset.d; if (d > 0) startTimer(d, 'Pausa · ' + b.dataset.lbl); else toast('Sin pausa: sigue con el siguiente tramo'); break; }
-    case 'aprox': { b.classList.add('on'); const dos = b.dataset.dos ? ` con ${b.dataset.dos}` : ''; if (b.dataset.j === '2') startTimer(60, 'Descanso tras la aproximación 6·3·1'); else toast(b.dataset.j === '0' ? `Ahora 3 repeticiones${dos} (${b.dataset.dos ? 'el 90 % de tu máximo con las dos' : 'tu peso objetivo'})` : `Ahora 1 repetición${dos}, un 10 % más`); break; }
+    case 'tlAbrir': b.classList.toggle('abierto'); break;
+    case 'serAb': (S.serAb ||= {})[b.dataset.es] = +b.dataset.n; Guia.series(); break;
+    case 'aprox': { b.classList.add('on'); Guia.series(); const dos = b.dataset.dos ? ` con ${b.dataset.dos}` : ''; if (b.dataset.j === '2') startTimer(60, 'Descanso tras la aproximación 6·3·1'); else toast(b.dataset.j === '0' ? `Ahora 3 repeticiones${dos} (${b.dataset.dos ? 'el 90 % de tu máximo con las dos' : 'tu peso objetivo'})` : `Ahora 1 repetición${dos}, un 10 % más`); break; }
     case 'rir': { const r = b.dataset.r, propio = (S.d?.metodos || {}).RIR;
       abrirSheet(`<div class="stack"><span class="eyebrow">Esfuerzo</span><h2>RIR${r ? ' ' + esc(r) : ''}</h2>${r ? `<p class="aprox" style="margin:0"><b>${esc(Tandas.rirTxt(r))}</b></p>` : ''}<p class="pre" style="margin:0">${esc(propio || 'RIR son las repeticiones que te quedan en reserva al terminar la serie: las que todavía podrías hacer con buena técnica si siguieras.\n\nRIR 0: no podrías hacer ni una más.\nRIR 1: te quedaría 1.\nRIR 2: te quedarían 2.\n\nElige el peso para llegar al final de la serie con ese margen. Si te sobran más, sube el peso; si no llegas a las repeticiones, bájalo.')}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`); break; }
     case 'metodo': { const n = b.dataset.n; abrirSheet(`<div class="stack"><span class="eyebrow">Método</span><h2>${esc(n)}</h2><p class="pre">${esc((S.d?.metodos || {})[n] || Tandas.MET[n]?.info || 'Pregúntale a Jesús por este método.')}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`); break; }
