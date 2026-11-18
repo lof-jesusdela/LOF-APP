@@ -355,7 +355,19 @@ Te cuento una novedad de la app: desde hoy tienes un chat directo conmigo en la 
 Así lo tengo todo ordenado y te puedo responder mejor. ¡Cualquier cosa me dices!
 
 Jesús
-[[avisos]]`]];
+[[avisos]]`], ['album', 'Álbum de comidas', `¡Hola {nombre}! 🎉🍽️
+
+¡NOVEDAD en la app y es para ti! Ya puedes guardar tus propias comidas en un ÁLBUM, ordenado en carpetas, para tenerlas siempre a mano.
+
+📁 Cómo funciona: entra en Nutrición y baja hasta «Mis comidas», justo debajo de tu menú semanal y la lista de la compra. Elige cuántas comidas haces al día (3 = desayuno, comida y cena; 4, 5…) y la app te crea tus carpetas.
+
+📸 Guarda lo que comes con una foto, con los alimentos o con la calculadora, y se archiva solo en su carpeta.
+
+💡 Cuando te falten ideas, abre la carpeta, mira lo que ya te funcionó y toca «Repetir hoy». También puedes recalcular las cantidades con la calculadora.
+
+Con el tiempo será tu recetario personal, hecho a tu medida. ¡Estrénalo con tu próxima comida y cuéntame qué tal! 💪
+
+Jesús`, 'nutricion']];
   const destinatarios = sel => (S.c.perfiles || []).filter(p => (typeof esCliente === 'function' ? esCliente(p) : p.rol !== 'coach' && p.activo !== false))
     .filter(p => { const sv = typeof srvDe === 'function' ? srvDe(p.id) : null; return [...sel].some(k => GRUPOS.find(g => g[0] === k)[2](sv)); })
     .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
@@ -532,7 +544,7 @@ Jesús
       case 'mborrar': await borrarMsg(b.dataset.cid, b.dataset.de, b); break;
       case 'push': if (typeof activarPush === 'function' && await activarPush()) { await refrescarPush(); S.push = 'ok'; pintaAlumno(); } break;
       case 'dgrupo': { leeDif(); const d = S.cqDif; d.conf = false; if (v === 'todos') d.sel = new Set(['todos']); else { d.sel.delete('todos'); d.sel.has(v) ? d.sel.delete(v) : d.sel.add(v); if (!d.sel.size) d.sel.add('todos'); } abrirDifusion(); break; }
-      case 'dplant': { S.cqDif.txt = PLANTILLAS.find(p => p[0] === v)[2]; S.cqDif.conf = false; abrirDifusion(); break; }
+      case 'dplant': { const pl = PLANTILLAS.find(p => p[0] === v); S.cqDif.txt = pl[2]; if (pl[3]) S.cqDif.sel = new Set([pl[3]]); S.cqDif.conf = false; abrirDifusion(); break; }
       case 'denviar': await enviarDifusion(); break;
       case 'rapida': { const t = document.getElementById('cq-resp'); if (t) { t.value = RAPIDAS[+b.dataset.i]; ajustaAlto(t); t.focus(); } break; }
       case 'cwa': await pasarWa(S.cqAl); break;
