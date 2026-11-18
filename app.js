@@ -1801,6 +1801,14 @@ function cicloSesion0() {
   return x && !x.fuera ? `<div class="row" style="flex-wrap:wrap;gap:6px"><span class="pill blue">Ciclo ${x.ciclo}</span><span class="pill gold">Semana ${x.semCiclo} de ${x.cc.sem}</span><span class="pill">Entreno ${x.n}${x.previstos ? ' de ' + x.previstos : ''} del ciclo</span></div>` : '';
 }
 /* ---------- Vista guiada del entreno: un bloque (ejercicio o superserie) cada vez, con la sesión completa a un toque ---------- */
+/* Título del entreno en una sola fila: la letra se reduce hasta que cabe (mínimo 14 px) */
+function ajustarTitulo() {
+  const el = document.getElementById('ses-h1'); if (!el) return;
+  el.style.fontSize = ''; let sz = parseFloat(getComputedStyle(el).fontSize);
+  while (el.scrollWidth > el.clientWidth && sz > 14) { sz -= 0.5; el.style.fontSize = sz + 'px'; }
+}
+window.addEventListener('resize', ajustarTitulo);
+document.addEventListener('input', e => { if (e.target?.id === 'd-t') { const n = document.getElementById('d-t-n'); if (n) n.textContent = e.target.value.length + '/53'; } });
 const Guia = {
   activo() { try { return localStorage.getItem('lof-guia') !== 'completa'; } catch (e) { return true; } },
   cambiar() { try { localStorage.setItem('lof-guia', this.activo() ? 'completa' : 'guiada'); } catch (e) { } S.paso = null; render(); },
@@ -1834,7 +1842,8 @@ const Guia = {
   pintar() {
     const P = this.pasos(), txt = document.getElementById('guia-txt'); if (!P.length) return;
     this.series();
-    if (S.dia && S.sesion) { const c = conteoSeries(S.dia, S.sesion), pc = c.total ? Math.min(100, Math.round(c.hechas / c.total * 100)) : 0, b = document.getElementById('guia-prg'); if (b) { b.style.width = pc + '%'; document.getElementById('guia-pct').textContent = pc + '%'; document.getElementById('guia-pb')?.setAttribute('aria-valuenow', pc); } }
+    ajustarTitulo(); if (document.fonts && document.fonts.status !== 'loaded') document.fonts.ready.then(ajustarTitulo);
+    { const pc = Math.round((S.paso + 1) / P.length * 100), b = document.getElementById('guia-prg'); if (b) { b.style.width = pc + '%'; document.getElementById('guia-pct').textContent = pc + '%'; document.getElementById('guia-pb')?.setAttribute('aria-valuenow', pc); } }
     if (S.paso == null || S.paso >= P.length) { const i = P.findIndex(x => !this.hecho(x)); S.paso = i < 0 ? 0 : i; }
     if (this.activo()) { P.forEach((x, i) => x.classList.toggle('actual', i === S.paso)); document.querySelectorAll('#ses-pasos > .paso').forEach(x => x.classList.toggle('con-actual', !!x.querySelector('.paso-u.actual'))); }
     document.querySelector('.guia-nav')?.toggleAttribute('hidden', P.length < 2);
@@ -1933,7 +1942,7 @@ function vSesion() {
   <button class="btn full dark" data-act="terminar">Listo, ver sesión</button></section>`;
   return como + `<div class="crono" id="crono">${ini ? `<span class="crono-t num" id="crono-t">${fmtCrono(Date.now() - ini)}</span><span class="small">Entrenamiento en curso</span>` : S.sesion?.finMin ? `<span class="small">✓ Entrenamiento terminado · ${S.sesion.finMin} min</span>` : `<button class="btn sm" data-act="empezarCrono">⏱ Empezar entrenamiento</button><span class="small muted">El cronómetro mide tu sesión completa</span>`}</div>
   <section class="stack"><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm ghost" data-act="cerrarDia" style="align-self:flex-start">← Semana</button>${!S.sesion?.editar && !S.sesion?.finMin ? `<button class="btn sm ghost" data-act="descartarEntreno" style="color:var(--bad)">✕ No era un entreno: descartar</button>` : ''}</div>
-    <span class="eyebrow">${esc(S.d.programa?.nombre || '')} · ${esc(d.nombre)}</span><h1>${esc(d.titulo || d.foco || d.nombre)}</h1>
+    <span class="eyebrow">${esc(S.d.programa?.nombre || '')} · ${esc(d.nombre)}</span><h1 class="tit-uno" id="ses-h1">${esc(d.titulo || d.foco || d.nombre)}</h1>
     ${cicloSesion()}
     ${conPartido(d) ? (() => { const pt = (S.d.partidos || []).find(x => x.fecha === S.sesion?.fecha) || partidoDelDia(d, S.d.partidos); return pt ? `<div class="card stack md-card"><span class="eyebrow">🏟️ Día de partido</span>${vPartidoMini(pt)}${pt.descripcion ? `<p class="small" style="margin:0">${esc(pt.descripcion)}</p>` : ''}${pt.imagen_url ? `<button class="img" data-act="verImagen" data-src="${esc(pt.imagen_url)}" aria-label="Ver imagen del partido" style="align-self:flex-start"><img src="${esc(pt.imagen_url)}" alt="" style="max-height:160px;border-radius:12px"></button>` : ''}</div>` : ''; })() : ''}
     ${ini && Guia.activo() ? '' : `<div class="card stack"><span class="eyebrow">Objetivo de hoy</span><div class="small">${esc(d.objetivo || '')}</div>
@@ -8145,7 +8154,7 @@ function formDia(id) {
   const p = S.editor.prog, d = id ? p.dias.find(x => x.id === id) : null;
   const DS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
   abrirSheet(`<form class="stack" id="f-dia"><h2>${d ? 'Editar día' : 'Nuevo día'}</h2>
-    <label class="f">Nombre del entreno<input type="text" id="d-t" value="${esc(d?.titulo || '')}" placeholder="${d && titAuto(d) ? 'Automático: ' + esc(titAuto(d)) : 'Ej. Pierna y glúteo, Día A, Fuerza total…'}" maxlength="60"></label>
+    <label class="f">Nombre del entreno <span class="small muted" id="d-t-n">${(d?.titulo || '').length}/53</span><input type="text" id="d-t" value="${esc(d?.titulo || '')}" placeholder="${d && titAuto(d) ? 'Automático: ' + esc(titAuto(d)) : 'Ej. Pierna y glúteo, Día A, Fuerza total…'}" maxlength="53"></label>
     ${editorSemana() ? `<label class="f">Día de la semana<select id="d-n">${DS.map(x => `<option ${norm(x) === norm(d?.nombre) ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
     <p class="small muted" style="margin-top:-6px">El día de la semana decide cuándo le aparece al alumno en «Hoy». Si dejas el nombre en blanco, se llamará como el día.</p>` : `<p class="small muted" style="margin-top:-6px"><b>${esc(d && /^d[ií]a \d+/i.test(d.nombre || '') ? d.nombre : 'Día ' + ((d ? p.dias.indexOf(d) : p.dias.length) + 1))}</b> · El orden del bloque lo fijas tú con ▲▼ en la lista de días; el alumno decide contigo qué días de la semana los hace.</p>`}
     ${editorEsFutbol() || d?.tipo_dia || editorSemana() ? `<div class="stack" style="gap:6px"><span class="small muted">Tipo de día</span><div class="chips" id="d-td">${TIPOS_DIA.filter(t => editorEsFutbol() || !/partido/.test(t[0]) || d?.tipo_dia === t[0]).map(([k, l, e]) => `<button type="button" data-v="${k}" aria-pressed="${(d?.tipo_dia || 'entreno') === k}">${e} ${l}</button>`).join('')}</div></div>` : ''}
@@ -8923,7 +8932,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v421';
+const APP_VER = 'v422';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
