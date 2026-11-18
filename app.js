@@ -1343,7 +1343,7 @@ function vEjercicio(e, i, ro) {
 `;
   const topNuevo = () => {
     const lam = laminaDe(ej.musculo_img_url);
-    const mus = ej.musculo_img_url ? `<button class="ex-mus" data-act="verImagen" data-src="${esc(ej.musculo_img_url)}" aria-label="Ver músculo objetivo"><img src="${esc(ej.musculo_img_url)}" alt="Músculo objetivo${lam ? ': ' + esc(laminaNombre(lam)) : ''}" loading="lazy" onerror="this.parentNode.hidden=true"><span>Músculo objetivo</span></button>` : ej.musculo ? `<div class="ex-mus ex-mus-t small">${esc(ej.musculo)}</div>` : '';
+    const mus = ej.musculo_img_url ? `<button class="ex-mus" data-act="verImagen" data-src="${esc(ej.musculo_img_url)}" aria-label="Ver músculo objetivo"><img src="${esc(ej.musculo_img_url)}" alt="Músculo objetivo${lam ? ': ' + esc(laminaNombre(lam)) : ''}" loading="lazy" onerror="this.parentNode.hidden=true"></button>` : ej.musculo ? `<div class="ex-mus ex-mus-t small">${esc(ej.musculo)}</div>` : '';
     const foto = ej.imagen_url ? `<div class="ex-foto"><button class="ex-f" data-act="verImagen" data-src="${esc(ej.imagen_url)}" aria-label="Ver imagen del ejercicio"><img src="${esc(ej.imagen_url)}" alt="${esc(ej.nombre)}" loading="lazy" onerror="this.parentNode.hidden=true"></button><span class="ex-vid">${vid}</span></div>` : `<div class="ex-vid-fila">${vid}</div>`;
     const ms = Tandas.metodosSeries(e), sr = x => x.de === x.a ? `${x.de}ª` : `${x.de}ª–${x.a}ª`;
     const met = !ms.length ? (e.metodos ? `<button class="pill ex-met" data-act="metodo" data-n="${esc(e.metodos.nombre)}">Método: ${esc(e.metodos.nombre)} ⓘ</button>` : '')
@@ -1819,13 +1819,13 @@ const Guia = {
       const es = ex.id.replace('ex-', ''), hechas = gs.map(g => !!g.querySelector('.chk.on'));
       const apOk = !ap || [...ap.querySelectorAll('.ap-b')].every(x => x.classList.contains('on')) || hechas.some(Boolean);
       ap?.classList.toggle('hecha', apOk);
-      let ab = S.serAb?.[es]; if (ab == null || !gs[ab - 1]) ab = hechas.findIndex(h => !h) + 1;
-      if (!apOk) ab = 0;
+      let ab = S.serAb?.[es] || 0; if (!gs[ab - 1]) ab = 0;
       gs.forEach((g, i) => {
         g.classList.toggle('cerr', i + 1 !== ab);
         const r = g.querySelector('.ser-r'), f = `${es}-${i + 1}`; if (!r) return;
         if (hechas[i]) { const kg = document.getElementById(`kg-${f}-0`), rp = document.getElementById(`rp-${f}-0`), k = kg ? (kg.value || kg.placeholder) : '', q = rp ? (rp.value || rp.placeholder) : ''; r.textContent = `✓ ${k ? k + ' kg × ' : ''}${q}`; }
         else r.textContent = '⌄';
+        if (i + 1 === ab) r.textContent = '⌃';
       });
     });
   },
@@ -8923,7 +8923,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v419';
+const APP_VER = 'v420';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -9266,7 +9266,7 @@ document.addEventListener('click', async e => {
     case 'rpAbrir': Tandas.abrir(+b.dataset.es, +b.dataset.n); break;
     case 'tramo': { const d = +b.dataset.d; if (d > 0) startTimer(d, 'Pausa · ' + b.dataset.lbl); else toast('Sin pausa: sigue con el siguiente tramo'); break; }
     case 'tlAbrir': b.classList.toggle('abierto'); break;
-    case 'serAb': (S.serAb ||= {})[b.dataset.es] = +b.dataset.n; Guia.series(); break;
+    case 'serAb': { const sa = (S.serAb ||= {}), n = +b.dataset.n; sa[b.dataset.es] = sa[b.dataset.es] === n ? 0 : n; Guia.series(); break; }
     case 'aprox': { b.classList.add('on'); Guia.series(); const dos = b.dataset.dos ? ` con ${b.dataset.dos}` : ''; if (b.dataset.j === '2') startTimer(60, 'Descanso tras la aproximación 6·3·1'); else toast(b.dataset.j === '0' ? `Ahora 3 repeticiones${dos} (${b.dataset.dos ? 'el 90 % de tu máximo con las dos' : 'tu peso objetivo'})` : `Ahora 1 repetición${dos}, un 10 % más`); break; }
     case 'rir': { const r = b.dataset.r, propio = (S.d?.metodos || {}).RIR;
       abrirSheet(`<div class="stack"><span class="eyebrow">Esfuerzo</span><h2>RIR${r ? ' ' + esc(r) : ''}</h2>${r ? `<p class="aprox" style="margin:0"><b>${esc(Tandas.rirTxt(r))}</b></p>` : ''}<p class="pre" style="margin:0">${esc(propio || 'RIR son las repeticiones que te quedan en reserva al terminar la serie: las que todavía podrías hacer con buena técnica si siguieras.\n\nRIR 0: no podrías hacer ni una más.\nRIR 1: te quedaría 1.\nRIR 2: te quedarían 2.\n\nElige el peso para llegar al final de la serie con ese margen. Si te sobran más, sube el peso; si no llegas a las repeticiones, bájalo.')}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`); break; }
