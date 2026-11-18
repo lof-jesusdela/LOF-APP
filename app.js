@@ -2786,7 +2786,7 @@ function agendaRejilla(dias, l, hoy, nom, EST) {
   const h0 = Math.min(7, ...conH.map(p => Math.floor(min(p.hora) / 60))), h1 = Math.max(22, ...conH.map(p => Math.ceil((min(p.hora) + dur) / 60)));
   const horas = [...Array(h1 - h0)].map((_, i) => h0 + i), DS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
   const corto = n => { const p = String(n).trim().split(/\s+/); return p.length > 1 ? `${p[0]} ${p[1][0]}.` : p[0]; };
-  const ev = p => { const e = p.estado === 'programada' && p.fecha < hoy ? ['ok', 'Hecha'] : EST[p.estado] || ['', p.estado], val = /valora/i.test(p.tipo || '') ? ' val' : /revisi/i.test(p.tipo || '') ? ' rev' : /^tarea/i.test(p.tipo || '') ? ' tar' : esCitaPres(p) ? ' neg' : '';
+  const ev = p => { const e = p.estado === 'programada' && p.fecha < hoy ? ['ok', 'Hecha'] : EST[p.estado] || ['', p.estado], val = /valora/i.test(p.tipo || '') ? ' val' : /revisi/i.test(p.tipo || '') ? ' rev' : /^tarea/i.test(p.tipo || '') ? ' tar' : /^pti|entrevista/i.test(p.tipo || '') ? ' pti' : esCitaPres(p) ? ' neg' : '';
     return { cls: e[0] + val, lbl: e[1] }; };
   /* Sesiones que se pisan: se reparten el ancho de la columna */
   /* Solo se reparten el ancho las citas que de verdad se pisan (con su duración real); las demás ocupan toda la columna */
@@ -2801,7 +2801,7 @@ function agendaRejilla(dias, l, hoy, nom, EST) {
       ${d === hoy && mAhora >= h0 * 60 && mAhora <= h1 * 60 ? `<i class="ag-ahora" style="top:${(mAhora - h0 * 60) / 60 * H}px"></i>` : ''}</div>`).join('');
   return `<div class="ag-cal" style="--n:${dias.length}"><div class="ag-fila ag-cab"><div class="ag-hcol"></div>${cab}</div>${todo}
     <div class="ag-grid" id="ag-grid" data-h="${H}" data-h0="${h0}"><div class="ag-fila" style="height:${horas.length * H}px"><div class="ag-hcol">${horas.map(h => `<span style="top:${(h - h0) * H}px">${h}:00</span>`).join('')}</div>${cols}</div></div>
-    <div class="small muted ag-ley"><span><i class="ag-dot blue"></i>Reservada</span><span><i class="ag-dot ok"></i>Hecha</span><span><i class="ag-dot warn"></i>Aviso &lt; 24 h</span><span><i class="ag-dot val"></i>Valoración</span><span>Toca un hueco para programar</span></div></div>`;
+    <div class="small muted ag-ley"><span><i class="ag-dot"></i>Entreno</span><span><i class="ag-dot warn"></i>Aviso &lt; 24 h · No vino</span><span><i class="ag-dot rev"></i>Revisión</span><span><i class="ag-dot val"></i>Valoración</span><span><i class="ag-dot pti"></i>PTI · Entrevista</span><span><i class="ag-dot tar"></i>Tarea</span><span><i class="ag-dot neg"></i>Negocio</span><span>Toca un hueco para programar</span></div></div>`;
 }
 /* Suscripción: un enlace privado (con código secreto) que Google Calendar consulta solo */
 async function agendaSuscribir() {
@@ -8846,7 +8846,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v415';
+const APP_VER = 'v416';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
