@@ -691,6 +691,21 @@ input[type=time]{width:100%;background:var(--surface-2);border:1px solid var(--l
 .nu-com{cursor:pointer;align-items:center;gap:10px}
 .nu-mini{width:46px;height:46px;border-radius:10px;object-fit:cover;flex:none;padding:0;border:0;overflow:hidden;background:var(--surface-2)}.nu-mini img{width:100%;height:100%;object-fit:cover;display:block}
 .nu-ph{display:grid;place-items:center;font-size:20px}
+/* Mis comidas · carpetas v423 */
+.cp-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cp-fold{display:flex;flex-direction:column;gap:2px;text-align:left;padding:10px;border:1px solid var(--line);background:var(--surface);border-radius:14px;color:inherit;font:inherit}
+.cp-fold b{font-size:15px}.cp-fold small{font-size:12px}
+.cp-col{display:grid;grid-template-columns:1.4fr 1fr;grid-template-rows:1fr 1fr;gap:3px;border-radius:10px;overflow:hidden;aspect-ratio:1/1;margin-bottom:8px;background:var(--surface-2)}
+.cp-col>:first-child{grid-row:1/3}
+.cp-col.c1{grid-template-columns:1fr}.cp-col.c2{grid-template-rows:1fr}
+.cp-t{width:100%;height:100%;object-fit:cover;display:block;min-height:0}
+.cp-ph{display:flex;align-items:center;justify-content:center;font-size:24px;background:var(--surface-2)}.cp-vac{background:var(--surface-2)}
+.cp-gal{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.cp-it{position:relative;display:block;padding:0;border:0;border-radius:12px;overflow:hidden;aspect-ratio:1/1;background:var(--surface-2);color:inherit}
+.cp-im{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}.cp-it .cp-ph{font-size:30px}
+.cp-d{position:absolute;left:4px;top:4px;background:rgba(10,15,28,.72);color:#fff;font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px}
+.cp-n{position:absolute;left:0;right:0;bottom:0;padding:14px 6px 5px;background:linear-gradient(transparent,rgba(10,15,28,.78));color:#fff;font-size:11px;font-weight:700;text-align:left;line-height:1.2;max-height:3.6em;overflow:hidden}
+.cp-fotos{display:grid;gap:8px}.cp-fotos img{width:100%;border-radius:14px;background:var(--surface-2);max-height:320px;object-fit:cover}
 .nu-foto img{display:block;width:100%;max-height:220px;object-fit:cover;border-radius:12px}
 .nu-gr summary{cursor:pointer;padding:6px 0;list-style-position:inside}.nu-gr .chips{padding:4px 0 8px}.nu-gr .pill{cursor:pointer;padding:6px 11px}
 .nu-it{display:flex;gap:8px;align-items:center}.nu-it b{flex:1;font-size:13px;min-width:0}.nu-it input{width:120px;flex:none;padding:7px 9px}

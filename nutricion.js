@@ -44,12 +44,12 @@ const Nutricion = (() => {
     try {
       const [p, c] = await Promise.all([
         sb.from('planificacion').select('*').eq('alumno_id', uid).eq('seccion', 'alimentacion').order('orden'),
-        sb.from('comidas_registro').select('*').eq('alumno_id', uid).gte('fecha', sumaDias(hoyISO(), -60)).order('created_at')
+        sb.from('comidas_registro').select('*').eq('alumno_id', uid).gte('fecha', sumaDias(hoyISO(), -365)).order('created_at')
       ]);
       d.nutri.plan = (p.data || []).filter(x => x.visible !== false);
       d.nutri.comErr = !!c.error; d.nutri.comidas = c.data || [];
       await firmar(d.nutri);
-      const fotos = d.nutri.comidas.flatMap(fotosDe); if (fotos.length) pedirFotos(fotos);
+      const fotos = d.nutri.comidas.filter(x => x.fecha >= sumaDias(hoyISO(), -60)).flatMap(fotosDe); if (fotos.length) pedirFotos(fotos);   // las más antiguas se firman al abrir su carpeta
     } catch (err) { console.error(err); }
   }
   async function cargarFicha(f) {
@@ -216,9 +216,9 @@ const Nutricion = (() => {
     const hoy = vHoyCtx(n, d), met = vMetab(n);
     if (act && (hoy || met)) {   // plan en marcha: metabolismo → calculadora → semana y compra; todo lo demás plegado
       const resto = vIncAlumno(n, d) + vAcuerdoAlumno(n, d) + vDocs(docs) + vFase(d) + (prev ? '' : vDiario(n, d));
-      return cab + (prev ? '' : tarjetaTemporal(d)) + met + hoy + (prev ? '' : vBtnSemana()) + `<details class="section nu-resto"><summary><b>Registro, acuerdos y documentos</b> <span class="muted small">· solo informativo</span></summary>${resto}</details>`;
+      return cab + (prev ? '' : tarjetaTemporal(d)) + met + hoy + (prev ? '' : vBtnSemana() + vMisComidas(n, d)) + `<details class="section nu-resto"><summary><b>Registro, acuerdos y documentos</b> <span class="muted small">· solo informativo</span></summary>${resto}</details>`;
     }
-    return cab + (act ? '' : vFase(d)) + vIncAlumno(n, d) + (prev ? '' : tarjetaTemporal(d)) + hoy + vAcuerdoAlumno(n, d) + (prev || !act ? '' : vBtnSemana()) + vDocs(docs) + (act ? vFase(d) : '') + (prev ? '' : vDiario(n, d));
+    return cab + (act ? '' : vFase(d)) + vIncAlumno(n, d) + (prev ? '' : tarjetaTemporal(d)) + hoy + vAcuerdoAlumno(n, d) + (prev || !act ? '' : vBtnSemana() + vMisComidas(n, d)) + vDocs(docs) + (act ? vFase(d) : '') + (prev ? '' : vDiario(n, d));
   }
   /* Lo primero que ve el alumno: su metabolismo, el déficit aplicado y sus contextos (kcal y macros), en números y gráficas */
   const CTX_COL = ['#3B7BD8', '#7B52A0', '#C98A2E', '#3F8A3F', '#C0504D', '#2E8E94'];
@@ -246,6 +246,57 @@ const Nutricion = (() => {
     return `<section class="section">${h}</section>`;
   }
   const vBtnSemana = () => `<section class="section"><div class="card stack" style="gap:6px"><span class="eyebrow">Tu semana</span><p class="small muted" style="margin:0">Opcional: si te ayuda organizarte, marca cuándo entrenas y trabajas y qué vas a comer. Parte de tus menús o de tu semana anterior y cambia solo los días que haga falta; te calculo las cantidades y la lista de la compra. Comidas flexibles: ${esc(flexTxt(acuerdo(S.d)))}.</p><button class="btn full" data-act="nuSemana">🗓 Planifica tu semana y la compra</button></div></section>`;
+  /* ---------- Mis comidas: archivo propio del alumno, en carpetas por momento del día (opcional) ----------
+     Son las mismas filas de comidas_registro que el diario: aquí solo se agrupan por momento para consultarlas como ideas.
+     El número de comidas al día es un ajuste del propio dispositivo; una carpeta con comidas nunca se oculta aunque se baje el número. */
+  const CARP_ICO = { 'Desayuno': '🍳', 'Media mañana': '🍎', 'Comida': '🍽', 'Merienda': '🥪', 'Cena': '🌙', 'Otro': '📦' };
+  const CARP_SET = { 2: ['Comida', 'Cena'], 3: ['Desayuno', 'Comida', 'Cena'], 4: ['Desayuno', 'Comida', 'Merienda', 'Cena'], 5: ['Desayuno', 'Media mañana', 'Comida', 'Merienda', 'Cena'], 6: ['Desayuno', 'Media mañana', 'Comida', 'Merienda', 'Cena', 'Otro'] };
+  const carpN = d => { try { const v = +localStorage.getItem('lof-ncom'); if (v >= 2 && v <= 6) return v; } catch (e) { /* sin almacenamiento */ } return Math.min(6, Math.max(2, comidasDia(d?.servicio) || 3)); };
+  const esArch = x => MOMENTOS.includes(x.momento) && (fotosDe(x).length > 0 || (x.alimentos || []).length > 0);
+  const ordArch = (a, b) => String(b.fecha).localeCompare(String(a.fecha)) || String(b.created_at).localeCompare(String(a.created_at));
+  const carpetasDe = (N, arch) => { const base = CARP_SET[N] || CARP_SET[3]; return MOMENTOS.filter(m => base.includes(m) || arch.some(x => x.momento === m)); };
+  const tesela = (x, cls) => { const u = fotosDe(x)[0] && fotoUrl(fotosDe(x)[0]); return u ? `<img class="${cls}" src="${esc(u)}" alt="" loading="lazy">` : `<span class="${cls} cp-ph" aria-hidden="true">${esc(CARP_ICO[x.momento] || '🍽')}</span>`; };
+  function vMisComidas(n, d) {
+    if (n.comErr) return '';
+    const N = carpN(d), arch = n.comidas.filter(esArch).sort(ordArch), nombres = carpetasDe(N, arch);
+    pedirFotos(nombres.flatMap(m => arch.filter(x => x.momento === m).slice(0, 3).flatMap(x => fotosDe(x).slice(0, 1))));
+    return `<section class="section" id="nu-carp"><div class="section-head"><h2>Mis comidas</h2><span class="pill">Opcional</span></div><div class="card stack">
+      <p class="small muted" style="margin:0">Tu archivo de comidas, por carpetas. Guarda lo que comes con foto o alimentos y úsalo cuando necesites ideas: repetir un plato o recalcular sus cantidades.</p>
+      <div class="stack" style="gap:6px"><span class="small"><b>¿Cuántas comidas haces al día?</b></span><div class="choice" role="group" aria-label="Comidas al día" style="grid-template-columns:repeat(5,1fr)">${[2, 3, 4, 5, 6].map(i => `<button type="button" data-act="nuNCom" data-n="${i}" aria-pressed="${i === N}">${i}</button>`).join('')}</div></div>
+      <div class="cp-grid">${nombres.map(m => { const l = arch.filter(x => x.momento === m), t = l.slice(0, 3); return `<button type="button" class="cp-fold" data-act="nuCarp" data-m="${esc(m)}" aria-label="Carpeta ${esc(m)}, ${l.length} comidas"><div class="cp-col${t.length < 3 ? ' c' + Math.max(1, t.length) : ''}">${(t.length ? t : [null]).map(x => x ? tesela(x, 'cp-t') : `<span class="cp-t cp-vac" aria-hidden="true"></span>`).join('')}</div><b>${CARP_ICO[m] || ''} ${esc(m)}</b><small class="muted">${l.length ? `${l.length} comida${l.length > 1 ? 's' : ''} · última ${esc(fCorta(l[0].fecha))}` : 'Aún vacía'}</small></button>`; }).join('')}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><button class="btn" data-act="nuComNueva">＋ Guardar una comida</button><button class="btn ghost" data-act="nuCalc">${ICO_CALC} Calculadora</button></div></div></section>`;
+  }
+  function galeriaCarp(m, fil) {
+    const n = S.d?.nutri; if (!n) return;
+    const todas = n.comidas.filter(x => esArch(x) && x.momento === m).sort(ordArch), ctxs = [...new Set(todas.map(x => x.contexto).filter(Boolean))];
+    const f = ctxs.includes(fil) ? fil : '', l = f ? todas.filter(x => x.contexto === f) : todas;
+    pedirFotos(l.flatMap(x => fotosDe(x).slice(0, 1)));
+    abrirSheet(`<div class="stack"><h2>${CARP_ICO[m] || ''} ${esc(m)}</h2><span class="small muted" style="margin-top:-8px">${todas.length} comida${todas.length === 1 ? '' : 's'} guardada${todas.length === 1 ? '' : 's'}</span>
+      ${ctxs.length > 1 ? `<div class="choice" role="group" aria-label="Filtrar">${[['', 'Todas'], ...ctxs.map(c => [c, c])].map(([v, t]) => `<button type="button" data-act="nuCarpFil" data-m="${esc(m)}" data-c="${esc(v)}" aria-pressed="${v === f}">${esc(t)}</button>`).join('')}</div>` : ''}
+      ${l.length ? `<div class="cp-gal">${l.map(x => `<button type="button" class="cp-it" data-act="nuComFic" data-id="${x.id}" aria-label="${esc(x.plato || alimentosTxt(x) || m)}">${tesela(x, 'cp-im')}<span class="cp-d">${esc(fCorta(x.fecha))}</span>${esc(x.plato || '') ? `<span class="cp-n">${esc(x.plato)}</span>` : (fotosDe(x).length ? '' : `<span class="cp-n">${esc((x.alimentos || []).map(a => a.n).slice(0, 3).join(', '))}</span>`)}</button>`).join('')}</div>` : `<div class="card small muted">Esta carpeta aún está vacía. Guarda aquí tu primera comida.</div>`}
+      <button class="btn full" data-act="nuComNueva" data-m="${esc(m)}">＋ Guardar una comida en ${esc(m)}</button><button type="button" class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
+  }
+  function fichaComida(id) {
+    const n = S.d?.nutri, x = n?.comidas.find(c => c.id === id); if (!x) return;
+    const us = fotosDe(x).map(fotoUrl).filter(Boolean), calc = esCalc(x), hayAli = (x.alimentos || []).some(a => a && buscaAli(a.n));
+    pedirFotos(fotosDe(x));
+    abrirSheet(`<div class="stack"><button type="button" class="btn ghost sm" data-act="nuCarp" data-m="${esc(x.momento)}" style="align-self:flex-start">← ${esc(x.momento)}</button>
+      ${us.length ? `<div class="cp-fotos">${us.map(u => `<img src="${esc(u)}" alt="" data-act="verImagenes" data-s="${esc(us.join('|'))}">`).join('')}</div>` : ''}
+      <div class="stack" style="gap:2px"><h2 style="margin:0">${esc(x.plato || x.momento)}</h2><span class="small muted">${esc(x.momento)} · ${esc(fLarga(x.fecha))}</span></div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">${x.contexto ? `<span class="pill blue">${esc(x.contexto)}</span>` : ''}${calc ? pillCalc : ''}</div>
+      ${(x.alimentos || []).length ? `<div class="card stack" style="gap:2px"><b class="small">Qué llevaba</b><span class="small">${esc(alimentosTxt(x))}</span></div>` : ''}
+      ${x.nota && !calc ? `<p class="small muted" style="margin:0">«${esc(x.nota)}»</p>` : ''}
+      <button class="btn full" data-act="nuComRep" data-id="${x.id}">Repetir hoy</button>
+      ${hayAli ? `<button class="btn ghost full" data-act="nuComRecalc" data-id="${x.id}">${ICO_CALC} Recalcular cantidades</button>` : ''}
+      <button class="btn ghost full" data-act="nuEditar" data-id="${x.id}">Editar esta comida</button></div>`);
+  }
+  async function repetirComida(id) {
+    const n = S.d?.nutri, x = n?.comidas.find(c => c.id === id); if (!x) return;
+    if (S.modo === 'coach') return toast('Vista previa: el alumno lo repite desde su app');
+    const { data, error } = await sb.from('comidas_registro').insert({ alumno_id: S.user.id, fecha: hoyISO(), momento: x.momento, contexto: x.contexto || null, alimentos: x.alimentos || [], foto: x.foto || null, plato: x.plato || null, encaja: null, compartido: false }).select().single();
+    if (error) return fallo(error, AVISO);
+    n.comidas = [...n.comidas, data]; S.nDia = hoyISO(); cerrarSheet(); toast('Añadida a tu diario de hoy'); render();
+  }
   function vFase(d) {
     const f = fase(d); if (!f) return '';
     const txt = {
@@ -365,7 +416,8 @@ const Nutricion = (() => {
     const n = S.d?.nutri; if (!n) return;
     const x = id ? n.comidas.find(c => c.id === id) : null; if (id && !x) return;
     const dia = x?.fecha || (ventana().includes(S.nDia) ? S.nDia : hoyISO());
-    const st = { mom: x?.momento || momentoSugerido(dia), sel: (x?.alimentos || []).map(a => ({ n: a.n, q: a.q || '' })), enc: x?.encaja ?? null, files: [], rutas: fotosDe(x || {}) };
+    const pre = S.nMomPre; S.nMomPre = null;
+    const st = { mom: x?.momento || (MOMENTOS.includes(pre) ? pre : momentoSugerido(dia)), sel: (x?.alimentos || []).map(a => ({ n: a.n, q: a.q || '' })), enc: x?.encaja ?? null, files: [], rutas: fotosDe(x || {}) };
     const propios = [...new Set(n.comidas.flatMap(c => (c.alimentos || []).map(a => a.n)))].filter(v => v && !TODOS.some(t => t.n === v));
     const ctx = ctxDe(n), chip = v => `<button type="button" class="pill" data-al="${esc(v)}">${esc(v)}</button>`;
     abrirSheet(`<form class="stack" id="f-nu"><h2>${x ? (x.compartido ? 'Tu creación' : 'Editar comida') : 'Apuntar una comida'}</h2><span class="small muted" style="margin-top:-8px">${esc(fLarga(dia))}</span>
@@ -492,6 +544,18 @@ const Nutricion = (() => {
       case 'nuCerrar': S.nDoc = null; render(); window.scrollTo(0, 0); break;
       case 'nuCtx': S.nCtx = +b.dataset.i; try { localStorage.setItem('lof-nctx', hoyISO() + '|' + S.nCtx); } catch (err) { /* sin almacenamiento */ } render(); break;
       case 'nuDia': S.nDia = b.dataset.f; render(); break;
+      case 'nuNCom': try { localStorage.setItem('lof-ncom', b.dataset.n); } catch (err) { /* sin almacenamiento */ } render(); break;
+      case 'nuCarp': galeriaCarp(b.dataset.m, ''); break;
+      case 'nuCarpFil': galeriaCarp(b.dataset.m, b.dataset.c); break;
+      case 'nuComFic': fichaComida(+b.dataset.id); break;
+      case 'nuComRep': repetirComida(+b.dataset.id); break;
+      case 'nuComNueva': S.nMomPre = b.dataset.m || null; formComida(); break;
+      case 'nuComRecalc': {
+        const x = S.d?.nutri?.comidas.find(c => c.id === +b.dataset.id); if (!x) break;
+        const sel = (x.alimentos || []).map(a => buscaAli(a?.n)).filter(Boolean).filter((a, i, v) => v.findIndex(z => z.n === a.n) === i).map(a => ({ a }));
+        if (!sel.length) { toast('No he reconocido alimentos para calcular'); break; }
+        S.calc = { ...(S.calc || st0()), sel }; formPlato(); break;
+      }
       case 'nuCalc': if (b.dataset.ctx != null) S.calc = { ...(S.calc || st0()), ctx: +b.dataset.ctx, k: +b.dataset.k }; formPlato(); break;
       case 'nuSemana': MenuSemana.abrir(b.dataset.l); break;
       case 'nuInc': formInc(b.dataset.k); break;
@@ -1189,7 +1253,7 @@ const Nutricion = (() => {
         const c = l[st.ctx], P = comidasPlan(c, comidasDia(d?.servicio)), kk = Math.min(st.k, P.n - 1), r = calcular(st.sel, objetivoComida(c, kk, P.n));
         if (S.modo === 'coach') return toast('Vista previa: el alumno lo apunta desde su app');
         const ob = objetivoComida(c, kk, P.n), E = estadoAjuste(st.sel, r, ob);
-        const { error } = await sb.from('comidas_registro').insert({ alumno_id: S.user.id, fecha: hoyISO(), momento: 'Otro', contexto: c.n,
+        const { error } = await sb.from('comidas_registro').insert({ alumno_id: S.user.id, fecha: hoyISO(), momento: MOMENTOS.find(m => norm(m) === norm(P.items[kk].n)) || 'Otro', contexto: c.n,
           alimentos: st.sel.map((s, i) => ({ n: s.a.n, q: `${fmtNum(r.gr[i], 0)} g`, g: Math.round(r.gr[i]), origen: s.fijo != null ? 'alumno' : 'app' })), encaja: null,
           nota: `Calculado con la app para ${P.items[kk].n.toLowerCase()} · objetivo ${fmtNum(ob.kcal, 0)} kcal (P ${fmtNum(ob.p, 0)} · C ${fmtNum(ob.c, 0)} · G ${fmtNum(ob.g, 0)}, ${ORIGEN_TXT[ob.origen]}) · total ${fmtNum(r.tot.kcal, 0)} kcal (P ${fmtNum(r.tot.p, 0)} · C ${fmtNum(r.tot.c, 0)} · G ${fmtNum(r.tot.g, 0)}) · ${NIVEL_AJ[E.nivel][1].replace(/^[✓≈] /, '').toLowerCase()}${st.sel.some(s => s.fijo != null) ? ' · cantidades puestas por el alumno: ' + st.sel.filter(s => s.fijo != null).map(s => s.a.n.split(' (')[0].toLowerCase()).join(', ') : ''}` });
         if (error) return fallo(error, AVISO); if (fijo) st.sel = []; else cerrarSheet(); toast('Apuntado en tu diario'); await cargar(S.user.id, S.d); render();
