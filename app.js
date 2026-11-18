@@ -2501,6 +2501,17 @@ const conSuf = (base, rev, val) => { const b = sinSuf(base), p = [b]; if (rev &&
 const citaRev = aid => (S.c?.presenciales || []).find(p => p.alumno_id === aid && p.estado === 'programada' && p.fecha >= hoyISO() && p.fecha <= sumaDias(hoyISO(), 45) && /revisi/i.test(p.tipo || ''))
   || (S.c?.agenda || []).find(p => p.fecha >= hoyISO() && p.fecha <= sumaDias(hoyISO(), 45) && !['descartada', 'hecha'].includes(p.estado) && String(p.origen || '').startsWith('rev:' + aid + ':'));
 const TIPOS_CITA = [['Entrenamiento', 'al'], ['Valoración inicial', 'al'], ['Valoración final', 'al'], ['Revisión presencial', 'al'], ['Revisión (videollamada)', 'al'], ['PTI / primera sesión', 'ext'], ['Entrevista online', 'ext'], ['Reunión de negocio', 'ext'], ['Tarea', 'ext']];
+/* Cuando una cita se repite, se pregunta como en Google Calendar: solo esta, esta y las siguientes, o todas */
+function preguntaSerie(titulo, peligro) {
+  return new Promise(res => {
+    const o = document.createElement('div'), col = peligro ? 'color:var(--bad);' : '';
+    o.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:20px';
+    o.innerHTML = `<div role="dialog" aria-modal="true" aria-label="${esc(titulo)}" style="background:var(--surface,#fff);color:var(--fg,#111);border-radius:20px;padding:18px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:8px"><b style="text-align:center;font-size:16px;margin-bottom:4px">${esc(titulo)}</b>${[['esta', 'Este evento'], ['sig', 'Este y todos los eventos posteriores'], ['todas', 'Todos los eventos']].map(([k, t]) => `<button type="button" class="btn ghost full" data-k="${k}" style="${col}">${t}</button>`).join('')}<button type="button" class="btn full" data-k="">Cancelar</button></div>`;
+    const fin = k => { o.remove(); res(k || null); };
+    o.addEventListener('click', e => { e.stopPropagation(); const b = e.target.closest('[data-k]'); if (b) fin(b.dataset.k); else if (e.target === o) fin(null); });
+    document.body.appendChild(o);
+  });
+}
 function formProgramar(aid, fechaIni, horaIni, pid) {
   const P0 = pid ? (S.c.presenciales || []).find(x => x.id === pid) : null, G0 = P0?.grupo ? S.c.presenciales.filter(x => x.grupo === P0.grupo) : P0 ? [P0] : [];
   const keepT = P0?.tipo && !TIPOS_CITA.some(x => x[0] === sinSuf(P0.tipo)) ? sinSuf(P0.tipo) : null; if (P0) { aid = G0[0].alumno_id; fechaIni = P0.fecha; horaIni = P0.hora; }
@@ -2519,7 +2530,7 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
       <input type="date" id="pg-f" value="${fechaIni || hoyISO()}" required class="gc-in">
       <div class="row gc-horas" style="gap:8px;align-items:center"><span class="small muted">De</span>${inHora('pg-h', horaIni)}<span class="small muted">a</span><input type="text" id="pg-hf" data-hora inputmode="decimal" maxlength="5" placeholder="hh:mm" autocomplete="off"><span class="small muted grow" id="pg-dt"></span></div>
       <input type="hidden" id="pg-d" value="${durSesion()}">`)}
-    ${P0?.serie ? fila('🔁', `<label class="row small" style="gap:8px"><input type="checkbox" id="pg-ser" style="width:20px;height:20px"> Aplicar hora, tipo, ubicación y descripción también a las siguientes de la serie</label>`)
+    ${P0?.serie ? fila('🔁', `<span class="small muted">Esta cita se repite. Al guardar te pregunto si el cambio es para esta, para las siguientes o para todas.</span>`)
       : fila('🔁', `<select id="pg-rep" class="gc-in"><option value="">No se repite</option><option value="1">Cada día</option><option value="lab">Cada día laborable (L–V)</option><option value="7">Cada semana</option><option value="14">Cada 2 semanas</option><option value="mes">Cada mes</option></select><label class="row small" id="pg-hw" hidden style="gap:8px">hasta el<input type="date" id="pg-hasta" class="gc-in" value="${sumaDias(fechaIni || hoyISO(), 84)}"></label>`)}
     ${fila('👥', `<div class="stack" id="pg-mas" style="gap:6px"></div><button type="button" class="linkbtn" id="pg-mas-b" style="align-self:flex-start">Añadir otro alumno (sesión conjunta)</button>`, 'pg-inv')}
     ${fila('🎥', `<button type="button" class="linkbtn" id="pg-meet" style="align-self:flex-start">Crear enlace de Google Meet nuevo</button>`, 'pg-meetw')}
@@ -2529,7 +2540,7 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
       : fila('📅', `<label class="row small" style="gap:8px"><input type="checkbox" id="pg-g" style="width:18px;height:18px"> Abrir también Google Calendar para añadirla al momento</label>`)}
     ${P0 ? fila('✔', `<select id="pg-e" class="gc-in">${Object.entries(PRES_EST).map(([k, l]) => `<option value="${k}" ${P0.estado === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`) : ''}
     <p class="err" id="pg-err"></p><button class="btn full" type="submit">${P0 ? 'Guardar cambios' : 'Guardar'}</button>
-    ${P0 ? (P0.serie ? '<button class="btn ghost full" type="button" id="pg-dels" style="color:var(--bad)">Eliminar esta y las siguientes de la serie</button>' : '') + '<button class="btn ghost full" type="button" id="pg-del" style="color:var(--bad)">Eliminar cita</button><button class="btn ghost full" type="button" id="pg-vv">← Volver a la agenda</button>' : ''}
+    ${P0 ? '<button class="btn ghost full" type="button" id="pg-del" style="color:var(--bad)">Eliminar cita</button><button class="btn ghost full" type="button" id="pg-vv">← Volver a la agenda</button>' : ''}
     <p class="note">Los entrenos se restan del bono y salen en el calendario del alumno. Si estás suscrito a «LOF · Sesiones», también llegan solos a tu Google Calendar.</p></form>`);
   /* Hora de fin ⇄ duración, y «Todo el día» */
   const minDe = v => { const h = normHora(v); return h ? +h.slice(0, 2) * 60 + +h.slice(3, 5) : null; }, hDe = m => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
@@ -2566,13 +2577,15 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
     while (d <= hasta && d <= lim && out.length < 120) { const dw = (fecha(d).getDay() + 6) % 7; if (k !== 'lab' || dw < 5) out.push(d);
       if (k === 'mes') { const x = fecha(f0), m = out.length; const t = new Date(x.getFullYear(), x.getMonth() + m, x.getDate()); d = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; } else d = sumaDias(d, k === 'lab' ? 1 : +k); }
     return out; };
-  $('#pg-dels')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez para borrar esta y las siguientes'; return; }
-    const bor = gcalIdsDe((S.c.presenciales || []).filter(x => x.serie === P0.serie && x.fecha >= P0.fecha));
-    const { error } = await sb.from('presenciales').delete().eq('serie', P0.serie).gte('fecha', P0.fecha); if (error) return fallo(error); gcalSync([], bor);
-    await cargarPresCoach(); if (S.ficha) await cargarPres(); toast('Serie eliminada desde esta fecha'); verAgenda(); });
-  $('#pg-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = G0.length > 1 ? `Pulsa otra vez: se borra para los ${G0.length}` : 'Pulsa otra vez para eliminarla'; return; }
-    for (const r of G0) { const { error } = await sb.from('presenciales').delete().eq('id', r.id); if (error) return fallo(error); }
-    gcalSync([], gcalIdsDe(G0)); await cargarPresCoach(); if (S.ficha) await cargarPres(); toast('Cita eliminada'); verAgenda(); });
+  $('#pg-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; let modo = 'esta';
+    if (P0.serie) { modo = await preguntaSerie('Eliminar evento periódico', true); if (!modo) return; }
+    else if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = G0.length > 1 ? `Pulsa otra vez: se borra para los ${G0.length}` : 'Pulsa otra vez para eliminarla'; return; }
+    if (modo === 'esta') {
+      for (const r of G0) { const { error } = await sb.from('presenciales').delete().eq('id', r.id); if (error) return fallo(error); }
+      gcalSync([], gcalIdsDe(G0)); await cargarPresCoach(); if (S.ficha) await cargarPres(); toast('Cita eliminada'); verAgenda(); return; }
+    const l = (S.c.presenciales || []).filter(r => r.serie === P0.serie && (modo === 'todas' || r.fecha >= P0.fecha)), q = sb.from('presenciales').delete().eq('serie', P0.serie);
+    const { error } = await (modo === 'todas' ? q : q.gte('fecha', P0.fecha)); if (error) return fallo(error);
+    gcalSync([], gcalIdsDe(l)); await cargarPresCoach(); if (S.ficha) await cargarPres(); toast(modo === 'todas' ? 'Toda la serie eliminada' : 'Serie eliminada desde esta fecha'); verAgenda(); });
   $('#pg-mas-b').addEventListener('click', () => masAlumno());
   bono(); $('#pg-a').addEventListener('change', bono); $('#pg-f').addEventListener('change', bono);
   $('#pg-t').addEventListener('click', e => { const b = e.target.closest('[data-t]'); if (!b) return; tipo = b.dataset.t; document.querySelectorAll('#pg-t .pill').forEach(x => x.classList.toggle('blue', x === b)); ponDef(); bono(); });
@@ -2586,13 +2599,15 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
     const cierraWin = () => { try { win?.close(); } catch (er) { } };
     const dur = Math.max(5, Math.min(600, Math.round(+$('#pg-d').value) || durSesion())), lugar = $('#pg-l').value.trim() || null;
     const bt = e.target.querySelector('[type=submit]'); bt.disabled = true; bt.textContent = 'Guardando…';
+    let alcance = 'sig';   /* cita que se repite: esta · esta y las siguientes · todas */
+    if (P0?.serie) { alcance = await preguntaSerie('Editar evento periódico'); if (!alcance) { cierraWin(); bt.disabled = false; bt.textContent = 'Guardar cambios'; return; } }
     if ($('#pg-def').checked) { const D = agendaDef(); D[tipo] = { n: $('#pg-n').value.trim(), l: $('#pg-l').value.trim() }; const v = JSON.stringify(D);
       const { error: eD } = await sb.from('ajustes_privados').upsert({ clave: 'agenda_def', valor: v }, { onConflict: 'clave' }); if (!eD) (S.c.fiscal ||= {}).agenda_def = v; }
     const row = { alumno_id: id, fecha: $('#pg-f').value || hoyISO(), hora, estado: 'programada', tipo: X ? tipo : conSuf(tipo === 'Entrenamiento' ? keepT : tipo, $('#pg-xr').checked, $('#pg-xv').checked), nota: $('#pg-n').value.trim() || null };
     if (P0) { /* Edición: mismos datos para todos los del grupo; añade o quita alumnos */
       const idsE = X ? [null] : [...new Set([id, ...[...document.querySelectorAll('.pg-a2')].map(x => x.value).filter(Boolean)])];
       const com = { fecha: row.fecha, hora, tipo: row.tipo, nota: row.nota, lugar, duracion_min: X || dur !== durSesion() ? dur : null, persona: X ? quien : null, estado: $('#pg-e').value };
-      if ($('#pg-ser')?.checked && P0.serie) { const { fecha: _f, estado: _e, ...cs } = com; const { error: es } = await sb.from('presenciales').update(cs).eq('serie', P0.serie).gt('fecha', P0.fecha); if (es) { cierraWin(); bt.disabled = false; bt.textContent = 'Guardar cambios'; return $('#pg-err').textContent = errCita(es); } }
+      if (P0.serie && alcance !== 'esta') { const { fecha: _f, estado: _e, ...cs } = com; const qs = sb.from('presenciales').update(cs).eq('serie', P0.serie); const { error: es } = await (alcance === 'todas' ? qs : qs.gt('fecha', P0.fecha)); if (es) { cierraWin(); bt.disabled = false; bt.textContent = 'Guardar cambios'; return $('#pg-err').textContent = errCita(es); } }
       /* Una cita ya creada que ahora «se repite»: se crean las siguientes copias y todas forman una serie */
       const repE = $('#pg-rep')?.value || ''; if (repE && !P0.serie) { const fs2 = fechasRep(com.fecha, repE, $('#pg-hasta')?.value || com.fecha).slice(1), ser = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
         if (fs2.length) { const filas = fs2.flatMap(f => { const gr = idsE.length > 1 ? (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + f) : null; return idsE.map(i => ({ ...com, fecha: f, estado: 'programada', alumno_id: i, ...(gr ? { grupo: gr } : {}), serie: ser })); });
@@ -2602,7 +2617,7 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
       const quitadas = gcalIdsDe(G0.filter(r => !idsE.includes(r.alumno_id)));
       await cargarPresCoach(); if (S.ficha) await cargarPres();
       { const nuevasG = P0.grupo || idsE.length > 1 ? (S.c.presenciales || []).filter(x => x.fecha === com.fecha && idsE.includes(x.alumno_id) && (x.grupo && x.grupo === (S.c.presenciales.find(y => y.id === P0.id)?.grupo))) : [];
-        const serieIds = P0.serie || com.serie ? (S.c.presenciales || []).filter(x => x.serie && x.serie === (com.serie || P0.serie) && x.fecha >= P0.fecha).map(x => x.id) : [];
+        const serieIds = (P0.serie && alcance === 'esta') || !(P0.serie || com.serie) ? [] : (S.c.presenciales || []).filter(x => x.serie && x.serie === (com.serie || P0.serie) && (alcance === 'todas' || x.fecha >= P0.fecha)).map(x => x.id);
         gcalSync([P0.id, ...nuevasG.map(x => x.id), ...serieIds], quitadas, !!$('#pg-av')?.checked); }
       if ($('#pg-g').checked) abreCal(gcalLink({ ...P0, ...com }, idsE.filter(Boolean).map(i => S.c.perfiles.find(x => x.id === i)?.nombre || 'Alumno').join(' + ') || quien || 'Cita'));
       toast('Cita guardada'); return verAgenda(); }
@@ -8858,7 +8873,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v417';
+const APP_VER = 'v418';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
