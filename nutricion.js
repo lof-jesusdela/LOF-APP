@@ -53,9 +53,9 @@ const Nutricion = (() => {
     } catch (err) { console.error(err); }
   }
   async function cargarFicha(f) {
-    const r = await sb.from('comidas_registro').select('*').eq('alumno_id', f.id).gte('fecha', sumaDias(hoyISO(), -60)).order('created_at');
+    const r = await sb.from('comidas_registro').select('*').eq('alumno_id', f.id).gte('fecha', sumaDias(hoyISO(), -365)).order('created_at');
     f.comErr = !!r.error; f.comidas = r.data || [];
-    const fotos = f.comidas.flatMap(fotosDe); if (fotos.length) pedirFotos(fotos);
+    const fotos = f.comidas.filter(x => x.fecha >= sumaDias(hoyISO(), -60)).flatMap(fotosDe); if (fotos.length) pedirFotos(fotos);
   }
   async function cargarCoach(c) {
     const [r, pl] = await Promise.all([sb.from('comidas_registro').select('id,alumno_id').eq('compartido', true).is('coach_estado', null), sb.from('planificacion').select('alumno_id,clave,visible,contenido,imagenes,datos').eq('seccion', 'alimentacion')]);
@@ -216,9 +216,9 @@ const Nutricion = (() => {
     const hoy = vHoyCtx(n, d), met = vMetab(n);
     if (act && (hoy || met)) {   // plan en marcha: metabolismo → calculadora → semana y compra; todo lo demás plegado
       const resto = vIncAlumno(n, d) + vAcuerdoAlumno(n, d) + vDocs(docs) + vFase(d) + (prev ? '' : vDiario(n, d));
-      return cab + (prev ? '' : tarjetaTemporal(d)) + met + hoy + (prev ? '' : vBtnSemana() + vMisComidas(n, d)) + `<details class="section nu-resto"><summary><b>Registro, acuerdos y documentos</b> <span class="muted small">· solo informativo</span></summary>${resto}</details>`;
+      return cab + (prev ? '' : tarjetaTemporal(d)) + met + hoy + (prev ? '' : vBtnSemana()) + vMisComidas(n, d, prev) + `<details class="section nu-resto"><summary><b>Registro, acuerdos y documentos</b> <span class="muted small">· solo informativo</span></summary>${resto}</details>`;
     }
-    return cab + (act ? '' : vFase(d)) + vIncAlumno(n, d) + (prev ? '' : tarjetaTemporal(d)) + hoy + vAcuerdoAlumno(n, d) + (prev ? '' : (act ? vBtnSemana() : '') + vMisComidas(n, d)) + vDocs(docs) + (act ? vFase(d) : '') + (prev ? '' : vDiario(n, d));
+    return cab + (act ? '' : vFase(d)) + vIncAlumno(n, d) + (prev ? '' : tarjetaTemporal(d)) + hoy + vAcuerdoAlumno(n, d) + (prev ? '' : (act ? vBtnSemana() : '')) + vMisComidas(n, d, prev) + vDocs(docs) + (act ? vFase(d) : '') + (prev ? '' : vDiario(n, d));
   }
   /* Lo primero que ve el alumno: su metabolismo, el déficit aplicado y sus contextos (kcal y macros), en números y gráficas */
   const CTX_COL = ['#3B7BD8', '#7B52A0', '#C98A2E', '#3F8A3F', '#C0504D', '#2E8E94'];
@@ -256,28 +256,30 @@ const Nutricion = (() => {
   const ordArch = (a, b) => String(b.fecha).localeCompare(String(a.fecha)) || String(b.created_at).localeCompare(String(a.created_at));
   const carpetasDe = (N, arch) => { const base = CARP_SET[N] || CARP_SET[3]; return MOMENTOS.filter(m => base.includes(m) || arch.some(x => x.momento === m)); };
   const tesela = (x, cls) => { const u = fotosDe(x)[0] && fotoUrl(fotosDe(x)[0]); return u ? `<img class="${cls}" src="${esc(u)}" alt="" loading="lazy">` : `<span class="${cls} cp-ph" aria-hidden="true">${esc(CARP_ICO[x.momento] || '🍽')}</span>`; };
-  function vMisComidas(n, d) {
+  const esPrev = () => S.modo === 'coach' && !!S.ficha;
+  const nutriFuente = () => esPrev() ? datosPrevia(S.ficha).nutri : S.d?.nutri;
+  function vMisComidas(n, d, prev) {
     if (n.comErr) return '';
-    const N = carpN(d), arch = n.comidas.filter(esArch).sort(ordArch), nombres = carpetasDe(N, arch);
+    const N = prev ? Math.min(6, Math.max(2, comidasDia(d?.servicio) || 3)) : carpN(d), arch = n.comidas.filter(esArch).sort(ordArch), nombres = carpetasDe(N, arch);
     pedirFotos(nombres.flatMap(m => arch.filter(x => x.momento === m).slice(0, 3).flatMap(x => fotosDe(x).slice(0, 1))));
     return `<section class="section" id="nu-carp"><div class="section-head"><h2>Mis comidas</h2><span class="pill">Opcional</span></div><div class="card stack">
       <p class="small muted" style="margin:0">Tu archivo de comidas, por carpetas. Guarda lo que comes con foto o alimentos y úsalo cuando necesites ideas: repetir un plato o recalcular sus cantidades.</p>
-      <div class="stack" style="gap:6px"><span class="small"><b>¿Cuántas comidas haces al día?</b></span><div class="choice" role="group" aria-label="Comidas al día" style="grid-template-columns:repeat(5,1fr)">${[2, 3, 4, 5, 6].map(i => `<button type="button" data-act="nuNCom" data-n="${i}" aria-pressed="${i === N}">${i}</button>`).join('')}</div></div>
+      ${prev ? `<span class="small muted">Vista de coach: sus carpetas según las comidas al día de su servicio (él las elige en su app).</span>` : `<div class="stack" style="gap:6px"><span class="small"><b>¿Cuántas comidas haces al día?</b></span><div class="choice" role="group" aria-label="Comidas al día" style="grid-template-columns:repeat(5,1fr)">${[2, 3, 4, 5, 6].map(i => `<button type="button" data-act="nuNCom" data-n="${i}" aria-pressed="${i === N}">${i}</button>`).join('')}</div></div>`}
       <div class="cp-grid">${nombres.map(m => { const l = arch.filter(x => x.momento === m), t = l.slice(0, 3); return `<button type="button" class="cp-fold" data-act="nuCarp" data-m="${esc(m)}" aria-label="Carpeta ${esc(m)}, ${l.length} comidas"><div class="cp-col${t.length < 3 ? ' c' + Math.max(1, t.length) : ''}">${(t.length ? t : [null]).map(x => x ? tesela(x, 'cp-t') : `<span class="cp-t cp-vac" aria-hidden="true"></span>`).join('')}</div><b>${CARP_ICO[m] || ''} ${esc(m)}</b><small class="muted">${l.length ? `${l.length} comida${l.length > 1 ? 's' : ''} · última ${esc(fCorta(l[0].fecha))}` : 'Aún vacía'}</small></button>`; }).join('')}</div>
-      <div style="display:grid;grid-template-columns:${ctxDe(n).length ? '1fr 1fr' : '1fr'};gap:8px"><button class="btn" data-act="nuComNueva">＋ Guardar una comida</button>${ctxDe(n).length ? `<button class="btn ghost" data-act="nuCalc">${ICO_CALC} Calculadora</button>` : ''}</div></div></section>`;
+      ${prev ? '' : `<div style="display:grid;grid-template-columns:${ctxDe(n).length ? '1fr 1fr' : '1fr'};gap:8px"><button class="btn" data-act="nuComNueva">＋ Guardar una comida</button>${ctxDe(n).length ? `<button class="btn ghost" data-act="nuCalc">${ICO_CALC} Calculadora</button>` : ''}</div>`}</div></section>`;
   }
   function galeriaCarp(m, fil) {
-    const n = S.d?.nutri; if (!n) return;
+    const n = nutriFuente(); if (!n) return;
     const todas = n.comidas.filter(x => esArch(x) && x.momento === m).sort(ordArch), ctxs = [...new Set(todas.map(x => x.contexto).filter(Boolean))];
     const f = ctxs.includes(fil) ? fil : '', l = f ? todas.filter(x => x.contexto === f) : todas;
     pedirFotos(l.flatMap(x => fotosDe(x).slice(0, 1)));
     abrirSheet(`<div class="stack"><h2>${CARP_ICO[m] || ''} ${esc(m)}</h2><span class="small muted" style="margin-top:-8px">${todas.length} comida${todas.length === 1 ? '' : 's'} guardada${todas.length === 1 ? '' : 's'}</span>
       ${ctxs.length > 1 ? `<div class="choice" role="group" aria-label="Filtrar">${[['', 'Todas'], ...ctxs.map(c => [c, c])].map(([v, t]) => `<button type="button" data-act="nuCarpFil" data-m="${esc(m)}" data-c="${esc(v)}" aria-pressed="${v === f}">${esc(t)}</button>`).join('')}</div>` : ''}
       ${l.length ? `<div class="cp-gal">${l.map(x => `<button type="button" class="cp-it" data-act="nuComFic" data-id="${x.id}" aria-label="${esc(x.plato || alimentosTxt(x) || m)}">${tesela(x, 'cp-im')}<span class="cp-d">${esc(fCorta(x.fecha))}</span>${esc(x.plato || '') ? `<span class="cp-n">${esc(x.plato)}</span>` : (fotosDe(x).length ? '' : `<span class="cp-n">${esc((x.alimentos || []).map(a => a.n).slice(0, 3).join(', '))}</span>`)}</button>`).join('')}</div>` : `<div class="card small muted">Esta carpeta aún está vacía. Guarda aquí tu primera comida.</div>`}
-      <button class="btn full" data-act="nuComNueva" data-m="${esc(m)}">＋ Guardar una comida en ${esc(m)}</button><button type="button" class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
+      ${esPrev() ? '' : `<button class="btn full" data-act="nuComNueva" data-m="${esc(m)}">＋ Guardar una comida en ${esc(m)}</button>`}<button type="button" class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
   }
   function fichaComida(id) {
-    const n = S.d?.nutri, x = n?.comidas.find(c => c.id === id); if (!x) return;
+    const n = nutriFuente(), x = n?.comidas.find(c => c.id === id); if (!x) return;
     const us = fotosDe(x).map(fotoUrl).filter(Boolean), calc = esCalc(x), hayAli = ctxDe(n).length > 0 && (x.alimentos || []).some(a => a && buscaAli(a.n));
     pedirFotos(fotosDe(x));
     abrirSheet(`<div class="stack"><button type="button" class="btn ghost sm" data-act="nuCarp" data-m="${esc(x.momento)}" style="align-self:flex-start">← ${esc(x.momento)}</button>
@@ -286,9 +288,9 @@ const Nutricion = (() => {
       <div class="row" style="gap:6px;flex-wrap:wrap">${x.contexto ? `<span class="pill blue">${esc(x.contexto)}</span>` : ''}${calc ? pillCalc : ''}</div>
       ${(x.alimentos || []).length ? `<div class="card stack" style="gap:2px"><b class="small">Qué llevaba</b><span class="small">${esc(alimentosTxt(x))}</span></div>` : ''}
       ${x.nota && !calc ? `<p class="small muted" style="margin:0">«${esc(x.nota)}»</p>` : ''}
-      <button class="btn full" data-act="nuComRep" data-id="${x.id}">Repetir hoy</button>
-      ${hayAli ? `<button class="btn ghost full" data-act="nuComRecalc" data-id="${x.id}">${ICO_CALC} Recalcular cantidades</button>` : ''}
-      <button class="btn ghost full" data-act="nuEditar" data-id="${x.id}">Editar esta comida</button></div>`);
+      ${esPrev() ? '' : `<button class="btn full" data-act="nuComRep" data-id="${x.id}">Repetir hoy</button>`}
+      ${hayAli && !esPrev() ? `<button class="btn ghost full" data-act="nuComRecalc" data-id="${x.id}">${ICO_CALC} Recalcular cantidades</button>` : ''}
+      ${esPrev() ? '<button type="button" class="btn ghost full" data-act="cerrarSheet">Cerrar</button>' : `<button class="btn ghost full" data-act="nuEditar" data-id="${x.id}">Editar esta comida</button>`}</div>`);
   }
   async function repetirComida(id) {
     const n = S.d?.nutri, x = n?.comidas.find(c => c.id === id); if (!x) return;
@@ -525,7 +527,7 @@ const Nutricion = (() => {
     });
   }
   /* Vista previa para el coach: lo que ve el alumno (sin su diario) */
-  function datosPrevia(f) { return { nutri: { plan: (f.plan || []).filter(x => x.seccion === 'alimentacion' && x.visible !== false), url: f.planImg || {}, comidas: [] }, servicio: f.srv }; }
+  function datosPrevia(f) { return { nutri: { plan: (f.plan || []).filter(x => x.seccion === 'alimentacion' && x.visible !== false), url: f.planImg || {}, comidas: f.comidas || [], comErr: !!f.comErr }, servicio: f.srv }; }
 
   function pdfContextos(btn) {
     const coach = S.modo === 'coach' && S.ficha, d = coach ? datosPrevia(S.ficha) : S.d, l = ctxDe(d.nutri);

@@ -282,21 +282,23 @@ const Tandas = {
     rir: '<svg class="rp-rir-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="13" width="5" height="8" rx="1"/><rect x="10" y="8" width="5" height="13" rx="1"/><rect x="17" y="3" width="5" height="18" rx="1"/></svg>'
   },
   kgPlan(x, sp) { return sp ? '' : x.kg === '' ? '' : kgDe(x); },
+  /* El objetivo solo se escribe si la casilla no lo enseña ya (al fallo, al máximo, texto libre); con reps o segundos concretos va dentro de la casilla */
+  objVisible(o) { return !(o.iso ? o.num != null : !!o.ph); },
   cabParte(x, rirUnico, sp, k) {
-    const o = this.objetivo(x), kgP = this.kgPlan(x, sp);
-    return `<span class="muted"> · Objetivo: ${esc(o.txt)}${x.auto ? ' · baja un 20 %' : (!sp && x.kg === '' && k > 0) ? ' · baja el peso' : ''}</span>${rirUnico === undefined && x.rir != null && x.rir !== '' ? ` <button class="rp-rir-chip" data-act="rir" data-r="${esc(String(x.rir))}">RIR ${esc(String(x.rir))} ⓘ</button>` : ''}${x.rg ? ` <span class="rp-rg">📐 ${esc(x.rg)}</span>` : ''}`;
+    const o = this.objetivo(x), kgP = this.kgPlan(x, sp), nota = [this.objVisible(o) ? o.txt : '', x.auto ? 'baja un 20 %' : (!sp && x.kg === '' && k > 0) ? 'baja el peso' : ''].filter(Boolean).join(' · ');
+    return `${nota ? `<span class="muted"> · ${esc(nota)}</span>` : ''}${rirUnico === undefined && x.rir != null && x.rir !== '' ? ` <button class="rp-rir-chip" data-act="rir" data-r="${esc(String(x.rir))}">RIR ${esc(String(x.rir))} ⓘ</button>` : ''}${x.rg ? ` <span class="rp-rg">📐 ${esc(x.rg)}</span>` : ''}`;
   },
   campos(e, fila, n, x, sp, una, rirUnico, t = {}) {
     const z = S.sesion, id = `${fila}-${x.p}`, u = z.ultimos[id], v = z.valores[id], bor = z.borr || {}, o = this.objetivo(x), kgP = this.kgPlan(x, sp), bajada = !sp && x.kg === '' && x.p > 0;
     const val = (c, f) => v && v[f] != null ? fmtNum(v[f], 2) : (bor[`${c}-${id}`] ?? '');
     // En gris: lo pautado y, si no hay pauta, lo de la última vez
     const phKg = kgP ? fmtNum(numero(kgP), 2) : (bajada ? 'baja un 20–30 %' : u?.kg != null ? fmtNum(u.kg, 2) : '—'), phRp = o.iso ? (o.num ?? (u?.repeticiones ?? '—')) : (o.ph || (x.myo ? '—' : (u?.repeticiones ?? '—')));
-    const nom = this.nomParte(x), lblR = o.iso ? 'Segundos' : 'Reps realizadas';
+    const nom = this.nomParte(x), lblR = o.iso ? 'Tiempo' : 'Repeticiones';
     return `<div class="rp-parte${una ? ' una' : ''}">
-      ${una ? '' : `<div class="rp-pt">${x.lado && !t.lado ? this.chipLado(x.lado) : ''}${x.vuelta ? `<b>${x.vuelta}ª vuelta</b>` : ''}${x.tipo ? `<b>${esc(this.TIPO[x.tipo])}</b>` : ''}<span class="muted">Objetivo: ${esc(o.txt)}</span>${rirUnico === undefined && x.rir != null && x.rir !== '' ? `<button class="rp-rir-chip" data-act="rir" data-r="${esc(String(x.rir))}">RIR ${esc(String(x.rir))} ⓘ</button>` : ''}${x.rg ? `<span class="rp-rg">📐 ${esc(x.rg)}</span>` : ''}</div>`}
+      ${una ? '' : `<div class="rp-pt">${x.lado && !t.lado ? this.chipLado(x.lado) : ''}${x.vuelta ? `<b>${x.vuelta}ª vuelta</b>` : ''}${x.tipo ? `<b>${esc(this.TIPO[x.tipo])}</b>` : ''}${this.objVisible(o) ? `<span class="muted">${esc(o.txt)}</span>` : ''}${rirUnico === undefined && x.rir != null && x.rir !== '' ? `<button class="rp-rir-chip" data-act="rir" data-r="${esc(String(x.rir))}">RIR ${esc(String(x.rir))} ⓘ</button>` : ''}${x.rg ? `<span class="rp-rg">📐 ${esc(x.rg)}</span>` : ''}</div>`}
       <div class="rp-campos${sp ? ' uno' : ''}">
-        ${sp ? '' : `<label>Peso (kg)<span class="kg-w"><input id="kg-${id}" data-tanda="1" data-row="${fila}" data-plan="${esc(kgP)}"${bajada ? ' data-bajada="1"' : ''} type="text" inputmode="decimal" placeholder="${esc(phKg)}" value="${esc(val('kg', 'kg'))}" aria-label="Peso en kilos, serie ${n}${nom ? ', ' + esc(nom) : ''}"></span></label>`}
-        <label>${lblR}${o.iso ? '<span class="iso-w">' : ''}<input id="rp-${id}" data-tanda="1" data-row="${fila}" data-obj="${o.num ?? ''}"${o.iso ? ' data-iso="1"' : ''} type="text" inputmode="numeric" placeholder="${esc(String(phRp))}" value="${esc(val('rp', 'repeticiones'))}" aria-label="${lblR}, serie ${n}${nom ? ', ' + esc(nom) : ''}">${o.iso ? `<button type="button" class="iso-go" data-act="isoCrono" data-in="rp-${id}" data-obj="${o.num ?? ''}" data-lbl="${esc((ejDe(e).nombre || '') + ' · serie ' + n + (nom ? ' · ' + nom : ''))}" data-pos="${esc(x.pos || '')}" aria-label="Cronometrar">⏱</button></span>` : ''}</label>
+        ${sp ? '' : `<label>Peso<span class="kg-w"><input id="kg-${id}" data-tanda="1" data-row="${fila}" data-plan="${esc(kgP)}"${bajada ? ' data-bajada="1"' : ''} type="text" inputmode="decimal" placeholder="${esc(phKg)}" value="${esc(val('kg', 'kg'))}" aria-label="Peso en kilos, serie ${n}${nom ? ', ' + esc(nom) : ''}"></span></label>`}
+        <label>${lblR}${o.iso ? '<span class="iso-w iso-t">' : ''}<input id="rp-${id}" data-tanda="1" data-row="${fila}" data-obj="${o.num ?? ''}"${o.iso ? ' data-iso="1"' : ''} type="text" inputmode="numeric" placeholder="${esc(String(phRp))}" value="${esc(val('rp', 'repeticiones'))}" aria-label="${lblR}, serie ${n}${nom ? ', ' + esc(nom) : ''}">${o.iso ? `<button type="button" class="iso-go" data-act="isoCrono" data-in="rp-${id}" data-obj="${o.num ?? ''}" data-lbl="${esc((ejDe(e).nombre || '') + ' · serie ' + n + (nom ? ' · ' + nom : ''))}" data-pos="${esc(x.pos || '')}" aria-label="Cronometrar">⏱</button></span>` : ''}</label>
       </div></div>`;
   },
   /* Estados visibles (sin rehacer los campos, para no perder lo escrito) */
