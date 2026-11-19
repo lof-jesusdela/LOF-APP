@@ -209,7 +209,6 @@ const Nutricion = (() => {
   function vista(dd, prev) {
     const d = dd || S.d, n = d?.nutri || vacio();
     if (S.nDoc) return vDoc(n, S.nDoc, d);
-    if (!d?.servicio?.modulo_nutricion) return prev ? '' : `<section class="stack"><span class="eyebrow">Tu álbum</span><h1>Mis comidas</h1></section>` + vMisComidas(n, d);   // sin plan de alimentación: solo el álbum, para todos los alumnos
         const docs = [...DOCS.map(([k, t, s, ic]) => ({ x: docDe(n, k), k, t, s, ic })).filter(o => tiene(o.x)),
       ...n.plan.filter(x => !DOCS.some(([k]) => k === x.clave) && !esInc(x) && tiene(x)).map(x => ({ x, k: x.clave, t: x.titulo, s: '', ic: '📌' }))];
     const cab = prev ? '' : `<section class="stack"><span class="eyebrow">Tu plan de alimentación</span><h1>Nutrición</h1><p class="small muted">Tu guía para comer bien sin pensarlo demasiado. Vuelve aquí siempre que tengas una duda.</p></section>`;
