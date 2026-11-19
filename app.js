@@ -2588,6 +2588,7 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
     ${fila('🕒', `<label class="row" style="gap:10px;justify-content:space-between"><span>Todo el día</span><input type="checkbox" id="pg-td" class="gc-sw" ${P0 && !P0.hora ? 'checked' : ''}></label>
       <input type="date" id="pg-f" value="${fechaIni || hoyISO()}" required class="gc-in">
       <div class="row gc-horas" style="gap:8px;align-items:center"><span class="small muted">De</span>${inHora('pg-h', horaIni)}<span class="small muted">a</span><input type="text" id="pg-hf" data-hora inputmode="decimal" maxlength="5" placeholder="hh:mm" autocomplete="off"><span class="small muted grow" id="pg-dt"></span></div>
+      <div class="row gc-horas" id="pg-hm" style="gap:6px;flex-wrap:wrap;align-items:center"><span class="small muted">Minutos:</span>${[':', ':00', ':15', ':30', ':45'].map(m => `<button type="button" class="pill" data-hm="${m}" style="min-width:44px;min-height:36px">${m === ':' ? 'Dos puntos  :' : m}</button>`).join('')}</div>
       <input type="hidden" id="pg-d" value="${durSesion()}">`)}
     ${P0?.serie ? fila('🔁', `<span class="small muted">Esta cita se repite. Al guardar te pregunto si el cambio es para esta, para las siguientes o para todas.</span>`)
       : fila('🔁', `<select id="pg-rep" class="gc-in"><option value="">No se repite</option><option value="1">Cada día</option><option value="lab">Cada día laborable (L–V)</option><option value="7">Cada semana</option><option value="14">Cada 2 semanas</option><option value="mes">Cada mes</option></select><label class="row small" id="pg-hw" hidden style="gap:8px">hasta el<input type="date" id="pg-hasta" class="gc-in" value="${sumaDias(fechaIni || hoyISO(), 84)}"></label>`)}
@@ -2610,6 +2611,11 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
   let tipo = P0 ? (TIPOS_CITA.some(x => x[0] === sinSuf(P0.tipo)) ? sinSuf(P0.tipo) : P0.alumno_id ? 'Entrenamiento' : 'Reunión de negocio') : 'Entrenamiento';
   if (P0) { document.querySelectorAll('#pg-t .pill').forEach(x => x.classList.toggle('blue', x.dataset.t === tipo)); $('#pg-q').value = P0.persona || ''; $('#pg-d').value = P0.duracion_min || durSesion(); $('#pg-l').value = P0.lugar || ''; $('#pg-n').value = P0.nota || ''; }
   ponFin(); ponTd();
+  /* Teclado numérico del móvil sin «:»: botones de minutos para la casilla de hora que se está escribiendo */
+  let hSel = $('#pg-h'); document.querySelectorAll('#f-prog [data-hora]').forEach(x => x.addEventListener('focus', () => { hSel = x; }));
+  $('#pg-hm').addEventListener('pointerdown', e => { if (e.target.closest('[data-hm]')) e.preventDefault(); });   /* no se cierra el teclado */
+  $('#pg-hm').addEventListener('click', e => { const b = e.target.closest('[data-hm]'); if (!b) return; const m = b.dataset.hm; let h = hSel.value.split(':')[0].replace(/\D/g, ''); if (/^\d{3,4}$/.test(h)) h = h.slice(0, -2); if (!h) { toast('Escribe primero la hora'); return hSel.focus(); }
+    hSel.value = m === ':' ? `${h}:` : `${h.padStart(2, '0')}${m}`; hSel.dispatchEvent(new Event('input', { bubbles: true })); hSel.dispatchEvent(new Event('change', { bubbles: true })); if (m === ':') hSel.focus(); });
   const ext = () => TIPOS_CITA.find(x => x[0] === tipo)?.[1] === 'ext';
   const otro = () => !ext() && $('#pg-a').value === '__otro';   /* alumno que no está en la app: se escribe su nombre y la cita no gasta bono */
   const tamV = () => { $('#pg-tam').hidden = ext() || otro(); }; setTimeout(tamV, 0); $('#pg-t')?.addEventListener('click', () => setTimeout(tamV, 0));
@@ -8933,7 +8939,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v428';
+const APP_VER = 'v429';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
