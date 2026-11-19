@@ -209,7 +209,8 @@ const Nutricion = (() => {
   function vista(dd, prev) {
     const d = dd || S.d, n = d?.nutri || vacio();
     if (S.nDoc) return vDoc(n, S.nDoc, d);
-    const docs = [...DOCS.map(([k, t, s, ic]) => ({ x: docDe(n, k), k, t, s, ic })).filter(o => tiene(o.x)),
+    if (!d?.servicio?.modulo_nutricion) return prev ? '' : `<section class="stack"><span class="eyebrow">Tu álbum</span><h1>Mis comidas</h1></section>` + vMisComidas(n, d);   // sin plan de alimentación: solo el álbum, para todos los alumnos
+        const docs = [...DOCS.map(([k, t, s, ic]) => ({ x: docDe(n, k), k, t, s, ic })).filter(o => tiene(o.x)),
       ...n.plan.filter(x => !DOCS.some(([k]) => k === x.clave) && !esInc(x) && tiene(x)).map(x => ({ x, k: x.clave, t: x.titulo, s: '', ic: '📌' }))];
     const cab = prev ? '' : `<section class="stack"><span class="eyebrow">Tu plan de alimentación</span><h1>Nutrición</h1><p class="small muted">Tu guía para comer bien sin pensarlo demasiado. Vuelve aquí siempre que tengas una duda.</p></section>`;
     const act = mide(fase(d));
@@ -218,7 +219,7 @@ const Nutricion = (() => {
       const resto = vIncAlumno(n, d) + vAcuerdoAlumno(n, d) + vDocs(docs) + vFase(d) + (prev ? '' : vDiario(n, d));
       return cab + (prev ? '' : tarjetaTemporal(d)) + met + hoy + (prev ? '' : vBtnSemana() + vMisComidas(n, d)) + `<details class="section nu-resto"><summary><b>Registro, acuerdos y documentos</b> <span class="muted small">· solo informativo</span></summary>${resto}</details>`;
     }
-    return cab + (act ? '' : vFase(d)) + vIncAlumno(n, d) + (prev ? '' : tarjetaTemporal(d)) + hoy + vAcuerdoAlumno(n, d) + (prev || !act ? '' : vBtnSemana() + vMisComidas(n, d)) + vDocs(docs) + (act ? vFase(d) : '') + (prev ? '' : vDiario(n, d));
+    return cab + (act ? '' : vFase(d)) + vIncAlumno(n, d) + (prev ? '' : tarjetaTemporal(d)) + hoy + vAcuerdoAlumno(n, d) + (prev ? '' : (act ? vBtnSemana() : '') + vMisComidas(n, d)) + vDocs(docs) + (act ? vFase(d) : '') + (prev ? '' : vDiario(n, d));
   }
   /* Lo primero que ve el alumno: su metabolismo, el déficit aplicado y sus contextos (kcal y macros), en números y gráficas */
   const CTX_COL = ['#3B7BD8', '#7B52A0', '#C98A2E', '#3F8A3F', '#C0504D', '#2E8E94'];
@@ -264,7 +265,7 @@ const Nutricion = (() => {
       <p class="small muted" style="margin:0">Tu archivo de comidas, por carpetas. Guarda lo que comes con foto o alimentos y úsalo cuando necesites ideas: repetir un plato o recalcular sus cantidades.</p>
       <div class="stack" style="gap:6px"><span class="small"><b>¿Cuántas comidas haces al día?</b></span><div class="choice" role="group" aria-label="Comidas al día" style="grid-template-columns:repeat(5,1fr)">${[2, 3, 4, 5, 6].map(i => `<button type="button" data-act="nuNCom" data-n="${i}" aria-pressed="${i === N}">${i}</button>`).join('')}</div></div>
       <div class="cp-grid">${nombres.map(m => { const l = arch.filter(x => x.momento === m), t = l.slice(0, 3); return `<button type="button" class="cp-fold" data-act="nuCarp" data-m="${esc(m)}" aria-label="Carpeta ${esc(m)}, ${l.length} comidas"><div class="cp-col${t.length < 3 ? ' c' + Math.max(1, t.length) : ''}">${(t.length ? t : [null]).map(x => x ? tesela(x, 'cp-t') : `<span class="cp-t cp-vac" aria-hidden="true"></span>`).join('')}</div><b>${CARP_ICO[m] || ''} ${esc(m)}</b><small class="muted">${l.length ? `${l.length} comida${l.length > 1 ? 's' : ''} · última ${esc(fCorta(l[0].fecha))}` : 'Aún vacía'}</small></button>`; }).join('')}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><button class="btn" data-act="nuComNueva">＋ Guardar una comida</button><button class="btn ghost" data-act="nuCalc">${ICO_CALC} Calculadora</button></div></div></section>`;
+      <div style="display:grid;grid-template-columns:${ctxDe(n).length ? '1fr 1fr' : '1fr'};gap:8px"><button class="btn" data-act="nuComNueva">＋ Guardar una comida</button>${ctxDe(n).length ? `<button class="btn ghost" data-act="nuCalc">${ICO_CALC} Calculadora</button>` : ''}</div></div></section>`;
   }
   function galeriaCarp(m, fil) {
     const n = S.d?.nutri; if (!n) return;
@@ -278,7 +279,7 @@ const Nutricion = (() => {
   }
   function fichaComida(id) {
     const n = S.d?.nutri, x = n?.comidas.find(c => c.id === id); if (!x) return;
-    const us = fotosDe(x).map(fotoUrl).filter(Boolean), calc = esCalc(x), hayAli = (x.alimentos || []).some(a => a && buscaAli(a.n));
+    const us = fotosDe(x).map(fotoUrl).filter(Boolean), calc = esCalc(x), hayAli = ctxDe(n).length > 0 && (x.alimentos || []).some(a => a && buscaAli(a.n));
     pedirFotos(fotosDe(x));
     abrirSheet(`<div class="stack"><button type="button" class="btn ghost sm" data-act="nuCarp" data-m="${esc(x.momento)}" style="align-self:flex-start">← ${esc(x.momento)}</button>
       ${us.length ? `<div class="cp-fotos">${us.map(u => `<img src="${esc(u)}" alt="" data-act="verImagenes" data-s="${esc(us.join('|'))}">`).join('')}</div>` : ''}

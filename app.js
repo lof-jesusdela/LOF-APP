@@ -473,7 +473,7 @@ function menuAlumno() {
   const prog = `<button type="button" class="m-it m-prog" data-act="tab" data-t="proceso"><span class="m-ic">🏁</span><span class="grow"><b>Tu programa</b>${P && !P.sinFin ? `<span>${P.antes ? 'Empieza pronto' : P.fuera ? 'Completado' : `Semana ${P.semana} de ${P.total}`} · ${P.antes ? 0 : P.fuera ? 100 : P.pctTotal} %</span><span class="m-bar"><i style="width:${P.antes ? 0 : P.fuera ? 100 : P.pctTotal}%"></i></span>` : `<span>${P ? `Semana ${P.semana}` : 'Tu proceso con Jesús'}</span>`}</span></button>`;
   d.innerHTML = `<div class="m-ov" data-act="menuCerrar"></div><aside class="m-dr"><div class="m-hd"><img src="icons/logo-96.jpg" alt=""><div><span>La Obra Fitness</span><b>Construyendo tu Prime</b></div></div>
     ${prog}${(s.modulo_entreno ?? true) || s.modulo_futbol ? it('tab', 'semana', '📅', 'Cómo va tu semana', 'Tus anillos, calendario y últimos 7 días') : ''}${pres ? it('tab', 'sesiones', '🤝', 'Tus entrenamientos presenciales con Jesús', 'Tu calendario de sesiones') : ''}
-    ${s.modulo_habitos ? `<span class="m-ey">Servicios extra</span>${it('tab', 'habitos', '🔁', 'Hábitos', 'Tu plan de hábitos y pasos')}` : ''}
+    ${s.modulo_habitos || !s.modulo_nutricion ? `<span class="m-ey">Servicios extra</span>` : ''}${s.modulo_habitos ? it('tab', 'habitos', '🔁', 'Hábitos', 'Tu plan de hábitos y pasos') : ''}${!s.modulo_nutricion ? it('tab', 'nutri', '📁', 'Mis comidas', 'Tu álbum de comidas, para tener ideas a mano') : ''}
     <span class="m-ey">App</span>${it('cuenta', '', '👤', 'Mi cuenta', 'Datos, avisos, contraseña')}${it('logoAct', '', '🔄', 'Actualizar la app', 'Coge la última versión', 'az')}</aside>`;
   d.addEventListener('click', e => { if (e.target.closest('[data-act]') && !e.target.closest('[data-act="menuCerrar"]')) setTimeout(() => d.remove(), 0); });
   document.body.appendChild(d);
@@ -8932,7 +8932,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v424';
+const APP_VER = 'v425';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
