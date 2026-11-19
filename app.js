@@ -2581,7 +2581,7 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
   const fila = (ico, cont, id = '', extra = '') => `<div class="gc-row" ${id ? `id="${id}"` : ''} ${extra}><span class="gc-ic" aria-hidden="true">${ico}</span><div class="gc-c">${cont}</div></div>`;
   abrirSheet(`<form class="stack gc-form" id="f-prog" style="gap:0"><div class="row" style="gap:8px;margin-bottom:6px"><h2 class="grow" style="margin:0">${P0 ? 'Editar cita' : 'Nueva cita'}</h2><button class="btn" type="submit">${P0 ? 'Guardar' : 'Guardar'}</button></div>
     <div id="pg-ext" hidden><input type="text" id="pg-q" class="gc-tit" placeholder="Añade un título (con quién o qué)"></div>
-    <div id="pg-aw"><select id="pg-a" class="gc-tit"><option value="">Elige alumno…</option>${orden.map((a, i) => `${i === als.filter(x => conBono(x.id)).length && i ? '<option disabled>── Sin sesiones presenciales ──</option>' : ''}<option value="${a.id}" ${a.id === aid ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('')}</select></div>
+    <div id="pg-aw"><select id="pg-a" class="gc-tit"><option value="">Elige alumno…</option><option value="__otro" ${P0 && !P0.alumno_id && TIPOS_CITA.some(x => x[0] === sinSuf(P0.tipo) && x[1] === 'al') ? 'selected' : ''}>➕ Otro alumno (no está en la app)</option>${orden.map((a, i) => `${i === als.filter(x => conBono(x.id)).length && i ? '<option disabled>── Sin sesiones presenciales ──</option>' : ''}<option value="${a.id}" ${a.id === aid ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('')}</select></div>
     <div class="chips" id="pg-t" style="margin:8px 0 4px">${TIPOS_CITA.map(([t], i) => `<button type="button" class="pill ${i ? '' : 'blue'}" data-t="${t}">${t}</button>`).join('')}</div>
     <div class="row small" id="pg-tam" style="gap:14px;flex-wrap:wrap;margin:2px 0 4px"><span class="muted">También:</span><label class="row" style="gap:6px"><input type="checkbox" id="pg-xr" ${/\+ Revisión mensual/.test(P0?.tipo || '') ? 'checked' : ''} style="width:20px;height:20px"> Revisión mensual</label><label class="row" style="gap:6px"><input type="checkbox" id="pg-xv" ${/\+ Valoración/.test(P0?.tipo || '') ? 'checked' : ''} style="width:20px;height:20px"> Valoración</label></div>
     <p class="small" id="pg-bono" style="margin:2px 0 6px"></p>
@@ -2611,8 +2611,9 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
   if (P0) { document.querySelectorAll('#pg-t .pill').forEach(x => x.classList.toggle('blue', x.dataset.t === tipo)); $('#pg-q').value = P0.persona || ''; $('#pg-d').value = P0.duracion_min || durSesion(); $('#pg-l').value = P0.lugar || ''; $('#pg-n').value = P0.nota || ''; }
   ponFin(); ponTd();
   const ext = () => TIPOS_CITA.find(x => x[0] === tipo)?.[1] === 'ext';
-  const tamV = () => { $('#pg-tam').hidden = ext(); }; setTimeout(tamV, 0); $('#pg-t')?.addEventListener('click', () => setTimeout(tamV, 0));
-  const bono = () => { const id = $('#pg-a').value, v = srvDe(id); $('#pg-ext').hidden = !ext(); $('#pg-aw').hidden = ext(); $('#pg-inv').hidden = ext(); if (ext()) return $('#pg-bono').innerHTML = '<span class="muted">Va a tu agenda y a tu Google Calendar. No es de ningún alumno.</span>'; if (!id) return $('#pg-bono').textContent = ''; if (/revisi/i.test(tipo)) return $('#pg-bono').innerHTML = '<span class="muted">Revisión por videollamada: no cuenta como entrenamiento ni gasta bono.</span>';
+  const otro = () => !ext() && $('#pg-a').value === '__otro';   /* alumno que no está en la app: se escribe su nombre y la cita no gasta bono */
+  const tamV = () => { $('#pg-tam').hidden = ext() || otro(); }; setTimeout(tamV, 0); $('#pg-t')?.addEventListener('click', () => setTimeout(tamV, 0));
+  const bono = () => { const id = $('#pg-a').value === '__otro' ? '' : $('#pg-a').value, v = srvDe(id); $('#pg-ext').hidden = !(ext() || otro()); $('#pg-aw').hidden = ext(); $('#pg-inv').hidden = ext() || otro(); tamV(); if (otro()) { $('#pg-q').placeholder = 'Nombre del alumno'; return $('#pg-bono').innerHTML = '<span class="muted">No está en la app: va a tu agenda y a tu Google Calendar, sin bono.</span>'; } if (ext()) return $('#pg-bono').innerHTML = '<span class="muted">Va a tu agenda y a tu Google Calendar. No es de ningún alumno.</span>'; if (!id) return $('#pg-bono').textContent = ''; if (/revisi/i.test(tipo)) return $('#pg-bono').innerHTML = '<span class="muted">Revisión por videollamada: no cuenta como entrenamiento ni gasta bono.</span>';
     const D = v?.sesiones_incluidas ? datosPres(v, (S.c.presenciales || []).filter(p => p.alumno_id === id)) : null;
     const dia = (S.c.presenciales || []).filter(p => p.alumno_id === id && p.fecha === $('#pg-f').value && p.estado !== 'cancelada');
     $('#pg-bono').innerHTML = (D ? `Le quedan <b>${D.quedan}</b> de ${D.total} sesiones${D.prox.length ? ` (${D.prox.length} ya reservada${D.prox.length > 1 ? 's' : ''})` : ''}.` : '<span class="muted">Sin bono de sesiones en su servicio: se apunta igual.</span>') + (dia.length ? ` <b style="color:var(--warn)">Ya tiene una sesión ese día${dia[0].hora ? ' a las ' + hhmm(dia[0].hora) : ''}.</b>` : '') + (D && D.quedan <= 0 && tipo === 'Entrenamiento' ? ' <b style="color:var(--bad)">No le quedan sesiones.</b>' : ''); };
@@ -2626,7 +2627,7 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
   $('#pg-meet').addEventListener('click', () => { window.open('https://meet.google.com/new', '_blank', 'noopener'); toast('Copia el enlace de la reunión y pégalo aquí'); });
   ponDef(!P0);
   const masAlumno = v => { const d = document.createElement('div'); d.className = 'row'; d.style.gap = '6px';
-    d.innerHTML = `<select class="pg-a2 grow">${$('#pg-a').innerHTML}</select><button type="button" class="btn sm ghost" aria-label="Quitar">✕</button>`; d.querySelector('select').value = v || '';
+    d.innerHTML = `<select class="pg-a2 grow">${$('#pg-a').innerHTML.replace(/<option value="__otro"[^>]*>[^<]*<\/option>/, '')}</select><button type="button" class="btn sm ghost" aria-label="Quitar">✕</button>`; d.querySelector('select').value = v || '';
     d.querySelector('button').onclick = () => d.remove(); $('#pg-mas').append(d); };
   G0.slice(1).forEach(r => r.alumno_id && masAlumno(r.alumno_id));
   $('#pg-vv')?.addEventListener('click', () => { S.agTd = false; verAgenda(); });
@@ -2649,8 +2650,8 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
   bono(); $('#pg-a').addEventListener('change', bono); $('#pg-f').addEventListener('change', bono);
   $('#pg-t').addEventListener('click', e => { const b = e.target.closest('[data-t]'); if (!b) return; tipo = b.dataset.t; document.querySelectorAll('#pg-t .pill').forEach(x => x.classList.toggle('blue', x === b)); ponDef(); bono(); });
   $('#f-prog').addEventListener('submit', async e => {
-    e.preventDefault(); const X = ext(), id = X ? null : $('#pg-a').value, quien = $('#pg-q').value.trim();
-    if (!X && !id) return $('#pg-err').textContent = 'Elige el alumno'; if (X && !quien) return $('#pg-err').textContent = tipo === 'Tarea' ? 'Escribe qué tienes que hacer' : 'Escribe con quién es';
+    e.preventDefault(); const X = ext() || otro(), id = X ? null : $('#pg-a').value, quien = $('#pg-q').value.trim();
+    if (!X && !id) return $('#pg-err').textContent = 'Elige el alumno'; if (X && !quien) return $('#pg-err').textContent = otro() ? 'Escribe el nombre del alumno' : tipo === 'Tarea' ? 'Escribe qué tienes que hacer' : 'Escribe con quién es';
     ponDur(); const hora = $('#pg-td').checked ? null : normHora($('#pg-h').value); if (hora === undefined) return $('#pg-err').textContent = 'Hora no válida: escríbela así, 9:30 o 18:00';
     /* El iPhone solo deja abrir otra pestaña en el mismo toque: se abre ya y se rellena al guardar */
     const win = $('#pg-g').checked ? window.open('', '_blank') : null;
@@ -8932,7 +8933,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v427';
+const APP_VER = 'v428';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
