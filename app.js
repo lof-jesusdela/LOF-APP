@@ -830,9 +830,9 @@ function vDiasSinCheck(W) {
 }
 /* ---------- Zonas de frecuencia cardiaca (visual; el detalle se abre al tocar una zona) ---------- */
 const ZONAS_FC = [
-  { n: 1, nom: 'Zona 1 · predominio aeróbico', corto: 'Predominio aeróbico', desde: .65, hasta: .80, col: '#7DBE6B', desc: 'Es la zona de la base y los cimientos de tu capacidad cardiovascular. La demanda es sobre todo oxidativa: grasas y metabolismo aeróbico. La fatiga que genera es muy baja y puedes mantenerla mucho tiempo, aunque la intensidad tiene que ser baja.' },
-  { n: 2, nom: 'Zona 2 · umbral', corto: 'Umbral', desde: .80, hasta: .90, col: '#E0B43A', desc: 'Empieza a predominar el metabolismo glucolítico, es decir, los hidratos de carbono. Se reduce la participación de las grasas y el oxidativo, y el ácido láctico y la fatiga empiezan a aparecer más rápido.' },
-  { n: 3, nom: 'Zona 3 · predominio anaeróbico', corto: 'Predominio anaeróbico', desde: .90, hasta: 1, col: '#D9473B', desc: 'Zona de potencia: el cuerpo no puede mantenerla más que unos pocos segundos o minutos. El metabolismo es casi 100 % anaeróbico y depende de tu VO2max, la capacidad de transportar y absorber oxígeno. Es el motor de tu cuerpo, frente a la zona 1, que es el depósito.' }
+  { n: 1, nom: 'Zona 1 · predominio aeróbico', corto: 'Predominio aeróbico', desde: .60, hasta: .70, col: '#7DBE6B', desc: 'Es la zona de la base y los cimientos de tu capacidad cardiovascular. La demanda es sobre todo oxidativa: grasas y metabolismo aeróbico. La fatiga que genera es muy baja y puedes mantenerla mucho tiempo, aunque la intensidad tiene que ser baja.' },
+  { n: 2, nom: 'Zona 2 · umbral', corto: 'Umbral', desde: .70, hasta: .85, col: '#E0B43A', desc: 'Empieza a predominar el metabolismo glucolítico, es decir, los hidratos de carbono. Se reduce la participación de las grasas y el oxidativo, y el ácido láctico y la fatiga empiezan a aparecer más rápido.' },
+  { n: 3, nom: 'Zona 3 · predominio anaeróbico', corto: 'Predominio anaeróbico', desde: .85, hasta: .90, col: '#D9473B', desc: 'Zona de potencia: el cuerpo no puede mantenerla más que unos pocos segundos o minutos. El metabolismo es casi 100 % anaeróbico y depende de tu VO2max, la capacidad de transportar y absorber oxígeno. Es el motor de tu cuerpo, frente a la zona 1, que es el depósito.' }
 ];
 /* Futbolistas: modelo de 5 zonas por % de FC máxima */
 const ZONAS_FC5 = [
@@ -7533,7 +7533,7 @@ const PLANTILLAS = {
     protocolo: 'Para valorar tu fuerza máxima a 1 sola repetición hace falta una buena aproximación en cada máquina.\n\nAproximación:\n1º Unas 8 repeticiones con un peso medio (exigente pero sin fatiga).\n2º Subes a un peso más exigente para hacer 5-6 repeticiones a RIR 2-3.\n3º 2-3 repeticiones con un peso aún mayor; en la última, bajada muy lenta.\n\nEl 1RM:\nDescansas 30 segundos, eliges un peso con el que creas que solo puedes hacer 1 repetición y lo intentas. Vas subiendo el peso, administrando el descanso, hasta que ya no puedas levantarlo. Se anota el último peso que pudiste.' },
   descompensacion: { titulo: 'Test de descompensaciones (unilateral)', cols: 'di', datos: ['Empuje unilateral (brazo)', 'Tracción unilateral (brazo)', 'Empuje de pierna', 'Isquiotibiales', 'Cuádriceps'],
     protocolo: 'Sirve para saber con qué brazo eres más débil en empujes y tracciones, y con qué pierna.\n\nAproximación:\n1º Un peso exigente que no te fatigue: 8-10 repeticiones con ambas extremidades a RIR 2-3.\n2º Subes el peso para hacer 5-6 repeticiones a RIR 2-3.\n\nEl test:\nHaces 1 repetición con una extremidad y acto seguido con la otra (siempre solo 1). Si lo consigues, sigues subiendo el peso hasta que una de las dos no pueda; continúas con la otra hasta que tampoco pueda y anotamos la diferencia. Si no hay descompensación y las dos acaban con el mismo peso, también se anota.' },
-  fc: { titulo: 'Zonas de frecuencia cardiaca', cols: 'valor', datos: ['FC máxima', 'Zona 1 · predominio aeróbico (65–80 %)', 'Zona 2 · umbral (80–90 %)', 'Zona 3 · predominio anaeróbico (90–100 %)'],
+  fc: { titulo: 'Zonas de frecuencia cardiaca', cols: 'valor', datos: ['FC máxima', 'Zona 1 · predominio aeróbico (60–70 %)', 'Zona 2 · umbral (70–85 %)', 'Zona 3 · predominio anaeróbico (85–90 %)'],
     protocolo: 'Estimamos tu frecuencia cardiaca máxima con la fórmula de Tanaka: FC máx = 208,75 − (0,7 × edad).\n\nZona 1: base y cimientos de tu capacidad cardiovascular; predominio de las grasas y fatiga muy baja.\nZona 2: empieza a predominar el metabolismo de los hidratos; la fatiga aparece antes.\nZona 3: zona de potencia (VO2max); solo se mantiene segundos o pocos minutos.' },
   movilidad: { titulo: 'Movilidad articular', cols: 'valor', datos: ['Cadena lateral', 'Cadena posterior e isquiotibiales', 'Hombros', 'Rotación de cadera', 'Tobillos', 'Cadena anterior'], protocolo: '' },
   ritmos: { titulo: 'Test de carrera de 5 minutos · ritmos', cols: 'valor', datos: ['Distancia en 5 minutos', 'Ritmo medio (min/km)', 'Velocidad aeróbica máxima (VAM)'],
@@ -8048,7 +8048,7 @@ function formPrueba(id) {
   $('#p-calc')?.addEventListener('click', () => {
     const e = numero($('#p-edad').value); if (!e) return toast('Indica la edad');
     const mx = Math.round(208.75 - 0.7 * e), z = (a, b) => `${Math.round(mx * a)}–${Math.round(mx * b)} ppm`;
-    cont.innerHTML = [{ nombre: 'FC máxima', valor: mx + ' ppm' }, { nombre: 'Zona 1 · predominio aeróbico (65–80 %)', valor: z(.65, .8) }, { nombre: 'Zona 2 · umbral (80–90 %)', valor: z(.8, .9) }, { nombre: 'Zona 3 · predominio anaeróbico (90–100 %)', valor: z(.9, 1) }].map(x => filaDato(x, false)).join('');
+    cont.innerHTML = [{ nombre: 'FC máxima', valor: mx + ' ppm' }, { nombre: 'Zona 1 · predominio aeróbico (60–70 %)', valor: z(.6, .7) }, { nombre: 'Zona 2 · umbral (70–85 %)', valor: z(.7, .85) }, { nombre: 'Zona 3 · predominio anaeróbico (85–90 %)', valor: z(.85, .9) }].map(x => filaDato(x, false)).join('');
   });
   $('#f-pr').addEventListener('submit', async ev => {
     ev.preventDefault();
@@ -8933,7 +8933,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v430';
+const APP_VER = 'v431';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
