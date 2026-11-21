@@ -310,6 +310,24 @@ const Casos = (() => {
       </div></section>
       <section class="section"><h2>Testimonios mensuales</h2><div class="card stack">${(f.testimonios || []).map(x => `<div class="stack" style="gap:4px"><div class="row"><b class="small grow">${esc(fLarga(x.fecha))}</b>${c?.testimonio ? `<button class="linkbtn small" data-act="casoNuevo" data-ts="${x.id}">Proponer publicarlo ›</button>` : ''}</div><div class="small pre">${esc(x.texto)}</div></div>`).join('<hr style="border:0;border-top:1px solid var(--line);margin:4px 0">') || '<div class="small muted">Aún no ha escrito ningún testimonio. Se le pide en cada control mensual.</div>'}</div></section>`;
   }
+  /* Pestaña Testimonio del coach: su historia mes a mes (fotos + sus palabras), lista para capturas en redes */
+  const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  function vMuro(f, a) {
+    if (!f.fotosProg) { cargarFicha(f).then(() => { if (S.ficha === f) render(); }); return '<div class="card empty">Cargando su historia…</div>'; }
+    if (f.casosErr) return `<div class="card small muted">${AVISO}</div>`;
+    const c = f.consentHist[0], nom = (a.nombre || '').split(' ')[0], ini = f.srv?.inicio, m = {};
+    (f.fotosProg || []).forEach(x => ((m[x.fecha.slice(0, 7)] ||= { fotos: [], txt: [] }).fotos.push(x)));
+    (f.testimonios || []).forEach(x => ((m[x.fecha.slice(0, 7)] ||= { fotos: [], txt: [] }).txt.push(x)));
+    const ks = Object.keys(m).sort().reverse(); pide((f.fotosProg || []).map(x => x.ruta));
+    const nMes = k => { if (!ini) return ''; const [y, mm] = k.split('-').map(Number), [y0, m0] = ini.slice(0, 7).split('-').map(Number), n = (y - y0) * 12 + (mm - m0); return n <= 0 ? 'Inicio' : `Mes ${n}`; };
+    const img = x => x && url(x.ruta) ? `<button class="img mu-f" data-act="verImagen" data-src="${esc(url(x.ruta))}" aria-label="Ver foto"><img src="${esc(url(x.ruta))}" alt="" loading="lazy"></button>` : '';
+    const perm = `<div class="row small" style="gap:6px;flex-wrap:wrap">${resumenPermiso(c)}</div>${c && !c.testimonio && !c.fotos ? '<p class="small muted" style="margin:0">No ha dado permiso para compartir: estas capturas son solo para ti.</p>' : ''}`;
+    if (!ks.length) return `<div class="card stack">${perm}<p class="small muted" style="margin:0">${esc(nom)} aún no ha subido fotos ni testimonios. Se le piden en cada control mensual.</p></div>`;
+    return `<div class="stack" style="gap:14px">${perm}${ks.map(k => { const [y, mm] = k.split('-').map(Number), d = m[k], dias = [...new Set(d.fotos.map(x => x.fecha))].sort().reverse(), fs = VISTAS.map(([v]) => d.fotos.filter(x => x.fecha === dias[0]).find(x => x.vista === v)).filter(Boolean);
+      return `<article class="mu-mes"><header class="mu-cab"><span class="mu-n">${esc(nMes(k))}</span><h3>${MESES[mm - 1]} ${y}</h3><span class="mu-nom">${esc(nom)} · Construyendo tu Prime</span></header>
+        ${fs.length ? `<div class="mu-fotos" style="grid-template-columns:repeat(${fs.length},1fr)">${fs.map(img).join('')}</div>` : ''}
+        ${d.txt.map(t => `<blockquote class="mu-cita"><span class="mu-q">“</span>${esc(t.texto)}<footer>— ${esc(nom)}, ${esc(fLarga(t.fecha))}${c?.testimonio ? ` · <button class="linkbtn small" data-act="casoNuevo" data-ts="${t.id}">Proponer publicarlo ›</button>` : ''}</footer></blockquote>`).join('')}</article>`; }).join('')}</div>`;
+  }
   function formNuevo(tsId) {
     const f = S.ficha, c = f.consentHist?.[0] || {}, a = S.c.perfiles.find(p => p.id === f.id) || {};
     abrirSheet(`<form class="stack" id="f-cx"><h2>Proponer publicación</h2>
@@ -356,5 +374,5 @@ const Casos = (() => {
     return perm.concat((S.c?.casos || []).filter(x => x.alumno_id === aid && x.estado !== 'pendiente' && x.respondido_at && x.respondido_at.slice(0, 10) >= sumaDias(hoyISO(), -7)).map(x => x.estado === 'aprobado' ? 'Ha aprobado que compartas su caso de éxito' : 'No quiere que se publique la propuesta de caso de éxito'));
   }
 
-  return { pendienteMes, tarjetaHoy, canjear, resolverCanje, saldo, campoTestimonio, guardarTestimonio, VERSION, vistaInicial, cargar, cargarCoach, vSeccionAlumno, camposFotos, subirDesde, formSubir, borrarFecha, formPermisos, avisoNovedad, lineaHoy, responder, alertaFotos, vFicha, formNuevo, borrarCaso, resumenCoach, avisosCoach, cargarFicha };
+  return { pendienteMes, tarjetaHoy, canjear, resolverCanje, saldo, campoTestimonio, guardarTestimonio, VERSION, vistaInicial, cargar, cargarCoach, vSeccionAlumno, camposFotos, subirDesde, formSubir, borrarFecha, formPermisos, avisoNovedad, lineaHoy, responder, alertaFotos, vFicha, vMuro, formNuevo, borrarCaso, resumenCoach, avisosCoach, cargarFicha };
 })();
