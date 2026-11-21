@@ -2924,7 +2924,7 @@ function confirmarMover(pid, f, h) {
   $('#mv-ok').onclick = async () => { const bt = $('#mv-ok'); bt.disabled = true;
     for (const r of grp) { const { error } = await sb.from('presenciales').update({ fecha: f, hora: h }).eq('id', r.id); if (error) { bt.disabled = false; return fallo(error, 'No se ha podido mover.'); } }
     if ($('#mv-av')?.checked) { const cuerpo = `Tu ${(p.tipo || 'entrenamiento').toLowerCase()} pasa al ${fLarga(f)} a las ${h}.`;
-      for (const a of als) { await sb.from('avisos').insert({ alumno_id: a.id, tipo: 'cita', titulo: 'Cambio de cita', cuerpo }).then(() => {}, () => {}); await sb.functions.invoke('enviar-aviso', { body: { alumno_ids: [a.id], titulo: 'Cambio de cita', cuerpo, url: './' } }).catch(() => {}); } }
+      for (const a of als) { await sb.from('avisos').insert({ alumno_id: a.id, tipo: 'cita', titulo: 'Cambio de cita', cuerpo }).then(() => {}, () => {}); await sb.functions.invoke('enviar-aviso-enviar-aviso', { body: { alumno_ids: [a.id], titulo: 'Cambio de cita', cuerpo, url: './' } }).catch(() => {}); } }
     gcalSync(grp.map(r => r.id), [], !!$('#mv-av')?.checked); await cargarPresCoach(); toast('Cita movida' + ($('#mv-av')?.checked ? ' y alumno avisado' : '')); verAgenda(); };
 }
 function agendaRejilla(dias, l, hoy, nom, EST) {
@@ -3245,7 +3245,7 @@ const Radar = {
   async avisar(ids, nivel) { const [t, f] = this.MSG[nivel] || this.MSG.naranja; let ok = 0;
     for (const id of ids) { const n = (S.c.perfiles.find(p => p.id === id)?.nombre || '').split(' ')[0], cuerpo = f(n);
       const { error } = await sb.from('avisos').insert({ alumno_id: id, tipo: 'radar', titulo: t, cuerpo }); if (error) { fallo(error, /avisos|relation/.test(error.message || '') ? 'Falta ejecutar el Bloque 69 en Supabase.' : 'No se ha podido avisar.'); return; }
-      await sb.functions.invoke('enviar-aviso', { body: { alumno_ids: [id], titulo: t, cuerpo, url: './' } }).catch(() => {}); ok++; }
+      await sb.functions.invoke('enviar-aviso-enviar-aviso', { body: { alumno_ids: [id], titulo: t, cuerpo, url: './' } }).catch(() => {}); ok++; }
     const r = this.rev(); ids.forEach(id => { r.at[id] = (this.todos().find(x => x.a.id === id) || {}).nivel || nivel; }); await this.guardaRev(r);
     toast(ok === 1 ? 'Aviso enviado' : `Aviso enviado a ${ok} alumnos`); render(); },
   async atendido(id) { const r = this.rev(), x = this.todos().find(y => y.a.id === id); r.at[id] = x?.nivel || 'rojo'; await this.guardaRev(r);
@@ -9116,7 +9116,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v460';
+const APP_VER = 'v461';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}

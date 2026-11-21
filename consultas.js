@@ -55,9 +55,21 @@ const Consultas = (() => {
           /* Jesús con ese chat abierto: el mensaje nuevo queda leído, como en WhatsApp */
           if (coach && n.texto && n.estado === 'abierta' && S.cqAl === n.alumno_id && document.getElementById('wa-body') && document.visibilityState === 'visible') marcarLeido(n.alumno_id); }
         refrescar();
-      }).subscribe();
+      });
+      const ch = canal;
+      /* Si el móvil corta la conexión (pantalla bloqueada, cambio de red), se vuelve a conectar sola */
+      ch.subscribe(st => { if (canal !== ch || !/CHANNEL_ERROR|TIMED_OUT|CLOSED/.test(st)) return; canal = null; try { sb.removeChannel(ch); } catch (e) { } setTimeout(() => escuchar(coach, uid), 4000); });
     } catch (e) { console.warn('Tiempo real no disponible', e); canal = null; }
   }
+  /* Red de seguridad: al volver a la app y cada 30 s con el chat abierto, se recargan los mensajes */
+  let alDiaT = 0;
+  async function ponerAlDia() {
+    if (S.vista || S.prueba || !S.user || Date.now() - alDiaT < 5000) return; alDiaT = Date.now();
+    try { if (S.modo === 'coach' && S.c) await cargarCoach(); else if (S.d && S.d.uid === S.user.id) await cargarAlumno(S.user.id, S.d); else return; refrescar(); } catch (e) { }
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') ponerAlDia(); });
+  window.addEventListener('online', ponerAlDia);
+  setInterval(() => { if (document.visibilityState === 'visible' && (document.getElementById('wa-body') || document.querySelector('.wa-lista'))) ponerAlDia(); }, 30000);
   async function cargarAlumno(uid, D) {
     const r = await sb.from('consultas').select('*').eq('alumno_id', uid).order('creado_at', { ascending: false }).limit(60);
     D.consultas = r.error ? [] : (r.data || []); D.consultasErr = !!r.error; if (!r.error && uid === S.user?.id) escuchar(false, uid);
@@ -281,7 +293,7 @@ const Consultas = (() => {
     const { data, error } = await sb.from('consultas').insert(fila).select().single();
     if (error) { if (bt) bt.disabled = false; const m = String(error.message || ''); return fallo(error, /does not exist|schema cache|could not find the table/i.test(m) ? 'Falta ejecutar el Bloque 106 en Supabase.' : 'No se ha podido enviar: ' + m); }
     meter((S.d.consultas = S.d.consultas || []), data); S.cq = { path: [] }; toast('Enviado'); pintaAlumno();
-    if (!S.vista && !S.prueba) sb.functions.invoke('enviar-aviso', { body: { a_coach: true, cuerpo: data.texto || 'Te ha enviado una foto' } }).catch(() => { });   /* aviso al móvil de Jesús */
+    if (!S.vista && !S.prueba) sb.functions.invoke('enviar-aviso-enviar-aviso', { body: { a_coach: true, cuerpo: data.texto || 'Te ha enviado una foto' } }).catch(() => { });   /* aviso al móvil de Jesús */
   }
   /* Pantalla «Tu coach»: una sola entrada al chat + cómo funciona cada canal */
   function vAlumno() {
@@ -443,7 +455,7 @@ Jesús`, 'nutricion']];
     if (error) { d.conf = false; return fallo(error, 'No se ha podido enviar el mensaje.'); }
     S.c.consultas = [...(data || []), ...(S.c.consultas || [])];
     let sin = [];
-    try { const r = await sb.functions.invoke('enviar-aviso', { body: { alumno_ids: L.map(p => p.id), titulo: '💬 Mensaje nuevo de Jesús', cuerpo: 'Tienes un mensaje nuevo en Contacto', url: './' } }); sin = r.data?.sin_movil || []; } catch (e) { }
+    try { const r = await sb.functions.invoke('enviar-aviso-enviar-aviso', { body: { alumno_ids: L.map(p => p.id), titulo: '💬 Mensaje nuevo de Jesús', cuerpo: 'Tienes un mensaje nuevo en Contacto', url: './' } }); sin = r.data?.sin_movil || []; } catch (e) { }
     S.cqDif = null; abrirDifusion(); render();
     const nom = id => (L.find(p => p.id === id)?.nombre || '');
     const res = document.getElementById('cq-dres');
@@ -535,7 +547,7 @@ Jesús`, 'nutricion']];
   }
   function avisarAlumno(aid, txt, titulo = '💬 Jesús te ha respondido') {
     if (S.vista || S.prueba) return;
-    sb.functions.invoke('enviar-aviso', { body: { alumno_ids: [aid], titulo, cuerpo: String(txt || '').slice(0, 120), url: './', tag: 'lof-chat' } }).catch(() => { });
+    sb.functions.invoke('enviar-aviso-enviar-aviso', { body: { alumno_ids: [aid], titulo, cuerpo: String(txt || '').slice(0, 120), url: './', tag: 'lof-chat' } }).catch(() => { });
   }
   async function guardaResp(cerrar) {
     const aid = S.cqAl, txt = document.getElementById('cq-resp')?.value.trim(), ahora = new Date().toISOString();
