@@ -652,5 +652,5 @@ const Temperamento = (() => {
 
   /* Si algo falla al pintar el perfil, se ve un aviso en su sitio y el resto de la pantalla sigue funcionando */
   const aislar = fn => (...args) => { try { return fn(...args); } catch (err) { console.error(err); return `<section class="section"><div class="card small muted">No se ha podido mostrar el perfil de temperamento. Mándale a Jesús este mensaje: ${esc(String(err && err.message || err).slice(0, 160))}</div></section>`; } };
-  return { tarjetaHoy: aislar(tarjetaHoy), seccionTests: aislar(seccionTests), vista: aislar(vista), activo: () => !!(S.tq || S.tinf), bloqueFicha: aislar(bloqueFicha), vSub: aislar(vSub), cargarSub, resumenCoach: aislar(resumenCoach), puntuar, puntosRmeq, CRONO, sueno, PREG, RMEQ, perfilDe, mezcla };
+  return { tarjetaHoy: aislar(tarjetaHoy), seccionTests: aislar(seccionTests), vista: aislar(vista), activo: () => !!(S.tq || S.tinf), bloqueFicha: aislar(bloqueFicha), tieneDatos: a => { try { const l = filasDe(a.id); return l.length > 0 || !!pendienteDe(a.temperamento_pedido, l); } catch (e) { return false; } }, vSub: aislar(vSub), cargarSub, resumenCoach: aislar(resumenCoach), puntuar, puntosRmeq, CRONO, sueno, PREG, RMEQ, perfilDe, mezcla };
 })();
