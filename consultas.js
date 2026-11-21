@@ -277,6 +277,7 @@ const Consultas = (() => {
     const { data, error } = await sb.from('consultas').insert(fila).select().single();
     if (error) { if (bt) bt.disabled = false; const m = String(error.message || ''); return fallo(error, /does not exist|schema cache|could not find the table/i.test(m) ? 'Falta ejecutar el Bloque 106 en Supabase.' : 'No se ha podido enviar: ' + m); }
     meter((S.d.consultas = S.d.consultas || []), data); S.cq = { path: [] }; toast('Enviado'); pintaAlumno();
+    if (!S.vista && !S.prueba) sb.functions.invoke('enviar-aviso', { body: { a_coach: true, cuerpo: data.texto || 'Te ha enviado una foto' } }).catch(() => { });   /* aviso al móvil de Jesús */
   }
   /* Pantalla «Tu coach»: una sola entrada al chat + cómo funciona cada canal */
   function vAlumno() {
@@ -369,9 +370,9 @@ const Consultas = (() => {
     return `<button type="button" class="wa-hbtn" data-act="cq" data-q="lista" aria-label="Chats con alumnos${n ? ': ' + n + ' pendientes' : ''}"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.6A8.4 8.4 0 1 1 21 11.5z"/></svg>${n ? `<span class="n">${n}</span>` : ''}</button>`;
   }
   function abrirLista() {
-    S.cqLista = true;
+    S.cqLista = true; if (!S.pushCoach && typeof estadoPush === 'function') estadoPush().then(e => { S.pushCoach = e; if (e !== 'ok' && document.querySelector('.wa-lista')) abrirLista(); });
     montar(`<div class="wa"><div class="wa-head"><button type="button" class="wa-back" data-act="cerrarSheetPide" aria-label="Volver">‹</button><div class="grow"><b>Chats</b><div class="wa-sub">Alumnos · respondes tú en persona</div></div></div>
-      <div class="wa-lista"><button type="button" class="btn full" data-act="cq" data-q="difu" style="margin-bottom:10px">📣 Mensaje a varios alumnos</button>${vCoach(true)}</div></div>`);
+      <div class="wa-lista">${S.pushCoach && S.pushCoach !== 'ok' ? `<button type="button" class="btn full gold" data-act="activarPushCoach" style="margin-bottom:8px">🔔 Avísame en este dispositivo cuando me escriban</button>` : ''}<button type="button" class="btn full" data-act="cq" data-q="difu" style="margin-bottom:10px">📣 Mensaje a varios alumnos</button>${vCoach(true)}</div></div>`);
   }
   /* ---------- Mensaje a varios (difusión): llega a cada alumno como mensaje privado tuyo en su chat ---------- */
   const GRUPOS = [
