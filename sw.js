@@ -1,6 +1,6 @@
 // Guarda la "carcasa" de la app para que abra rápido y sin conexión.
 // Los datos siempre se piden a la base de datos (nunca se guardan aquí).
-const VERSION = 'lof-v464';
+const VERSION = 'lof-v465';
 const CARCASA = ['./', 'index.html', 'app.js', 'temperamento.js', 'habitos.js', 'nutricion.js', 'pdf.js', 'casos.js', 'acomp.js', 'consultas.js', 'negocio.js', 'compromisos.js', 'tandas.js', 'entrenaidor.js', 'oposicion.js', 'menusemana.js', 'cuestionario.js', 'tarifas.js', 'programas.js', 'config.js', 'manifest.webmanifest', 'icons/logo-96.jpg', 'icons/coach.jpg', 'icons/logo-chat.jpg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/whatsapp.png'];
 
 self.addEventListener('install', e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(CARCASA)).then(() => self.skipWaiting())); });
@@ -35,5 +35,7 @@ self.addEventListener('message', e => {
   if (m.t !== 'descanso') return;
   clearTimeout(_descanso);
   const ev = e.waitUntil ? e : null;
-  _descanso = setTimeout(() => self.registration.showNotification('Fin del descanso', { body: m.body, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: 'descanso', renotify: true, vibrate: [300, 150, 300, 150, 300] }), m.ms);
+  /* La app también puede avisar al terminar: si en los últimos 20 s ya hay un aviso de descanso, no se repite */
+  _descanso = setTimeout(async () => { try { const ya = await self.registration.getNotifications({ tag: 'descanso' }); if (ya.some(n => Date.now() - (n.data?.t || 0) < 20000)) return; } catch (er) { }
+    self.registration.showNotification('Fin del descanso', { body: m.body, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: 'descanso', renotify: true, vibrate: [300, 150, 300, 150, 300], data: { t: Date.now() } }); }, m.ms);
 });

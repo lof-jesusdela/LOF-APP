@@ -1953,7 +1953,7 @@ function vSesion() {
   <section class="section">${vBloquesDia(d, cont)}
   <button class="btn full dark" data-act="terminar">Listo, ver sesión</button></section>`;
   return como + `<div class="crono" id="crono">${ini ? `<span class="crono-t num" id="crono-t">${fmtCrono(Date.now() - ini)}</span><span class="small">Entrenamiento en curso</span>` : S.sesion?.finMin ? `<span class="small">✓ Entrenamiento terminado · ${S.sesion.finMin} min</span>` : `<button class="btn sm" data-act="empezarCrono">⏱ Empezar entrenamiento</button><span class="small muted">El cronómetro mide tu sesión completa</span>`}</div>
-  <section class="stack"><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm ghost" data-act="cerrarDia" style="align-self:flex-start">← Semana</button>${!S.sesion?.editar && !S.sesion?.finMin ? `<button class="btn sm ghost" data-act="descartarEntreno" style="color:var(--bad)">✕ No era un entreno: descartar</button>` : ''}</div>
+  <section class="stack"><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm ghost" data-act="cerrarDia" style="align-self:flex-start">← Semana</button></div>${!S.sesion?.editar && !S.sesion?.finMin ? `<button class="btn full" data-act="descartarEntreno" style="background:var(--bad);color:#fff;border-color:var(--bad);min-height:52px;font-size:16px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:2px">✕ Salir y descartar este entreno<span style="font-size:12px;font-weight:500;opacity:.9">Si lo empezaste por error o es una prueba: no se guarda nada</span></button>` : ''}
     <span class="eyebrow">${esc(S.d.programa?.nombre || '')} · ${esc(d.nombre)}</span><h1 class="tit-uno" id="ses-h1">${esc(d.titulo || d.foco || d.nombre)}</h1>
     ${cicloSesion()}
     ${conPartido(d) ? (() => { const pt = (S.d.partidos || []).find(x => x.fecha === S.sesion?.fecha) || partidoDelDia(d, S.d.partidos); return pt ? `<div class="card stack md-card"><span class="eyebrow">🏟️ Día de partido</span>${vPartidoMini(pt)}${pt.descripcion ? `<p class="small" style="margin:0">${esc(pt.descripcion)}</p>` : ''}${pt.imagen_url ? `<button class="img" data-act="verImagen" data-src="${esc(pt.imagen_url)}" aria-label="Ver imagen del partido" style="align-self:flex-start"><img src="${esc(pt.imagen_url)}" alt="" style="max-height:160px;border-radius:12px"></button>` : ''}</div>` : ''; })() : ''}
@@ -9149,7 +9149,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v464';
+const APP_VER = 'v465';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -9223,6 +9223,7 @@ async function notificarFin() {
   try {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
     const reg = await navigator.serviceWorker?.ready, op = { body: T.lbl.replace(/^Descanso · /, '') || 'Fin del descanso', icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: 'descanso', renotify: true, vibrate: [300, 150, 300, 150, 300] };
+    if (reg) { const ya = await reg.getNotifications({ tag: 'descanso' }).catch(() => []); if (ya.some(n => Date.now() - (n.data?.t || 0) < 20000)) return; op.data = { t: Date.now() }; }   /* el aviso del service worker ya salió: no duplicar */
     reg ? reg.showNotification('Fin del descanso', op) : new Notification('Fin del descanso', op);
   } catch (e) { }
 }
