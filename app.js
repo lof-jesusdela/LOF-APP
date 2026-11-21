@@ -3546,8 +3546,15 @@ const Novedades = (() => {
     const val = JSON.stringify(v); (S.c.fiscal ||= {}).nov_vistas = val;
     await sb.from('ajustes_privados').upsert({ clave: 'nov_vistas', valor: val }, { onConflict: 'clave' }).then(() => { }, () => { });
   }
-  const tarjeta = (f, tab) => { const L = pend(f, tab); return L.length ? `<div class="av-rojo"><div class="av-rojo-t">🔴 ${L.length === 1 ? '1 novedad' : L.length + ' novedades'} · toca para verla</div>${L.map(x => `<button type="button" class="linkbtn small" data-act="novVer" data-aid="${f.id}" data-k="${esc(x.k)}"${x.ses ? ` data-ses="${x.ses}"` : ''}${x.sub ? ` data-sub="${x.sub}"` : ''} style="display:block;text-align:left;padding:6px 0;color:inherit;text-decoration:none">${x.ico} <span style="text-decoration:underline dotted">${esc(x.txt)}</span> ›</button>`).join('')}</div>` : ''; };
-  return { cargar, num, ver, tarjeta, abierta: () => { } };
+  /* Al entrar en la pestaña sus novedades quedan leídas (se apaga el globo); la tarjeta se ve solo en esta visita */
+  function abierta(f, tab) {
+    if (!f?.nov || f.novTab === tab) return; f.novTab = tab; f.novMostrar = pend(f, tab);
+    if (!f.novMostrar.length || S.vista || S.prueba) return; const v = vistas(), l = (v[f.id] ||= []);
+    f.novMostrar.forEach(x => { if (!l.includes(x.k)) l.push(x.k); }); if (l.length > 300) l.splice(0, l.length - 300);
+    const val = JSON.stringify(v); (S.c.fiscal ||= {}).nov_vistas = val; sb.from('ajustes_privados').upsert({ clave: 'nov_vistas', valor: val }, { onConflict: 'clave' }).then(() => { }, () => { });
+  }
+  const tarjeta = (f, tab) => { const L = f?.novTab === tab ? (f.novMostrar || []) : []; return L.length ? `<div class="av-rojo"><div class="av-rojo-t">🔴 ${L.length === 1 ? '1 novedad' : L.length + ' novedades'} · toca para verla</div>${L.map(x => `<button type="button" class="linkbtn small" data-act="novVer" data-aid="${f.id}" data-k="${esc(x.k)}"${x.ses ? ` data-ses="${x.ses}"` : ''}${x.sub ? ` data-sub="${x.sub}"` : ''} style="display:block;text-align:left;padding:6px 0;color:inherit;text-decoration:none">${x.ico} <span style="text-decoration:underline dotted">${esc(x.txt)}</span> ›</button>`).join('')}</div>` : ''; };
+  return { cargar, num, ver, tarjeta, abierta, quitar: (f, k) => { if (f?.novMostrar) f.novMostrar = f.novMostrar.filter(x => x.k !== k); } };
 })();
 async function abrirFicha(id) {
   marcarReciente(id);
@@ -9150,7 +9157,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v466';
+const APP_VER = 'v467';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -9581,7 +9588,7 @@ document.addEventListener('click', async e => {
     case 'nuevoApartado': formApartado(b.dataset.sec, null); break;
     case 'cerrarPlan': S.verPlan = null; render(); window.scrollTo(0, 0); break;
     case 'verSesion': await verSesion(+b.dataset.id); break;
-    case 'novVer': { await Novedades.ver(b.dataset.aid, b.dataset.k); if (b.dataset.ses) await verSesion(+b.dataset.ses); else if (b.dataset.sub) await abrirSub(b.dataset.sub); else render(); break; }
+    case 'novVer': { Novedades.quitar(S.ficha, b.dataset.k); await Novedades.ver(b.dataset.aid, b.dataset.k); if (b.dataset.ses) await verSesion(+b.dataset.ses); else if (b.dataset.sub) await abrirSub(b.dataset.sub); else render(); break; }
     case 'nuevaMedicion': abrirSheet(`<div class="stack"><h2>Nueva medición</h2><p class="small muted" style="margin:0">¿Es solo una medición o también es su revisión mensual? Si hay revisión, al guardar las medidas se abre la revisión para rellenar el foco y los acuerdos.</p><button class="btn full" data-act="medTipo" data-v="rev">📋 Medición + revisión mensual</button><button class="btn ghost full" data-act="medTipo" data-v="sola">📏 Solo medición</button></div>`); break;
     case 'medTipo': cerrarSheet(); formMedicion(null, { conRev: b.dataset.v === 'rev' }); break;
     case 'editarMedicion': formMedicion(b.dataset.id); break;
