@@ -49,7 +49,11 @@ const Consultas = (() => {
         const L = coach ? (S.c.consultas ||= []) : (S.d.consultas ||= []), n = p.new || {};
         if (p.eventType === 'DELETE') { const i = L.findIndex(x => x.id === p.old?.id); if (i >= 0) L.splice(i, 1); }
         else { const nuevo = !L.some(x => x.id === n.id); meter(L, n);
-          if (nuevo && p.eventType === 'INSERT') { if (coach && n.texto) toast(`💬 ${(nombreAl(n.alumno_id) || 'Alumno').split(' ')[0]}: ${String(n.texto).slice(0, 60)}`); else if (!coach && n.respuesta) toast('💬 Jesús te ha escrito'); } }
+          if (nuevo && p.eventType === 'INSERT') { if (coach && n.texto) toast(`💬 ${(nombreAl(n.alumno_id) || 'Alumno').split(' ')[0]}: ${String(n.texto).slice(0, 60)}`); else if (!coach && n.respuesta) toast('💬 Jesús te ha escrito'); }
+          /* Doble check al momento: le ha llegado (gris) y, si tiene el chat abierto, lo ha leído (azul) */
+          if (!coach && n.respuesta && !n.visto_alumno_at) { if (document.getElementById('wa-body') && document.visibilityState === 'visible') marcarVistas(); else if (!n.entregado_at) { const ahora = new Date().toISOString(); meter(L, { id: n.id, entregado_at: ahora }); sb.from('consultas').update({ entregado_at: ahora }).eq('id', n.id).then(() => { }, () => { }); } }
+          /* Jesús con ese chat abierto: el mensaje nuevo queda leído, como en WhatsApp */
+          if (coach && n.texto && n.estado === 'abierta' && S.cqAl === n.alumno_id && document.getElementById('wa-body') && document.visibilityState === 'visible') marcarLeido(n.alumno_id); }
         refrescar();
       }).subscribe();
     } catch (e) { console.warn('Tiempo real no disponible', e); canal = null; }
@@ -77,7 +81,7 @@ const Consultas = (() => {
     const u = await sb.from('consultas').update({ foto: null }).in('id', viejas.map(c => c.id)); if (!u.error) viejas.forEach(c => c.foto = null);
   }
   const sinLeer = () => (S.d?.consultas || []).filter(c => c.estado === 'respondida' && c.respuesta && !c.visto_alumno_at);
-  const abiertas = () => (S.c?.consultas || []).filter(c => c.estado === 'abierta' && !/^wa_|^jesus$/.test(c.tema));
+  const abiertas = () => (S.c?.consultas || []).filter(c => c.estado === 'abierta' && c.texto && !/^wa_/.test(c.tema));
   function ejerciciosDeSesion() {
     try { return (S.dia?.bloques_sesion || []).flatMap(b => b.ejercicios_sesion || []).map(e => ejDe(e).nombre).filter(Boolean); } catch (e) { return []; }
   }
@@ -265,7 +269,7 @@ const Consultas = (() => {
     const q = S.cq, txt = (document.getElementById('cq-txt')?.value || '').trim();
     if (!txt && !q.foto) return toast('Escribe tu mensaje');
     const p = q.path, t0 = p[0]?.k, ultResp = (S.d?.consultas || []).find(c => c.respuesta);
-    const tema = t0 === 'resp' ? (ultResp?.tema || 'otro') : tieneDolor(p) ? 'dolor' : (t0 || 'otro');
+    const tema = t0 === 'resp' ? (ultResp?.tema && ultResp.tema !== 'jesus' ? ultResp.tema : 'otro') : tieneDolor(p) ? 'dolor' : (t0 || 'otro');
     const fila = { tema, urgente: false, ejercicio: t0 === 'resp' ? (ultResp?.ejercicio || null) : (resumenRuta(p) || null), texto: txt || '📷', alumno_id: S.d.uid };
     { const ej = p.find(x => /^ej:/.test(x.k) && x.k !== 'ej:otro'); if (ej) fila.sesion_ref = 'ej:' + ej.t; }
     const bt = document.querySelector('[data-q="enviar"]'); if (bt) { if (bt.disabled) return; bt.disabled = true; }
@@ -605,6 +609,8 @@ Jesús`, 'nutricion']];
   return { marcarLeido, ponNoLeido, abrirLista, sinRespuesta, mensajeJesus, menuMsg, reenviarPick, difTecleo: () => { if (S.cqDif) { S.cqDif.conf = false; clearTimeout(S.cqDifT); S.cqDifT = setTimeout(() => { const t = document.getElementById('cq-dif'); if (!t) return; const pos = t.selectionStart; S.cqDif.txt = t.value; abrirDifusion(); const n = document.getElementById('cq-dif'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }, 900); } }, ajustaAlto, elegirFoto, TEL, vBoton, abrirLista, vDevolucion, metrica, cargarAlumno, cargarCoach, vAlumno, vAvisoHoy, vCoach, vFinEntreno, leerFinEntreno, crearDeFin, accion, sinLeer, abiertas, abrirHilo };
 })();
 
+/* Intro envía el mensaje (Mayús+Intro hace salto de línea) */
+document.addEventListener('keydown', e => { if (e.key !== 'Enter' || e.shiftKey || e.isComposing || !e.target.matches?.('.wa-bar textarea')) return; const bt = e.target.parentElement?.querySelector('.wa-send'); if (!bt) return; e.preventDefault(); bt.click(); });
 document.addEventListener('input', e => { if (e.target.matches && e.target.matches('.wa-bar textarea')) Consultas.ajustaAlto(e.target); if (e.target.id === 'cq-dif') Consultas.difTecleo(); });
 /* Mantén pulsada una conversación: «no leído» (te la deja de recordatorio) o, si ya lo estaba, leída */
 (() => { let t = null, x0 = 0, y0 = 0;
