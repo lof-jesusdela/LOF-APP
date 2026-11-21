@@ -3071,6 +3071,27 @@ function focoEstado(f, src, aid) {
   if (f.tipo === 'entrenos') { const obj = Math.max(1, Math.round((meta || 1) * total / 7)); return { pct: Math.min(1, hechos / obj), ritmo: Math.min(1, hechos / Math.max(1, Math.round((meta || 1) * Math.max(1, dias.length) / 7))), hechos, total: obj, ult7, fin, N, acabado: N && hoy > fin, txt: `${hechos} de ${obj} entrenos`, hoyOk: diaOk(hoy) }; }
   return { pct: Math.min(1, hechos / total), ritmo: hechos / Math.max(1, dias.length), hechos, total, ult7, fin, N, acabado: N && hoy > fin, txt: `${hechos} de ${total} días`, hoyOk: diaOk(hoy) };
 }
+/* Poner o cambiar el foco sin hacer revisión (desde Check-ins de su ficha) */
+function formFoco(aid) {
+  const f0 = Foco.de(aid), a = S.c.perfiles.find(p => p.id === aid) || {};
+  abrirSheet(`<form class="stack" id="f-foco"><h2>🎯 Foco de ${esc((a.nombre || '').split(' ')[0])}</h2><p class="small muted" style="margin-top:-6px">Lo verá arriba en su Hoy y como anillo dorado. No hace falta hacer una revisión.</p>
+    <label class="f">Tipo<select id="fo-t"><option value="">Sin foco</option>${TIPOS_FOCO.map(([k, t]) => `<option value="${k}" ${f0?.tipo === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+    <label class="f" id="fo-mw">Meta<input type="text" inputmode="decimal" id="fo-m" value="${esc(f0?.meta ?? '')}"></label>
+    <label class="f">Lo que verá el alumno (opcional)<input type="text" id="fo-x" value="${esc(f0?.texto || '')}" placeholder="Ej. una foto de una comida saludable cada día"></label>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Durante<select id="fo-d">${[['', 'Sin fin'], ['7', '1 semana'], ['14', '2 semanas'], ['21', '3 semanas'], ['28', '4 semanas']].map(([v, t]) => `<option value="${v}" ${String(f0?.dias || '') === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+    <label class="f">Empieza a contar el<input type="date" id="fo-i" value="${esc(f0?.desde || hoyISO())}"></label></div>
+    <span class="small muted" id="fo-h"></span><p class="small" id="fo-err" style="color:var(--bad)"></p>
+    <button class="btn full" type="submit">Guardar foco</button></form>`);
+  const pinta = () => { const t = $('#fo-t').value, m = META_FOCO[t]; $('#fo-mw').hidden = !m; if (m) { $('#fo-mw').firstChild.textContent = m[0]; $('#fo-m').placeholder = m[1]; }
+    $('#fo-h').textContent = !t ? 'Sin foco: deja de verlo.' : t === 'libre' ? 'Marcará «Hecho hoy» cada día que lo cumpla.' : t === 'foto_comida' ? 'Se cumple solo cada día que suba la foto de una comida a su diario.' : 'Se mide solo con lo que registra.'; };
+  pinta(); $('#fo-t').addEventListener('change', pinta);
+  $('#f-foco').addEventListener('submit', async e => { e.preventDefault(); const t = $('#fo-t').value, conMeta = !!META_FOCO[t], mv = numero($('#fo-m').value), tx = $('#fo-x').value.trim();
+    if (conMeta && !(mv > 0)) return $('#fo-err').textContent = `Pon la meta: ${META_FOCO[t][0].toLowerCase()} (por ejemplo ${META_FOCO[t][1]}).`;
+    if (t === 'libre' && !tx) return $('#fo-err').textContent = 'Escribe el foco en «Lo que verá el alumno».';
+    const nuevo = t ? { tipo: t, meta: conMeta ? mv : null, texto: tx, dias: +$('#fo-d').value || null, desde: $('#fo-i').value || hoyISO() } : null;
+    try { await Foco.guardar(aid, nuevo); } catch (er) { return fallo(er, 'No se ha podido guardar el foco.'); }
+    cerrarSheet(); toast(nuevo ? 'Foco guardado' : 'Foco quitado'); render(); });
+}
 /* Alumno: marca (o desmarca) que hoy ha cumplido su foco */
 async function marcarFoco(ok, fechaF) {
   const fF = fechaF || hoyISO(), row = { alumno_id: S.d?.uid || S.user?.id, fecha: fF, foco_ok: !!ok };
@@ -3081,14 +3102,14 @@ async function marcarFoco(ok, fechaF) {
 /* Tarjeta del foco, lo primero en Hoy del alumno */
 /* co = { f, src, aid }: la misma tarjeta en la ficha del coach (Check-ins), sin botones */
 function vFocoHoy(s, co) {
-  const f = co ? co.f : s?.foco; if (!f?.tipo) return ''; const e = focoEstado(f, co ? co.src : S.d, co ? co.aid : S.d.uid); if (!e || (e.acabado && hoyISO() > sumaDias(e.fin, 3))) return '';
+  const f = co ? co.f : s?.foco; if (!f?.tipo) return co ? `<section class="section"><button type="button" class="card row" data-act="focoForm" data-id="${co.aid}" style="width:100%;text-align:left;gap:10px;align-items:center;border:1.5px dashed #C9A227"><span style="font-size:22px">🎯</span><span class="grow"><b>Sin foco</b><span class="small muted" style="display:block">Ponle un foco para que lo vea arriba en su Hoy</span></span><span class="btn sm gold">＋ Poner foco</span></button></section>` : ''; const e = focoEstado(f, co ? co.src : S.d, co ? co.aid : S.d.uid); if (!e || (e.acabado && hoyISO() > sumaDias(e.fin, 3))) return '';
   const p = Math.round(e.pct * 100), r = 38, c = 2 * Math.PI * r, tit = f.tipo === 'libre' ? (f.texto || 'Tu foco') : Foco.titulo(f);
   const tira = e.ult7.map(x => `<span title="${esc(fCorta(x.f))}" style="width:14px;height:14px;border-radius:4px;background:${x.ok === undefined ? 'transparent' : x.ok ? '#E3C46A' : 'rgba(255,255,255,.18)'};border:${x.ok === undefined ? '1px dashed rgba(255,255,255,.2)' : '0'}"></span>`).join('');
   const quedan = e.N ? Math.max(0, Math.round((fecha(e.fin) - fecha(hoyISO())) / 864e5)) : null;
   const sub = e.acabado ? `Foco terminado: ${e.txt} 👏` : `Llevas ${e.txt}${quedan != null ? ` · ${quedan === 0 ? 'último día' : `quedan ${quedan} día${quedan === 1 ? '' : 's'}`}` : ' · últimos 7 días'}`;
   const btn = e.acabado || co ? '' : f.tipo === 'libre' ? `<button class="btn full foco-btn" data-act="focoHecho" data-v="${e.hoyOk ? 0 : 1}">${e.hoyOk ? 'Hecho hoy ✓' : 'Hecho hoy'}</button>`
     : f.tipo === 'foto_comida' ? (e.hoyOk ? `<div class="small" style="color:#E3C46A;text-align:center">Foto de hoy subida ✓</div>` : `<button class="btn full foco-btn" data-act="nuComNueva">📸 Subir la foto de hoy</button>`) : `<div class="small" style="color:#C9D2E6;text-align:center">Se mide solo con lo que registras</div>`;
-  return `<section class="section"><div class="foco-hero"><span class="foco-ey">🎯 ${co ? 'Su foco · así lo ve' : 'Tu foco'}</span><div class="row" style="gap:14px;align-items:center;margin-top:6px">
+  return `<section class="section"><div class="foco-hero"><div class="row" style="align-items:center"><span class="foco-ey grow">🎯 ${co ? 'Su foco · así lo ve' : 'Tu foco'}</span>${co ? `<button type="button" class="btn sm foco-btn" data-act="focoForm" data-id="${co.aid}">✎ Cambiar</button>` : ''}</div><div class="row" style="gap:14px;align-items:center;margin-top:6px">
     <svg width="96" height="96" viewBox="0 0 96 96" aria-hidden="true"><circle cx="48" cy="48" r="${r}" fill="none" stroke="#E3C46A" stroke-opacity=".2" stroke-width="11"/><circle cx="48" cy="48" r="${r}" fill="none" stroke="#E3C46A" stroke-width="11" stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c * (1 - e.pct)).toFixed(1)}" transform="rotate(-90 48 48)"/><text x="48" y="54" text-anchor="middle" fill="#fff" font-size="19" font-weight="700">${p}%</text></svg>
     <div class="grow stack" style="gap:4px;min-width:0"><b style="font-size:17px;line-height:1.25">${esc(tit)}</b><span class="small" style="color:#C9D2E6">${esc(sub)}</span><div class="row" style="gap:4px;margin-top:4px">${tira}</div></div></div>${btn}</div></section>`;
 }
@@ -9089,7 +9110,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v456';
+const APP_VER = 'v457';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -9334,6 +9355,7 @@ document.addEventListener('click', async e => {
     case 'cargaN': S.cargaN = +b.dataset.n; render(); break;
     case 'fTab': { const t0 = b.dataset.t, t = ['plan', 'pagos'].includes(t0) ? 'inicio' : t0; if (t !== t0) S.fBan = t0 === 'pagos' ? 'pagos' : 'plan'; (S.fTab ||= {})[S.ficha.id] = t; } render(); document.querySelector('.ft-tabs')?.scrollIntoView({ block: 'nearest' }); break;
     case 'abrirReporte': await abrirReporte(b.dataset.id || null); break;
+    case 'focoForm': formFoco(b.dataset.id); break;
     case 'focoHecho': { b.disabled = true; if (await marcarFoco(b.dataset.v === '1')) { toast(b.dataset.v === '1' ? '¡Hecho! Un día más 💪' : 'Desmarcado'); } render(); break; }
     case 'fSemAl': { const act = lunesDe(hoyISO()), id = S.ficha?.id; if (!id) break; const m = (S.fSem ||= {}); m[id] = sumaDias(m[id] || act, +b.dataset.d); if (m[id] > act) m[id] = act; render(); break; }
     case 'semAl': { const act = lunesDe(hoyISO()); S.semAl = sumaDias(S.semAl || act, +b.dataset.d); if (S.semAl > act) S.semAl = act; render(); break; }
