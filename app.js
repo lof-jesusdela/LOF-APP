@@ -3096,7 +3096,8 @@ const Foco = {
   /* Se guarda en su servicio (lo ve el alumno) y en tus ajustes (copia de seguridad) */
   async guardar(aid, f) { const v = f ? JSON.stringify(f) : ''; S.c.fiscal ||= {}; S.c.fiscal['foco_' + aid] = v; await sb.from('ajustes_privados').upsert({ clave: 'foco_' + aid, valor: v }, { onConflict: 'clave' });
     const sv = (S.c?.servicios || []).find(x => x.alumno_id === aid); if (sv) { const { error } = await sb.from('servicios').update({ foco: f || {} }).eq('id', sv.id); if (error) { if (/foco/.test(error.message || '')) toast('El alumno no verá su foco hasta que ejecutes el Bloque 112'); } else sv.foco = f || {}; } },
-  titulo(f) { const t = TIPOS_FOCO.find(x => x[0] === f.tipo); if (f.tipo === 'foto_comida') return 'Una foto de comida al día' + (f.texto ? ' · ' + f.texto : ''); return f.tipo === 'libre' ? (f.texto || 'Foco') : `${t?.[1].replace(/ \(.*\)/, '') || 'Foco'}: ${fmtNum(f.meta, 0)} ${t?.[2] || ''}${f.texto ? ' · ' + f.texto : ''}`.trim(); },
+  /* Un solo texto: lo que escribiste para el alumno; si no escribiste nada, el nombre del tipo con su meta */
+  titulo(f) { if (f.texto) return f.texto; const t = TIPOS_FOCO.find(x => x[0] === f.tipo); if (f.tipo === 'foto_comida') return 'Una foto de comida al día'; return f.tipo === 'libre' ? 'Foco' : `${t?.[1].replace(/ \(.*\)/, '') || 'Foco'}: ${fmtNum(f.meta, 0)} ${t?.[2] || ''}`.trim(); },
   /* Cómo va en los últimos 7 días: { pct, txt } (pct = % de la meta) o null si no se puede medir todavía */
   medir(aid, f) {
     const hoy = hoyISO(), d7 = sumaDias(hoy, -6), meta = Number(f.meta);
@@ -9074,7 +9075,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v449';
+const APP_VER = 'v450';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
