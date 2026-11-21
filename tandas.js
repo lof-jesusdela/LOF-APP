@@ -178,7 +178,7 @@ const Tandas = {
   nomParte(x) { return [x.rg || '', x.vuelta ? `${x.vuelta}ª vuelta` : '', x.lado ? this.LADO[x.lado] : '', x.tipo ? this.TIPO[x.tipo] : ''].filter(Boolean).join(' · '); },
   chipLado: l => `<span class="rp-lado ${l === 'D' ? 'd' : 'i'}">${l === 'D' ? 'Derecho' : 'Izquierdo'}</span>`,
   tituloTanda(t, k, nT) {
-    if (t.doble) return 'Doble vuelta sin parar';
+    if (t.doble) return 'Alterna cada lado sin parar en ningún momento';
     if (t.lado) return `${t.mt ? t.mt + ' · ' : ''}Lado ${t.lado === 'D' ? 'derecho' : 'izquierdo'}`;
     if (t.mt) return `${k + 1} · ${t.mt}`;
     if (t.tipo) return `${k + 1} · ${this.TIPO[t.tipo]}`;
@@ -216,7 +216,7 @@ const Tandas = {
         const ult = k === nT - 1, sig = s.tandas[k + 1], d = ult && ultS ? 0 : t.d;
         const lbl = t.ss ? `${this.hechoTxt(t)} · ${d > 0 ? 'descansa ' + this.dur(d) + ' y ' : ''}${t.ss}` : !ult ? (d > 0 ? `${this.hechoTxt(t)} · descansar ${this.dur(d)}` : `${this.hechoTxt(t)} · ${this.sigTxt(M, t, sig)}`) : ultS ? 'Terminar ejercicio' : (d > 0 ? `Terminar serie · descansar ${this.dur(d)}` : 'Terminar serie · sin descanso');
         const una = t.partes.length === 1, x0 = t.partes[0];
-        const cab = una ? this.cabParte(x0, rirUnico, sp, k, s) : (t.doble ? '<span class="muted"> · sin descanso entre lados ni vueltas</span>' : '');
+        const cab = una ? this.cabParte(x0, rirUnico, sp, k, s) : '';
         return `<div class="rp-tanda" id="rpt-${fila}-${k}" data-p0="${t.p0}" data-np="${t.partes.length}">
           <div class="rp-tt">${t.lado ? this.chipLado(t.lado) + ' ' : ''}<b>${esc(this.tituloTanda(t, k, nT))}</b>${cab}</div>
           ${t.partes.map(x => this.campos(e, fila, n, x, sp, una, rirUnico, t)).join('')}
