@@ -5319,7 +5319,10 @@ function vFichaBase() {
         return l.sort((x, y) => x[3].localeCompare(y[3])).slice(0, 5); })();
       const cProx = l => `<div class="card fx-c"><div class="fx-ct">Próximo</div>${l.length ? `<div class="fx-lista">${l.map(([ic, t, d, , dest]) => `<${dest ? 'button' : 'div'} class="fx-prox ${dest ? 'fx-link fx-tap' : ''}" ${dest ? `data-act="fIr" data-d="${dest}"` : ''}><span class="fx-ic">${ic}</span><span class="grow">${esc(t)}</span><b>${esc(d)}</b></${dest ? 'button' : 'div'}>`).join('')}</div>` : '<div class="fx-vacio">Nada programado</div>'}</div>`;
     let cuerpo;
-    if (act !== 'inicio') { const x = SECS.find(z => z[0] === act); cuerpo = `<div class="fx-cab"><h2>${esc(x[3])}</h2>${x[4] ? `<span class="small muted">${x[4]}</span>` : ''}</div><div class="ft-cuerpo">${act === 'resumen' ? cProx(prox) : ''}${x[5]}</div>`; }
+    if (act !== 'inicio') { const x = SECS.find(z => z[0] === act); /* Lo que marca el globo rojo de la pestaña, arriba y en rojo: qué es y qué hacer (Ir / Solventado) */
+      const lAv = act === 'resumen' ? pend.filter(z => !z.comp) : typeof x[1] === 'number' && DOT[x[1]] ? pend.filter(z => DOT[x[1]].test(z.m) && !z.comp) : [];
+      const rojo = lAv.length ? `<div class="av-rojo"><div class="av-rojo-t">🔴 Tienes ${lAv.length === 1 ? '1 aviso' : lAv.length + ' avisos'} por revisar aquí</div>${vListaAlertas(a.id, { ...e, items: lAv }, false)}</div>` : '';
+      cuerpo = `<div class="fx-cab"><h2>${esc(x[3])}</h2>${x[4] ? `<span class="small muted">${x[4]}</span>` : ''}</div>${rojo}<div class="ft-cuerpo">${act === 'resumen' ? cProx(prox) : ''}${x[5]}</div>`; }
     else {
       /* Cumplimiento de las últimas 4 semanas completas: media de lo que se mide en su plan (cada parte se ve aparte) */
       const pausasF = pausasDe(srv), enPausa = l => pausasF.some(p => p.desde <= sumaDias(l, 6) && (!p.hasta || p.hasta >= l));
@@ -9077,7 +9080,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v453';
+const APP_VER = 'v454';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
