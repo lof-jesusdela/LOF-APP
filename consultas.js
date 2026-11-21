@@ -506,8 +506,8 @@ Jesús`, 'nutricion']];
       if (prev.length) { const r = await sb.from('consultas').update({ estado: 'respondida', respondida_at: ahora }).in('id', prev.map(c => c.id)); if (r.error) return fallo(r.error, 'No se ha podido enviar.'); prev.forEach(c => Object.assign(c, { estado: 'respondida', respondida_at: ahora })); }
       const cambio = { estado: 'respondida', respuesta: txt, respondida_at: ahora };
       const { error } = await sb.from('consultas').update(cambio).eq('id', ult.id); if (error) return fallo(error, 'No se ha podido enviar.'); Object.assign(ult, cambio); avisarAlumno(aid, txt);
-    } else {
-      const { data, error } = await sb.from('consultas').insert({ alumno_id: aid, tema: 'jesus', texto: null, respuesta: txt, estado: 'respondida', respondida_at: ahora }).select().single();
+    } else {   /* sesion_ref 'chat': mensaje que escribes tú en el chat (no automático ni difusión) → cuenta para «no te ha contestado en 48 h» */
+      const { data, error } = await sb.from('consultas').insert({ alumno_id: aid, tema: 'jesus', texto: null, respuesta: txt, estado: 'respondida', respondida_at: ahora, sesion_ref: 'chat' }).select().single();
       if (error) return fallo(error, 'No se ha podido enviar.'); S.c.consultas.unshift(data); avisarAlumno(aid, txt, '💬 Jesús te ha enviado un mensaje');
     }
     abrirHilo(aid); render();
@@ -555,7 +555,15 @@ Jesús`, 'nutricion']];
   }
   /* Registro mínimo de cada derivación a WhatsApp desde la app (para medir) */
   function log(tema) { if (S.vista || S.prueba || !S.d?.uid) return; sb.from('consultas').insert({ alumno_id: S.d.uid, tema, estado: 'whatsapp', texto: null }).then(r => { if (r.error) console.warn(r.error.message); }); }
-  return { mensajeJesus, menuMsg, reenviarPick, difTecleo: () => { if (S.cqDif) { S.cqDif.conf = false; clearTimeout(S.cqDifT); S.cqDifT = setTimeout(() => { const t = document.getElementById('cq-dif'); if (!t) return; const pos = t.selectionStart; S.cqDif.txt = t.value; abrirDifusion(); const n = document.getElementById('cq-dif'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }, 900); } }, ajustaAlto, elegirFoto, TEL, vBoton, abrirLista, vDevolucion, metrica, cargarAlumno, cargarCoach, vAlumno, vAvisoHoy, vCoach, vFinEntreno, leerFinEntreno, crearDeFin, accion, sinLeer, abiertas, abrirHilo };
+  /* Último mensaje que le escribiste tú en el chat sin respuesta suya después: fecha si pasaron más de 48 h (y menos de 3 semanas) */
+  function sinRespuesta(aid) {
+    const L = (S.c?.consultas || []).filter(c => c.alumno_id === aid); if (!L.length) return null;
+    const mio = L.filter(c => c.sesion_ref === 'chat' && c.respondida_at).map(c => c.respondida_at).sort().pop(); if (!mio) return null;
+    const suyo = L.filter(c => c.texto).map(c => c.creado_at).sort().pop();
+    const t = new Date(mio).getTime(), h = (Date.now() - t) / 36e5;
+    return (!suyo || suyo < mio) && h >= 48 && h <= 24 * 21 ? mio.slice(0, 10) : null;
+  }
+  return { sinRespuesta, mensajeJesus, menuMsg, reenviarPick, difTecleo: () => { if (S.cqDif) { S.cqDif.conf = false; clearTimeout(S.cqDifT); S.cqDifT = setTimeout(() => { const t = document.getElementById('cq-dif'); if (!t) return; const pos = t.selectionStart; S.cqDif.txt = t.value; abrirDifusion(); const n = document.getElementById('cq-dif'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }, 900); } }, ajustaAlto, elegirFoto, TEL, vBoton, abrirLista, vDevolucion, metrica, cargarAlumno, cargarCoach, vAlumno, vAvisoHoy, vCoach, vFinEntreno, leerFinEntreno, crearDeFin, accion, sinLeer, abiertas, abrirHilo };
 })();
 
 document.addEventListener('input', e => { if (e.target.matches && e.target.matches('.wa-bar textarea')) Consultas.ajustaAlto(e.target); if (e.target.id === 'cq-dif') Consultas.difTecleo(); });

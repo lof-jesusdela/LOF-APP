@@ -197,6 +197,7 @@ const Compromisos = (() => {
           ${x.estado === 'hoy' || x.estado === 'en_curso' ? '' : `<button class="btn sm ghost" data-act="cmHoy" data-id="${esc(x.id)}">Para hoy</button>`}
           <button class="btn sm ghost" data-act="cmProg" data-id="${esc(x.id)}">📅 Programar</button>
           ${x.estado === 'esperando' ? `<button class="btn sm ghost" data-act="cmEstado" data-id="${esc(x.id)}" data-v="pendiente">Ya no espero</button>` : `<button class="btn sm ghost" data-act="cmEstado" data-id="${esc(x.id)}" data-v="esperando" title="Le has escrito y esperas su respuesta">⏳ Espero respuesta</button>`}
+          ${x.aid ? `<button class="btn sm ghost" data-act="cq" data-q="hilo" data-v="${esc(x.aid)}">💬 Chat</button>` : ''}
           ${x.tipo === 'rev' && x.aid ? `<button class="btn sm ghost" data-act="cmProponer" data-aid="${esc(x.aid)}">💬 Proponer hora</button>` : ''}
           ${x.tipo === 'tarea' ? `<button class="btn sm ghost" data-act="tareaHecha" data-id="${x.tareaId}">✓ Hecha</button>` : x.tipo === 'gasto' ? '' : `<button class="btn sm" data-act="cmSolv" data-id="${esc(x.id)}" title="Ya está atendido: sale de tus pendientes">✓ Solventado</button>`}</span>`}</div>
       ${compacta ? chip(x) : ''}</div>`;
