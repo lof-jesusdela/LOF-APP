@@ -2570,6 +2570,9 @@ const agendaDef = () => { let g = {}; try { g = JSON.parse(S.c?.fiscal?.agenda_d
 /* Una cita puede ser varias cosas a la vez: el título lleva «+ Revisión mensual» / «+ Valoración» (sin columnas nuevas) */
 const SUF_CITA = / \+ (Revisión mensual|Valoración)/g, sinSuf = t => String(t || '').replace(SUF_CITA, '').trim();
 const conSuf = (base, rev, val) => { const b = sinSuf(base), p = [b]; if (rev && !/revisi/i.test(b)) p.push('Revisión mensual'); if (val && !/valora/i.test(b)) p.push('Valoración'); return p.filter(Boolean).join(' + ') || null; };
+const citaHoyRev = aid => { const h = hoyISO(), m = sumaDias(h, 1), p = (S.c?.presenciales || []).filter(x => x.alumno_id === aid && x.estado === 'programada' && (x.fecha === h || x.fecha === m) && /revisi|valora/i.test(x.tipo || '')).sort((x, y) => (x.fecha + (x.hora || '')).localeCompare(y.fecha + (y.hora || '')))[0];
+  if (!p) return null; const q = [/revisi/i.test(p.tipo) ? 'revisión mensual' : '', /valora/i.test(p.tipo) ? 'valoración' : ''].filter(Boolean).join(' y ');
+  return { p, txt: `📋 ${p.fecha === h ? 'Hoy' : 'Mañana'} toca ${q}${p.hora ? ' en su cita de las ' + hhmm(p.hora) : ''}` }; };
 const citaRev = aid => (S.c?.presenciales || []).find(p => p.alumno_id === aid && p.estado === 'programada' && p.fecha >= hoyISO() && p.fecha <= sumaDias(hoyISO(), 45) && /revisi/i.test(p.tipo || ''))
   || (S.c?.agenda || []).find(p => p.fecha >= hoyISO() && p.fecha <= sumaDias(hoyISO(), 45) && !['descartada', 'hecha'].includes(p.estado) && String(p.origen || '').startsWith('rev:' + aid + ':'));
 const TIPOS_CITA = [['Entrenamiento', 'al'], ['Valoración inicial', 'al'], ['Valoración final', 'al'], ['Revisión presencial', 'al'], ['Revisión (videollamada)', 'al'], ['PTI / primera sesión', 'ext'], ['Entrevista online', 'ext'], ['Entrevista presencial', 'ext'], ['Reunión de negocio', 'ext'], ['Tarea', 'ext']];
@@ -3228,6 +3231,8 @@ function estadoAlumno(a) {
   Casos.avisosCoach(a.id).forEach(m => { sube('warn'); motivos.push(m); });
   Habitos.ajustesRecientes(a.id).forEach(m => { sube('warn'); motivos.push(m); });
   { const k = (S.c.checkins || []).find(x => x.alumno_id === a.id && x.semana_inicio >= sumaDias(lunesDe(hoyISO()), -7)); if (k) { sube('bad'); motivos.push(`✅ Check-in nuevo · semana del ${fCorta(k.semana_inicio)}: revísalo`); } }
+  /* Cita de hoy o mañana marcada también como revisión mensual o valoración: que no se te olvide */
+  { const c = citaHoyRev(a.id); if (c) { sube('warn'); motivos.push(c.txt); } }
   /* Futbolistas: check-in de partido y de lunes recién hechos */
   if (srv?.modulo_futbol) (S.c.wellness || []).filter(x => x.alumno_id === a.id && ['partido', 'lunes'].includes(x.tipo) && x.fecha >= sumaDias(hoyISO(), -3)).forEach(x => { sube('bad'); motivos.push(`✅ Check-in ${x.tipo === 'partido' ? 'de partido' : 'del lunes'} hecho · ${fCorta(x.fecha)}: revísalo`); });
   { const sr = Consultas.sinRespuesta?.(a.id); if (sr) { sube('warn'); motivos.push(`💬 No te ha contestado a tu mensaje del ${fCorta(sr)} (más de 48 h)`); } }
@@ -5232,6 +5237,7 @@ function vFichaBase() {
       <button class="fx-volver" data-act="cerrarFicha">← Alumnos</button>
       <div class="fx-av">${avatarDe(a, 96)}</div>
       <h2 class="fx-nom">${esc(a.nombre)} <button class="fx-fav" data-act="favorito" data-id="${a.id}" aria-pressed="${favoritos().includes(a.id)}" aria-label="${favoritos().includes(a.id) ? 'Quitar de favoritos' : 'Añadir a favoritos'}" title="Favorito">${favoritos().includes(a.id) ? '★' : '☆'}</button></h2>
+      ${citaHoyRev(a.id) ? `<div class="aprox small" style="margin:6px 0;border-left:4px solid var(--gold,#b8901e)"><b>${esc(citaHoyRev(a.id).txt)}</b></div>` : ''}
       <div class="fx-est"><span class="fx-dot ${e.nivel}"></span>${nivTxt}${pend.length ? ` · ${pend.length} aviso${pend.length > 1 ? 's' : ''}` : ''}</div>
       <div class="fx-acc fx-acc-mov"><button class="btn sm" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar</button><button class="btn sm ghost" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como</button><button class="btn sm ghost" data-act="abrirReporte" data-id="${a.id}">📋 Reporting</button></div>
       <div class="fx-datos">${filaP('Plan', esc(srv?.producto || 'Sin plan'))}${waNum(a.id) ? filaP('WhatsApp', `<a href="https://wa.me/${waNum(a.id)}" target="_blank" rel="noopener">+${waNum(a.id)}</a>`) : ''}${srv ? filaP('Tipo', esc(modalidadDe(a.id)) + (conSeguimiento(srv) ? '' : ' · sin seguimiento')) : ''}${filaP('Bloque', P && !P.antes && !P.fuera ? esc(nomCiclo(P.cc)) : '')}${filaP('Semana', P && !P.antes && !P.fuera ? `${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : P?.antes ? 'Empieza ' + esc(fCorta(srv.inicio)) : '')}${filaP('Programa', f.prog ? esc(f.prog.nombre) : '')}${filaP('Alta', esc(fF(a.fecha_alta || srv?.inicio || hoy)))}${filaP('Email', esc(a.email || ''))}<button class="fx-dato fx-pago" data-act="fTab" data-t="pagos"><span>Pagos</span><b style="${pagV.length ? 'color:var(--bad)' : ''}">${pagaPor(a.id) ? `Con ${esc((S.c.perfiles.find(x => x.id === pagaPor(a.id))?.nombre || '').split(' ')[0])}` : pagV.length ? `${pagV.length} vencida${pagV.length === 1 ? '' : 's'}` : pagP.length ? `Próxima ${esc(fCorta(pagP.slice().sort((x, y) => x.vence.localeCompare(y.vence))[0].vence))}` : pagos.length ? 'Al día' : 'Sin cuotas'} ›</b></button></div>
@@ -9007,7 +9013,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v445';
+const APP_VER = 'v446';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
