@@ -210,8 +210,9 @@ const Consultas = (() => {
   function paso(p) {
     const k = p.map(x => x.k), s = S.d?.servicio || {}, [t0, t1, t2] = k;
     if (!k.length) {
-      const ops = [(s.modulo_entreno ?? true) && O('entreno', '🏋️', 'Entrenamiento', 'Planificación, una sesión o un ejercicio'), s.modulo_nutricion && O('nutricion', '🍽️', 'Alimentación', 'Tu plan, comidas, compra'), s.modulo_habitos && O('habitos', '🌙', 'Hábitos', 'Sueño, pasos, rutinas'), O('plan', '📋', 'Mi proceso', 'Fechas, revisiones o la app')].filter(Boolean);
-      const ult = (S.d?.consultas || []).find(c => c.respuesta); if (ult && edad({ creado_at: ult.respondida_at || ult.creado_at }) < 14 * 864e5) ops.push(O('resp', '↩️', 'Responder a Jesús', 'Seguir con lo último que te contestó'));
+      /* Solo los temas de lo que tiene contratado; para lo demás escribe directamente en la caja */
+      const ops = [(s.modulo_entreno ?? true) && O('entreno', '🏋️', 'Entrenamiento', 'Planificación, una sesión o un ejercicio'), s.modulo_nutricion && O('nutricion', '🍽️', 'Alimentación', 'Tu plan, comidas, compra')].filter(Boolean);
+      if (!ops.length) return null;
       return { preg: '¿Qué necesitas?', ops };
     }
     if (t0 === 'resp' || t0 === 'urg') return null;
