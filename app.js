@@ -2541,7 +2541,7 @@ function gcalLink(p, nombre, email) {
   let dates;
   if (h) { const [H, M] = h.split(':').map(Number), fin = H * 60 + M + dS, hh = n => String(n).padStart(2, '0'); dates = `${f}T${hh(H)}${hh(M)}00/${f}T${hh(Math.floor(fin / 60) % 24)}${hh(fin % 60)}00`; }
   else { const d = fecha(p.fecha || hoyISO()); d.setDate(d.getDate() + 1); dates = `${f}/${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`; }
-  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(p.alumno_id || !p.persona ? `${nombre} · ${p.tipo || 'Entrenamiento'}` : `${p.tipo} · ${p.persona}`)}&dates=${dates}&ctz=Europe/Madrid&details=${encodeURIComponent([txtNumSesion(p) && '🏋️ ' + txtNumSesion(p), esEnlace(p.lugar) && 'Enlace de la videollamada: ' + p.lugar.trim(), p.nota, 'La Obra Fitness'].filter(Boolean).join('\n\n'))}${p.lugar ? '&location=' + encodeURIComponent(p.lugar) : ''}${email ? '&add=' + encodeURIComponent(email) : ''}`;
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(p.titulo || (p.alumno_id || !p.persona ? `${nombre} · ${p.tipo || 'Entrenamiento'}` : `${p.tipo} · ${p.persona}`))}&dates=${dates}&ctz=Europe/Madrid&details=${encodeURIComponent([txtNumSesion(p) && '🏋️ ' + txtNumSesion(p), esEnlace(p.lugar) && 'Enlace de la videollamada: ' + p.lugar.trim(), p.nota, 'La Obra Fitness'].filter(Boolean).join('\n\n'))}${p.lugar ? '&location=' + encodeURIComponent(p.lugar) : ''}${email ? '&add=' + encodeURIComponent(email) : ''}`;
 }
 /* Programar una sesión sin entrar en la ficha: alumno, día, hora y tipo; dice lo que le queda del bono */
 /* Hora escrita a mano: «9», «930», «9:30», «9.30» → «09:30» */
@@ -2587,6 +2587,7 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
   abrirSheet(`<form class="stack gc-form" id="f-prog" style="gap:0"><div class="row" style="gap:8px;margin-bottom:6px"><h2 class="grow" style="margin:0">${P0 ? 'Editar cita' : 'Nueva cita'}</h2><button class="btn" type="submit">${P0 ? 'Guardar' : 'Guardar'}</button></div>
     <div id="pg-ext" hidden><input type="text" id="pg-q" class="gc-tit" placeholder="Añade un título (con quién o qué)"></div>
     <div id="pg-aw"><select id="pg-a" class="gc-tit"><option value="">Elige alumno…</option><option value="__otro" ${P0 && !P0.alumno_id && TIPOS_CITA.some(x => x[0] === sinSuf(P0.tipo) && x[1] === 'al') ? 'selected' : ''}>➕ Otro alumno (no está en la app)</option>${orden.map((a, i) => `${i === als.filter(x => conBono(x.id)).length && i ? '<option disabled>── Sin sesiones presenciales ──</option>' : ''}<option value="${a.id}" ${a.id === aid ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('')}</select></div>
+    <div id="pg-ttw"><input type="text" id="pg-tt" class="gc-in" maxlength="80" placeholder="Añade un título (opcional)"></div>
     <div class="chips" id="pg-t" style="margin:8px 0 4px">${TIPOS_CITA.map(([t], i) => `<button type="button" class="pill ${i ? '' : 'blue'}" data-t="${t}">${t}</button>`).join('')}</div>
     <div class="row small" id="pg-tam" style="gap:14px;flex-wrap:wrap;margin:2px 0 4px"><span class="muted">También:</span><label class="row" style="gap:6px"><input type="checkbox" id="pg-xr" ${/\+ Revisión mensual/.test(P0?.tipo || '') ? 'checked' : ''} style="width:20px;height:20px"> Revisión mensual</label><label class="row" style="gap:6px"><input type="checkbox" id="pg-xv" ${/\+ Valoración/.test(P0?.tipo || '') ? 'checked' : ''} style="width:20px;height:20px"> Valoración</label></div>
     <p class="small" id="pg-bono" style="margin:2px 0 6px"></p>
@@ -2597,10 +2598,11 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
     ${P0?.serie ? fila('🔁', `<span class="small muted">Esta cita se repite. Al guardar te pregunto si el cambio es para esta, para las siguientes o para todas.</span>`)
       : fila('🔁', `<select id="pg-rep" class="gc-in"><option value="">No se repite</option><option value="1">Cada día</option><option value="lab">Cada día laborable (L–V)</option><option value="7">Cada semana</option><option value="14">Cada 2 semanas</option><option value="mes">Cada mes</option></select><label class="row small" id="pg-hw" hidden style="gap:8px">hasta el<input type="date" id="pg-hasta" class="gc-in" value="${sumaDias(fechaIni || hoyISO(), 84)}"></label>`)}
     ${fila('👥', `<div class="stack" id="pg-mas" style="gap:6px"></div><button type="button" class="linkbtn" id="pg-mas-b" style="align-self:flex-start">Añadir otro alumno (sesión conjunta)</button>`, 'pg-inv')}
+    ${fila('✉️', `<input type="text" id="pg-em" class="gc-in" inputmode="email" autocomplete="off" autocapitalize="off" placeholder="Añadir invitados: correos separados por comas"><span class="small muted">Sale el correo de sus alumnos; añade el de quien no esté en la app.</span>`, 'pg-emw')}
     ${fila('🎥', `<button type="button" class="linkbtn" id="pg-meet" style="align-self:flex-start">Crear enlace de Google Meet nuevo</button>`, 'pg-meetw')}
     ${fila('📍', `<span class="small muted" id="pg-l-t">Ubicación</span><input type="text" id="pg-l" class="gc-in" placeholder="Añade una ubicación">`)}
     ${fila('☰', `<textarea id="pg-n" rows="4" class="gc-in" placeholder="Añade una descripción (la ve en su app y en el evento de Google Calendar)"></textarea><label class="row small" style="gap:8px"><input type="checkbox" id="pg-def" style="width:18px;height:18px"> Guardar descripción y ubicación por defecto para <b id="pg-def-t">Entrenamiento</b></label>`)}
-    ${gcalOn() ? fila('📅', `<span class="small muted">Se guarda sola en tu Google Calendar.</span><label class="row small" style="gap:8px"><input type="checkbox" id="pg-av" checked style="width:18px;height:18px"> Enviar invitación o aviso por correo a los alumnos (Google)</label><input type="checkbox" id="pg-g" hidden>`)
+    ${gcalOn() ? fila('📅', `<span class="small muted">Se guarda sola en tu Google Calendar.</span><label class="row small" style="gap:8px"><input type="checkbox" id="pg-av" checked style="width:18px;height:18px"> Enviar invitación o aviso por correo a los invitados (Google)</label><input type="checkbox" id="pg-g" hidden>`)
       : fila('📅', `<label class="row small" style="gap:8px"><input type="checkbox" id="pg-g" style="width:18px;height:18px"> Abrir también Google Calendar para añadirla al momento</label>`)}
     ${P0 ? fila('✔', `<select id="pg-e" class="gc-in">${Object.entries(PRES_EST).map(([k, l]) => `<option value="${k}" ${P0.estado === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`) : ''}
     <p class="err" id="pg-err"></p><button class="btn full" type="submit">${P0 ? 'Guardar cambios' : 'Guardar'}</button>
@@ -2615,10 +2617,16 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
   let tipo = P0 ? (TIPOS_CITA.some(x => x[0] === sinSuf(P0.tipo)) ? sinSuf(P0.tipo) : P0.alumno_id ? 'Entrenamiento' : 'Reunión de negocio') : 'Entrenamiento';
   if (P0) { document.querySelectorAll('#pg-t .pill').forEach(x => x.classList.toggle('blue', x.dataset.t === tipo)); $('#pg-q').value = P0.persona || ''; $('#pg-d').value = P0.duracion_min || durSesion(); $('#pg-l').value = P0.lugar || ''; $('#pg-n').value = P0.nota || ''; }
   ponFin(); ponTd();
+  /* Invitados: por defecto el correo de los alumnos elegidos; si los editas a mano, se respeta lo que escribas */
+  let emTocado = !!(P0 && P0.invitados != null); if (P0) { $('#pg-tt').value = P0.titulo || ''; if (P0.invitados != null) $('#pg-em').value = P0.invitados; }
+  const mailsSel = () => [...new Set([$('#pg-a').value, ...[...document.querySelectorAll('.pg-a2')].map(x => x.value)].filter(v => v && v !== '__otro').map(i => S.c.perfiles.find(p => p.id === i)?.email).filter(Boolean))];
+  const ponEm = () => { if (!emTocado) $('#pg-em').value = mailsSel().join(', '); };
+  $('#pg-em').addEventListener('input', () => { emTocado = true; });
+  const leerEm = () => { const l = [...new Set($('#pg-em').value.split(/[\s,;]+/).map(x => x.trim().toLowerCase()).filter(Boolean))]; const mal = l.find(x => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)); return { l, mal }; };
   const ext = () => TIPOS_CITA.find(x => x[0] === tipo)?.[1] === 'ext';
   const otro = () => !ext() && $('#pg-a').value === '__otro';   /* alumno que no está en la app: se escribe su nombre y la cita no gasta bono */
   const tamV = () => { $('#pg-tam').hidden = ext() || otro(); }; setTimeout(tamV, 0); $('#pg-t')?.addEventListener('click', () => setTimeout(tamV, 0));
-  const bono = () => { const id = $('#pg-a').value === '__otro' ? '' : $('#pg-a').value, v = srvDe(id); $('#pg-ext').hidden = !(ext() || otro()); $('#pg-aw').hidden = ext(); $('#pg-inv').hidden = ext() || otro(); tamV(); if (otro()) { $('#pg-q').placeholder = 'Nombre del alumno'; return $('#pg-bono').innerHTML = '<span class="muted">No está en la app: va a tu agenda y a tu Google Calendar, sin bono.</span>'; } if (ext()) return $('#pg-bono').innerHTML = '<span class="muted">Va a tu agenda y a tu Google Calendar. No es de ningún alumno.</span>'; if (!id) return $('#pg-bono').textContent = ''; if (/revisi/i.test(tipo)) return $('#pg-bono').innerHTML = '<span class="muted">Revisión por videollamada: no cuenta como entrenamiento ni gasta bono.</span>';
+  const bono = () => { const id = $('#pg-a').value === '__otro' ? '' : $('#pg-a').value, v = srvDe(id); $('#pg-ext').hidden = !(ext() || otro()); $('#pg-aw').hidden = ext(); $('#pg-inv').hidden = ext() || otro(); $('#pg-ttw').hidden = ext(); $('#pg-emw').hidden = tipo === 'Tarea'; tamV(); ponEm(); if (otro()) { $('#pg-q').placeholder = 'Nombre del alumno'; return $('#pg-bono').innerHTML = '<span class="muted">No está en la app: va a tu agenda y a tu Google Calendar, sin bono.</span>'; } if (ext()) return $('#pg-bono').innerHTML = '<span class="muted">Va a tu agenda y a tu Google Calendar. No es de ningún alumno.</span>'; if (!id) return $('#pg-bono').textContent = ''; if (/revisi/i.test(tipo)) return $('#pg-bono').innerHTML = '<span class="muted">Revisión por videollamada: no cuenta como entrenamiento ni gasta bono.</span>';
     const D = v?.sesiones_incluidas ? datosPres(v, (S.c.presenciales || []).filter(p => p.alumno_id === id)) : null;
     const dia = (S.c.presenciales || []).filter(p => p.alumno_id === id && p.fecha === $('#pg-f').value && p.estado !== 'cancelada');
     $('#pg-bono').innerHTML = (D ? `Le quedan <b>${D.quedan}</b> de ${D.total} sesiones${D.prox.length ? ` (${D.prox.length} ya reservada${D.prox.length > 1 ? 's' : ''})` : ''}.` : '<span class="muted">Sin bono de sesiones en su servicio: se apunta igual.</span>') + (dia.length ? ` <b style="color:var(--warn)">Ya tiene una sesión ese día${dia[0].hora ? ' a las ' + hhmm(dia[0].hora) : ''}.</b>` : '') + (D && D.quedan <= 0 && tipo === 'Entrenamiento' ? ' <b style="color:var(--bad)">No le quedan sesiones.</b>' : ''); };
@@ -2633,7 +2641,7 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
   ponDef(!P0);
   const masAlumno = v => { const d = document.createElement('div'); d.className = 'row'; d.style.gap = '6px';
     d.innerHTML = `<select class="pg-a2 grow">${$('#pg-a').innerHTML.replace(/<option value="__otro"[^>]*>[^<]*<\/option>/, '')}</select><button type="button" class="btn sm ghost" aria-label="Quitar">✕</button>`; d.querySelector('select').value = v || '';
-    d.querySelector('button').onclick = () => d.remove(); $('#pg-mas').append(d); };
+    d.querySelector('button').onclick = () => { d.remove(); ponEm(); }; d.querySelector('select').addEventListener('change', ponEm); $('#pg-mas').append(d); };
   G0.slice(1).forEach(r => r.alumno_id && masAlumno(r.alumno_id));
   $('#pg-vv')?.addEventListener('click', () => { S.agTd = false; verAgenda(); });
   $('#pg-rep')?.addEventListener('change', e => { $('#pg-hw').hidden = !e.target.value; });
@@ -2657,6 +2665,8 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
   $('#f-prog').addEventListener('submit', async e => {
     e.preventDefault(); const X = ext() || otro(), id = X ? null : $('#pg-a').value, quien = $('#pg-q').value.trim();
     if (!X && !id) return $('#pg-err').textContent = 'Elige el alumno'; if (X && !quien) return $('#pg-err').textContent = otro() ? 'Escribe el nombre del alumno' : tipo === 'Tarea' ? 'Escribe qué tienes que hacer' : 'Escribe con quién es';
+    const em = leerEm(); if (em.mal) return $('#pg-err').textContent = `Revisa este correo: ${em.mal}`;
+    const extra = { titulo: ext() ? null : ($('#pg-tt').value.trim() || null), invitados: tipo === 'Tarea' ? null : em.l.join(', ') };
     ponDur(); const hora = $('#pg-td').checked ? null : normHora($('#pg-h').value); if (hora === undefined) return $('#pg-err').textContent = 'Hora no válida: escríbela así, 9:30 o 18:00';
     /* El iPhone solo deja abrir otra pestaña en el mismo toque: se abre ya y se rellena al guardar */
     const win = $('#pg-g').checked ? window.open('', '_blank') : null;
@@ -2668,10 +2678,10 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
     if (P0?.serie) { alcance = await preguntaSerie('Editar evento periódico'); if (!alcance) { cierraWin(); bt.disabled = false; bt.textContent = 'Guardar cambios'; return; } }
     if ($('#pg-def').checked) { const D = agendaDef(); D[tipo] = { n: $('#pg-n').value.trim(), l: $('#pg-l').value.trim() }; const v = JSON.stringify(D);
       const { error: eD } = await sb.from('ajustes_privados').upsert({ clave: 'agenda_def', valor: v }, { onConflict: 'clave' }); if (!eD) (S.c.fiscal ||= {}).agenda_def = v; }
-    const row = { alumno_id: id, fecha: $('#pg-f').value || hoyISO(), hora, estado: 'programada', tipo: X ? tipo : conSuf(tipo === 'Entrenamiento' ? keepT : tipo, $('#pg-xr').checked, $('#pg-xv').checked), nota: $('#pg-n').value.trim() || null };
+    const row = { alumno_id: id, fecha: $('#pg-f').value || hoyISO(), hora, estado: 'programada', tipo: X ? tipo : conSuf(tipo === 'Entrenamiento' ? keepT : tipo, $('#pg-xr').checked, $('#pg-xv').checked), nota: $('#pg-n').value.trim() || null, ...extra };
     if (P0) { /* Edición: mismos datos para todos los del grupo; añade o quita alumnos */
       const idsE = X ? [null] : [...new Set([id, ...[...document.querySelectorAll('.pg-a2')].map(x => x.value).filter(Boolean)])];
-      const com = { fecha: row.fecha, hora, tipo: row.tipo, nota: row.nota, lugar, duracion_min: X || dur !== durSesion() ? dur : null, persona: X ? quien : null, estado: $('#pg-e').value };
+      const com = { fecha: row.fecha, hora, tipo: row.tipo, nota: row.nota, lugar, duracion_min: X || dur !== durSesion() ? dur : null, persona: X ? quien : null, estado: $('#pg-e').value, ...extra };
       if (P0.serie && alcance !== 'esta') { const { fecha: _f, estado: _e, ...cs } = com; const qs = sb.from('presenciales').update(cs).eq('serie', P0.serie); const { error: es } = await (alcance === 'todas' ? qs : qs.gt('fecha', P0.fecha)); if (es) { cierraWin(); bt.disabled = false; bt.textContent = 'Guardar cambios'; return $('#pg-err').textContent = errCita(es); } }
       /* Una cita ya creada que ahora «se repite»: se crean las siguientes copias y todas forman una serie */
       const repE = $('#pg-rep')?.value || ''; if (repE && !P0.serie) { const fs2 = fechasRep(com.fecha, repE, $('#pg-hasta')?.value || com.fecha).slice(1), ser = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
@@ -2696,6 +2706,7 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
     if (error && /serie/.test(error.message || '')) { cierraWin(); bt.disabled = false; bt.textContent = 'Guardar sesión'; return $('#pg-err').textContent = 'Para las citas que se repiten falta ejecutar el Bloque 101 en Supabase.'; }
     if (error && /grupo/.test(error.message || '')) { cierraWin(); bt.disabled = false; bt.textContent = 'Guardar sesión'; return $('#pg-err').textContent = 'Para sesiones conjuntas falta ejecutar el Bloque 99 en Supabase.'; }
     if (error && /lugar/.test(error.message || '')) { cierraWin(); bt.disabled = false; bt.textContent = 'Guardar sesión'; return $('#pg-err').textContent = 'Para la ubicación falta ejecutar el Bloque 99 en Supabase.'; }
+    if (error && /titulo|invitados/.test(error.message || '')) { cierraWin(); bt.disabled = false; bt.textContent = 'Guardar sesión'; return $('#pg-err').textContent = 'Para el título y los invitados falta ejecutar el Bloque 110 en Supabase.'; }
     if (error && /tipo/.test(error.message || '')) { delete row.tipo; fs = filas(); ({ data, error } = await sb.from('presenciales').insert(fs).select()); }
     if (error) { cierraWin(); bt.disabled = false; bt.textContent = 'Guardar sesión'; return $('#pg-err').textContent = /persona|duracion|alumno_id|null value/.test(error.message || '') ? 'Falta ejecutar el Bloque 98 en Supabase.' : motivoPres(error); }
     const nuevas = Array.isArray(data) && data.length ? data : fs, nueva = nuevas[0]; (S.c.presenciales ||= []).push(...nuevas);
@@ -2720,7 +2731,7 @@ async function syncGrupo(base, ids, com) {
   if (nuevos.length) { const { error } = await sb.from('presenciales').insert(nuevos.map(i => ({ ...com, estado: com.estado || base.estado || 'programada', alumno_id: i, ...gr }))); if (error) return error; }
   return null;
 }
-const errCita = e => /grupo|lugar/.test(e?.message || '') ? 'Falta ejecutar el Bloque 99 en Supabase.' : /persona|duracion|null value/.test(e?.message || '') ? 'Falta ejecutar el Bloque 98 en Supabase.' : motivoPres(e);
+const errCita = e => /titulo|invitados/.test(e?.message || '') ? 'Para el título y los invitados falta ejecutar el Bloque 110 en Supabase.' : /grupo|lugar/.test(e?.message || '') ? 'Falta ejecutar el Bloque 99 en Supabase.' : /persona|duracion|null value/.test(e?.message || '') ? 'Falta ejecutar el Bloque 98 en Supabase.' : motivoPres(e);
 const opcAlumnos = sel => S.c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach').sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).map(a => `<option value="${a.id}" ${a.id === sel ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('');
 /* Sesiones conjuntas: las filas con el mismo «grupo» se ven como un solo evento */
 function agruparCitas(l) { const vis = {}, out = []; for (const p of l) { if (!p.grupo) { out.push(p); continue; } if (vis[p.grupo]) { vis[p.grupo]._g.push(p); continue; } const q = { ...p, _g: [p] }; vis[p.grupo] = q; out.push(q); } return out; }
@@ -8938,7 +8949,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v434';
+const APP_VER = 'v435';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}

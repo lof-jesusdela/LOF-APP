@@ -70,12 +70,15 @@ Deno.serve(async (req) => {
       const lineas = g.map((x: any) => num[x.id] && (g.length > 1 ? (P[x.alumno_id]?.nombre || "").split(" ")[0] + ": " : "") + num[x.id]).filter(Boolean).join("\n");
       const meet = /^https?:\/\//i.test(r.lugar || "") ? r.lugar : null;
       const ev: Record<string, unknown> = {
-        summary: als.length ? `${quien} · ${tipo}` : `${tipo}${quien ? " · " + quien : ""}`,
+        summary: r.titulo || (als.length ? `${quien} · ${tipo}` : `${tipo}${quien ? " · " + quien : ""}`),
         description: [lineas && "🏋️ " + lineas, meet && "Enlace de la videollamada: " + meet, r.nota, "La Obra Fitness"].filter(Boolean).join("\n\n"),
         location: r.lugar || undefined,
         start: r.hora ? { dateTime: `${r.fecha}T${hm(r.hora)}:00`, timeZone: TZ } : { date: r.fecha },
         end: r.hora ? { dateTime: `${finDe(r.fecha, r.hora, r.duracion_min || minDef)}:00`, timeZone: TZ } : { date: diaSig(r.fecha) },
-        attendees: als.filter((a: any) => a.email).map((a: any) => ({ email: a.email, displayName: a.nombre })),
+        // Invitados: los escritos en la cita (alumnos y quien no esté en la app); si la cita no los tiene, los correos de sus alumnos
+        attendees: r.invitados != null
+          ? String(r.invitados).split(/[\s,;]+/).map((e: string) => e.trim()).filter((e: string) => e.includes("@")).map((e: string) => { const a = als.find((x: any) => (x.email || "").toLowerCase() === e.toLowerCase()); return a ? { email: e, displayName: a.nombre } : { email: e }; })
+          : als.filter((a: any) => a.email).map((a: any) => ({ email: a.email, displayName: a.nombre })),
         colorId: colorDe(r, hoyMadrid()),
         extendedProperties: { private: { lof_id: String(r.id) } },
       };
