@@ -306,15 +306,29 @@ const Consultas = (() => {
   }
   /* ---------- Coach ---------- */
   const RAPIDAS = ['Entendido, lo ajusto en tu próximo entreno.', 'Para hoy, sustituye el ejercicio por una variante sin dolor y avísame mañana.', 'Lo vemos en tu próxima revisión; mientras tanto sigue igual.'];
+  /* «No leído» a mano (como en WhatsApp): lista de alumnos guardada en tus ajustes privados, igual en todos tus dispositivos */
+  const noLeidos = () => { try { return JSON.parse(S.c?.fiscal?.cq_noleidos || '[]') || []; } catch (e) { return []; } };
+  async function ponNoLeido(aid, on) {
+    const l = noLeidos().filter(x => x !== aid); if (on) l.push(aid); const v = JSON.stringify(l);
+    (S.c.fiscal ||= {}).cq_noleidos = v; await sb.from('ajustes_privados').upsert({ clave: 'cq_noleidos', valor: v }, { onConflict: 'clave' }).then(() => {}, () => {});
+  }
+  /* Abrir un chat lo da por leído: sus mensajes pendientes quedan atendidos (un «Ok» no hace falta contestarlo) */
+  async function marcarLeido(aid) {
+    if (S.vista || S.prueba) return; const ahora = new Date().toISOString(), ab = abiertas().filter(c => c.alumno_id === aid);
+    if (noLeidos().includes(aid)) await ponNoLeido(aid, false);
+    if (!ab.length) return; const { error } = await sb.from('consultas').update({ estado: 'cerrada', cerrada_at: ahora }).in('id', ab.map(c => c.id));
+    if (!error) ab.forEach(c => Object.assign(c, { estado: 'cerrada', cerrada_at: ahora }));
+  }
   function vCoach(enSheet) {
     if (S.c?.consultasErr) return '';
     const desde = Date.now() - 30 * 864e5, todas = (S.c.consultas || []).filter(c => new Date(c.creado_at).getTime() >= desde), ab = abiertas();
-    const ids = [...new Set(todas.map(c => c.alumno_id))];
+    const ids = [...new Set([...todas.map(c => c.alumno_id), ...noLeidos()])];
     if (!ids.length && !enSheet) return '';
-    const fila = aid => { const L = todas.filter(c => c.alumno_id === aid), pend = ab.filter(c => c.alumno_id === aid), u = mensajes(L.slice().reverse()).pop(), viejo = pend.reduce((m, c) => Math.max(m, edad(c)), 0);
+    const NL = noLeidos();
+    const fila = aid => { const L = todas.filter(c => c.alumno_id === aid), pend0 = ab.filter(c => c.alumno_id === aid), pend = pend0.length ? pend0 : NL.includes(aid) ? [{ creado_at: new Date().toISOString(), _nl: 1 }] : [], u = mensajes(L.slice().reverse()).pop(), viejo = pend.reduce((m, c) => Math.max(m, edad(c)), 0);
       const col = !pend.length ? '' : viejo > H48 ? 'bad' : viejo > 24 * 36e5 ? 'warn' : 'ok';
       return { pend: pend.length, viejo, html: `<div class="wa-fila" data-act="cq" data-q="hilo" data-v="${aid}" style="cursor:pointer">${avatarDe(perfilDe(aid), 44)}<div class="grow" style="min-width:0"><div class="row"><b class="grow">${esc(nombreAl(aid))}</b>${u ? `<span class="small ${pend.length ? 'wa-nue' : 'muted'}">${esc(cuando(u.t))}</span>` : ''}</div>
-        <div class="row"><span class="small muted wa-prev grow">${u ? (u.de === 'je' ? 'Tú: ' : '') + esc(u.txt) : ''}</span>${pend.length ? `<span class="wa-badge ${col}">${pend.length}</span>` : ''}</div></div></div>` }; };
+        <div class="row"><span class="small muted wa-prev grow">${u ? (u.de === 'je' ? 'Tú: ' : '') + esc(u.txt) : ''}</span>${pend.length ? `<span class="wa-badge ${col}">${pend[0]?._nl ? '●' : pend.length}</span>` : ''}</div></div></div>` }; };
     const F = ids.map(fila).sort((a, b) => b.pend - a.pend || b.viejo - a.viejo), conP = F.filter(f => f.pend), sinP = F.filter(f => !f.pend);
     const M = metrica(), venc = ab.filter(c => edad(c) > H48).length;
     const met = M.n ? `<div class="small muted">30 días: ${M.pct != null ? `<b style="color:var(--${M.pct >= 90 ? 'ok' : M.pct >= 70 ? 'warn' : 'bad'})">${M.pct}%</b> respondidas en &lt;48 h` : 'sin respuestas aún'}${M.media != null ? ` · media ${M.media} h` : ''} · ${M.n} mensajes · ${M.wa} derivados a WhatsApp${venc ? ` · <b style="color:var(--bad)">${venc} fuera de plazo</b>` : ''}</div>` : '';
@@ -534,7 +548,7 @@ Jesús`, 'nutricion']];
       case 'wa': { const u = URG.find(x => x[0] === v); if (!u) break; log(v); window.open(waJesus(u[3]), '_blank', 'noopener'); break; }
       case 'walog': log(v); break;
       case 'watel': { const dl = v === 'wa_dolor'; log(dl ? 'wa_dolor' : 'wa_chat'); window.open(waJesus(dl ? 'Hola Jesús, tengo un dolor en un ejercicio que me limita: ' : 'Hola Jesús, '), '_blank', 'noopener'); break; }
-      case 'hilo': S.cqLista = !!b.closest('.wa-lista'); abrirHilo(v); break;
+      case 'hilo': if (Date.now() - (S._cqLP || 0) < 800) break; S.cqLista = !!b.closest('.wa-lista'); await marcarLeido(v); abrirHilo(v); break;
       case 'lista': abrirLista(); break;
       case 'difu': abrirDifusion(); break;
       case 'mcerrar': cerrarCapa(); break;
@@ -563,10 +577,20 @@ Jesús`, 'nutricion']];
     const t = new Date(mio).getTime(), h = (Date.now() - t) / 36e5;
     return (!suyo || suyo < mio) && h >= 48 && h <= 24 * 21 ? mio.slice(0, 10) : null;
   }
-  return { sinRespuesta, mensajeJesus, menuMsg, reenviarPick, difTecleo: () => { if (S.cqDif) { S.cqDif.conf = false; clearTimeout(S.cqDifT); S.cqDifT = setTimeout(() => { const t = document.getElementById('cq-dif'); if (!t) return; const pos = t.selectionStart; S.cqDif.txt = t.value; abrirDifusion(); const n = document.getElementById('cq-dif'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }, 900); } }, ajustaAlto, elegirFoto, TEL, vBoton, abrirLista, vDevolucion, metrica, cargarAlumno, cargarCoach, vAlumno, vAvisoHoy, vCoach, vFinEntreno, leerFinEntreno, crearDeFin, accion, sinLeer, abiertas, abrirHilo };
+  return { marcarLeido, ponNoLeido, abrirLista, sinRespuesta, mensajeJesus, menuMsg, reenviarPick, difTecleo: () => { if (S.cqDif) { S.cqDif.conf = false; clearTimeout(S.cqDifT); S.cqDifT = setTimeout(() => { const t = document.getElementById('cq-dif'); if (!t) return; const pos = t.selectionStart; S.cqDif.txt = t.value; abrirDifusion(); const n = document.getElementById('cq-dif'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }, 900); } }, ajustaAlto, elegirFoto, TEL, vBoton, abrirLista, vDevolucion, metrica, cargarAlumno, cargarCoach, vAlumno, vAvisoHoy, vCoach, vFinEntreno, leerFinEntreno, crearDeFin, accion, sinLeer, abiertas, abrirHilo };
 })();
 
 document.addEventListener('input', e => { if (e.target.matches && e.target.matches('.wa-bar textarea')) Consultas.ajustaAlto(e.target); if (e.target.id === 'cq-dif') Consultas.difTecleo(); });
+/* Mantén pulsada una conversación: «no leído» (te la deja de recordatorio) o, si ya lo estaba, leída */
+(() => { let t = null, x0 = 0, y0 = 0;
+  document.addEventListener('pointerdown', e => { const f = e.target.closest?.('.wa-fila[data-v]'); if (!f || S.modo !== 'coach') return; x0 = e.clientX; y0 = e.clientY; clearTimeout(t);
+    t = setTimeout(async () => { t = null; S._cqLP = Date.now(); navigator.vibrate?.(15); const aid = f.dataset.v, yaNL = !!f.querySelector('.wa-badge');
+      if (yaNL) { await Consultas.marcarLeido(aid); toast('Marcado como leído'); } else { await Consultas.ponNoLeido(aid, true); toast('Marcado como no leído'); }
+      if (S.cqLista) Consultas.abrirLista(); render(); }, 550); });
+  document.addEventListener('pointermove', e => { if (t && Math.hypot(e.clientX - x0, e.clientY - y0) > 10) { clearTimeout(t); t = null; } });
+  ['pointerup', 'pointercancel'].forEach(ev => document.addEventListener(ev, () => { clearTimeout(t); t = null; }));
+  document.addEventListener('contextmenu', e => { if (e.target.closest?.('.wa-fila')) e.preventDefault(); });
+})();
 document.addEventListener('change', e => { const sel = e.target.closest && e.target.closest('[data-cq-nuevo]'); if (sel && sel.value) Consultas.abrirHilo(sel.value); if (e.target.id === 'cq-foto') Consultas.elegirFoto(e.target); });
 
 /* Mantener pulsado (o clic derecho) sobre un mensaje en el chat del coach */

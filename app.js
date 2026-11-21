@@ -3079,15 +3079,16 @@ async function marcarFoco(ok, fechaF) {
   S.d.diario = (S.d.diario || []).filter(x => x.fecha !== fF).concat(data); return true;
 }
 /* Tarjeta del foco, lo primero en Hoy del alumno */
-function vFocoHoy(s) {
-  const f = s?.foco; if (!f?.tipo) return ''; const e = focoEstado(f, S.d, S.d.uid); if (!e || (e.acabado && hoyISO() > sumaDias(e.fin, 3))) return '';
+/* co = { f, src, aid }: la misma tarjeta en la ficha del coach (Check-ins), sin botones */
+function vFocoHoy(s, co) {
+  const f = co ? co.f : s?.foco; if (!f?.tipo) return ''; const e = focoEstado(f, co ? co.src : S.d, co ? co.aid : S.d.uid); if (!e || (e.acabado && hoyISO() > sumaDias(e.fin, 3))) return '';
   const p = Math.round(e.pct * 100), r = 38, c = 2 * Math.PI * r, tit = f.tipo === 'libre' ? (f.texto || 'Tu foco') : Foco.titulo(f);
   const tira = e.ult7.map(x => `<span title="${esc(fCorta(x.f))}" style="width:14px;height:14px;border-radius:4px;background:${x.ok === undefined ? 'transparent' : x.ok ? '#E3C46A' : 'rgba(255,255,255,.18)'};border:${x.ok === undefined ? '1px dashed rgba(255,255,255,.2)' : '0'}"></span>`).join('');
   const quedan = e.N ? Math.max(0, Math.round((fecha(e.fin) - fecha(hoyISO())) / 864e5)) : null;
   const sub = e.acabado ? `Foco terminado: ${e.txt} 👏` : `Llevas ${e.txt}${quedan != null ? ` · ${quedan === 0 ? 'último día' : `quedan ${quedan} día${quedan === 1 ? '' : 's'}`}` : ' · últimos 7 días'}`;
-  const btn = e.acabado ? '' : f.tipo === 'libre' ? `<button class="btn full foco-btn" data-act="focoHecho" data-v="${e.hoyOk ? 0 : 1}">${e.hoyOk ? 'Hecho hoy ✓' : 'Hecho hoy'}</button>`
+  const btn = e.acabado || co ? '' : f.tipo === 'libre' ? `<button class="btn full foco-btn" data-act="focoHecho" data-v="${e.hoyOk ? 0 : 1}">${e.hoyOk ? 'Hecho hoy ✓' : 'Hecho hoy'}</button>`
     : f.tipo === 'foto_comida' ? (e.hoyOk ? `<div class="small" style="color:#E3C46A;text-align:center">Foto de hoy subida ✓</div>` : `<button class="btn full foco-btn" data-act="nuComNueva">📸 Subir la foto de hoy</button>`) : `<div class="small" style="color:#C9D2E6;text-align:center">Se mide solo con lo que registras</div>`;
-  return `<section class="section"><div class="foco-hero"><span class="foco-ey">🎯 Tu foco</span><div class="row" style="gap:14px;align-items:center;margin-top:6px">
+  return `<section class="section"><div class="foco-hero"><span class="foco-ey">🎯 ${co ? 'Su foco · así lo ve' : 'Tu foco'}</span><div class="row" style="gap:14px;align-items:center;margin-top:6px">
     <svg width="96" height="96" viewBox="0 0 96 96" aria-hidden="true"><circle cx="48" cy="48" r="${r}" fill="none" stroke="#E3C46A" stroke-opacity=".2" stroke-width="11"/><circle cx="48" cy="48" r="${r}" fill="none" stroke="#E3C46A" stroke-width="11" stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c * (1 - e.pct)).toFixed(1)}" transform="rotate(-90 48 48)"/><text x="48" y="54" text-anchor="middle" fill="#fff" font-size="19" font-weight="700">${p}%</text></svg>
     <div class="grow stack" style="gap:4px;min-width:0"><b style="font-size:17px;line-height:1.25">${esc(tit)}</b><span class="small" style="color:#C9D2E6">${esc(sub)}</span><div class="row" style="gap:4px;margin-top:4px">${tira}</div></div></div>${btn}</div></section>`;
 }
@@ -6736,7 +6737,7 @@ function vAnillosFicha(a, f, src, hoy, lunes) {
   const lA = S.fSem?.[a.id] && S.fSem[a.id] <= lunes ? S.fSem[a.id] : lunes, R1 = { lunes: lA, src, pres: f.pres }, r7 = sumaDias(hoy, -6), R7 = { lunes: r7, src, pres: f.pres };
   let an = '', u7 = ''; try { an = vAnillos(a, R1, datosReporte(a, R1), false, false); u7 = vAnillos(a, R7, datosReporte(a, R7), true, false); } catch (e) { console.warn(e); return ''; }
   const tit = lA === lunes ? 'Esta semana' : lA === sumaDias(lunes, -7) ? 'Semana pasada' : `Del ${fCorta(lA)} al ${fCorta(sumaDias(lA, 6))}`;
-  return `<section class="section rg-ir"><h2>Sus anillos</h2><div class="card stack" style="gap:12px"><div class="row rg-nav"><button class="btn ghost sem-flecha" data-act="fSemAl" data-d="-7" aria-label="Semana anterior">‹</button><div class="grow" style="text-align:center"><b>${esc(tit)}</b><div class="small muted">${esc(fCorta(lA))} – ${esc(fCorta(sumaDias(lA, 6)))}</div></div><button class="btn ghost sem-flecha" data-act="fSemAl" data-d="7" aria-label="Semana siguiente"${lA >= lunes ? ' disabled' : ''}>›</button></div>${an}<span class="small muted">Toca un indicador para ver sus días; tócalo otra vez para ir a su apartado.</span></div></section>
+  return `${vFocoHoy(null, { f: Foco.de(a.id), src, aid: a.id })}<section class="section rg-ir"><h2>Sus anillos</h2><div class="card stack" style="gap:12px"><div class="row rg-nav"><button class="btn ghost sem-flecha" data-act="fSemAl" data-d="-7" aria-label="Semana anterior">‹</button><div class="grow" style="text-align:center"><b>${esc(tit)}</b><div class="small muted">${esc(fCorta(lA))} – ${esc(fCorta(sumaDias(lA, 6)))}</div></div><button class="btn ghost sem-flecha" data-act="fSemAl" data-d="7" aria-label="Semana siguiente"${lA >= lunes ? ' disabled' : ''}>›</button></div>${an}<span class="small muted">Toca un indicador para ver sus días; tócalo otra vez para ir a su apartado.</span></div></section>
   <section class="section rg-ir rg-sinani"><div class="section-head"><h2>Últimos 7 días</h2><span class="small muted">${esc(fCorta(r7))} – ${esc(fCorta(hoy))}</span></div><div class="card">${u7}</div></section>`;
 }
 let MONT_LABS = null;   /* letras de los días cuando la semana no empieza en lunes (últimos 7 días) */
@@ -9075,7 +9076,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v450';
+const APP_VER = 'v451';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
