@@ -345,6 +345,11 @@ function formBloqueEnt(id, op = {}) {
   $('#be-del')?.addEventListener('click', async ev => { const x = ev.currentTarget; if (!x.dataset.ok) { x.dataset.ok = 1; x.textContent = 'Pulsa otra vez: se borra el bloque y sus entrenos (lo ya entrenado se conserva)'; return; }
     const { error } = await sb.from('programas').delete().eq('id', c.id).eq('alumno_id', f.id); if (error) return fallo(error); cerrarSheet(); toast('Bloque eliminado'); await cargarProgramasFicha(f); await recargarContextosCoach(); render(); });
 }
+/* Contextos alternativos (siempre visibles para el alumno): a mano en Entreno, justo bajo su bloque actual */
+function vAltFicha(f) {
+  const l = (f.guardados || []).filter(c => c.alternativo); if (!l.length) return '';
+  return `<section class="section"><div class="section-head"><h2>Contextos alternativos</h2><span class="pill gold">Siempre visibles</span></div><div class="card">${l.map(c => `<div class="line" style="flex-wrap:wrap"><div class="grow" style="min-width:160px"><b>${esc(c.contexto_nombre || 'Alternativo')}</b><div class="small muted">${c.dias ? `${c.dias.length} ${c.dias.length === 1 ? 'sesión' : 'sesiones'}${c.dias.length ? ': ' + esc(c.dias.filter(d => !d.oculto).map(d => d.titulo || d.nombre || '').filter(Boolean).slice(0, 4).join(' · ')) : ''}` : ''}</div></div><div class="row" style="gap:6px"><button class="btn sm" data-act="sesionesContexto" data-id="${c.id}">✎ Sesiones</button><button class="btn sm ghost" data-act="altToggle" data-id="${c.id}" data-v="0">Quitar</button></div></div>`).join('')}</div></section>`;
+}
 function vContextos(f, a) {
   const l = (f.contextos || contextosDe(a.id)).filter(c => !esBloqueP(c)).slice().sort((x, y) => y.contexto_desde.localeCompare(x.contexto_desde)), hoy = hoyISO(), lunes = lunesDe(hoy);
   const est = c => c.contexto_hasta < hoy ? ['', 'Terminado'] : c.contexto_desde <= lunes ? ['gold', 'Activo esta semana'] : ['blue', 'Programado'];
@@ -5122,7 +5127,7 @@ function vFichaBase() {
     ${srv?.modulo_futbol ? '' : (() => { const B = (f.contextos || []).filter(esBloqueP), c = ctxEnSemana(B, lunesDe(hoyISO())); return `<div class="row small" style="gap:8px;flex-wrap:wrap"><span class="grow">🧱 ${c ? `<b>${esc(c.contexto_nombre)}</b> · ${esc(fCtx(c))}` : B.length ? 'Ahora sin bloque con fechas (programa base)' : 'Sin bloques con fechas'}</span>${c ? `<button class="btn sm gold" data-act="bloqueSig" data-id="${c.id}">Terminar y empezar el siguiente</button>` : ''}<button class="btn sm ghost" data-act="bloqueEnt">＋ Nuevo bloque</button></div>`; })()}
     ${e.control && citaRev(a.id) ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow">📅 <b>Revisión mensual ${e.control.n} reservada:</b> ${esc(fLarga(citaRev(a.id).fecha))}${citaRev(a.id).hora ? ' a las ' + esc(hhmm(citaRev(a.id).hora)) : ''}</div></div>` : e.control ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>Toca su revisión mensual ${e.control.n}</b> (${esc(fCorta(e.control.fecha))}): llamada o videollamada de 10-15 minutos para ver cómo se siente, sus objetivos y su composición corporal.</div><button class="btn sm gold" data-act="revision" data-n="${e.control.n}">Registrar revisión</button></div>` : ''}
   </div></section>`;
-  const fb4 = `<div class="fx-ent">${vBloqueTop(f, a)}${srv?.modulo_futbol ? vCalFut(a) : vCalPlanCoach(f, a)}${vSemanasNav(f, a)}<div style="padding:0 2px"><button class="btn ghost full" data-act="fichaSub" data-s="entreno">📚 Bloques, contextos y zonas de FC · histórico y planificación ›</button></div>${IA.vFicha(f, a)}</div>`;
+  const fb4 = `<div class="fx-ent">${vBloqueTop(f, a)}${srv?.modulo_futbol ? vCalFut(a) : vCalPlanCoach(f, a)}${vSemanasNav(f, a)}${vAltFicha(f)}<div style="padding:0 2px"><button class="btn ghost full" data-act="fichaSub" data-s="entreno">📚 Bloques, contextos y zonas de FC · histórico y planificación ›</button></div>${IA.vFicha(f, a)}</div>`;
   /* Su diario de comidas (pestaña Nutrición, con fotos) también cuenta como días apuntados */
   const com7 = (f.comidas || []).filter(x => !x.compartido && x.fecha >= ult7 && x.fecha <= hoy), diasCom = new Set([...com7.map(x => x.fecha), ...S.c.diario.filter(r => r.alumno_id === a.id && r.fecha >= ult7 && r.fecha <= hoy && (r.ingestas != null || (r.fotos || []).length)).map(r => r.fecha)]).size;
   const fotos7 = com7.flatMap(x => fotosDe(x)); if (fotos7.length) pedirFotos(fotos7.slice(-6));
@@ -8933,7 +8938,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v432';
+const APP_VER = 'v433';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
