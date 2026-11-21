@@ -2847,23 +2847,49 @@ function propuestaHora(aid, f, h) {
 }
 /* Mantén pulsada una cita y arrástrala a otro día u hora (cada 15 min); al soltar confirmas y eliges si avisar al alumno */
 const AGD = { dr: null, H: 52, h0: 6, t: null };
+/* Cambia de semana (deslizando o manteniendo una cita en el borde) conservando la hora que se estaba viendo */
+function agCambiaSem(g, d) {
+  const id = g.id, keep = g.scrollTop, dr = AGD.dr;
+  if (dr?.el && dr.el.isConnected && dr.el.parentNode !== document.body) { document.body.append(dr.el); Object.assign(dr.el.style, { position: 'fixed', left: '-9999px', top: '0', opacity: '0', pointerEvents: 'none' }); }   /* el toque sigue vivo aunque se repinte la agenda */
+  const b = document.querySelector(id === 'td-grid' ? `[data-act="tdSem"][data-d="${d}"]` : `[data-act="agendaMover"][data-d="${d}"]`); if (!b) return;
+  b.click(); navigator.vibrate?.(10);
+  setTimeout(() => { const ng = document.getElementById(id); if (ng) ng.scrollTop = keep; if (AGD.dr && AGD.last) AGD.mueve?.(AGD.last); }, 60);
+}
 function agendaArrastre(g, H, h0) {
   AGD.H = H; AGD.h0 = h0; const fin = () => { clearTimeout(AGD.t); AGD.t = null; };
   g.addEventListener('pointerdown', ev => { const el = ev.target.closest('.ag-ev[data-p]'); if (!el || !+el.dataset.p || ev.button > 0) return; const x0 = ev.clientX, y0 = ev.clientY;
     fin(); AGD.t = setTimeout(() => { const r = el.getBoundingClientRect(), gh = el.cloneNode(true), lab = document.createElement('div');
       gh.classList.add('ag-drag'); Object.assign(gh.style, { position: 'fixed', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px', zIndex: 9999, pointerEvents: 'none', opacity: .9 });
-      lab.className = 'ag-drag-lab'; document.body.append(gh, lab); el.style.opacity = .35; navigator.vibrate?.(20); AGD.dr = { el, id: +el.dataset.p, dy: y0 - r.top, gh, lab }; }, 380);
+      lab.className = 'ag-drag-lab'; document.body.append(gh, lab); el.style.opacity = .35; navigator.vibrate?.(20); AGD.dr = { el, id: +el.dataset.p, dy: y0 - r.top, gh, lab, gid: g.id, lado: 0, t0: 0 }; if (!AGD.raf) AGD.raf = requestAnimationFrame(AGD.tick); }, 380);
     const mv = e2 => { if (!AGD.dr && Math.hypot(e2.clientX - x0, e2.clientY - y0) > 8) fin(); };
     el.addEventListener('pointermove', mv); el.addEventListener('pointerup', () => { fin(); el.removeEventListener('pointermove', mv); }, { once: true }); });
   g.addEventListener('touchmove', e => { if (AGD.dr) e.preventDefault(); }, { passive: false });
+  /* Deslizar a izquierda o derecha cambia de semana */
+  const zona = g.closest('section') || g;
+  if (!zona._sw) { zona._sw = 1; let sx = 0, sy = 0, st = 0;
+    zona.addEventListener('touchstart', e => { const t = e.touches[0]; sx = t.clientX; sy = t.clientY; st = Date.now(); }, { passive: true });
+    zona.addEventListener('touchend', e => { if (AGD.dr || Date.now() - (S._agNoClick || 0) < 500) return; const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy;
+      if (Math.abs(dx) > 60 && Math.abs(dx) > 1.6 * Math.abs(dy) && Date.now() - st < 800) agCambiaSem(document.getElementById(g.id) || g, dx < 0 ? 1 : -1); }, { passive: true }); }
   if (AGD.ini) return; AGD.ini = true;   /* los oyentes del documento, una sola vez */
+  document.addEventListener('touchmove', e => { if (AGD.dr) e.preventDefault(); }, { passive: false });
   const DS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
   const donde = e => { const dr = AGD.dr, c = document.elementsFromPoint(e.clientX, e.clientY).find(x => x.classList?.contains('ag-col')); if (!c) return null; const top = c.getBoundingClientRect().top, y = e.clientY - top - dr.dy;
     const m = Math.max(0, Math.round(y / AGD.H * 4) * 15) + AGD.h0 * 60; return { f: c.dataset.f, h: `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`, c, y: top + (m - AGD.h0 * 60) / 60 * AGD.H }; };
-  document.addEventListener('pointermove', e => { const dr = AGD.dr; if (!dr) return; e.preventDefault(); const w = donde(e); if (!w) return; dr.w = w; const r = w.c.getBoundingClientRect();
-    Object.assign(dr.gh.style, { left: r.left + 'px', top: w.y + 'px', width: r.width - 2 + 'px' }); dr.lab.textContent = `${DS[(fecha(w.f).getDay() + 6) % 7]} ${+w.f.slice(8)} · ${w.h}`;
-    Object.assign(dr.lab.style, { left: r.left + 'px', top: w.y - 26 + 'px' }); }, { passive: false });
-  const suelta = ok => { const d = AGD.dr; if (!d) return; AGD.dr = null; d.gh.remove(); d.lab.remove(); d.el.style.opacity = ''; S._agNoClick = Date.now(); if (ok && d.w) confirmarMover(d.id, d.w.f, d.w.h); };
+  AGD.mueve = e => { const dr = AGD.dr; if (!dr) return; const w = donde(e); if (!w) return; dr.w = w; const r = w.c.getBoundingClientRect();
+    Object.assign(dr.gh.style, { left: r.left + 'px', top: w.y + 'px', width: r.width - 2 + 'px' }); dr.lab.textContent = `${DS[(fecha(w.f).getDay() + 6) % 7]} ${+w.f.slice(8)} · ${w.h}${dr.lado ? (dr.lado > 0 ? ' · mantén → semana siguiente' : ' · mantén → semana anterior') : ''}`;
+    Object.assign(dr.lab.style, { left: r.left + 'px', top: w.y - 26 + 'px' }); };
+  document.addEventListener('pointermove', e => { if (!AGD.dr) return; e.preventDefault(); AGD.last = { clientX: e.clientX, clientY: e.clientY }; AGD.mueve(e); }, { passive: false });
+  /* Mientras arrastras: cerca de arriba o abajo la agenda se desplaza sola; mantenida en el lunes o el domingo, cambia de semana */
+  AGD.tick = () => { const dr = AGD.dr; if (!dr) { AGD.raf = 0; return; } const e = AGD.last, g2 = document.getElementById(dr.gid);
+    if (e && g2) { const r = g2.getBoundingClientRect(), Z = 60; let v = 0;
+      if (e.clientY < r.top + Z) v = -Math.ceil((r.top + Z - e.clientY) / 5); else if (e.clientY > r.bottom - Z) v = Math.ceil((e.clientY - (r.bottom - Z)) / 5);
+      if (v) { const a = g2.scrollTop; g2.scrollTop += v; if (g2.scrollTop !== a) AGD.mueve(e); }
+      const cols = g2.querySelectorAll('.ag-col'), c0 = cols[0]?.getBoundingClientRect(), c6 = cols[cols.length - 1]?.getBoundingClientRect();
+      const lado = c0 && e.clientX < c0.left + c0.width * .35 ? -1 : c6 && e.clientX > c6.right - c6.width * .35 ? 1 : 0;
+      if (lado !== dr.lado) { dr.lado = lado; dr.t0 = performance.now(); AGD.mueve(e); }
+      else if (lado && performance.now() - dr.t0 > 900) { dr.t0 = performance.now() + 500; agCambiaSem(g2, lado); } }
+    AGD.raf = requestAnimationFrame(AGD.tick); };
+  const suelta = ok => { const d = AGD.dr; if (!d) return; AGD.dr = null; AGD.last = null; d.gh.remove(); d.lab.remove(); if (d.el.parentNode === document.body) d.el.remove(); else d.el.style.opacity = ''; S._agNoClick = Date.now(); if (ok && d.w) confirmarMover(d.id, d.w.f, d.w.h); };
   document.addEventListener('pointerup', () => suelta(true)); document.addEventListener('pointercancel', () => suelta(false));
 }
 function confirmarMover(pid, f, h) {
@@ -8957,7 +8983,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v438';
+const APP_VER = 'v439';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
