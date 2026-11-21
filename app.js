@@ -3228,6 +3228,8 @@ function estadoAlumno(a) {
   Casos.avisosCoach(a.id).forEach(m => { sube('warn'); motivos.push(m); });
   Habitos.ajustesRecientes(a.id).forEach(m => { sube('warn'); motivos.push(m); });
   { const k = (S.c.checkins || []).find(x => x.alumno_id === a.id && x.semana_inicio >= sumaDias(lunesDe(hoyISO()), -7)); if (k) { sube('bad'); motivos.push(`✅ Check-in nuevo · semana del ${fCorta(k.semana_inicio)}: revísalo`); } }
+  /* Futbolistas: check-in de partido y de lunes recién hechos */
+  if (srv?.modulo_futbol) (S.c.wellness || []).filter(x => x.alumno_id === a.id && ['partido', 'lunes'].includes(x.tipo) && x.fecha >= sumaDias(hoyISO(), -3)).forEach(x => { sube('bad'); motivos.push(`✅ Check-in ${x.tipo === 'partido' ? 'de partido' : 'del lunes'} hecho · ${fCorta(x.fecha)}: revísalo`); });
   { const sr = Consultas.sinRespuesta?.(a.id); if (sr) { sube('warn'); motivos.push(`💬 No te ha contestado a tu mensaje del ${fCorta(sr)} (más de 48 h)`); } }
   (S.c.cambiosPeso || []).filter(x => x.alumno_id === a.id).forEach(x => { sube('warn'); { const sh = (S.c.sesiones || []).find(z => z.id === x.sesion_id), nd = sh?.dias ? nomDia(sh.dias) : ''; motivos.push(`Ha cambiado su peso en ${x.ejercicio || 'un ejercicio'}: ${x.antes} → ${x.despues} (míralo en su entrenamiento${nd ? ' «' + nd + '»' : ''} del ${fCorta((x.created_at || '').slice(0, 10))})`); }; });
   { const af = avisoFin(srv); if (af) { sube('warn'); motivos.push(af.terminado ? `Su proceso terminó el ${fCorta(af.fin)}: añade una extensión o pásalo a antiguos alumnos` : `Le queda menos de un mes de proceso (termina el ${fCorta(af.fin)}): ¿extensión?`); } }
@@ -7064,7 +7066,9 @@ const esValPres = p => /valoraci[oó]n/i.test(p?.tipo || '');
 /* Citas que no gastan bono: revisión por videollamada, PTI / primera entrevista y reuniones de negocio */
 const esCitaPres = p => /revisi[oó]n|^pti|primera|entrevista|reuni[oó]n|^tarea/i.test(sinSuf(p?.tipo)) || !p?.alumno_id;   /* por el tipo base: «Entrenamiento + Revisión mensual» es un entreno y gasta bono */
 const noCuentaPres = p => esValPres({ tipo: sinSuf(p?.tipo) }) || esCitaPres(p);
-const cuentaPres = p => !noCuentaPres(p) && (p.estado === 'dada' || p.estado === 'tarde' || (p.estado === 'programada' && p.fecha && p.fecha < hoyISO()));
+/* Una cita programada ya pasó si es de un día anterior o de hoy y ya terminó (hora + duración): cuenta como hecha sin esperar a mañana */
+const yaPasoPres = p => { if (!p?.fecha) return false; const h = hoyISO(); if (p.fecha < h) return true; if (p.fecha > h || !p.hora) return false; const [a, b] = hhmm(p.hora).split(':').map(Number), n = new Date(); return n.getHours() * 60 + n.getMinutes() >= a * 60 + b + (+p.duracion_min || 60); };
+const cuentaPres = p => !noCuentaPres(p) && (p.estado === 'dada' || p.estado === 'tarde' || (p.estado === 'programada' && yaPasoPres(p)));
 const ordPres = (a, b) => ((a.fecha || '9999-12-31') + (a.hora || '')).localeCompare((b.fecha || '9999-12-31') + (b.hora || ''));
 /* Reservas de Calendly confirmadas sin fecha: la fecha está en el calendario de Jesús */
 const fLargaP = p => p.fecha ? fLarga(p.fecha) : 'Fecha en tu calendario de Calendly';
@@ -7077,7 +7081,7 @@ function datosPres(srv, lista) {
   const ini = srv?.inicio, esAntes = p => !!(ini && !noCuentaPres(p) && p.fecha && p.fecha < ini), todas = lista, antes = todas.filter(p => esAntes(p) && cuentaPres(p)).length;
   lista = todas.filter(p => !esAntes(p));
   const hechas = lista.filter(cuentaPres).sort(ordPres), total = srv?.sesiones_incluidas || 0;
-  const prox = lista.filter(p => !noCuentaPres(p) && p.estado === 'programada' && (!p.fecha || p.fecha >= hoyISO())).sort(ordPres);
+  const prox = lista.filter(p => !noCuentaPres(p) && p.estado === 'programada' && (!p.fecha || p.fecha >= hoyISO()) && !yaPasoPres(p)).sort(ordPres);
   /* Sesiones hechas antes de la app (Excel, Google Calendar…): cuentan como usadas */
   const previas = Math.max(0, +srv?.sesiones_previas || 0); if (previas) hechas.unshift(...Array.from({ length: previas }, (_, i) => ({ id: null, previa: true, estado: 'dada', n: i + 1 })));
   /* Valoraciones (no cuentan como sesión): la inicial es el lanzamiento presencial; la final compara con la inicial */
@@ -9003,7 +9007,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v444';
+const APP_VER = 'v445';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
