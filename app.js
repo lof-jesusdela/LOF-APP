@@ -2877,7 +2877,8 @@ function agendaRejilla(dias, l, hoy, nom, EST) {
   const conH = l.filter(p => p.hora), sinH = l.filter(p => !p.hora);
   const h0 = Math.min(7, ...conH.map(p => Math.floor(min(p.hora) / 60))), h1 = Math.max(22, ...conH.map(p => Math.ceil((min(p.hora) + dur) / 60)));
   const horas = [...Array(h1 - h0)].map((_, i) => h0 + i), DS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
-  const corto = n => { const p = String(n).trim().split(/\s+/); return p.length > 1 ? `${p[0]} ${p[1][0]}.` : p[0]; };
+  /* «Nombre A.»; si la segunda palabra empieza por un emoji o un símbolo, se deja entera (cortar un emoji lo convierte en un cuadradito) */
+  const corto = n => { const p = String(n).trim().split(/\s+/); if (p.length < 2) return p[0]; const c = Array.from(p[1])[0] || ''; return /\p{L}/u.test(c) ? `${p[0]} ${c}.` : `${p[0]} ${p[1]}`; };
   const ev = p => { const e = p.estado === 'programada' && p.fecha < hoy ? ['ok', 'Hecha'] : EST[p.estado] || ['', p.estado], val = /valora/i.test(p.tipo || '') ? ' val' : /revisi/i.test(p.tipo || '') ? ' rev' : /^tarea/i.test(p.tipo || '') ? ' tar' : /^pti|entrevista/i.test(p.tipo || '') ? ' pti' : esCitaPres(p) ? ' neg' : '';
     return { cls: e[0] + val, lbl: e[1] }; };
   /* Sesiones que se pisan: se reparten el ancho de la columna */
@@ -8949,7 +8950,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v435';
+const APP_VER = 'v436';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
