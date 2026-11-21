@@ -3343,7 +3343,7 @@ function vListaAlertas(aid, e, conResueltas = false) {
   const nota = x => Alertas.de(aid).notas?.[x.k];
   const sil = Alertas.silenciado(aid);
   return `<div class="stack" style="gap:6px">${sil ? `<div class="aprox small">🔕 Avisos silenciados ${sil >= '9999' ? 'hasta que los reactives' : 'hasta el ' + esc(fLarga(sil))}. <button class="linkbtn small" data-act="alConfig" data-id="${aid}">Cambiar</button></div>` : ''}
-    ${pend.map(g => `<div class="row small" style="gap:8px;align-items:flex-start"><span class="al-dot-s" style="background:var(--${g.n})"></span><span class="grow" data-act="alIr" data-id="${aid}" data-m="${esc(g.items[0].m)}" data-g="${g.items.length > 1 ? g.t : ''}" role="button" style="cursor:pointer"><span style="text-decoration:underline dotted;color:var(--bad);font-weight:700">${esc(g.m)}</span>${g.sub ? `<span class="muted" style="display:block">${esc(g.sub)}</span>` : ''}${g.nueva || g.items.some(x => S.ficha?.recien?.has(x.k)) ? ' <span class="pill bad">Nueva</span>' : ''}</span><span class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn sm ghost" data-act="cq" data-q="hilo" data-v="${aid}">💬 Chat</button><button class="btn sm" data-act="alResolver" data-id="${aid}" data-m="${esc(msDe(g))}" data-on="1">✓ Solventado</button></span></div>`).join('')}
+    ${pend.map(g => `<div class="row small" style="gap:8px;align-items:flex-start"><span class="al-dot-s" style="background:var(--${g.n})"></span><span class="grow" data-act="alIr" data-id="${aid}" data-m="${esc(g.items[0].m)}" data-todos="${esc(g.items.filter(x => !x.comp).map(x => x.m).join('\n'))}" data-g="${g.items.length > 1 ? g.t : ''}" role="button" style="cursor:pointer"><span style="text-decoration:underline dotted;color:var(--bad);font-weight:700">${esc(g.m)}</span>${g.sub ? `<span class="muted" style="display:block">${esc(g.sub)}</span>` : ''}${g.nueva || g.items.some(x => S.ficha?.recien?.has(x.k)) ? ' <span class="pill bad">Nueva</span>' : ''}</span><span class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn sm ghost" data-act="cq" data-q="hilo" data-v="${aid}">💬 Chat</button><button class="btn sm" data-act="alResolver" data-id="${aid}" data-m="${esc(msDe(g))}" data-on="1">✓ Solventado</button></span></div>`).join('')}
     ${hechas.map(x => `<div class="row small" style="gap:8px;align-items:flex-start"><span class="al-dot-s" style="background:var(--ok)"></span><span class="grow" style="text-decoration:line-through;color:var(--muted)">${esc(x.m)}${nota(x) ? `<span style="display:block;text-decoration:none;color:var(--ok)">✓ ${esc(nota(x).t || 'Atendida')} · ${esc(fCorta(nota(x).f))}</span>` : ''}</span><button class="btn sm ghost" data-act="alResolver" data-id="${aid}" data-m="${esc(x.m)}" data-on="0">Deshacer</button></div>`).join('')}</div>`;
 }
 function verAlertas(id) {
@@ -3516,37 +3516,38 @@ function vAlumnos() {
   ${Casos.resumenCoach()}`;
 }
 
-/* ---------- Novedades del alumno desde tu última visita a cada pestaña: globo rojo hasta que la abres ----------
+/* ---------- Novedades del alumno (como las notificaciones de WhatsApp): cada una sale con globo rojo en su pestaña
+   hasta que la tocas para verla; al tocarla te lleva a ella y desaparece.
    Entreno: comentarios en sus entrenos · Nutrición: fotos de comida · Progreso: mediciones · Testimonio: fotos y testimonios escritos */
 const Novedades = (() => {
-  const vistos = () => { try { return JSON.parse(S.c?.fiscal?.nov_vistos || '{}') || {}; } catch (e) { return {}; } };
-  const desde = (aid, tab) => vistos()[aid]?.[tab] || new Date(Date.now() - 7 * 864e5).toISOString();
+  const DIAS = 10;
+  const vistas = () => { try { return JSON.parse(S.c?.fiscal?.nov_vistas || '{}') || {}; } catch (e) { return {}; } };
   const t = x => x.created_at || x.creado_at || x.fecha || '';
   const corta = s => { s = String(s || '').trim(); return s.length > 70 ? s.slice(0, 68) + '…' : s; };
   async function cargar(f) {
-    const aid = f.id, N = { entreno: [], nutri: [], progreso: [], medidas: [] }, d = tab => desde(aid, tab), dia = tab => d(tab).slice(0, 10);
+    const aid = f.id, N = { entreno: [], nutri: [], progreso: [], medidas: [] }, d = sumaDias(hoyISO(), -DIAS);
     const [fp, ts, com] = await Promise.all([
-      sb.from('fotos_progreso').select('*').eq('alumno_id', aid).gte('fecha', dia('medidas')),
-      sb.from('testimonios').select('*').eq('alumno_id', aid).gte('fecha', dia('medidas')),
-      f.comidas ? { data: f.comidas } : sb.from('comidas_registro').select('*').eq('alumno_id', aid).gte('fecha', dia('nutri'))]);
-    (f.ses || []).filter(x => x.fecha >= dia('entreno') && t(x) > d('entreno')).forEach(x => {
-      [x.nota, ...(x.comentarios || []).map(o => o && (o.nombre ? o.nombre + ': ' : '') + (o.texto || ''))].filter(z => z && String(z).trim()).forEach(z => N.entreno.push({ ico: '💬', txt: `Comentario en su entreno del ${fCorta(x.fecha)}: «${corta(z)}»` })); });
-    (com.data || []).filter(x => (x.foto || x.fotos?.length) && t(x) > d('nutri')).forEach(x => N.nutri.push({ ico: '📷', txt: `Foto de comida · ${fCorta(x.fecha)}${x.momento ? ' · ' + x.momento : ''}${x.plato ? ' · ' + corta(x.plato) : ''}` }));
-    (f.med || []).filter(x => t(x) > d('progreso')).forEach(x => N.progreso.push({ ico: '📏', txt: `Nueva medición del ${fCorta(x.fecha)}${x.peso != null ? ' · ' + fmtNum(x.peso, 1) + ' kg' : ''}` }));
-    const fpN = (fp.data || []).filter(x => t(x) > d('medidas')), porDia = {}; fpN.forEach(x => porDia[x.fecha] = (porDia[x.fecha] || 0) + 1);
-    Object.entries(porDia).forEach(([fe, n]) => N.medidas.push({ ico: '📸', txt: `${n} ${n === 1 ? 'foto' : 'fotos'} de progreso · ${fCorta(fe)}` }));
-    (ts.data || []).filter(x => t(x) > d('medidas')).forEach(x => N.medidas.push({ ico: '✍️', txt: `Testimonio escrito: «${corta(x.texto)}»` }));
-    f.nov = N; f.novAbiertas = {};
+      sb.from('fotos_progreso').select('*').eq('alumno_id', aid).gte('fecha', d),
+      sb.from('testimonios').select('*').eq('alumno_id', aid).gte('fecha', d),
+      f.comidas ? { data: f.comidas } : sb.from('comidas_registro').select('*').eq('alumno_id', aid).gte('fecha', d)]);
+    (f.ses || []).filter(x => x.fecha >= d).forEach(x => {
+      [x.nota, ...(x.comentarios || []).map(o => o && (o.nombre ? o.nombre + ': ' : '') + (o.texto || ''))].forEach((z, i) => { if (z && String(z).trim()) N.entreno.push({ k: `e:${x.id}:${i}`, ico: '💬', txt: `Comentario en su entreno del ${fCorta(x.fecha)}: «${corta(z)}»`, ses: x.id }); }); });
+    (com.data || []).filter(x => (x.foto || x.fotos?.length) && x.fecha >= d).forEach(x => N.nutri.push({ k: `n:${x.id}`, ico: '📷', txt: `Foto de comida · ${fCorta(x.fecha)}${x.momento ? ' · ' + x.momento : ''}${x.plato ? ' · ' + corta(x.plato) : ''}`, sub: 'alimentacion' }));
+    (f.med || []).filter(x => x.fecha >= d).forEach(x => N.progreso.push({ k: `p:${x.id}`, ico: '📏', txt: `Nueva medición del ${fCorta(x.fecha)}${x.peso != null ? ' · ' + fmtNum(x.peso, 1) + ' kg' : ''}` }));
+    const porDia = {}; (fp.data || []).forEach(x => porDia[x.fecha] = (porDia[x.fecha] || 0) + 1);
+    Object.entries(porDia).forEach(([fe, n]) => N.medidas.push({ k: `f:${fe}`, ico: '📸', txt: `${n} ${n === 1 ? 'foto' : 'fotos'} de progreso · ${fCorta(fe)}` }));
+    (ts.data || []).forEach(x => N.medidas.push({ k: `t:${x.id}`, ico: '✍️', txt: `Testimonio escrito: «${corta(x.texto)}»` }));
+    f.nov = N;
   }
-  const num = (f, tab) => f?.novAbiertas?.[tab] ? 0 : (f?.nov?.[tab] || []).length;
-  /* Al abrir la pestaña: el globo se apaga y la próxima vez solo cuenta lo nuevo; la tarjeta sigue visible en esta visita */
-  function abierta(f, tab) {
-    if (!f?.nov?.[tab] || f.novAbiertas[tab] || S.vista || S.prueba) return; f.novAbiertas[tab] = true;
-    const v = vistos(); (v[f.id] ||= {})[tab] = new Date().toISOString(); const val = JSON.stringify(v);
-    (S.c.fiscal ||= {}).nov_vistos = val; sb.from('ajustes_privados').upsert({ clave: 'nov_vistos', valor: val }, { onConflict: 'clave' }).then(() => { }, () => { });
+  const pend = (f, tab) => { const v = vistas()[f?.id] || []; return (f?.nov?.[tab] || []).filter(x => !v.includes(x.k)); };
+  const num = (f, tab) => pend(f, tab).length;
+  async function ver(aid, k) {
+    if (S.vista || S.prueba) return; const v = vistas(), l = (v[aid] ||= []); if (!l.includes(k)) l.push(k); if (l.length > 300) l.splice(0, l.length - 300);
+    const val = JSON.stringify(v); (S.c.fiscal ||= {}).nov_vistas = val;
+    await sb.from('ajustes_privados').upsert({ clave: 'nov_vistas', valor: val }, { onConflict: 'clave' }).then(() => { }, () => { });
   }
-  const tarjeta = (f, tab) => { const L = f?.nov?.[tab] || []; return L.length ? `<div class="av-rojo"><div class="av-rojo-t">🔴 ${L.length === 1 ? 'Novedad' : L.length + ' novedades'} desde tu última visita</div>${L.map(x => `<div class="small" style="padding:4px 0">${x.ico} ${esc(x.txt)}</div>`).join('')}</div>` : ''; };
-  return { cargar, num, abierta, tarjeta };
+  const tarjeta = (f, tab) => { const L = pend(f, tab); return L.length ? `<div class="av-rojo"><div class="av-rojo-t">🔴 ${L.length === 1 ? '1 novedad' : L.length + ' novedades'} · toca para verla</div>${L.map(x => `<button type="button" class="linkbtn small" data-act="novVer" data-aid="${f.id}" data-k="${esc(x.k)}"${x.ses ? ` data-ses="${x.ses}"` : ''}${x.sub ? ` data-sub="${x.sub}"` : ''} style="display:block;text-align:left;padding:6px 0;color:inherit;text-decoration:none">${x.ico} <span style="text-decoration:underline dotted">${esc(x.txt)}</span> ›</button>`).join('')}</div>` : ''; };
+  return { cargar, num, ver, tarjeta, abierta: () => { } };
 })();
 async function abrirFicha(id) {
   marcarReciente(id);
@@ -9149,7 +9150,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v465';
+const APP_VER = 'v466';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -9517,7 +9518,8 @@ document.addEventListener('click', async e => {
     case 'enviarCheckin': await enviarCheckin(); break;
     case 'ficha': cerrarSheet(); S.iaCoach = false; if (S.obj) await aparcarOSalir(); await abrirFicha(b.dataset.id); break;
     case 'verAlertas': verAlertas(b.dataset.id); break;
-    case 'alIr': alIr(b.dataset.id, b.dataset.m); break;
+    case 'alIr': { const ms = (b.dataset.todos || '').split('\n').filter(Boolean); for (const m of ms) await Alertas.resolver(b.dataset.id, m, true, null); if (ms.some(m => /ha cambiado su peso/i.test(m))) await pesoVisto(b.dataset.id);   /* tocarlo = visto: pasa al historial (Deshacer) sin pulsar «Solventado» */
+      alIr(b.dataset.id, b.dataset.m); break; }
     case 'alConfig': formAvisos(b.dataset.id); break;
     case 'pesoVisto': await pesoVisto(b.dataset.id); toast('Cambios de peso revisados'); render(); break;
     case 'irAviso': marcaVisto(...(b.dataset.k ? [`nu|${b.dataset.id}|${b.dataset.k}`] : Nutricion.colaRevisiones().filter(q => q.a.id === b.dataset.id).flatMap(q => q.items.map(x => `nu|${b.dataset.id}|${x.motivo}`)))); irA(b.dataset.id, { tab: b.dataset.tab || null, sub: b.dataset.sub || null, ancla: b.dataset.ancla || null }); break;
@@ -9579,6 +9581,7 @@ document.addEventListener('click', async e => {
     case 'nuevoApartado': formApartado(b.dataset.sec, null); break;
     case 'cerrarPlan': S.verPlan = null; render(); window.scrollTo(0, 0); break;
     case 'verSesion': await verSesion(+b.dataset.id); break;
+    case 'novVer': { await Novedades.ver(b.dataset.aid, b.dataset.k); if (b.dataset.ses) await verSesion(+b.dataset.ses); else if (b.dataset.sub) await abrirSub(b.dataset.sub); else render(); break; }
     case 'nuevaMedicion': abrirSheet(`<div class="stack"><h2>Nueva medición</h2><p class="small muted" style="margin:0">¿Es solo una medición o también es su revisión mensual? Si hay revisión, al guardar las medidas se abre la revisión para rellenar el foco y los acuerdos.</p><button class="btn full" data-act="medTipo" data-v="rev">📋 Medición + revisión mensual</button><button class="btn ghost full" data-act="medTipo" data-v="sola">📏 Solo medición</button></div>`); break;
     case 'medTipo': cerrarSheet(); formMedicion(null, { conRev: b.dataset.v === 'rev' }); break;
     case 'editarMedicion': formMedicion(b.dataset.id); break;
