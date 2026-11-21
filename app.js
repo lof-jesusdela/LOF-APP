@@ -2536,6 +2536,9 @@ function numSesion(p) {
 }
 const txtNumSesion = (p, nombre) => { const g = p?.grupo ? (S.c?.presenciales || []).filter(x => x.grupo === p.grupo) : [p], l = g.map(x => [x, numSesion(x)]).filter(x => x[1]);
   return l.map(([x, k]) => `${g.length > 1 ? (S.c.perfiles.find(a => a.id === x.alumno_id)?.nombre || '').split(' ')[0] + ': ' : ''}Entrenamiento ${k.n}${k.total ? ` de ${k.total}` : ''} de tu bono`).join('\n'); };
+/* Los 11 colores de evento de Google Calendar (colorId → nombre y tono) */
+const GC_COLS = [['1', 'Lavanda', '#7986CB'], ['2', 'Salvia', '#33B679'], ['3', 'Uva', '#8E24AA'], ['4', 'Flamenco', '#E67C73'], ['5', 'Plátano', '#F6BF26'], ['6', 'Mandarina', '#F4511E'], ['7', 'Pavo real', '#039BE5'], ['8', 'Grafito', '#616161'], ['9', 'Arándano', '#3F51B5'], ['10', 'Albahaca', '#0B8043'], ['11', 'Tomate', '#D50000']];
+const gcHex = id => GC_COLS.find(c => c[0] === String(id))?.[2] || '';
 function gcalLink(p, nombre, email) {
   const f = (p.fecha || hoyISO()).replace(/-/g, ''), h = hhmm(p.hora), dS = +p.duracion_min || durSesion();
   let dates;
@@ -2598,6 +2601,7 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
     ${P0?.serie ? fila('🔁', `<span class="small muted">Esta cita se repite. Al guardar te pregunto si el cambio es para esta, para las siguientes o para todas.</span>`)
       : fila('🔁', `<select id="pg-rep" class="gc-in"><option value="">No se repite</option><option value="1">Cada día</option><option value="lab">Cada día laborable (L–V)</option><option value="7">Cada semana</option><option value="14">Cada 2 semanas</option><option value="mes">Cada mes</option></select><label class="row small" id="pg-hw" hidden style="gap:8px">hasta el<input type="date" id="pg-hasta" class="gc-in" value="${sumaDias(fechaIni || hoyISO(), 84)}"></label>`)}
     ${fila('👥', `<div class="stack" id="pg-mas" style="gap:6px"></div><button type="button" class="linkbtn" id="pg-mas-b" style="align-self:flex-start">Añadir otro alumno (sesión conjunta)</button>`, 'pg-inv')}
+    ${fila('🎨', `<div class="row" id="pg-col" role="radiogroup" aria-label="Color" style="gap:8px;flex-wrap:wrap;align-items:center"><button type="button" class="pill" data-col="" aria-pressed="true">Automático</button>${GC_COLS.map(([id, n, h]) => `<button type="button" data-col="${id}" aria-pressed="false" title="${n}" aria-label="${n}" style="width:30px;height:30px;border-radius:50%;border:3px solid transparent;background:${h};padding:0"></button>`).join('')}<span class="small muted" id="pg-coln"></span></div>`)}
     ${fila('✉️', `<input type="text" id="pg-em" class="gc-in" inputmode="email" autocomplete="off" autocapitalize="off" placeholder="Añadir invitados: correos separados por comas"><span class="small muted">Sale el correo de sus alumnos; añade el de quien no esté en la app.</span>`, 'pg-emw')}
     ${fila('🎥', `<button type="button" class="linkbtn" id="pg-meet" style="align-self:flex-start">Crear enlace de Google Meet nuevo</button>`, 'pg-meetw')}
     ${fila('📍', `<span class="small muted" id="pg-l-t">Ubicación</span><input type="text" id="pg-l" class="gc-in" placeholder="Añade una ubicación">`)}
@@ -2618,6 +2622,9 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
   if (P0) { document.querySelectorAll('#pg-t .pill').forEach(x => x.classList.toggle('blue', x.dataset.t === tipo)); $('#pg-q').value = P0.persona || ''; $('#pg-d').value = P0.duracion_min || durSesion(); $('#pg-l').value = P0.lugar || ''; $('#pg-n').value = P0.nota || ''; }
   ponFin(); ponTd();
   /* Invitados: por defecto el correo de los alumnos elegidos; si los editas a mano, se respeta lo que escribas */
+  let colSel = P0?.color || '';
+  const pintaCol = () => { document.querySelectorAll('#pg-col [data-col]').forEach(b => { const on = b.dataset.col === colSel; b.setAttribute('aria-pressed', on); if (b.dataset.col) b.style.borderColor = on ? 'var(--ink, #0A0F1C)' : 'transparent'; else b.classList.toggle('blue', on); }); $('#pg-coln').textContent = colSel ? GC_COLS.find(c => c[0] === colSel)?.[1] || '' : 'según el tipo de cita'; };
+  pintaCol(); $('#pg-col').addEventListener('click', e => { const b = e.target.closest('[data-col]'); if (!b) return; colSel = b.dataset.col; pintaCol(); });
   let emTocado = !!(P0 && P0.invitados != null); if (P0) { $('#pg-tt').value = P0.titulo || ''; if (P0.invitados != null) $('#pg-em').value = P0.invitados; }
   const mailsSel = () => [...new Set([$('#pg-a').value, ...[...document.querySelectorAll('.pg-a2')].map(x => x.value)].filter(v => v && v !== '__otro').map(i => S.c.perfiles.find(p => p.id === i)?.email).filter(Boolean))];
   const ponEm = () => { if (!emTocado) $('#pg-em').value = mailsSel().join(', '); };
@@ -2666,7 +2673,7 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
     e.preventDefault(); const X = ext() || otro(), id = X ? null : $('#pg-a').value, quien = $('#pg-q').value.trim();
     if (!X && !id) return $('#pg-err').textContent = 'Elige el alumno'; if (X && !quien) return $('#pg-err').textContent = otro() ? 'Escribe el nombre del alumno' : tipo === 'Tarea' ? 'Escribe qué tienes que hacer' : 'Escribe con quién es';
     const em = leerEm(); if (em.mal) return $('#pg-err').textContent = `Revisa este correo: ${em.mal}`;
-    const extra = { titulo: ext() ? null : ($('#pg-tt').value.trim() || null), invitados: tipo === 'Tarea' ? null : em.l.join(', ') };
+    const extra = { color: colSel || null, titulo: ext() ? null : ($('#pg-tt').value.trim() || null), invitados: tipo === 'Tarea' ? null : em.l.join(', ') };
     ponDur(); const hora = $('#pg-td').checked ? null : normHora($('#pg-h').value); if (hora === undefined) return $('#pg-err').textContent = 'Hora no válida: escríbela así, 9:30 o 18:00';
     /* El iPhone solo deja abrir otra pestaña en el mismo toque: se abre ya y se rellena al guardar */
     const win = $('#pg-g').checked ? window.open('', '_blank') : null;
@@ -2706,7 +2713,7 @@ function formProgramar(aid, fechaIni, horaIni, pid) {
     if (error && /serie/.test(error.message || '')) { cierraWin(); bt.disabled = false; bt.textContent = 'Guardar sesión'; return $('#pg-err').textContent = 'Para las citas que se repiten falta ejecutar el Bloque 101 en Supabase.'; }
     if (error && /grupo/.test(error.message || '')) { cierraWin(); bt.disabled = false; bt.textContent = 'Guardar sesión'; return $('#pg-err').textContent = 'Para sesiones conjuntas falta ejecutar el Bloque 99 en Supabase.'; }
     if (error && /lugar/.test(error.message || '')) { cierraWin(); bt.disabled = false; bt.textContent = 'Guardar sesión'; return $('#pg-err').textContent = 'Para la ubicación falta ejecutar el Bloque 99 en Supabase.'; }
-    if (error && /titulo|invitados/.test(error.message || '')) { cierraWin(); bt.disabled = false; bt.textContent = 'Guardar sesión'; return $('#pg-err').textContent = 'Para el título y los invitados falta ejecutar el Bloque 110 en Supabase.'; }
+    if (error && /titulo|invitados|color/.test(error.message || '')) { cierraWin(); bt.disabled = false; bt.textContent = 'Guardar sesión'; return $('#pg-err').textContent = /color/.test(error.message || '') ? 'Para el color falta ejecutar el Bloque 111 en Supabase.' : 'Para el título y los invitados falta ejecutar el Bloque 110 en Supabase.'; }
     if (error && /tipo/.test(error.message || '')) { delete row.tipo; fs = filas(); ({ data, error } = await sb.from('presenciales').insert(fs).select()); }
     if (error) { cierraWin(); bt.disabled = false; bt.textContent = 'Guardar sesión'; return $('#pg-err').textContent = /persona|duracion|alumno_id|null value/.test(error.message || '') ? 'Falta ejecutar el Bloque 98 en Supabase.' : motivoPres(error); }
     const nuevas = Array.isArray(data) && data.length ? data : fs, nueva = nuevas[0]; (S.c.presenciales ||= []).push(...nuevas);
@@ -2731,7 +2738,7 @@ async function syncGrupo(base, ids, com) {
   if (nuevos.length) { const { error } = await sb.from('presenciales').insert(nuevos.map(i => ({ ...com, estado: com.estado || base.estado || 'programada', alumno_id: i, ...gr }))); if (error) return error; }
   return null;
 }
-const errCita = e => /titulo|invitados/.test(e?.message || '') ? 'Para el título y los invitados falta ejecutar el Bloque 110 en Supabase.' : /grupo|lugar/.test(e?.message || '') ? 'Falta ejecutar el Bloque 99 en Supabase.' : /persona|duracion|null value/.test(e?.message || '') ? 'Falta ejecutar el Bloque 98 en Supabase.' : motivoPres(e);
+const errCita = e => /color/.test(e?.message || '') ? 'Para el color falta ejecutar el Bloque 111 en Supabase.' : /titulo|invitados/.test(e?.message || '') ? 'Para el título y los invitados falta ejecutar el Bloque 110 en Supabase.' : /grupo|lugar/.test(e?.message || '') ? 'Falta ejecutar el Bloque 99 en Supabase.' : /persona|duracion|null value/.test(e?.message || '') ? 'Falta ejecutar el Bloque 98 en Supabase.' : motivoPres(e);
 const opcAlumnos = sel => S.c.perfiles.filter(p => p.activo !== false && p.rol !== 'coach').sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).map(a => `<option value="${a.id}" ${a.id === sel ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('');
 /* Sesiones conjuntas: las filas con el mismo «grupo» se ven como un solo evento */
 function agruparCitas(l) { const vis = {}, out = []; for (const p of l) { if (!p.grupo) { out.push(p); continue; } if (vis[p.grupo]) { vis[p.grupo]._g.push(p); continue; } const q = { ...p, _g: [p] }; vis[p.grupo] = q; out.push(q); } return out; }
@@ -2888,9 +2895,9 @@ function agendaRejilla(dias, l, hoy, nom, EST) {
     L.forEach(o => { if (grupo.length && o.a >= finG) cierra(); grupo.push(o); finG = Math.max(finG, o.b); if (grupo.length === 1) finG = o.b; }); cierra(); return out; };
   const ahora = new Date(), mAhora = ahora.getHours() * 60 + ahora.getMinutes();
   const cab = dias.map(d => { const f = fecha(d); return `<div class="ag-dh${d === hoy ? ' hoy' : ''}"><span>${DS[(f.getDay() + 6) % 7]}</span><b>${f.getDate()}</b></div>`; }).join('');
-  const todo = sinH.length ? `<div class="ag-fila ag-todo"><div class="ag-hcol small muted">—</div>${dias.map(d => `<div class="ag-tc">${sinH.filter(p => p.fecha === d).map(p => { const e = ev(p); return `<button class="ag-ev ag-mini ${e.cls}" data-act="agendaIr" data-id="${p.alumno_id}" data-p="${p.id || ''}" title="${esc(nom(p))} · ${esc(e.lbl)}">${esc(corto(nom(p)))}</button>`; }).join('')}</div>`).join('')}</div>` : '';
+  const todo = sinH.length ? `<div class="ag-fila ag-todo"><div class="ag-hcol small muted">—</div>${dias.map(d => `<div class="ag-tc">${sinH.filter(p => p.fecha === d).map(p => { const e = ev(p); return `<button class="ag-ev ag-mini ${e.cls}" data-act="agendaIr" data-id="${p.alumno_id}" data-p="${p.id || ''}" ${p.color ? `style="background:${gcHex(p.color)}"` : ''} title="${esc(nom(p))} · ${esc(e.lbl)}">${esc(corto(nom(p)))}</button>`; }).join('')}</div>`).join('')}</div>` : '';
   const cols = dias.map(d => `<div class="ag-col${d === hoy ? ' hoy' : ''}" data-f="${d}">${carriles(conH.filter(p => p.fecha === d)).map(({ p, a, c, n }) => { const e = ev(p);
-      return `<button class="ag-ev ${e.cls}" data-act="agendaIr" data-id="${p.alumno_id}" data-p="${p.id || ''}" style="top:${(a - h0 * 60) / 60 * H}px;height:${Math.max(22, (+p.duracion_min || dur) / 60 * H - 2)}px;left:calc(${c * 100 / n}% + 1px);width:calc(${100 / n}% - 2px)" title="${esc(hhmm(p.hora))} ${esc(nom(p))} · ${esc(p.tipo || 'Entrenamiento')} · ${esc(e.lbl)}"><b>${esc(corto(nom(p)))}</b><span>${esc(hhmm(p.hora))}${dias.length < 7 ? ' · ' + esc(p.tipo || 'Entrenamiento') : ''}</span></button>`; }).join('')}
+      return `<button class="ag-ev ${e.cls}" data-act="agendaIr" data-id="${p.alumno_id}" data-p="${p.id || ''}" style="${p.color ? `background:${gcHex(p.color)};` : ''}top:${(a - h0 * 60) / 60 * H}px;height:${Math.max(22, (+p.duracion_min || dur) / 60 * H - 2)}px;left:calc(${c * 100 / n}% + 1px);width:calc(${100 / n}% - 2px)" title="${esc(hhmm(p.hora))} ${esc(nom(p))} · ${esc(p.tipo || 'Entrenamiento')} · ${esc(e.lbl)}"><b>${esc(corto(nom(p)))}</b><span>${esc(hhmm(p.hora))}${dias.length < 7 ? ' · ' + esc(p.tipo || 'Entrenamiento') : ''}</span></button>`; }).join('')}
       ${d === hoy && mAhora >= h0 * 60 && mAhora <= h1 * 60 ? `<i class="ag-ahora" style="top:${(mAhora - h0 * 60) / 60 * H}px"></i>` : ''}</div>`).join('');
   return `<div class="ag-cal" style="--n:${dias.length}"><div class="ag-fila ag-cab"><div class="ag-hcol"></div>${cab}</div>${todo}
     <div class="ag-grid" id="ag-grid" data-h="${H}" data-h0="${h0}"><div class="ag-fila" style="height:${horas.length * H}px"><div class="ag-hcol">${horas.map(h => `<span style="top:${(h - h0) * H}px">${h}:00</span>`).join('')}</div>${cols}</div></div>
@@ -8950,7 +8957,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v436';
+const APP_VER = 'v437';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}

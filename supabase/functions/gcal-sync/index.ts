@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
         attendees: r.invitados != null
           ? String(r.invitados).split(/[\s,;]+/).map((e: string) => e.trim()).filter((e: string) => e.includes("@")).map((e: string) => { const a = als.find((x: any) => (x.email || "").toLowerCase() === e.toLowerCase()); return a ? { email: e, displayName: a.nombre } : { email: e }; })
           : als.filter((a: any) => a.email).map((a: any) => ({ email: a.email, displayName: a.nombre })),
-        colorId: colorDe(r, hoyMadrid()),
+        colorId: r.color || colorDe(r, hoyMadrid()),   // color elegido a mano en la cita; si no, el del tipo
         extendedProperties: { private: { lof_id: String(r.id) } },
       };
       let res = gid ? await fetch(`${base}/${encodeURIComponent(gid)}?${su}`, { method: "PATCH", headers: H, body: JSON.stringify(ev) }) : null;
