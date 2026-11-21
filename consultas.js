@@ -31,9 +31,32 @@ const Consultas = (() => {
   const sepDia = d => { const h = hoyISO(); return d === h ? 'Hoy' : d === sumaDias(h, -1) ? 'Ayer' : fLarga(d); };
   const edad = c => Date.now() - new Date(c.creado_at).getTime();
 
+  /* Añade (o actualiza) un mensaje sin duplicarlo: el tiempo real y el envío pueden llegar en cualquier orden */
+  const meter = (L, x) => { const i = L.findIndex(y => y.id === x.id); if (i >= 0) L[i] = { ...L[i], ...x }; else L.unshift(x); };
+  /* ---------- Tiempo real: los mensajes llegan al momento, como en WhatsApp (Bloque 113) ---------- */
+  let canal = null;
+  function refrescar() {
+    const act = document.activeElement, id = act?.id, val = act && 'value' in act ? act.value : null;
+    if (S.modo === 'coach') { if (S.cqAl && document.getElementById('wa-body')) abrirHilo(S.cqAl); else if (S.cqLista && document.querySelector('.wa-lista')) abrirLista(); }
+    else if (document.getElementById('wa-body') || document.querySelector('.wa')) { try { pintaAlumno(); } catch (e) { } }
+    render();
+    if (id && val != null) { const el = document.getElementById(id); if (el && el.value !== val) el.value = val; el?.focus(); }
+  }
+  function escuchar(coach, uid) {
+    if (canal || S.vista || S.prueba || typeof sb?.channel !== 'function') return;
+    try {
+      canal = sb.channel('lof-consultas-' + (coach ? 'coach' : uid)).on('postgres_changes', { event: '*', schema: 'public', table: 'consultas', ...(coach ? {} : { filter: `alumno_id=eq.${uid}` }) }, p => {
+        const L = coach ? (S.c.consultas ||= []) : (S.d.consultas ||= []), n = p.new || {};
+        if (p.eventType === 'DELETE') { const i = L.findIndex(x => x.id === p.old?.id); if (i >= 0) L.splice(i, 1); }
+        else { const nuevo = !L.some(x => x.id === n.id); meter(L, n);
+          if (nuevo && p.eventType === 'INSERT') { if (coach && n.texto) toast(`💬 ${(nombreAl(n.alumno_id) || 'Alumno').split(' ')[0]}: ${String(n.texto).slice(0, 60)}`); else if (!coach && n.respuesta) toast('💬 Jesús te ha escrito'); } }
+        refrescar();
+      }).subscribe();
+    } catch (e) { console.warn('Tiempo real no disponible', e); canal = null; }
+  }
   async function cargarAlumno(uid, D) {
     const r = await sb.from('consultas').select('*').eq('alumno_id', uid).order('creado_at', { ascending: false }).limit(60);
-    D.consultas = r.error ? [] : (r.data || []); D.consultasErr = !!r.error;
+    D.consultas = r.error ? [] : (r.data || []); D.consultasErr = !!r.error; if (!r.error && uid === S.user?.id) escuchar(false, uid);
     /* Doble check gris para Jesús: sus mensajes ya han llegado al móvil del alumno */
     if (!S.vista && !S.prueba && uid === S.user?.id) {
       const nuevos = D.consultas.filter(c => c.respuesta && !c.entregado_at && 'entregado_at' in c);
@@ -43,6 +66,7 @@ const Consultas = (() => {
   async function cargarCoach() {
     const r = await sb.from('consultas').select('*').order('creado_at', { ascending: false }).limit(600);
     S.c.consultas = r.error ? [] : (r.data || []); S.c.consultasErr = !!r.error;
+    if (!r.error) escuchar(true);
     limpiarFotos();
   }
   /* Las fotos se borran a los 60 días (lo hace la app del coach al cargar, sin tarea manual) */
@@ -252,7 +276,7 @@ const Consultas = (() => {
     }
     const { data, error } = await sb.from('consultas').insert(fila).select().single();
     if (error) { if (bt) bt.disabled = false; const m = String(error.message || ''); return fallo(error, /does not exist|schema cache|could not find the table/i.test(m) ? 'Falta ejecutar el Bloque 106 en Supabase.' : 'No se ha podido enviar: ' + m); }
-    (S.d.consultas = S.d.consultas || []).unshift(data); S.cq = { path: [] }; toast('Enviado'); pintaAlumno();
+    meter((S.d.consultas = S.d.consultas || []), data); S.cq = { path: [] }; toast('Enviado'); pintaAlumno();
   }
   /* Pantalla «Tu coach»: una sola entrada al chat + cómo funciona cada canal */
   function vAlumno() {
@@ -471,7 +495,7 @@ Jesús`, 'nutricion']];
     const ahora = new Date().toISOString();
     const { data, error } = await sb.from('consultas').insert({ alumno_id: aid, tema: 'jesus', texto: null, respuesta: m.txt, estado: 'respondida', respondida_at: ahora }).select().single();
     if (error) return fallo(error, 'No se ha podido reenviar.');
-    S.c.consultas.unshift(data); avisarAlumno(aid, m.txt, '💬 Jesús te ha enviado un mensaje'); toast(`Reenviado a ${(nombreAl(aid) || '').split(' ')[0]}`); render();
+    meter(S.c.consultas, data); avisarAlumno(aid, m.txt, '💬 Jesús te ha enviado un mensaje'); toast(`Reenviado a ${(nombreAl(aid) || '').split(' ')[0]}`); render();
   }
   async function borrarMsg(cid, de, b) {
     const m = msgDe(cid, de); if (!m) return;
@@ -502,7 +526,7 @@ Jesús`, 'nutricion']];
   async function mensajeJesus(aid, txt) {
     const ahora = new Date().toISOString();
     const { data, error } = await sb.from('consultas').insert({ alumno_id: aid, tema: 'jesus', texto: null, respuesta: txt, estado: 'respondida', respondida_at: ahora }).select().single();
-    if (error) throw error; (S.c.consultas ||= []).unshift(data); avisarAlumno(aid, txt, '💬 Jesús te ha enviado un mensaje'); return data;
+    if (error) throw error; meter((S.c.consultas ||= []), data); avisarAlumno(aid, txt, '💬 Jesús te ha enviado un mensaje'); return data;
   }
   function avisarAlumno(aid, txt, titulo = '💬 Jesús te ha respondido') {
     if (S.vista || S.prueba) return;
@@ -522,7 +546,7 @@ Jesús`, 'nutricion']];
       const { error } = await sb.from('consultas').update(cambio).eq('id', ult.id); if (error) return fallo(error, 'No se ha podido enviar.'); Object.assign(ult, cambio); avisarAlumno(aid, txt);
     } else {   /* sesion_ref 'chat': mensaje que escribes tú en el chat (no automático ni difusión) → cuenta para «no te ha contestado en 48 h» */
       const { data, error } = await sb.from('consultas').insert({ alumno_id: aid, tema: 'jesus', texto: null, respuesta: txt, estado: 'respondida', respondida_at: ahora, sesion_ref: 'chat' }).select().single();
-      if (error) return fallo(error, 'No se ha podido enviar.'); S.c.consultas.unshift(data); avisarAlumno(aid, txt, '💬 Jesús te ha enviado un mensaje');
+      if (error) return fallo(error, 'No se ha podido enviar.'); meter(S.c.consultas, data); avisarAlumno(aid, txt, '💬 Jesús te ha enviado un mensaje');
     }
     abrirHilo(aid); render();
   }
@@ -548,7 +572,7 @@ Jesús`, 'nutricion']];
       case 'wa': { const u = URG.find(x => x[0] === v); if (!u) break; log(v); window.open(waJesus(u[3]), '_blank', 'noopener'); break; }
       case 'walog': log(v); break;
       case 'watel': { const dl = v === 'wa_dolor'; log(dl ? 'wa_dolor' : 'wa_chat'); window.open(waJesus(dl ? 'Hola Jesús, tengo un dolor en un ejercicio que me limita: ' : 'Hola Jesús, '), '_blank', 'noopener'); break; }
-      case 'hilo': if (Date.now() - (S._cqLP || 0) < 800) break; S.cqLista = !!b.closest('.wa-lista'); await marcarLeido(v); abrirHilo(v); break;
+      case 'hilo': if (Date.now() - (S._cqLP || 0) < 800) break; S.cqLista = !!b.closest('.wa-lista'); await marcarLeido(v); abrirHilo(v); render(); break;
       case 'lista': abrirLista(); break;
       case 'difu': abrirDifusion(); break;
       case 'mcerrar': cerrarCapa(); break;
