@@ -5180,7 +5180,7 @@ function vFichaBase() {
     ${srv?.modulo_futbol ? '' : (() => { const B = (f.contextos || []).filter(esBloqueP), c = ctxEnSemana(B, lunesDe(hoyISO())); return `<div class="row small" style="gap:8px;flex-wrap:wrap"><span class="grow">🧱 ${c ? `<b>${esc(c.contexto_nombre)}</b> · ${esc(fCtx(c))}` : B.length ? 'Ahora sin bloque con fechas (programa base)' : 'Sin bloques con fechas'}</span>${c ? `<button class="btn sm gold" data-act="bloqueSig" data-id="${c.id}">Terminar y empezar el siguiente</button>` : ''}<button class="btn sm ghost" data-act="bloqueEnt">＋ Nuevo bloque</button></div>`; })()}
     ${e.control && citaRev(a.id) ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow">📅 <b>Revisión mensual ${e.control.n} reservada:</b> ${esc(fLarga(citaRev(a.id).fecha))}${citaRev(a.id).hora ? ' a las ' + esc(hhmm(citaRev(a.id).hora)) : ''}</div></div>` : e.control ? `<div class="aprox small row" style="flex-wrap:wrap;gap:8px"><div class="grow"><b>Toca su revisión mensual ${e.control.n}</b> (${esc(fCorta(e.control.fecha))}): llamada o videollamada de 10-15 minutos para ver cómo se siente, sus objetivos y su composición corporal.</div><button class="btn sm gold" data-act="revision" data-n="${e.control.n}">Registrar revisión</button></div>` : ''}
   </div></section>`;
-  const fb4 = `<div class="fx-ent">${vBloqueTop(f, a)}${srv?.modulo_futbol ? vCalFut(a) : vCalPlanCoach(f, a)}${vSemanasNav(f, a)}${vAltFicha(f)}<div style="padding:0 2px"><button class="btn ghost full" data-act="fichaSub" data-s="entreno">📚 Bloques, contextos y zonas de FC · histórico y planificación ›</button></div>${IA.vFicha(f, a)}</div>`;
+  const fb4 = `<div class="fx-ent">${vBloqueTop(f, a)}${srv?.modulo_futbol ? vCalFut(a) : vCalPlanCoach(f, a)}${vSemanasNav(f, a)}${vAltFicha(f)}<div style="padding:0 2px"><button class="btn ghost full" data-act="fichaSub" data-s="entreno">📚 Bloques, contextos y zonas de FC · histórico y planificación ›</button></div>${IA.vFicha(f, a)}${vPresenciales(srv, f.pres, true)}</div>`;   /* Presenciales al final de Entreno, con el histórico plegado */
   /* Su diario de comidas (pestaña Nutrición, con fotos) también cuenta como días apuntados */
   const com7 = (f.comidas || []).filter(x => !x.compartido && x.fecha >= ult7 && x.fecha <= hoy), diasCom = new Set([...com7.map(x => x.fecha), ...S.c.diario.filter(r => r.alumno_id === a.id && r.fecha >= ult7 && r.fecha <= hoy && (r.ingestas != null || (r.fotos || []).length)).map(r => r.fecha)]).size;
   const fotos7 = com7.flatMap(x => fotosDe(x)); if (fotos7.length) pedirFotos(fotos7.slice(-6));
@@ -5190,7 +5190,7 @@ function vFichaBase() {
   const fb7 = `  <section class="section"><div class="section-head"><h2>Composición corporal</h2><div class="row" style="gap:6px"><button class="btn sm ghost" data-act="objetivoComp">🎯 Objetivo</button><button class="btn sm ghost" data-act="nuevaMedicion">＋ Medición</button></div></div>
     ${vGraficaComp(f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), a, f.medObj) || '<div class="card empty">Sin mediciones todavía.</div>'}
     ${vObjetivoComp(f.medObj, f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), true)}</section>`;
-  const fb8 = `${vRevisionesFicha(a)}${vPresenciales(srv, f.pres, true)}`;
+  const fb8 = `${vRevisionesFicha(a)}`;
   const pPor = pagaPor(a.id), pagador = pPor && S.c.perfiles.find(x => x.id === pPor), cubre = cubreA(a.id);
   const fbPaga = srv ? `<section class="section"><div class="card stack" style="gap:8px"><b class="small">💑 ¿Quién paga?</b>
     ${pagador ? `<div class="small">Sus cuotas van en la ficha de <b>${esc(pagador.nombre)}</b> (pago conjunto). Aquí no se le generan cuotas ni avisos de pago.</div><button class="btn sm" data-act="ficha" data-id="${pagador.id}" style="align-self:flex-start">Ver los pagos de ${esc(pagador.nombre.split(' ')[0])} ›</button>`
@@ -7051,8 +7051,8 @@ function formExtension() {
 const PRES_EST = { programada: 'Programada', dada: 'Hecha', tarde: 'Aviso con menos de 24 h · cuenta como hecha', cancelada: 'Cancelada a tiempo · no cuenta' };
 const esValPres = p => /valoraci[oó]n/i.test(p?.tipo || '');
 /* Citas que no gastan bono: revisión por videollamada, PTI / primera entrevista y reuniones de negocio */
-const esCitaPres = p => /revisi[oó]n|^pti|primera|entrevista|reuni[oó]n|^tarea/i.test(p?.tipo || '') || !p?.alumno_id;
-const noCuentaPres = p => esValPres(p) || esCitaPres(p);
+const esCitaPres = p => /revisi[oó]n|^pti|primera|entrevista|reuni[oó]n|^tarea/i.test(sinSuf(p?.tipo)) || !p?.alumno_id;   /* por el tipo base: «Entrenamiento + Revisión mensual» es un entreno y gasta bono */
+const noCuentaPres = p => esValPres({ tipo: sinSuf(p?.tipo) }) || esCitaPres(p);
 const cuentaPres = p => !noCuentaPres(p) && (p.estado === 'dada' || p.estado === 'tarde' || (p.estado === 'programada' && p.fecha && p.fecha < hoyISO()));
 const ordPres = (a, b) => ((a.fecha || '9999-12-31') + (a.hora || '')).localeCompare((b.fecha || '9999-12-31') + (b.hora || ''));
 /* Reservas de Calendly confirmadas sin fecha: la fecha está en el calendario de Jesús */
@@ -7100,9 +7100,10 @@ function vPresenciales(srv, lista, coach) {
   return `<section class="section"><div class="section-head"><h2>${coach ? 'Entrenamientos presenciales' : 'Tus entrenamientos conmigo'}</h2>${coach ? '<button class="btn sm" data-act="nuevaPres">＋ Añadir</button>' : ''}</div><div class="card stack">
     ${D.total ? `<div class="row"><div class="grow"><b class="num" style="font-family:var(--display);font-size:26px">${D.hechas.length} de ${D.total}</b><div class="small muted">sesiones hechas</div></div><div style="text-align:right"><b class="num" style="font-family:var(--display);font-size:26px;color:var(--blue)">${D.quedan}</b><div class="small muted">${D.quedan === 1 ? 'queda' : 'quedan'}</div></div></div>` : `<p class="small muted">${coach ? 'Indica en "Servicio → Editar" cuántas sesiones presenciales incluye su bono.' : 'Jesús indicará aquí tu bono de sesiones.'}</p>`}
     ${vDes}${vals}${D.antes ? `<span class="small muted">Además hizo <b>${D.antes}</b> entrenamientos contigo antes de este programa (proceso anterior). No gastan estos.</span>` : ''}${n || D.val.ini || D.val.fin ? `<div class="cajas">${cajaVal(D.val.ini, 'Valoración inicial')}${cajas}${cajaVal(D.val.fin, 'Valoración final')}</div><div class="row small muted" style="gap:12px;flex-wrap:wrap"><span><i class="lp hecha"></i> Hecha</span><span><i class="lp tarde"></i> Aviso &lt; 24 h (cuenta)</span><span><i class="lp prog"></i> Reservada</span><span><i class="lp libre"></i> Por usar</span></div>` : ''}
+    ${coach ? `<details class="pres-hist"><summary class="small" style="cursor:pointer;font-weight:700">Próximos e histórico (${D.prox.length + D.hechas.filter(p => !p.previa).length})</summary><div class="stack" style="gap:10px;margin-top:10px">` : ''}
     <div class="stack" style="gap:6px"><span class="eyebrow">Próximos entrenamientos</span>${D.prox.map(p => `<div class="line" data-act="${coach ? 'editarPres' : 'verPres'}" data-id="${p.id}" style="cursor:pointer"><div class="ico">${svg('cal')}</div><div class="grow"><b class="small">${esc(fLargaP(p))}${p.hora ? ' · ' + hhmm(p.hora) : ''}</b>${p.tipo ? `<div class="small"><b>${esc(p.tipo)}</b></div>` : ''}${p.nota ? `<div class="small muted clamp2">${esc(p.nota)}</div>` : ''}</div><span class="small" style="color:var(--blue-text)">${coach ? 'Editar' : 'Ver / cancelar'} ›</span></div>`).join('') || '<div class="small muted">No hay ninguno programado.</div>'}</div>
     ${D.hechas.length ? `<div class="stack" style="gap:6px"><span class="eyebrow">Ya canjeados</span>${D.hechas.filter(p => !p.previa).slice().reverse().map(p => `<div class="line" data-act="verPres" data-id="${p.id}" style="cursor:pointer"><span class="caja mini ${estP(p)}"><b>${ocup.indexOf(p) + 1}</b></span><div class="grow"><b class="small">${esc(fLargaP(p))}</b><div class="small muted">${esc(qEntreno(p, coach) || (p.estado === 'tarde' ? 'Aviso con menos de 24 h' : (p.nota || '').split('\n')[0].slice(0, 90) || 'Sesión presencial'))}</div></div><span class="small muted">›</span></div>`).join('')}</div>` : ''}
-    ${reservar}${sincBtn}
+    ${coach ? `${sincBtn}</div></details>` : `${reservar}${sincBtn}`}
     ${!coach && D.prox.length ? `<button class="btn ghost full" data-act="cancelarPresLista">Cancelar una sesión reservada</button>` : ''}
     ${coach ? `<p class="small muted">Calendly y WhatsApp: ${S.calendly ? `<a href="${esc(S.calendly)}" target="_blank" rel="noopener">${esc(S.calendly.replace(/^https?:\/\//, ''))}</a>` : 'sin configurar'} · <button class="linkbtn" data-act="configCalendly">${S.calendly ? 'Cambiar' : 'Configurar'}</button></p>` : ''}
     <p class="note">${REGLA_24H}</p>
@@ -8991,7 +8992,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v442';
+const APP_VER = 'v443';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}

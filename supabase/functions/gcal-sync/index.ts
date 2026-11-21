@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
     ]);
     const P = Object.fromEntries((per || []).map((p: any) => [p.id, p]));
     // Nº de entrenamiento del bono (igual que en la app)
-    const noCuenta = (x: any) => /valoraci|revisi|^pti|primera|entrevista|reuni|^tarea/i.test(x.tipo || "") || ["cancelada", "falta"].includes(x.estado);
+    const noCuenta = (x: any) => /valoraci|revisi|^pti|primera|entrevista|reuni|^tarea/i.test(String(x.tipo || "").split(" + ")[0]) || ["cancelada", "falta"].includes(x.estado);
     const sv: Record<string, any> = Object.fromEntries((srvs || []).map((x: any) => [x.alumno_id, x])), num: Record<string, string> = {}, cu: Record<string, number> = {};
     for (const x of todas || []) { const s = sv[x.alumno_id]; if (!s || noCuenta(x) || (s.inicio && x.fecha < s.inicio)) continue; cu[x.alumno_id] ??= Math.max(0, +s.sesiones_previas || 0); const n = ++cu[x.alumno_id]; num[x.id] = `entrenamiento ${n}${s.sesiones_incluidas ? `/${s.sesiones_incluidas}` : ""}`; }
 
