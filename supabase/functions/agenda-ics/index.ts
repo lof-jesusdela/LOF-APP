@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
     admin.from("presenciales").select("id,alumno_id,fecha,hora,estado,tipo").not("alumno_id", "is", null).order("fecha").order("hora"),
     admin.from("servicios").select("*"),
   ]);
-  const noCuenta = (x: any) => /valoraci|revisi|^pti|primera|entrevista|reuni|^tarea/i.test(String(x.tipo || "").split(" + ")[0]) || ["cancelada", "falta"].includes(x.estado);
+  const noCuenta = (x: any) => /valoraci|revisi|^pti|primera|entrevista|reuni|^tarea/i.test(/^(Revisión mensual|Valoración)( \+ |$)/.test(String(x.tipo || "")) ? "" : String(x.tipo || "").split(" + ")[0]) || ["cancelada", "falta"].includes(x.estado);
   const sv: Record<string, any> = Object.fromEntries((srvs || []).map((x: any) => [x.alumno_id, x])), num: Record<string, string> = {}, cuenta: Record<string, number> = {};
   for (const x of todas || []) { const s = sv[x.alumno_id]; if (!s || noCuenta(x) || (s.inicio && x.fecha < s.inicio)) continue;
     cuenta[x.alumno_id] ??= Math.max(0, +s.sesiones_previas || 0); const n = ++cuenta[x.alumno_id];

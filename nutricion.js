@@ -486,6 +486,7 @@ const Nutricion = (() => {
         const nueva = r.data || { ...x, ...fila };
         n.comidas = x ? n.comidas.map(c => c.id === x.id ? nueva : c) : [...n.comidas, nueva];
         if (rutas.length) await pedirFotos(rutas);
+        if (rutas.length && S.d?.servicio?.foco?.tipo === 'foto_comida' && typeof marcarFoco === 'function') await marcarFoco(true, dia);   /* foco «foto de comida al día»: el día queda cumplido */ 
         S.nDia = dia; cerrarSheet(); toast(comp && !x?.compartido ? 'Creación enviada a Jesús' : x ? 'Guardado' : 'Comida apuntada'); render();
       } catch (err) {
         console.error(err); btn.disabled = false; btn.textContent = 'Guardar';
@@ -1434,7 +1435,7 @@ Reglas: "reparto" lleva una fila por ingesta con sus propias kcal, p, c y g (cad
         let r = await sb.from('comidas_registro').insert({ ...base, hora, n_ingesta: st.ing }).select().single();
         if (r.error && /hora|n_ingesta|column/i.test(r.error.message || '')) r = await sb.from('comidas_registro').insert({ ...base, nota: (hora ? hora + ' · ' : '') + (obs || '') || null }).select().single();
         if (r.error) throw r.error;
-        n.comidas = [...n.comidas, r.data]; if (rutas.length) await pedirFotos(rutas);
+        n.comidas = [...n.comidas, r.data]; if (rutas.length) await pedirFotos(rutas); if (rutas.length && S.d?.servicio?.foco?.tipo === 'foto_comida' && typeof marcarFoco === 'function') await marcarFoco(true, dia);   /* foco «foto de comida al día»: el día queda cumplido */ 
         S.nDia = dia; cerrarSheet(); toast('¡Subida! Gracias'); render();
       } catch (err) { console.error(err); btn.disabled = false; btn.textContent = 'Guardar'; $('#f7-err').textContent = 'No se ha podido subir' + (err?.message && !/fetch|network/i.test(err.message) ? ` (${err.message.slice(0, 100)})` : '. Revisa la conexión.'); }
     });

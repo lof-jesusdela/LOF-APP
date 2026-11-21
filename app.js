@@ -1160,6 +1160,7 @@ function vHoy() {
     <div class="row" style="gap:14px;align-items:center"><div class="grow stack" style="gap:8px"><h1 style="margin:0">Hola, ${esc((S.perfil.nombre || '').split(' ')[0])}</h1>
       <p class="frase-hoy">${esc(S.perfil.frase_motivacion || FRASE_DEF)}</p></div>${avatarDe(S.perfil, 72)}</div>
   </section>
+  ${vFocoHoy(s)}
   ${s.modulo_futbol ? '' : vEsferasSemana(s)}
   ${Acomp.tarjetaEstadoHoy()}
   ${vAvisoContexto()}
@@ -2568,8 +2569,8 @@ const modoCita = ids => { const l = [...new Set((ids || []).filter(Boolean))]; r
 const notaCita = (n, ids) => { if (!n) return ''; const k = modoCita(ids); for (const d of Object.values(agendaDef())) { const t = d?.n; if (t && /\{[^{}]*\|/.test(t) && (n === generoTxt(t, 'h') || n === t)) return generoTxt(t, k); } return generoTxt(n, k); };
 const agendaDef = () => { let g = {}; try { g = JSON.parse(S.c?.fiscal?.agenda_def || '{}') || {}; } catch (e) { } return { ...DEF_CITAS, ...g }; };
 /* Una cita puede ser varias cosas a la vez: el título lleva «+ Revisión mensual» / «+ Valoración» (sin columnas nuevas) */
-const SUF_CITA = / \+ (Revisión mensual|Valoración)/g, sinSuf = t => String(t || '').replace(SUF_CITA, '').trim();
-const conSuf = (base, rev, val) => { const b = sinSuf(base), p = [b]; if (rev && !/revisi/i.test(b)) p.push('Revisión mensual'); if (val && !/valora/i.test(b)) p.push('Valoración'); return p.filter(Boolean).join(' + ') || null; };
+const SUF_CITA = / \+ (Revisión mensual|Valoración)/g, sinSuf = t => { const x = String(t || '').trim(); return /^(Revisión mensual|Valoración)( \+ |$)/.test(x) ? '' : x.replace(SUF_CITA, '').trim(); };   /* «Revisión mensual» a secas = entreno sin título con la revisión marcada */
+const conSuf = (base, rev, val) => { const b = sinSuf(base) || (rev || val ? 'Entrenamiento' : ''), p = [b]; if (rev && !/revisi/i.test(b)) p.push('Revisión mensual'); if (val && !/valora/i.test(b)) p.push('Valoración'); return p.filter(Boolean).join(' + ') || null; };
 const citaHoyRev = aid => { const h = hoyISO(), m = sumaDias(h, 1), p = (S.c?.presenciales || []).filter(x => x.alumno_id === aid && x.estado === 'programada' && (x.fecha === h || x.fecha === m) && /revisi|valora/i.test(x.tipo || '')).sort((x, y) => (x.fecha + (x.hora || '')).localeCompare(y.fecha + (y.hora || '')))[0];
   if (!p) return null; const q = [/revisi/i.test(p.tipo) ? 'revisión mensual' : '', /valora/i.test(p.tipo) ? 'valoración' : ''].filter(Boolean).join(' y ');
   return { p, txt: `📋 ${p.fecha === h ? 'Hoy' : 'Mañana'} toca ${q}${p.hora ? ' en su cita de las ' + hhmm(p.hora) : ''}` }; };
@@ -2856,7 +2857,7 @@ function propuestaHora(aid, f, h) {
   });
 }
 /* Ficha · anillos: un banner ya abierto, al tocarlo otra vez, lleva a su apartado (entreno, nutrición o pasos) */
-document.addEventListener('click', e => { const sm = e.target.closest?.('.rg-ir details.rg-ban[data-ir][open] > summary'); if (!sm || !S.ficha) return; e.preventDefault();
+document.addEventListener('click', e => { const sm = e.target.closest?.('.rg-ir details.rg-ban[data-ir][open] > summary'); if (!sm || !S.ficha || sm.parentElement.dataset.ir === 'foc') return; e.preventDefault();
   const k = sm.parentElement.dataset.ir, t = document.createElement('button');
   if (k === 'pas') { t.dataset.act = 'fichaSub'; t.dataset.s = 'habitos'; } else { t.dataset.act = 'fTab'; t.dataset.t = k === 'ent' ? 'entreno' : 'nutri'; }
   t.hidden = true; document.body.append(t); t.click(); t.remove(); window.scrollTo(0, 0); }, true);
@@ -3050,15 +3051,57 @@ const Alertas = {
 /* Compromisos (lo que tienes que hacer tú): no se marcan con ✓ ni se esconden al silenciar; se resuelven al hacerlos */
 const T_COMPROMISO = ['pago', 'revision', 'devolucion', 'proxima', 'proceso'];
 /* ---------- Foco principal de la revisión: lo que acordáis priorizar con el alumno; es la alerta prioritaria y mide si lo cumple ---------- */
-const TIPOS_FOCO = [['pasos', 'Pasos diarios (media)', 'pasos al día'], ['sueno', 'Dormir (horas por noche)', 'horas'], ['entrenos', 'Entrenos por semana', 'entrenos'], ['alimentacion', 'Alimentación (% de ingestas cumplidas)', '%'], ['libre', 'Otro (lo escribo yo)', '']];
+const TIPOS_FOCO = [['pasos', 'Pasos diarios (media)', 'pasos al día'], ['sueno', 'Dormir (horas por noche)', 'horas'], ['entrenos', 'Entrenos por semana', 'entrenos'], ['alimentacion', 'Alimentación (% de ingestas cumplidas)', '%'], ['foto_comida', 'Foto de una comida al día', ''], ['libre', 'Otro: lo escribo yo y el alumno marca «Hecho hoy»', '']];
+/* Meta que pide cada tipo de foco (el «número»): etiqueta y ejemplo; los que no la necesitan no la muestran */
+const META_FOCO = { pasos: ['Pasos al día', '10000'], sueno: ['Horas por noche', '7'], entrenos: ['Entrenos por semana', '3'], alimentacion: ['% de ingestas cumplidas', '80'] };
+/* Estado del foco: días cumplidos en su periodo (o en los últimos 7 días si no tiene duración). src = datos (S.c del coach o S.d del alumno) */
+function focoEstado(f, src, aid) {
+  if (!f?.tipo) return null;
+  const hoy = hoyISO(), meta = Number(f.meta) || 0, N = +f.dias || 0, ini = N ? (f.desde || hoy) : sumaDias(hoy, -6), fin = N ? sumaDias(ini, N - 1) : hoy, total = N || 7;
+  const reg = (src?.diario || []).filter(r => !r.alumno_id || r.alumno_id === aid);
+  const diaOk = d => { const r = reg.find(x => x.fecha === d);
+    if (f.tipo === 'pasos') return r?.pasos != null ? r.pasos >= meta * .95 : null;
+    if (f.tipo === 'entrenos') return (src?.sesiones || []).some(x => (!x.alumno_id || x.alumno_id === aid) && x.fecha === d) ? true : null;
+    if (f.tipo === 'foto_comida' || f.tipo === 'libre') return r?.foco_ok ? true : null;
+    if (f.tipo === 'alimentacion') { if (r?.ingestas == null) return null; const prev = Math.max(1, r.comidas_hechas || 3); return Math.min(prev, r.ingestas) / prev * 100 >= (meta || 80) * .95; }
+    if (f.tipo === 'sueno') { const w = (src?.wellness || []).find(x => (!x.alumno_id || x.alumno_id === aid) && x.tipo === 'diario' && x.fecha === d && x.datos?.dormir && x.datos?.levantar), h = w ? horasSueno(w.datos.dormir, w.datos.levantar) : null; return h == null ? null : h >= meta * .95; }
+    return null; };
+  const hasta = fin < hoy ? fin : hoy, dias = []; for (let d = ini; d <= hasta; d = sumaDias(d, 1)) dias.push({ f: d, ok: diaOk(d) });
+  const hechos = dias.filter(x => x.ok).length, ult7 = [6, 5, 4, 3, 2, 1, 0].map(k => { const d = sumaDias(hoy, -k); return { f: d, ok: d < ini || d > fin ? undefined : diaOk(d) }; });
+  if (f.tipo === 'entrenos') { const obj = Math.max(1, Math.round((meta || 1) * total / 7)); return { pct: Math.min(1, hechos / obj), ritmo: Math.min(1, hechos / Math.max(1, Math.round((meta || 1) * Math.max(1, dias.length) / 7))), hechos, total: obj, ult7, fin, N, acabado: N && hoy > fin, txt: `${hechos} de ${obj} entrenos`, hoyOk: diaOk(hoy) }; }
+  return { pct: Math.min(1, hechos / total), ritmo: hechos / Math.max(1, dias.length), hechos, total, ult7, fin, N, acabado: N && hoy > fin, txt: `${hechos} de ${total} días`, hoyOk: diaOk(hoy) };
+}
+/* Alumno: marca (o desmarca) que hoy ha cumplido su foco */
+async function marcarFoco(ok, fechaF) {
+  const fF = fechaF || hoyISO(), row = { alumno_id: S.d?.uid || S.user?.id, fecha: fF, foco_ok: !!ok };
+  const { data, error } = await sb.from('registro_diario').upsert(row, { onConflict: 'alumno_id,fecha' }).select().single();
+  if (error) { if (/foco_ok/.test(error.message || '')) toast('Falta ejecutar el Bloque 112 en Supabase'); else console.warn(error); return false; }
+  S.d.diario = (S.d.diario || []).filter(x => x.fecha !== fF).concat(data); return true;
+}
+/* Tarjeta del foco, lo primero en Hoy del alumno */
+function vFocoHoy(s) {
+  const f = s?.foco; if (!f?.tipo) return ''; const e = focoEstado(f, S.d, S.d.uid); if (!e || (e.acabado && hoyISO() > sumaDias(e.fin, 3))) return '';
+  const p = Math.round(e.pct * 100), r = 38, c = 2 * Math.PI * r, tit = f.tipo === 'libre' ? (f.texto || 'Tu foco') : Foco.titulo(f);
+  const tira = e.ult7.map(x => `<span title="${esc(fCorta(x.f))}" style="width:14px;height:14px;border-radius:4px;background:${x.ok === undefined ? 'transparent' : x.ok ? '#E3C46A' : 'rgba(255,255,255,.18)'};border:${x.ok === undefined ? '1px dashed rgba(255,255,255,.2)' : '0'}"></span>`).join('');
+  const quedan = e.N ? Math.max(0, Math.round((fecha(e.fin) - fecha(hoyISO())) / 864e5)) : null;
+  const sub = e.acabado ? `Foco terminado: ${e.txt} 👏` : `Llevas ${e.txt}${quedan != null ? ` · ${quedan === 0 ? 'último día' : `quedan ${quedan} día${quedan === 1 ? '' : 's'}`}` : ' · últimos 7 días'}`;
+  const btn = e.acabado ? '' : f.tipo === 'libre' ? `<button class="btn full foco-btn" data-act="focoHecho" data-v="${e.hoyOk ? 0 : 1}">${e.hoyOk ? 'Hecho hoy ✓' : 'Hecho hoy'}</button>`
+    : f.tipo === 'foto_comida' ? (e.hoyOk ? `<div class="small" style="color:#E3C46A;text-align:center">Foto de hoy subida ✓</div>` : `<button class="btn full foco-btn" data-act="nuComNueva">📸 Subir la foto de hoy</button>`) : `<div class="small" style="color:#C9D2E6;text-align:center">Se mide solo con lo que registras</div>`;
+  return `<section class="section"><div class="foco-hero"><span class="foco-ey">🎯 Tu foco</span><div class="row" style="gap:14px;align-items:center;margin-top:6px">
+    <svg width="96" height="96" viewBox="0 0 96 96" aria-hidden="true"><circle cx="48" cy="48" r="${r}" fill="none" stroke="#E3C46A" stroke-opacity=".2" stroke-width="11"/><circle cx="48" cy="48" r="${r}" fill="none" stroke="#E3C46A" stroke-width="11" stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c * (1 - e.pct)).toFixed(1)}" transform="rotate(-90 48 48)"/><text x="48" y="54" text-anchor="middle" fill="#fff" font-size="19" font-weight="700">${p}%</text></svg>
+    <div class="grow stack" style="gap:4px;min-width:0"><b style="font-size:17px;line-height:1.25">${esc(tit)}</b><span class="small" style="color:#C9D2E6">${esc(sub)}</span><div class="row" style="gap:4px;margin-top:4px">${tira}</div></div></div>${btn}</div></section>`;
+}
 const Foco = {
-  de(aid) { try { const v = S.c?.fiscal?.['foco_' + aid]; return v ? JSON.parse(v) : null; } catch (e) { return null; } },
-  async guardar(aid, f) { const v = f ? JSON.stringify(f) : ''; S.c.fiscal ||= {}; S.c.fiscal['foco_' + aid] = v; await sb.from('ajustes_privados').upsert({ clave: 'foco_' + aid, valor: v }, { onConflict: 'clave' }); },
-  titulo(f) { const t = TIPOS_FOCO.find(x => x[0] === f.tipo); return f.tipo === 'libre' ? (f.texto || 'Foco') : `${t?.[1].replace(/ \(.*\)/, '') || 'Foco'}: ${fmtNum(f.meta, 0)} ${t?.[2] || ''}${f.texto ? ' · ' + f.texto : ''}`.trim(); },
+  de(aid) { const sv = (S.c?.servicios || []).find(x => x.alumno_id === aid); if (sv && sv.foco !== undefined && sv.foco !== null) return sv.foco?.tipo ? sv.foco : null; try { const v = S.c?.fiscal?.['foco_' + aid]; return v ? JSON.parse(v) : null; } catch (e) { return null; } },
+  /* Se guarda en su servicio (lo ve el alumno) y en tus ajustes (copia de seguridad) */
+  async guardar(aid, f) { const v = f ? JSON.stringify(f) : ''; S.c.fiscal ||= {}; S.c.fiscal['foco_' + aid] = v; await sb.from('ajustes_privados').upsert({ clave: 'foco_' + aid, valor: v }, { onConflict: 'clave' });
+    const sv = (S.c?.servicios || []).find(x => x.alumno_id === aid); if (sv) { const { error } = await sb.from('servicios').update({ foco: f || {} }).eq('id', sv.id); if (error) { if (/foco/.test(error.message || '')) toast('El alumno no verá su foco hasta que ejecutes el Bloque 112'); } else sv.foco = f || {}; } },
+  titulo(f) { const t = TIPOS_FOCO.find(x => x[0] === f.tipo); if (f.tipo === 'foto_comida') return 'Una foto de comida al día' + (f.texto ? ' · ' + f.texto : ''); return f.tipo === 'libre' ? (f.texto || 'Foco') : `${t?.[1].replace(/ \(.*\)/, '') || 'Foco'}: ${fmtNum(f.meta, 0)} ${t?.[2] || ''}${f.texto ? ' · ' + f.texto : ''}`.trim(); },
   /* Cómo va en los últimos 7 días: { pct, txt } (pct = % de la meta) o null si no se puede medir todavía */
   medir(aid, f) {
     const hoy = hoyISO(), d7 = sumaDias(hoy, -6), meta = Number(f.meta);
-    if (f.tipo === 'libre' || !(meta > 0)) return null;
+    if (f.tipo === 'libre' || f.tipo === 'foto_comida' || +f.dias) { const e = focoEstado(f, S.c, aid); return e ? { pct: e.ritmo, txt: `${e.txt}${e.N ? ' de su foco' : ' en los últimos 7 días'}` } : null; }
+    if (!(meta > 0)) return null;
     if (f.tipo === 'pasos') { const v = (S.c.diario || []).filter(r => r.alumno_id === aid && r.fecha >= d7 && r.pasos != null).map(r => r.pasos); return v.length ? { pct: v.reduce((a, b) => a + b, 0) / v.length / meta, txt: `lleva ${fmtNum(Math.round(v.reduce((a, b) => a + b, 0) / v.length), 0)} de media los últimos 7 días` } : { pct: 0, txt: 'sin registrar pasos en 7 días' }; }
     if (f.tipo === 'sueno') { const v = (S.c.wellness || []).filter(x => x.alumno_id === aid && x.tipo === 'diario' && x.fecha >= d7 && x.datos?.dormir && x.datos?.levantar).map(x => horasSueno(x.datos.dormir, x.datos.levantar)).filter(h => h != null); return v.length ? { pct: v.reduce((a, b) => a + b, 0) / v.length / meta, txt: `duerme ${fmtNum(v.reduce((a, b) => a + b, 0) / v.length)} h de media (${v.length} noches registradas)` } : { pct: 0, txt: 'sin registrar sueño en 7 días' }; }
     if (f.tipo === 'entrenos') { const n = contarEntrenos((S.c.sesiones || []).filter(x => x.alumno_id === aid && x.fecha >= d7 && x.fecha <= hoy)).n; return { pct: n / meta, txt: `${n} entreno${n === 1 ? '' : 's'} en los últimos 7 días` }; }
@@ -3648,13 +3691,19 @@ function formRevision(n, id) {
       <label class="f">Prioridad del próximo mes<input type="text" id="rv-p" value="${esc(r.prioridad || '')}" placeholder="Una sola cosa, la más importante"></label>
       <div class="card stack" style="gap:8px;padding:12px"><b>🎯 Foco principal <span class="small muted" style="font-weight:400">(te avisa cada día si no lo cumple)</span></b>
         <select id="rv-ft"><option value="">Sin foco</option>${TIPOS_FOCO.map(([k, t]) => `<option value="${k}" ${foco0?.tipo === k ? 'selected' : ''}>${t}</option>`).join('')}</select>
-        <div class="row" style="gap:8px"><input type="text" inputmode="decimal" id="rv-fm" value="${esc(foco0?.meta ?? '')}" placeholder="Meta (nº)" style="max-width:130px"><input type="text" class="grow" id="rv-fx" value="${esc(foco0?.texto || '')}" placeholder="Detalle (ej. 12.000 pasos, también en fin de semana)"></div></div>
+        <label class="f" id="rv-fmw">${esc(META_FOCO[foco0?.tipo]?.[0] || 'Meta')}<input type="text" inputmode="decimal" id="rv-fm" value="${esc(foco0?.meta ?? '')}" placeholder="${esc(META_FOCO[foco0?.tipo]?.[1] || '')}"></label>
+        <label class="f">Lo que verá el alumno (opcional)<input type="text" id="rv-fx" value="${esc(foco0?.texto || '')}" placeholder="Ej. una foto de una comida saludable cada día"></label>
+        <label class="f">Durante<select id="rv-fd">${[['', 'Sin fecha de fin (últimos 7 días)'], ['7', '1 semana'], ['14', '2 semanas'], ['21', '3 semanas'], ['28', '4 semanas']].map(([v, t]) => `<option value="${v}" ${String(foco0?.dias || '') === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+        <span class="small muted" id="rv-fh"></span></div>
       <label class="f">Consecución de objetivos<textarea id="rv-o" rows="2" placeholder="Qué ha conseguido y qué le falta">${esc(r.objetivos || '')}</textarea></label>`)}
     ${paso(4, 'Devolución para el alumno', `<textarea id="rv-r" rows="4" placeholder="Lo que verá en su app">${esc(r.resumen || '')}</textarea><button type="button" class="btn sm ghost" id="rv-bor" style="align-self:flex-start">✍️ Preparar borrador con lo anterior</button>`)}
     ${paso(5, 'Próxima revisión', `<label class="f">Fecha<input type="date" id="rv-px" value="${esc(r.proxima || sigC?.fecha || '')}"></label><span class="small muted">${sigC ? `Por su plan toca el ${esc(fCorta(sigC.fecha))}. Si pones otra fecha, queda programada.` : 'Sin próxima revisión en su plan.'}</span>`)}
     ${id ? '' : '<label class="f">Nota privada (solo tú)<textarea id="rv-n" rows="2"></textarea></label>'}
     <p class="err" id="rv-err"></p>
     <div class="row" style="gap:8px"><button type="button" class="btn ghost grow" id="rv-borr">Guardar borrador</button><button class="btn grow" type="submit">Publicar al alumno</button></div></form>`);
+  { const pinta = () => { const t = $('#rv-ft').value, m = META_FOCO[t]; $('#rv-fmw').hidden = !m; if (m) { $('#rv-fmw').firstChild.textContent = m[0]; $('#rv-fm').placeholder = m[1]; }
+      $('#rv-fh').textContent = !t ? '' : t === 'libre' ? 'El alumno lo verá arriba en Hoy y marcará «Hecho hoy» cada día que lo cumpla.' : t === 'foto_comida' ? 'Se cumple solo cada día que suba la foto de una comida a su diario.' : 'Se mide solo con lo que registra.'; };
+    pinta(); $('#rv-ft').addEventListener('change', pinta); }
   $('#rv-bor').addEventListener('click', () => {
     const nom = (a.nombre || '').split(' ')[0], m = $('#rv-m').value.trim(), c = $('#rv-c').value.trim(), p = $('#rv-p').value.trim();
     $('#rv-r').value = [`${nom}, gracias por la revisión de este mes.`, m && `Seguimos igual con: ${m}.`, c && `Cambiamos: ${c}.`, p && `Tu prioridad para el próximo mes: ${p}.`, $('#rv-ft').value && `Tu foco principal: ${Foco.titulo({ tipo: $('#rv-ft').value, meta: numero($('#rv-fm').value), texto: $('#rv-fx').value.trim() })}.`].filter(Boolean).join('\n');
@@ -3663,8 +3712,9 @@ function formRevision(n, id) {
     const row = { alumno_id: f.id, control_n: nn || null, fecha: $('#rv-f').value, formato: $('#rv-t').value, sensacion: valEscala('rv-s'), objetivos: $('#rv-o').value.trim() || null, resumen: $('#rv-r').value.trim() || null };
     const nuevos = { mantiene: $('#rv-m').value.trim() || null, cambia: $('#rv-c').value.trim() || null, prioridad: $('#rv-p').value.trim() || null, estado: publicar ? 'publicada' : 'borrador', proxima: $('#rv-px').value || null };
     const ft = $('#rv-ft').value, fmv = numero($('#rv-fm').value), fx = $('#rv-fx').value.trim();
-    if (ft && ft !== 'libre' && !(fmv > 0)) return $('#rv-err').textContent = 'Pon la meta del foco (un número) o elige «Sin foco».';
-    if (ft === 'libre' && !fx) return $('#rv-err').textContent = 'Escribe el foco en el detalle.';
+    const fdv = +$('#rv-fd').value || null, conMeta = !!META_FOCO[ft];
+    if (conMeta && !(fmv > 0)) return $('#rv-err').textContent = `Pon la meta del foco: ${META_FOCO[ft][0].toLowerCase()} (por ejemplo ${META_FOCO[ft][1]}).`;
+    if (ft === 'libre' && !fx) return $('#rv-err').textContent = 'Escribe el foco en «Lo que verá el alumno».';
     if (publicar && !row.resumen) return $('#rv-err').textContent = 'Escribe la devolución para el alumno (o prepárala con el botón) antes de publicar.';
     const nota = $('#rv-n')?.value.trim();
     const q = x => id ? sb.from('revisiones').update(x).eq('id', id).select().single() : sb.from('revisiones').insert(x).select().single();
@@ -3675,7 +3725,7 @@ function formRevision(n, id) {
       if (!res.error) toast('Guardada sin los campos nuevos: ejecuta el Bloque 92');
     }
     if (res.error) return fallo(res.error, /revisiones/.test(res.error.message || '') ? 'Falta ejecutar el Bloque 22 en Supabase.' : undefined);
-    try { const nuevoF = ft ? { tipo: ft, meta: ft === 'libre' ? null : fmv, texto: fx, desde: foco0 && foco0.tipo === ft && foco0.meta === (ft === 'libre' ? null : fmv) ? foco0.desde : hoyISO() } : null;
+    try { const nuevoF = ft ? { tipo: ft, meta: conMeta ? fmv : null, texto: fx, dias: fdv, desde: foco0 && foco0.tipo === ft && foco0.meta === (conMeta ? fmv : null) && (foco0.dias || null) === fdv ? foco0.desde : hoyISO() } : null;
       if (JSON.stringify(nuevoF) !== JSON.stringify(foco0 || null)) await Foco.guardar(f.id, nuevoF); } catch (err) { console.warn(err); toast('Revisión guardada, pero no he podido guardar el foco'); }
     if (nota) await sb.from('notas_coach').insert({ alumno_id: f.id, texto: `Revisión mensual${row.control_n ? ' ' + row.control_n : ''}: ${nota}` });
     if (publicar && nuevos.proxima && sigC && nuevos.proxima !== sigC.fecha) await sb.from('agenda').insert({ fecha: nuevos.proxima, origen: `rev:${f.id}:${sigC.n}`, titulo: `Revisión mensual · ${a.nombre}: Revisión mensual ${sigC.n}`, minutos: 20, estado: nuevos.proxima > hoyISO() ? 'programada' : 'pendiente', alumno_id: f.id }).then(() => Negocio.cargar());
@@ -6658,7 +6708,7 @@ function datosReporte(a, R) {
 }
 /* ---------- Reporting con anillos (estilo reloj de actividad) ----------
    Un anillo por objetivo del alumno (entrenos, alimentación, pasos). Al tocar el banner de cada anillo se abren sus barras de lunes a domingo. */
-const RG_COL = { ent: '#F0386B', nut: '#6DBE26', pas: '#18AFD3' };
+const RG_COL = { ent: '#F0386B', nut: '#6DBE26', pas: '#18AFD3', foc: '#C9A227' };
 function anillosSvg(L, tam) {
   const g = Math.round(tam * .105), sep = Math.max(2, Math.round(tam * .03)), c0 = tam / 2; let r = c0 - g / 2 - 1;
   const arcs = L.map(x => { const c = 2 * Math.PI * r, p = Math.max(0, Math.min(100, x.pct ?? 0));
@@ -6688,6 +6738,12 @@ function vAnillos(a, R, d, detalle, yo) {
   const su = yo ? 'tu' : 'su', w = d.w, dias = [...Array(7)].map((_, i) => sumaDias(R.lunes, i)); MONT_LABS = dias.map(x => DSEM[(fecha(x).getDay() + 6) % 7]); const _x0 = 0, hoyF = hoyISO(), FUT = { v: null, t: 'Aún no ha llegado' }, srv = d.srv, L = [], filas = [];
   const fila = (k, tit, val, sub, chart, nota) => `<details class="rg-ban"${detalle ? ' open' : ''}${yo ? '' : ` data-ir="${k}"`}><summary><i style="background:${RG_COL[k]}"></i><span class="grow"><b>${tit}</b><small>${sub}</small></span><b class="num rg-v" style="color:${RG_COL[k]}">${val}</b></summary>${chart}${nota ? `<div class="small muted">${nota}</div>` : ''}</details>`;
   const plana = (k, tit, val, sub) => `<div class="rg-ban rg-plana"><div class="rg-sum"><i style="background:${RG_COL[k]};opacity:.35"></i><span class="grow"><b>${tit}</b><small>${sub}</small></span><b class="num rg-v">${val}</b></div></div>`;
+  /* Foco: el anillo exterior y el más importante; solo en la semana (o los 7 días) que incluye hoy */
+  { const fo = yo ? S.d.servicio?.foco : Foco.de(a.id), hoyIn = dias.includes(hoyF);
+    if (fo?.tipo && hoyIn) { const e = focoEstado(fo, yo ? S.d : (R.src || S.c), a.id);
+      if (e) { L.push({ tit: 'Foco', pct: Math.round(e.pct * 100), col: RG_COL.foc });
+        filas.push(fila('foc', '🎯 Foco', Math.round(e.pct * 100) + ' %', `${esc(fo.tipo === 'libre' ? (fo.texto || 'Foco') : Foco.titulo(fo))} · ${e.txt}`,
+          montanitas(dias.map(f => { if (f > hoyF) return FUT; const x = e.ult7.find(z => z.f === f); return x?.ok === undefined ? { v: null, t: 'Fuera del foco' } : { v: x.ok ? 100 : 0, t: x.ok ? 'Cumplido' : 'Sin cumplir' }; }), RG_COL.foc), '')); } } }
   if (d.dpw) {
     L.push({ tit: 'Entrenos', pct: d.pctE, col: RG_COL.ent });
     const extra = w.entrenos > d.dpw ? ` · +${w.entrenos - d.dpw} extra` : '';
@@ -9013,7 +9069,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v446';
+const APP_VER = 'v447';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -9258,6 +9314,7 @@ document.addEventListener('click', async e => {
     case 'cargaN': S.cargaN = +b.dataset.n; render(); break;
     case 'fTab': { const t0 = b.dataset.t, t = ['plan', 'pagos'].includes(t0) ? 'inicio' : t0; if (t !== t0) S.fBan = t0 === 'pagos' ? 'pagos' : 'plan'; (S.fTab ||= {})[S.ficha.id] = t; } render(); document.querySelector('.ft-tabs')?.scrollIntoView({ block: 'nearest' }); break;
     case 'abrirReporte': await abrirReporte(b.dataset.id || null); break;
+    case 'focoHecho': { b.disabled = true; if (await marcarFoco(b.dataset.v === '1')) { toast(b.dataset.v === '1' ? '¡Hecho! Un día más 💪' : 'Desmarcado'); } render(); break; }
     case 'fSemAl': { const act = lunesDe(hoyISO()), id = S.ficha?.id; if (!id) break; const m = (S.fSem ||= {}); m[id] = sumaDias(m[id] || act, +b.dataset.d); if (m[id] > act) m[id] = act; render(); break; }
     case 'semAl': { const act = lunesDe(hoyISO()); S.semAl = sumaDias(S.semAl || act, +b.dataset.d); if (S.semAl > act) S.semAl = act; render(); break; }
     case 'reporteSemana': await abrirReporte(S.reporte.alumno, sumaDias(S.reporte.lunes, +b.dataset.d)); break;
