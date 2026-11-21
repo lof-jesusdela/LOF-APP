@@ -250,7 +250,7 @@ const Consultas = (() => {
   }
   const tieneDolor = p => p.some(x => x.k === 'dolor');
   const resumenRuta = p => p.slice(1).map(x => x.t).join(' · ');
-  function abrir() { S.cqLista = false; S.cq = { path: [] }; pintaAlumno(); marcarVistas(); }
+  function abrir() { S.cqLista = false; S.cq = { path: [], libre: sinLeer().length > 0 }; pintaAlumno(); marcarVistas(); }
   function pintaAlumno() {
     const q = S.cq || (S.cq = { path: [] }), L = (S.d?.consultas || []).slice().reverse(), st = paso(q.path);
     const elegidas = q.path.map(x => `<div class="wa-ban sel"><span class="i">${x.ico}</span><span class="grow">${esc(x.t)}</span><span class="ok">✓</span></div>`).join('');
@@ -262,10 +262,18 @@ const Consultas = (() => {
         return `${g ? `<div class="wa-gh"><span>${esc(g)}</span><small>${os.length} ${os.length === 1 ? 'ejercicio' : 'ejercicios'}</small></div>` : ''}<div class="wa-grid">${os.map(({ o, i }) => `<button type="button" class="wa-ej" data-act="cq" data-q="g" data-i="${i}">${o.k === 'ej:otro' ? '' : `<span class="nu">${++n}</span>`}<span class="nm">${esc(o.t)}</span>${o.img ? `<img src="${esc(o.img)}" alt="" loading="lazy">` : `<span class="ph">${o.k === 'ej:otro' ? '❓' : '🏋️'}</span>`}</button>`).join('')}</div>`; }).join('')}`; }
     else if (st) guia = `<div class="wa-msg">${esc(st.preg)}</div>${st.ops.map((o, i) => `<button type="button" class="wa-ban" data-act="cq" data-q="g" data-i="${i}"><span class="i">${o.ico}</span><span class="grow"><b>${esc(o.t)}</b>${o.sub ? `<span class="sub">${esc(o.sub)}</span>` : ''}</span><span class="fl">›</span></button>`).join('')}`;
     else guia = `<div class="wa-msg">${q.path[0]?.k === 'resp' ? 'Escríbeme abajo tu respuesta.' : 'Perfecto. Cuéntamelo abajo con el detalle que puedas.'}</div>`;
+    /* Al entrar: primero el tema (Entrenamiento / Alimentación / Otro). «Otro» o enviar un mensaje = conversación normal, sin opciones */
+    if (!q.libre && !q.path.length && st?.ops?.length) {
+      return montar(`<div class="wa">${cab(avatarJ, 'Jesús de la Obra', 'Te responde Jesús en persona', S.whatsapp ? `<button type="button" class="wa-tel" data-act="cq" data-q="watel" aria-label="Escribir a Jesús por WhatsApp">${WA_ICO}</button>` : '')}
+        <div class="wa-body" id="wa-body"><div class="wa-guia" style="margin-top:8px"><div class="eyebrow" style="margin:4px 0 10px">¿Sobre qué es tu consulta?</div>
+        ${st.ops.map((o, i) => `<button type="button" class="wa-ban" data-act="cq" data-q="g" data-i="${i}"><span class="i">${o.ico}</span><span class="grow"><b>${esc(o.t)}</b>${o.sub ? `<span class="sub">${esc(o.sub)}</span>` : ''}</span><span class="fl">›</span></button>`).join('')}
+        <button type="button" class="wa-ban" data-act="cq" data-q="libre"><span class="i">💬</span><span class="grow"><b>Otro</b><span class="sub">Ir a la conversación y escribirme</span></span><span class="fl">›</span></button></div></div></div>`);
+    }
+    if (q.libre) guia = '';
     const nav = q.path.length ? `<div class="wa-nav"><button type="button" data-act="cq" data-q="g1">‹ Atrás</button><button type="button" data-act="cq" data-q="g0">↺ Empezar de nuevo</button></div>` : '';
-    const listo = !st;
+    const listo = !st || q.libre;
     montar(`<div class="wa">${cab(avatarJ, 'Jesús de la Obra', 'Te responde Jesús en persona', S.whatsapp ? `<button type="button" class="wa-tel" data-act="cq" data-q="watel" aria-label="Escribir a Jesús por WhatsApp">${WA_ICO}</button>` : '')}
-      <div class="wa-body" id="wa-body">${hilo(L, 'al')}<div class="wa-guia">${elegidas}${guia}${nav}</div></div>
+      <div class="wa-body" id="wa-body">${hilo(L, 'al')}${q.libre ? '' : `<div class="wa-guia">${elegidas}${guia}${nav}</div>`}</div>
       ${!st?.urg ? `${q.fotoUrl ? `<div class="wa-prevfoto"><img src="${q.fotoUrl}" alt=""><button type="button" data-act="cq" data-q="sinfoto" aria-label="Quitar foto">✕</button><span class="small muted">1 foto · se borra a los 60 días</span></div>` : ''}<div class="wa-bar">${q.foto ? '' : '<label class="wa-clip" aria-label="Adjuntar una foto">📷<input type="file" id="cq-foto" accept="image/*" hidden></label>'}<textarea id="cq-txt" rows="2" placeholder="${esc(!listo ? 'Escribe aquí o elige arriba…' : q.path.length > 1 ? 'Cuéntame sobre «' + q.path[q.path.length - 1].t + '»…' : 'Mensaje')}"></textarea><button type="button" class="wa-send" data-act="cq" data-q="enviar" aria-label="Enviar">➤</button></div>` : ''}</div>`);
     if (listo) setTimeout(() => document.getElementById('cq-txt')?.focus(), 50);
   }
@@ -293,7 +301,7 @@ const Consultas = (() => {
     }
     const { data, error } = await sb.from('consultas').insert(fila).select().single();
     if (error) { if (bt) bt.disabled = false; const m = String(error.message || ''); return fallo(error, /does not exist|schema cache|could not find the table/i.test(m) ? 'Falta ejecutar el Bloque 106 en Supabase.' : 'No se ha podido enviar: ' + m); }
-    meter((S.d.consultas = S.d.consultas || []), data); S.cq = { path: [] }; toast('Enviado'); pintaAlumno();
+    meter((S.d.consultas = S.d.consultas || []), data); S.cq = { path: [], libre: true }; toast('Enviado'); pintaAlumno();
     if (!S.vista && !S.prueba) sb.functions.invoke('enviar-aviso-enviar-aviso', { body: { a_coach: true, cuerpo: data.texto || 'Te ha enviado una foto' } }).catch(() => { });   /* aviso al móvil de Jesús */
   }
   /* Pantalla «Tu coach»: una sola entrada al chat + cómo funciona cada canal */
@@ -582,6 +590,7 @@ Jesús`, 'nutricion']];
       case 'g': elegir(b.dataset.i); break;
       case 'g1': S.cq.path.pop(); pintaAlumno(); break;
       case 'g0': S.cq = { path: [] }; pintaAlumno(); break;
+      case 'libre': S.cq = { path: [], libre: true }; pintaAlumno(); setTimeout(() => document.getElementById('cq-txt')?.focus(), 80); break;
       case 'enviar': await enviar(); break;
       case 'sinfoto': { const t = document.getElementById('cq-txt')?.value || ''; S.cq.foto = null; S.cq.fotoUrl = null; pintaAlumno(); const ta = document.getElementById('cq-txt'); if (ta) ta.value = t; break; }
       case 'foto': verFoto(b.dataset.p); break;
