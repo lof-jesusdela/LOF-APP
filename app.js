@@ -2571,7 +2571,7 @@ const agendaDef = () => { let g = {}; try { g = JSON.parse(S.c?.fiscal?.agenda_d
 /* Una cita puede ser varias cosas a la vez: el título lleva «+ Revisión mensual» / «+ Valoración» (sin columnas nuevas) */
 const SUF_CITA = / \+ (Revisión mensual|Valoración)/g, sinSuf = t => { const x = String(t || '').trim(); return /^(Revisión mensual|Valoración)( \+ |$)/.test(x) ? '' : x.replace(SUF_CITA, '').trim(); };   /* «Revisión mensual» a secas = entreno sin título con la revisión marcada */
 const conSuf = (base, rev, val) => { const b = sinSuf(base) || (rev || val ? 'Entrenamiento' : ''), p = [b]; if (rev && !/revisi/i.test(b)) p.push('Revisión mensual'); if (val && !/valora/i.test(b)) p.push('Valoración'); return p.filter(Boolean).join(' + ') || null; };
-const citaHoyRev = aid => { const h = hoyISO(), m = sumaDias(h, 1), p = (S.c?.presenciales || []).filter(x => x.alumno_id === aid && x.estado === 'programada' && (x.fecha === h || x.fecha === m) && /revisi|valora/i.test(x.tipo || '')).sort((x, y) => (x.fecha + (x.hora || '')).localeCompare(y.fecha + (y.hora || '')))[0];
+const citaHoyRev = aid => { const h = hoyISO(), m = sumaDias(h, 1), hecha = (S.c?.revisiones || []).some(r => r.alumno_id === aid && r.fecha >= h && r.estado !== 'borrador'); if (hecha) return null; const p = (S.c?.presenciales || []).filter(x => x.alumno_id === aid && x.estado === 'programada' && (x.fecha === h || x.fecha === m) && /revisi|valora/i.test(x.tipo || '')).sort((x, y) => (x.fecha + (x.hora || '')).localeCompare(y.fecha + (y.hora || '')))[0];
   if (!p) return null; const q = [/revisi/i.test(p.tipo) ? 'revisión mensual' : '', /valora/i.test(p.tipo) ? 'valoración' : ''].filter(Boolean).join(' y ');
   return { p, txt: `📋 ${p.fecha === h ? 'Hoy' : 'Mañana'} toca ${q}${p.hora ? ' en su cita de las ' + hhmm(p.hora) : ''}` }; };
 const citaRev = aid => (S.c?.presenciales || []).find(p => p.alumno_id === aid && p.estado === 'programada' && p.fecha >= hoyISO() && p.fecha <= sumaDias(hoyISO(), 45) && /revisi/i.test(p.tipo || ''))
@@ -3751,12 +3751,17 @@ function formRevHecha(n) {
     cerrarSheet(); toast('Revisión marcada como hecha'); render(); });
 }
 function vRevisionesFicha(a) {
-  const l = (S.c.revisiones || []).filter(r => r.alumno_id === a.id);
-  const cita = citaRev(a.id), ctl = estadoAlumno(a).control;
-  const fijar = `<div class="card stack" style="gap:8px"><div class="small">${cita ? `📅 <b>Revisión reservada:</b> ${esc(fLarga(cita.fecha))}${cita.hora ? ' a las ' + esc(hhmm(cita.hora)) : ''}${/Propuesta/.test(cita.nota || '') ? ' · esperando que confirme' : ''}` : ctl ? `Toca la <b>revisión mensual ${ctl.n}</b>${ctl.atrasada ? ` (desde el ${esc(fCorta(ctl.fecha))})` : ` (${esc(fCorta(ctl.fecha))})`}. Todavía no tiene fecha reservada.` : 'Sin revisión pendiente ahora mismo.'}</div>
+  const l = (S.c.revisiones || []).filter(r => r.alumno_id === a.id).sort((x, y) => String(y.fecha).localeCompare(String(x.fecha))), ult = l[0];
+  /* Una cita de revisión ya está hecha si hay una revisión registrada ese día o después */
+  const cita0 = citaRev(a.id), cita = cita0 && !(ult && ult.fecha >= cita0.fecha) ? cita0 : null, ctl = estadoAlumno(a).control;
+  const fijar = `<div class="card stack" style="gap:8px"><span class="eyebrow">Próxima revisión</span><div class="small">${cita ? `📅 <b>Revisión reservada:</b> ${esc(fLarga(cita.fecha))}${cita.hora ? ' a las ' + esc(hhmm(cita.hora)) : ''}${/Propuesta/.test(cita.nota || '') ? ' · esperando que confirme' : ''}` : ctl ? `Toca la <b>revisión mensual ${ctl.n}</b>${ctl.atrasada ? ` (desde el ${esc(fCorta(ctl.fecha))})` : ` (${esc(fCorta(ctl.fecha))})`}. Todavía no tiene fecha reservada.` : 'Sin revisión pendiente ahora mismo.'}</div>
     <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="cmProponer" data-aid="${a.id}">💬 Proponer hora por WhatsApp</button><button class="btn sm ghost" data-act="agendarRev" data-aid="${a.id}">📅 Fijar en la agenda</button>${ctl ? `<button class="btn sm ghost" data-act="revHecha" data-n="${ctl.n}">✓ Ya la hice (poner fecha)</button>` : ''}</div></div>`;
-  if (!l.length) return `<section class="section"><div class="section-head"><h2>Revisiones mensuales</h2><button class="btn sm ghost" data-act="revision">＋ Revisión</button></div>${fijar}</section>`;
-  return `<section class="section"><div class="section-head"><h2>Revisiones mensuales</h2><button class="btn sm ghost" data-act="revision">＋ Revisión</button></div>${fijar}<div class="card">${l.map(r => `<div class="line" data-act="revision" data-id="${r.id}" style="align-items:flex-start;cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(r.fecha))}</span><div class="grow small"><b>${r.control_n ? 'Revisión ' + r.control_n : 'Revisión'}</b>${r.estado === 'borrador' ? ' <span class="pill gold">Borrador · no la ve</span>' : ''} · ${esc(r.formato || '')}${r.sensacion ? ` · se siente <b>${r.sensacion}/10</b>` : ''}${r.prioridad ? `<div><b>Prioridad:</b> ${esc(r.prioridad)}</div>` : ''}${r.resumen ? `<div class="muted">${esc(r.resumen)}</div>` : ''}</div></div>`).join('')}</div></section>`;
+  const fo = Foco.de(a.id), fe = fo ? (() => { try { return focoEstado(fo, S.c, a.id); } catch (e) { return null; } })() : null;
+  const linea = r => `<div class="line" data-act="revision" data-id="${r.id}" style="align-items:flex-start;cursor:pointer"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(r.fecha))}</span><div class="grow small"><b>${r.control_n ? 'Revisión ' + r.control_n : 'Revisión'}</b>${r.estado === 'borrador' ? ' <span class="pill gold">Borrador · no la ve</span>' : ''} · ${esc(r.formato || '')}${r.sensacion ? ` · se siente <b>${r.sensacion}/10</b>` : ''}${r.prioridad ? `<div><b>Prioridad:</b> ${esc(r.prioridad)}</div>` : ''}${r.resumen ? `<div class="muted">${esc(r.resumen)}</div>` : ''}</div></div>`;
+  const ultima = ult ? `<div class="card stack" style="gap:8px"><span class="eyebrow">Última revisión</span>${linea(ult)}
+    <div class="aprox small" style="border-left:4px solid #C9A227">${fo ? `🎯 <b>Foco:</b> ${esc(fo.tipo === 'libre' ? (fo.texto || 'Foco') : Foco.titulo(fo))}${fe ? ` · <b>${esc(fe.txt)}</b>${fe.N ? ` (hasta el ${esc(fCorta(fe.fin))})` : ''}` : ''}` : `🎯 <b>Sin foco puesto.</b> Ábrela y elige el foco para que el alumno lo vea en su Hoy.`}</div></div>` : '';
+  const hist = l.length > 1 ? `<details class="card"><summary class="small" style="cursor:pointer;font-weight:700">Histórico de revisiones (${l.length - 1})</summary>${l.slice(1).map(linea).join('')}</details>` : '';
+  return `<section class="section"><div class="section-head"><h2>Revisiones mensuales</h2><button class="btn sm ghost" data-act="revision">＋ Revisión</button></div><div class="stack" style="gap:10px">${fijar}${ultima}${hist}</div></section>`;
 }
 /* ======================= ELITE PLAYER · futbolistas: partidos, wellness y carga ======================= */
 const ZONAS = ['Isquiotibiales', 'Aductor', 'Cuádriceps', 'Gemelo', 'Tobillo', 'Rodilla', 'Cadera / pubis', 'Espalda', 'Otra'];
@@ -5271,7 +5276,7 @@ function vFichaBase() {
     const SECS = [
       ['resumen', 1, '🔔', 'Pendientes, avisos, notas y tareas', resumen1, fb1, 'Notas y tareas'],
       srv?.oposicion && ['oposicion', '👮', '🎯', 'Oposición · pruebas físicas', Oposicion.resumen(true), Oposicion.tarjeta(true), 'Oposición'],
-      ['checkins', 2, '✅', 'Check-ins y revisiones', `${dpw ? `${cur.entrenos}/${dpw} entrenos` : ''}${chks[0] ? ` · último check-in ${esc(fCorta(chks[0].semana_inicio))}` : ''}`, fb2 + `<h2 style="margin:18px 0 8px">Revisiones</h2>` + fb8, 'Check-ins'],
+      ['checkins', 2, '✅', 'Check-ins y revisiones', `${dpw ? `${cur.entrenos}/${dpw} entrenos` : ''}${chks[0] ? ` · último check-in ${esc(fCorta(chks[0].semana_inicio))}` : ''}`, fb2 + fb8, 'Check-ins'],
       ['plan', 3, '📑', 'Plan contratado y bloques', `${esc(srv?.producto || 'Sin plan')}${P && !P.antes && !P.fuera ? ` · semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''}`, fb3 + `<h2 style="margin:18px 0 8px">Pagos</h2>` + fb9, 'Plan'],
       modE && ['entreno', 4, '🏋️', 'Entrenamiento · bloque actual', `${esc(f.prog?.nombre || 'Sin programa')}${dpw ? ` · ${cur.entrenos}/${dpw} esta semana` : ''}`, fb4, 'Entreno'],
       srv?.modulo_nutricion && ['nutri', 5, '🥗', 'Nutrición', !midoCoach(a.id) ? esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || 'Plan de alimentación') : ing7.pct != null ? `${ing7.pct} % de ingestas bien · ${ing7.dias} días registrados` : `${ing7.dias} de 7 días registrados`, fb5, 'Nutrición'],
@@ -9069,7 +9074,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v447';
+const APP_VER = 'v448';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
