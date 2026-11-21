@@ -3,5 +3,5 @@
 window.LOF_CONFIG = {
   url: 'https://dywdqrcmfglesqfbqaff.supabase.co',
   key: 'sb_publishable_xm5d1XFxRjS7iHtaYW_wdA_dDT6N6we',
-  vapid: 'BH0hLJ-7guZIGubgyPvIgvGasg0a8CzsFurWKZMyc8okADZ35GxoWNqsn8TCAw_IV4Pclld50Zdt3_CxuAMWxuE'   // clave pública de los avisos push
+  vapid: 'BM5GGYY27q8133zGA1RIkqdhzF2BS9furiXXKyNm6j3TLbYQOpPC2c7J8ipmWyd6OLFzAK3qrt5gq2pCIPHNcFM'   // clave pública de los avisos push
 };

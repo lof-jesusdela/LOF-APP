@@ -1094,16 +1094,22 @@ async function estadoPush() {
     if (!window.LOF_CONFIG?.vapid || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return esIOS && !instalada ? 'instalar' : 'no';
     if (Notification.permission === 'denied') return 'bloqueado';
     if (Notification.permission !== 'granted') return 'falta';
-    const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription();
+    const reg = await navigator.serviceWorker.ready; let sub = await reg.pushManager.getSubscription();
     if (!sub) return 'falta';
+    /* Clave antigua: se rehace sola (el permiso ya está dado) y se guarda la nueva */
+    if (!mismaClave(sub)) { try { await sub.unsubscribe(); } catch (e) { } sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(window.LOF_CONFIG.vapid) }); const j = sub.toJSON(); await sb.from('push_suscripciones').upsert({ alumno_id: S.user.id, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth }, { onConflict: 'endpoint' }); }
     return 'ok';
   } catch (e) { return 'no'; }
 }
+const mismaClave = sub => { try { const k = sub?.options?.applicationServerKey; if (!k) return true; const a = new Uint8Array(k), b = b64u(window.LOF_CONFIG.vapid); return a.length === b.length && a.every((v, i) => v === b[i]); } catch (e) { return true; } };
 async function activarPush() {
   try {
     const p = await Notification.requestPermission(); if (p !== 'granted') { toast('Sin permiso no podemos avisarte. Puedes activarlo en Ajustes del móvil'); return false; }
     const reg = await navigator.serviceWorker.ready;
-    const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(window.LOF_CONFIG.vapid) });
+    let sub = await reg.pushManager.getSubscription();
+    /* Si el móvil se suscribió con una clave antigua, se rehace con la actual (si no, los avisos no llegan) */
+    if (sub && !mismaClave(sub)) { try { await sub.unsubscribe(); } catch (e) { } sub = null; }
+    sub = sub || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(window.LOF_CONFIG.vapid) });
     const j = sub.toJSON();
     const { error } = await sb.from('push_suscripciones').upsert({ alumno_id: S.user.id, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth }, { onConflict: 'endpoint' });
     if (error) throw error;
@@ -9110,7 +9116,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v458';
+const APP_VER = 'v459';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
