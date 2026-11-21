@@ -6751,7 +6751,7 @@ function vAnillos(a, R, d, detalle, yo) {
   const fila = (k, tit, val, sub, chart, nota) => `<details class="rg-ban"${detalle ? ' open' : ''}${yo ? '' : ` data-ir="${k}"`}><summary><i style="background:${RG_COL[k]}"></i><span class="grow"><b${yo ? '' : ` class="rg-tit"`}>${tit}</b><small>${sub}</small></span><b class="num rg-v" style="color:${RG_COL[k]}">${val}</b></summary>${chart}${nota ? `<div class="small muted">${nota}</div>` : ''}</details>`;
   const plana = (k, tit, val, sub) => `<div class="rg-ban rg-plana"><div class="rg-sum"><i style="background:${RG_COL[k]};opacity:.35"></i><span class="grow"><b>${tit}</b><small>${sub}</small></span><b class="num rg-v">${val}</b></div></div>`;
   /* Foco: el anillo exterior y el más importante; solo en la semana (o los 7 días) que incluye hoy */
-  { const fo = yo ? S.d.servicio?.foco : Foco.de(a.id), hoyIn = dias.includes(hoyF);
+  { const fo = a._sinFoco ? null : yo ? S.d.servicio?.foco : Foco.de(a.id), hoyIn = dias.includes(hoyF);
     if (fo?.tipo && hoyIn) { const e = focoEstado(fo, yo ? S.d : (R.src || S.c), a.id);
       if (e) { L.push({ tit: 'Foco', pct: Math.round(e.pct * 100), col: RG_COL.foc });
         filas.push(fila('foc', '🎯 Foco', Math.round(e.pct * 100) + ' %', `${esc(fo.tipo === 'libre' ? (fo.texto || 'Foco') : Foco.titulo(fo))} · ${e.txt}`,
@@ -6810,14 +6810,22 @@ function vSemanaAnillos(s) {
   const tit = l === act ? 'Esta semana' : l === sumaDias(act, -7) ? 'Semana pasada' : `Del ${fCorta(l)} al ${fCorta(sumaDias(l, 6))}`;
   return `<section class="section"><h2>Tus anillos</h2><div class="card stack" style="gap:12px"><div class="row rg-nav"><button class="btn ghost sem-flecha" data-act="semAl" data-d="-7" aria-label="Semana anterior"${l <= min ? ' disabled' : ''}>‹</button><div class="grow" style="text-align:center"><b>${esc(tit)}</b><div class="small muted">${esc(fCorta(l))} – ${esc(fCorta(sumaDias(l, 6)))}</div></div><button class="btn ghost sem-flecha" data-act="semAl" data-d="7" aria-label="Semana siguiente"${l >= act ? ' disabled' : ''}>›</button></div>${cuerpo}</div></section>`;
 }
+/* Reporting: el foco como barra de progreso (lo más visible), con su dato según el tipo: días cumplidos o la media frente a la meta */
+function vFocoBarra(a) {
+  const fo = Foco.de(a.id); if (!fo?.tipo) return `<div class="aprox small stack" style="gap:3px"><span>🎯 <b>Foco de esta persona</b></span>${Foco.linea(a.id)}</div>`;
+  let e = null; try { e = focoEstado(fo, S.c, a.id); } catch (er) { }
+  const m = Foco.medir(a.id, fo), pct = Math.round(Math.min(1, (m?.pct ?? e?.pct ?? 0)) * 100), txt = m?.txt || e?.txt || 'sin datos todavía';
+  return `<div class="foco-barra"><div class="row" style="gap:8px;align-items:baseline"><span class="grow">🎯 <b>${esc(Foco.titulo(fo))}</b></span><b class="num" style="color:#8A6B00;font-size:18px">${pct} %</b></div>
+    <div class="track gordo"><i style="width:${pct}%;background:#C9A227"></i></div><span class="small muted">${esc(txt)}${e?.N ? ` · hasta el ${esc(fCorta(e.fin))}` : ''}</span></div>`;
+}
 function vReporteAlumno(a, R, detalle) {
   const d = datosReporte(a, R), w = d.w;
   const caja = (t, v, sub, niv) => `<div class="kpi rep ${niv}"><div class="l">${t}</div><b class="num">${v}</b><div class="small muted">${sub}</div></div>`;
   const semTxt = d.P && !d.P.antes ? `Semana ${d.P.semana} del proceso · ${esc(nomCiclo(d.P.cc))}, semana ${d.P.semCiclo} de ${d.P.cc.sem}` : 'Sin fecha de inicio';
   const com = detalle ? d.coment : d.coment.slice(0, 4);
   return `<div class="card stack"><div class="row"><div class="grow"><h3>${esc(a.nombre)}</h3><div class="small muted">${semTxt}</div></div>${detalle ? '' : `<button class="btn sm ghost" data-act="abrirReporte" data-id="${a.id}">Ver</button>`}</div>
-    <div class="aprox small stack" style="gap:3px"><span>🎯 <b>Foco de esta persona</b></span>${Foco.linea(a.id)}</div>
-    ${vAnillos(a, R, d, detalle)}
+    ${vFocoBarra(a)}
+    ${vAnillos({ ...a, _sinFoco: 1 }, R, d, detalle)}
     ${d.srv?.modulo_nutricion && midoCoach(a.id) && (w.chk?.aplicacion_plan || w.ing.dias < 7) ? `<div class="small muted">${w.chk?.aplicacion_plan ? `Aplicación declarada: <b>${esc(aplTxt(w.chk.aplicacion_plan))}</b>` : 'Aplicación declarada: sin respuesta'}${Nutricion.acuerdoDe(planNutriDe(a.id)).nivel === 'habitual' ? ` · comidas marcadas en ${w.ing.dias} de 7 días · ${7 - w.ing.dias} sin información` : ''}</div>` : ''}
     ${w.cansancio || w.poderio || w.chk ? `<div class="row small muted" style="flex-wrap:wrap;gap:8px">${w.cansancio ? `<span class="pill">Cansancio medio ${fmtNum(w.cansancio)}/5</span>` : ''}${w.poderio ? `<span class="pill">Poderío medio ${fmtNum(w.poderio)}/5</span>` : ''}${w.chk ? `<span class="pill">Motivación ${w.chk.motivacion}/10 · implicación ${w.chk.implicacion}/10</span>` : '<span class="pill warn">Sin check-in</span>'}</div>` : ''}
     ${(() => { if (!conSeguimiento(d.srv) || !w.chk) return ''; const dv = (S.c.devoluciones || []).find(x => x.alumno_id === a.id && x.semana_inicio === R.lunes), cm = Compromisos.buscar(`dev:${a.id}:${R.lunes}`);
@@ -9081,7 +9089,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v455';
+const APP_VER = 'v456';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
