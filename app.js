@@ -3516,6 +3516,38 @@ function vAlumnos() {
   ${Casos.resumenCoach()}`;
 }
 
+/* ---------- Novedades del alumno desde tu última visita a cada pestaña: globo rojo hasta que la abres ----------
+   Entreno: comentarios en sus entrenos · Nutrición: fotos de comida · Progreso: mediciones · Testimonio: fotos y testimonios escritos */
+const Novedades = (() => {
+  const vistos = () => { try { return JSON.parse(S.c?.fiscal?.nov_vistos || '{}') || {}; } catch (e) { return {}; } };
+  const desde = (aid, tab) => vistos()[aid]?.[tab] || new Date(Date.now() - 7 * 864e5).toISOString();
+  const t = x => x.created_at || x.creado_at || x.fecha || '';
+  const corta = s => { s = String(s || '').trim(); return s.length > 70 ? s.slice(0, 68) + '…' : s; };
+  async function cargar(f) {
+    const aid = f.id, N = { entreno: [], nutri: [], progreso: [], medidas: [] }, d = tab => desde(aid, tab), dia = tab => d(tab).slice(0, 10);
+    const [fp, ts, com] = await Promise.all([
+      sb.from('fotos_progreso').select('*').eq('alumno_id', aid).gte('fecha', dia('medidas')),
+      sb.from('testimonios').select('*').eq('alumno_id', aid).gte('fecha', dia('medidas')),
+      f.comidas ? { data: f.comidas } : sb.from('comidas_registro').select('*').eq('alumno_id', aid).gte('fecha', dia('nutri'))]);
+    (f.ses || []).filter(x => x.fecha >= dia('entreno') && t(x) > d('entreno')).forEach(x => {
+      [x.nota, ...(x.comentarios || []).map(o => o && (o.nombre ? o.nombre + ': ' : '') + (o.texto || ''))].filter(z => z && String(z).trim()).forEach(z => N.entreno.push({ ico: '💬', txt: `Comentario en su entreno del ${fCorta(x.fecha)}: «${corta(z)}»` })); });
+    (com.data || []).filter(x => (x.foto || x.fotos?.length) && t(x) > d('nutri')).forEach(x => N.nutri.push({ ico: '📷', txt: `Foto de comida · ${fCorta(x.fecha)}${x.momento ? ' · ' + x.momento : ''}${x.plato ? ' · ' + corta(x.plato) : ''}` }));
+    (f.med || []).filter(x => t(x) > d('progreso')).forEach(x => N.progreso.push({ ico: '📏', txt: `Nueva medición del ${fCorta(x.fecha)}${x.peso != null ? ' · ' + fmtNum(x.peso, 1) + ' kg' : ''}` }));
+    const fpN = (fp.data || []).filter(x => t(x) > d('medidas')), porDia = {}; fpN.forEach(x => porDia[x.fecha] = (porDia[x.fecha] || 0) + 1);
+    Object.entries(porDia).forEach(([fe, n]) => N.medidas.push({ ico: '📸', txt: `${n} ${n === 1 ? 'foto' : 'fotos'} de progreso · ${fCorta(fe)}` }));
+    (ts.data || []).filter(x => t(x) > d('medidas')).forEach(x => N.medidas.push({ ico: '✍️', txt: `Testimonio escrito: «${corta(x.texto)}»` }));
+    f.nov = N; f.novAbiertas = {};
+  }
+  const num = (f, tab) => f?.novAbiertas?.[tab] ? 0 : (f?.nov?.[tab] || []).length;
+  /* Al abrir la pestaña: el globo se apaga y la próxima vez solo cuenta lo nuevo; la tarjeta sigue visible en esta visita */
+  function abierta(f, tab) {
+    if (!f?.nov?.[tab] || f.novAbiertas[tab] || S.vista || S.prueba) return; f.novAbiertas[tab] = true;
+    const v = vistos(); (v[f.id] ||= {})[tab] = new Date().toISOString(); const val = JSON.stringify(v);
+    (S.c.fiscal ||= {}).nov_vistos = val; sb.from('ajustes_privados').upsert({ clave: 'nov_vistos', valor: val }, { onConflict: 'clave' }).then(() => { }, () => { });
+  }
+  const tarjeta = (f, tab) => { const L = f?.nov?.[tab] || []; return L.length ? `<div class="av-rojo"><div class="av-rojo-t">🔴 ${L.length === 1 ? 'Novedad' : L.length + ' novedades'} desde tu última visita</div>${L.map(x => `<div class="small" style="padding:4px 0">${x.ico} ${esc(x.txt)}</div>`).join('')}</div>` : ''; };
+  return { cargar, num, abierta, tarjeta };
+})();
 async function abrirFicha(id) {
   marcarReciente(id);
   S.ficha = { id, cargando: true }; S.verSes = null; S.verPlan = null; S.fichaSub = null; render(); window.scrollTo(0, 0);
@@ -3537,6 +3569,7 @@ async function abrirFicha(id) {
   { const r = await sb.from('plan_semana').select('*').eq('alumno_id', id).gte('semana_inicio', sumaDias(lunesDe(hoyISO()), -56)); S.ficha.planes = r.error ? [] : (r.data || []); }
   S.ficha.pres = pr.data || []; S.ficha.ruta = ru.data || []; if (S.ficha.srv) S.ficha.srv._bloques = bloquesDe(S.ficha.ruta);
   const f = S.ficha; await Promise.all([cargarValoraciones(), cargarProgramasFicha(f), Acomp.cargarFicha(f), IA.cargarFicha(f), S.c.servicios.find(x => x.alumno_id === f.id)?.modulo_nutricion ? Nutricion.cargarFicha(f).catch(() => {}) : null]);
+  await Novedades.cargar(f).catch(() => { });
   { const a = S.c?.perfiles?.find(x => x.id === id); if (a && S.ficha === f) { const it = estadoAlumno(a).items; f.recien = new Set(it.filter(x => x.nueva).map(x => x.k)); await Alertas.verTodas(id, it.map(x => x.m)); } }
   if (S.ficha === f && !S.verSes && !S.fichaSub) render();
 }
@@ -5314,7 +5347,7 @@ function vFichaBase() {
       ['progreso', 7, '📈', 'Progreso y composición corporal', ultM ? `Última medición ${esc(fCorta(ultM.fecha))}${ultM.peso != null ? ' · ' + fmtNum(ultM.peso, 1) + ' kg' : ''}${ultM.grasa_pct != null ? ' · ' + fmtNum(ultM.grasa_pct, 1) + ' % grasa' : ''}` : 'Sin mediciones', fb7 + vTestsFicha(f), 'Progreso'],
       ['medidas', 11, '📸', 'Testimonio · medidas, fotos y casos de éxito', '', fb11, 'Testimonio']
     ].filter(Boolean);
-    const tabs = (S.fTab ||= {}), ALIAS = { calendario: 'checkins', pagos: 'inicio', plan: 'inicio', tests: 'progreso' }; if (ALIAS[tabs[f.id]]) tabs[f.id] = ALIAS[tabs[f.id]]; const act = SECS.some(x => x[0] === tabs[f.id]) ? tabs[f.id] : 'inicio';
+    const tabs = (S.fTab ||= {}), ALIAS = { calendario: 'checkins', pagos: 'inicio', plan: 'inicio', tests: 'progreso' }; if (ALIAS[tabs[f.id]]) tabs[f.id] = ALIAS[tabs[f.id]]; const act = SECS.some(x => x[0] === tabs[f.id]) ? tabs[f.id] : 'inicio'; Novedades.abierta(f, act);
     /* Columna de perfil (fija) + pestañas + contenido. Estilo tranquilo: tarjetas blancas, pocos datos por tarjeta, color solo para el estado */
     const nivTxt = { ok: 'En camino', warn: 'Atención', bad: 'Revisar' }[e.nivel];
     const filaP = (l, v) => v ? `<div class="fx-dato"><span>${l}</span><b>${v}</b></div>` : '';
@@ -5332,7 +5365,7 @@ function vFichaBase() {
     /* Todas las secciones en la barra horizontal (se desliza en el móvil), en orden de uso: resumen y seguimiento primero */
     const ORD = ['resumen', 'checkins', 'oposicion', 'entreno', 'nutri', 'habitos', 'progreso', 'medidas'];
     const NOMT = { resumen: 'Avisos' };
-    const nav = `<nav class="fx-tabs" role="tablist" aria-label="Secciones de la ficha"><button role="tab" data-act="fTab" data-t="inicio" aria-selected="${act === 'inicio'}">Plan</button>${ORD.map(id => SECS.find(z => z[0] === id)).filter(Boolean).map(([id, n, , , , , corto]) => { const d = typeof n === 'number' && n > 1 ? dot(n) : id === 'resumen' ? dot(1) : ''; return `<button role="tab" data-act="fTab" data-t="${id}" aria-selected="${act === id}">${esc(NOMT[id] || corto)}${d ? `<span class="fx-tnum">${(d.match(/>(\d+)<\/span>$/) || [])[1] || ''}</span>` : ''}</button>`; }).join('')}</nav>`;
+    const nav = `<nav class="fx-tabs" role="tablist" aria-label="Secciones de la ficha"><button role="tab" data-act="fTab" data-t="inicio" aria-selected="${act === 'inicio'}">Plan</button>${ORD.map(id => SECS.find(z => z[0] === id)).filter(Boolean).map(([id, n, , , , , corto]) => { const d = typeof n === 'number' && n > 1 ? dot(n) : id === 'resumen' ? dot(1) : '', tot = (+(d.match(/>(\d+)<\/span>$/) || [])[1] || 0) + Novedades.num(f, id); return `<button role="tab" data-act="fTab" data-t="${id}" aria-selected="${act === id}">${esc(NOMT[id] || corto)}${tot ? `<span class="fx-tnum">${tot}</span>` : ''}</button>`; }).join('')}</nav>`;
     /* Próximos pasos del alumno: ahora en la pestaña Avisos */
       const presP = (f.pres || []).filter(x => x.fecha >= hoy && x.estado !== 'cancelada').sort((x, y) => x.fecha.localeCompare(y.fecha))[0];
       const prox = (() => { const l = [], add = (ic, t, iso, extra = '', dest = '') => iso && l.push([ic, t, `${fCorta(iso)}${extra}`, iso, dest]);
@@ -5347,9 +5380,9 @@ function vFichaBase() {
       const cProx = l => `<div class="card fx-c"><div class="fx-ct">Próximo</div>${l.length ? `<div class="fx-lista">${l.map(([ic, t, d, , dest]) => `<${dest ? 'button' : 'div'} class="fx-prox ${dest ? 'fx-link fx-tap' : ''}" ${dest ? `data-act="fIr" data-d="${dest}"` : ''}><span class="fx-ic">${ic}</span><span class="grow">${esc(t)}</span><b>${esc(d)}</b></${dest ? 'button' : 'div'}>`).join('')}</div>` : '<div class="fx-vacio">Nada programado</div>'}</div>`;
     let cuerpo;
     if (act !== 'inicio') { const x = SECS.find(z => z[0] === act); /* Lo que marca el globo rojo de la pestaña, arriba y en rojo: qué es y qué hacer (Ir / Solventado) */
-      const lAv = act === 'resumen' ? pend.filter(z => !z.comp) : typeof x[1] === 'number' && DOT[x[1]] ? pend.filter(z => DOT[x[1]].test(z.m) && !z.comp) : [];
+      const lAv = act === 'resumen' ? pend : typeof x[1] === 'number' && DOT[x[1]] ? pend.filter(z => DOT[x[1]].test(z.m)) : [];
       const rojo = lAv.length ? `<div class="av-rojo"><div class="av-rojo-t">🔴 Tienes ${lAv.length === 1 ? '1 aviso' : lAv.length + ' avisos'} por revisar aquí</div>${vListaAlertas(a.id, { ...e, items: lAv }, false)}</div>` : '';
-      cuerpo = `<div class="fx-cab"><h2>${esc(x[3])}</h2>${x[4] ? `<span class="small muted">${x[4]}</span>` : ''}</div>${rojo}<div class="ft-cuerpo">${act === 'resumen' ? cProx(prox) : ''}${x[5]}</div>`; }
+      cuerpo = `<div class="fx-cab"><h2>${esc(x[3])}</h2>${x[4] ? `<span class="small muted">${x[4]}</span>` : ''}</div>${rojo}${Novedades.tarjeta(f, act)}<div class="ft-cuerpo">${act === 'resumen' ? cProx(prox) : ''}${x[5]}</div>`; }
     else {
       /* Cumplimiento de las últimas 4 semanas completas: media de lo que se mide en su plan (cada parte se ve aparte) */
       const pausasF = pausasDe(srv), enPausa = l => pausasF.some(p => p.desde <= sumaDias(l, 6) && (!p.hasta || p.hasta >= l));
@@ -9116,7 +9149,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v463';
+const APP_VER = 'v464';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
