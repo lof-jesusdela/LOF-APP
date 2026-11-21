@@ -272,15 +272,15 @@ const Consultas = (() => {
   }
 
   /* Preguntas de fin de entreno → mismas consultas */
-  function vFinEntreno(sesionRef) {
+  function vFinEntreno(sesionRef, co) {   /* co: la lleva Jesús en presencial → tercera persona, sin WhatsApp */
     const ejs = ejerciciosDeSesion();
-    return `<div class="stack" style="gap:6px"><span class="small"><b>¿Algún ejercicio te salió mal, te dolió o hay que revisarlo?</b></span>
+    return `<div class="stack" style="gap:6px"><span class="small"><b>${co ? '¿Algún ejercicio le salió mal, le dolió o hay que revisarlo?' : '¿Algún ejercicio te salió mal, te dolió o hay que revisarlo?'}</b></span>
       <div class="choice" role="group" id="fe-q1">${[['no', 'No'], ['si', 'Sí']].map(([v, l]) => `<button type="button" data-act="cq" data-q="fe" data-v="${v}" aria-pressed="${v === 'no'}">${l}</button>`).join('')}</div>
       <div id="fe-box" class="stack" hidden style="gap:8px"><label class="f">¿Cuál?<select id="fe-ej">${ejs.map(n => `<option>${esc(n)}</option>`).join('')}<option value="">Otro / no sé cuál</option></select></label>
       <label class="f">¿Qué ha pasado?<textarea id="fe-txt" placeholder="Dolor, técnica, peso, máquina…"></textarea></label>
-      <div class="stack" style="gap:6px"><span class="small"><b>¿Te limita para entrenar o moverte?</b></span><div class="choice" role="group" id="fe-lim">${[['no', 'No'], ['si', 'Sí']].map(([v, l]) => `<button type="button" data-act="cq" data-q="felim" data-v="${v}" aria-pressed="${v === 'no'}">${l}</button>`).join('')}</div>
-      <div id="fe-wa" hidden><p class="small" style="color:var(--bad);margin:0 0 6px">Esto no puede esperar: escríbeme también por WhatsApp.</p><a class="btn sm" href="${esc(waJesus('Hola Jesús, hoy en el entreno algo me ha dolido y me limita: '))}" target="_blank" rel="noopener" data-act="cq" data-q="walog" data-v="wa_dolor">💬 Escribir por WhatsApp</a></div></div></div></div>
-      <label class="f"><b>¿Alguna otra cosa que no pueda esperar a la revisión?</b><textarea id="s-nota" placeholder="Opcional"></textarea></label>`;
+      <div class="stack" style="gap:6px"><span class="small"><b>${co ? '¿Le limita para entrenar o moverse?' : '¿Te limita para entrenar o moverte?'}</b></span><div class="choice" role="group" id="fe-lim">${[['no', 'No'], ['si', 'Sí']].map(([v, l]) => `<button type="button" data-act="cq" data-q="felim" data-v="${v}" aria-pressed="${v === 'no'}">${l}</button>`).join('')}</div>
+      <div id="fe-wa" hidden ${co ? 'data-co="1"' : ''}><p class="small" style="color:var(--bad);margin:0 0 6px">Esto no puede esperar: escríbeme también por WhatsApp.</p><a class="btn sm" href="${esc(waJesus('Hola Jesús, hoy en el entreno algo me ha dolido y me limita: '))}" target="_blank" rel="noopener" data-act="cq" data-q="walog" data-v="wa_dolor">💬 Escribir por WhatsApp</a></div></div></div></div>
+      <label class="f"><b>${co ? 'Notas de la sesión (opcional)' : '¿Alguna otra cosa que no pueda esperar a la revisión?'}</b><textarea id="s-nota" placeholder="Opcional"></textarea></label>`;
   }
   function leerFinEntreno() {
     const si = document.querySelector('#fe-q1 [aria-pressed="true"]')?.dataset.v === 'si';
@@ -530,7 +530,7 @@ Jesús`, 'nutricion']];
       case 'sinfoto': { const t = document.getElementById('cq-txt')?.value || ''; S.cq.foto = null; S.cq.fotoUrl = null; pintaAlumno(); const ta = document.getElementById('cq-txt'); if (ta) ta.value = t; break; }
       case 'foto': verFoto(b.dataset.p); break;
       case 'fe': document.querySelectorAll('#fe-q1 button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); { const bx = document.getElementById('fe-box'); if (bx) bx.hidden = v !== 'si'; } break;
-      case 'felim': document.querySelectorAll('#fe-lim button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); { const w = document.getElementById('fe-wa'); if (w) w.hidden = v !== 'si'; } break;
+      case 'felim': document.querySelectorAll('#fe-lim button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); { const w = document.getElementById('fe-wa'); if (w) w.hidden = v !== 'si' || !!w.dataset.co; } break;
       case 'wa': { const u = URG.find(x => x[0] === v); if (!u) break; log(v); window.open(waJesus(u[3]), '_blank', 'noopener'); break; }
       case 'walog': log(v); break;
       case 'watel': { const dl = v === 'wa_dolor'; log(dl ? 'wa_dolor' : 'wa_chat'); window.open(waJesus(dl ? 'Hola Jesús, tengo un dolor en un ejercicio que me limita: ' : 'Hola Jesús, '), '_blank', 'noopener'); break; }
