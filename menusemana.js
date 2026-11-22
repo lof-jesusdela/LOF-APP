@@ -59,11 +59,14 @@ const MenuSemana = (() => {
     const a = await sb.from('plan_nutri_semana').select('*').eq('alumno_id', uid).eq('semana_inicio', lunes).maybeSingle();
     if (a.error) { st = { ...base, sinTabla: true }; return; }
     let d = a.data?.datos, copiado = false;
+    if (d && !d.menu) { const p0 = await sb.from('plan_nutri_semana').select('*').eq('alumno_id', uid).lt('semana_inicio', lunes).order('semana_inicio', { ascending: false }).limit(1); const pd = p0.data?.[0]?.datos; if (pd?.menu) d = { menu: pd.menu, trabaja: pd.trabaja || [], ...d }; }   /* semana organizada en el check-in: el menú parte de la anterior */
     if (!d) { const p = await sb.from('plan_nutri_semana').select('*').eq('alumno_id', uid).lt('semana_inicio', lunes).order('semana_inicio', { ascending: false }).limit(1); d = p.data?.[0]?.datos; copiado = !!d; }
     st = d ? { ...base, ...d, lunes, entreno: a.data ? d.entreno || [] : (planDe(lunes)?.dias || d.entreno || []), copiado, vista: 'plan' } : { ...base, vista: 'plan' };
     st.vista = 'plan';
   }
   /* Qué contexto del plan le toca a cada día: entreno / descanso y trabajo / libre */
+  /* El tipo de día que marcó en su check-in manda; si no, se deduce de entreno y trabajo */
+  function ctxDia(l, i, ent, trab) { const nm = st?.ctx?.[i]; if (nm) { const j = l.findIndex(c => c.n === nm); if (j >= 0) return j; } return ctxIdx(l, ent, trab); }
   function ctxIdx(l, ent, trab) {
     if (!l.length) return -1;
     const sc = c => { const n = norm(c.n); let p = 0;
@@ -76,7 +79,7 @@ const MenuSemana = (() => {
   function calculo() {
     const l = ctxs(), filas = [], tot = new Map(), libres = [], otros = [];
     st.menu.forEach((dia, i) => {
-      const ent = st.entreno.includes(i), trab = st.trabaja.includes(i), ci = ctxIdx(l, ent, trab), c = ci >= 0 ? l[ci] : null, nd = dia.length;
+      const ent = st.entreno.includes(i), trab = st.trabaja.includes(i), ci = ctxDia(l, i, ent, trab), c = ci >= 0 ? l[ci] : null, nd = dia.length;
       dia.forEach((m, k) => {
         if (!hay(m)) return;
         const r = comida(m); r.otros.forEach(o => otros.push(o));
@@ -111,7 +114,7 @@ const MenuSemana = (() => {
   function vPlan() {
     const total = st.menu.reduce((t, d) => t + d.length, 0), A = Nutricion.acuerdo(S.d), max = A.flexN != null ? A.flexN : Math.round(total * A.flexPct / 100), usadas = st.menu.reduce((t, d) => t + d.filter(m => m.perm).length, 0), l = ctxs();
     const dias = st.menu.map((dia, i) => {
-      const ent = st.entreno.includes(i), trab = st.trabaja.includes(i), ci = ctxIdx(l, ent, trab), f = sumaDias(st.lunes, i);
+      const ent = st.entreno.includes(i), trab = st.trabaja.includes(i), ci = ctxDia(l, i, ent, trab), f = sumaDias(st.lunes, i);
       const filas = dia.map((m, k) => {
         const r = comida(m), ultima = k === dia.length - 1 && dia.length > 1, cena = ultima && !m.perm && hay(m) ? r.items.map(a => [a, Nutricion.avisoCena(a)]).filter(x => x[1]) : [];
         const pregunta = hay(m) && !r.conocido && !m.perm, abre = m.abre || pregunta || (m.ing || '').trim();
@@ -152,7 +155,7 @@ const MenuSemana = (() => {
   }
   const pinta = () => { const c = $('#ms-cuerpo'); if (c) c.innerHTML = st.vista === 'compra' ? vCompra() : vPlan(); };
   async function guardar(silencio) {
-    const datos = { entreno: st.entreno, trabaja: st.trabaja, menu: st.menu };
+    const datos = { ctx: st.ctx, exceso: st.exceso, excQ: st.excQ, entreno: st.entreno, trabaja: st.trabaja, menu: st.menu };
     const { error } = await sb.from('plan_nutri_semana').upsert({ alumno_id: S.user.id, semana_inicio: st.lunes, datos }, { onConflict: 'alumno_id,semana_inicio' });
     if (error) { fallo(error, AVISO); return false; }
     if (typeof usaPlan === 'function' && usaPlan() && st.entreno.length) { try { await guardarPlanSemana(st.lunes, st.entreno); } catch (e) { /* el plan de entreno es opcional */ } }

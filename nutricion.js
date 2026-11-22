@@ -202,7 +202,17 @@ const Nutricion = (() => {
   function selCtx(n) {
     if (S.nCtx != null) return S.nCtx;
     try { const [f, i] = (localStorage.getItem('lof-nctx') || '').split('|'); if (f === hoyISO()) return +i || 0; } catch (e) { /* sin almacenamiento */ }
+    const o = ctxOrg(n); if (o >= 0) return o;
     const k = ctxPorSemana(n); return k >= 0 ? k : 0;
+  }
+  /* El tipo de día que el alumno marcó para hoy en su check-in (Organiza tu semana) */
+  const hoyK = () => (new Date().getDay() + 6) % 7;
+  function ctxOrg(n) { const nm = typeof orgDe === 'function' ? orgDe(lunesDe(hoyISO()))?.ctx?.[hoyK()] : null; return nm ? ctxDe(n).findIndex(c => c.n === nm) : -1; }
+  /* ¿Sabemos qué día tiene hoy? (lo eligió hoy, lo marcó en su semana o va por semana tipo) */
+  function ctxHoy(n) {
+    if (S.nCtx != null) return S.nCtx;
+    try { const [f, i] = (localStorage.getItem('lof-nctx') || '').split('|'); if (f === hoyISO()) return +i || 0; } catch (e) { /* */ }
+    const o = ctxOrg(n); if (o >= 0) return o; return ctxPorSemana(n);
   }
 
   /* ---------- Pestaña del alumno ---------- */
@@ -229,21 +239,30 @@ const Nutricion = (() => {
     let h = '';
     if (tot) {
       const obj = tot * (1 - def / 100), seg = [['Basal', +m.bmr || 0, '#3B7BD8'], ['NEAT', +m.neat || 0, '#3F8A3F'], ['Ejercicio', +m.ejer || 0, '#C98A2E']].filter(z => z[1] > 0);
-      h += `<div class="card stack nu-met"><span class="eyebrow">Tu metabolismo</span>
+      h += `<div class="card stack nu-obj"><span class="eyebrow">Tu objetivo</span><div class="nu-gasto"><b class="num">${r(obj)}</b><small>kcal/día de media</small></div><span class="small muted">${def ? 'Déficit ' + fmtNum(def, 1) + ' % · ' : ''}${fmtNum(exc, 0)} % de comidas flexibles</span>
+        <details class="nu-calc"><summary class="small">Ver cómo lo calculo</summary><div class="stack" style="gap:10px;margin-top:10px">`;
+      h += `<div class="stack nu-met" style="gap:10px">
         <div class="nu-gasto"><b class="num">${r(tot)}</b><small>kcal/día de gasto medio · ${r(tot * 7)} a la semana</small></div>
         <div class="nu-bar" role="img" aria-label="Gasto: ${seg.map(z => z[0] + ' ' + r(z[1])).join(', ')}">${seg.map(z => `<i style="flex:${z[1]};background:${z[2]}"></i>`).join('')}</div>
         <div class="nu-leg">${seg.map(z => `<span><i style="background:${z[2]}"></i>${z[0]} <b class="num">${r(z[1])}</b></span>`).join('')}</div>
         <div class="nu-tiles"><div><b class="num">${def ? '−' + fmtNum(def, 1) + ' %' : '0 %'}</b><small>déficit aplicado</small></div><div><b class="num">${r(obj)}</b><small>kcal/día objetivo</small></div><div><b class="num">${fmtNum(exc, 0)} %</b><small>comidas flexibles</small></div></div>
-        <div class="nu-vs"><div><span>Gasto</span><div class="nu-vb"><i style="width:100%;background:#C98A2E"></i></div><b class="num">${r(tot)}</b></div><div><span>Objetivo</span><div class="nu-vb"><i style="width:${Math.max(4, Math.min(100, obj / tot * 100))}%;background:var(--blue)"></i></div><b class="num">${r(obj)}</b></div></div></div>`;
+        <div class="nu-vs"><div><span>Gasto</span><div class="nu-vb"><i style="width:100%;background:#C98A2E"></i></div><b class="num">${r(tot)}</b></div><div><span>Objetivo</span><div class="nu-vb"><i style="width:${Math.max(4, Math.min(100, obj / tot * 100))}%;background:var(--blue)"></i></div><b class="num">${r(obj)}</b></div></div></div></div></details></div>`;
     }
     if (cx.length) {
       const sem = semanasDe(n)[0], kc = Object.fromEntries(cx.map(c => [c.n, +c.kcal])), ds = sem ? (sem.dias || []).filter(d => d in kc) : [], media = ds.length ? ds.reduce((a, d) => a + kc[d], 0) / ds.length : null;
-      /* Plegado y compacto (como los anillos): una fila por contexto; al tocarla se despliegan gráfica y macros */
-      const kmax = Math.max(...cx.map(c => +c.kcal));
-      h += `<div class="card stack nu-ctxs"><span class="eyebrow">Tus contextos · calorías del día</span><div class="nu-cl">${cx.map((c, i) => {
-        const p = (+c.p || 0) * 4, ch = (+c.c || 0) * 4, g = (+c.g || 0) * 9, t = p + ch + g || 1, a = p / t * 100, b = a + ch / t * 100, col = CTX_COL[i % CTX_COL.length];
-        return `<details class="nu-cx" style="--cc:${col}"><summary><i class="nu-cx-d"></i><b class="grow">${esc(c.n)}</b><span class="nu-cx-b"><i style="width:${Math.max(8, +c.kcal / kmax * 100)}%"></i></span><b class="num">${r(+c.kcal)}</b><small class="muted">kcal</small></summary>
-          <div class="nu-cr" style="padding:8px 4px 2px"><div class="nu-mc" style="flex-direction:column;align-items:flex-start;gap:4px"><span><i style="background:#3B7BD8"></i>Proteína <b class="num">${r(+c.p || 0)} g</b></span><span><i style="background:#3F8A3F"></i>Hidratos <b class="num">${r(+c.c || 0)} g</b></span><span><i style="background:#C98A2E"></i>Grasas <b class="num">${r(+c.g || 0)} g</b></span></div><i class="nu-dn" style="background:conic-gradient(#3B7BD8 0 ${a}%,#3F8A3F ${a}% ${b}%,#C98A2E ${b}% 100%)"></i></div>${c.d ? `<p class="small muted" style="margin:6px 4px 0">${esc(c.d)}</p>` : ''}</details>`; }).join('')}</div>
+      /* Hoy arriba: su tipo de día (tocándolo lo cambia) con sus macros; si marcó exceso, cuánto ocupa. Debajo, el resto plegado */
+      const kmax = Math.max(...cx.map(c => +c.kcal)), todos = ctxDe(n), hi0 = ctxHoy(n), hc = hi0 >= 0 ? cx.indexOf(todos[hi0]) : -1, col = i => CTX_COL[i % CTX_COL.length];
+      const macros = c => { const p = (+c.p || 0) * 4, ch = (+c.c || 0) * 4, g = (+c.g || 0) * 9, t = p + ch + g || 1, a = p / t * 100, b = a + ch / t * 100;
+        return `<div class="nu-cr" style="padding:8px 4px 2px"><div class="nu-mc" style="flex-direction:column;align-items:flex-start;gap:4px"><span><i style="background:#3B7BD8"></i>Proteína <b class="num">${r(+c.p || 0)} g</b></span><span><i style="background:#3F8A3F"></i>Hidratos <b class="num">${r(+c.c || 0)} g</b></span><span><i style="background:#C98A2E"></i>Grasas <b class="num">${r(+c.g || 0)} g</b></span></div><i class="nu-dn" style="background:conic-gradient(#3B7BD8 0 ${a}%,#3F8A3F ${a}% ${b}%,#C98A2E ${b}% 100%)"></i></div>${c.d ? `<p class="small muted" style="margin:6px 4px 0">${esc(c.d)}</p>` : ''}`; };
+      const org = typeof orgDe === 'function' ? orgDe(lunesDe(hoyISO())) : null, kh = hoyK(), exc = (org?.exceso || []).includes(kh), excQ = org?.excQ?.[kh];
+      const dia = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' });
+      h += `<div class="card stack nu-ctxs"><span class="eyebrow">Hoy · ${esc(dia)}</span>
+        <label class="nu-hoy-sel" style="--cc:${hc >= 0 ? col(hc) : '#8C98B3'}"><select data-nuhoy aria-label="Tu tipo de día de hoy" ${S.vista || S.prueba ? 'disabled' : ''}>${hc < 0 ? '<option value="" selected>¿Qué día tienes hoy?</option>' : ''}${cx.map((c, i) => `<option value="${i}" ${i === hc ? 'selected' : ''}>${esc(c.n)}</option>`).join('')}</select>
+          <i class="nu-cx-d"></i><b class="grow">${hc >= 0 ? esc(cx[hc].n) : '¿Qué día tienes hoy?'}</b>${hc >= 0 ? `<b class="num" style="font-size:20px">${r(+cx[hc].kcal)}</b><small>kcal</small>` : ''}<span class="nu-hoy-ch">▾</span></label>
+        <span class="small muted" style="margin-top:-4px">${hc >= 0 ? 'Tócalo para cambiarlo por otro de tus contextos' : 'Toca y elige el tuyo: así te calculo bien las cantidades'}</span>
+        ${hc >= 0 ? macros(cx[hc]) : ''}
+        ${exc ? `<div class="nu-exc"><b>Hoy marcaste un exceso. ¿Cuánto ocupa?</b><div class="chips">${[['1', '1 comida'], ['2', '2 comidas'], ['3', '3 comidas'], ['todo', 'Todo el día']].map(([v, t]) => `<button type="button" class="pill ${excQ === v ? 'gold' : ''}" data-act="nuExc" data-v="${v}" aria-pressed="${excQ === v}">${t}</button>`).join('')}</div></div>` : ''}
+        ${cx.length > 1 ? `<details class="nu-otros"><summary class="small"><b>Tus otros contextos</b> · ${cx.length - (hc >= 0 ? 1 : 0)}</summary><div class="nu-cl" style="margin-top:8px">${cx.map((c, i) => i === hc ? '' : `<details class="nu-cx" style="--cc:${col(i)}"><summary><i class="nu-cx-d"></i><b class="grow">${esc(c.n)}</b><span class="nu-cx-b"><i style="width:${Math.max(8, +c.kcal / kmax * 100)}%"></i></span><b class="num">${r(+c.kcal)}</b><small class="muted">kcal</small></summary>${macros(c)}</details>`).join('')}</div></details>` : ''}
         ${media ? `<div class="nu-media"><b class="num">≈ ${r(media)}</b> kcal/día de media en tu semana tipo</div>` : ''}</div>`;
     }
     return `<section class="section">${h}</section>`;
@@ -543,6 +562,13 @@ const Nutricion = (() => {
     return PDF.contextos(nombre, l.map(c => ({ ...c, _rep: txtReparto(c, comidasDia(d.servicio)) })), comidasDia(d.servicio), btn);
   }
 
+  /* Cambiar el tipo de día de hoy: queda para la calculadora y en su semana */
+  async function ponerHoy(c) {
+    const n = S.d?.nutri || vacio(), i = ctxDe(n).indexOf(c); if (i < 0) return; S.nCtx = i; try { localStorage.setItem('lof-nctx', hoyISO() + '|' + i); } catch (er) { /* */ }
+    render(); if (S.vista || S.prueba || typeof guardarOrg !== 'function') return;
+    const l = lunesDe(hoyISO()), o = orgDe(l) || {}, ctx = [...Array(7)].map((_, k) => o.ctx?.[k] || null); ctx[hoyK()] = c.n; await guardarOrg(l, { ctx });
+  }
+  document.addEventListener('change', e => { const t = e.target; if (!t.matches?.('select[data-nuhoy]')) return; const n = S.d?.nutri || vacio(), c = ctxDe(n).filter(x => +x.kcal)[+t.value]; if (c) ponerHoy(c); });
   document.addEventListener('click', async e => {
     const b = e.target.closest('[data-act]'); if (!b) return;
     const a = b.dataset.act;
@@ -551,7 +577,8 @@ const Nutricion = (() => {
     switch (a) {
       case 'nuDoc': S.nDoc = b.dataset.k; render(); window.scrollTo(0, 0); break;
       case 'nuCerrar': S.nDoc = null; render(); window.scrollTo(0, 0); break;
-      case 'nuCtx': S.nCtx = +b.dataset.i; try { localStorage.setItem('lof-nctx', hoyISO() + '|' + S.nCtx); } catch (err) { /* sin almacenamiento */ } render(); break;
+      case 'nuExc': { const l = lunesDe(hoyISO()), o = orgDe(l) || {}; await guardarOrg(l, { excQ: { ...(o.excQ || {}), [hoyK()]: b.dataset.v } }); render(); break; }
+      case 'nuCtx': { const c = ctxDe(S.d?.nutri || vacio())[+b.dataset.i]; if (c) await ponerHoy(c); else { S.nCtx = +b.dataset.i; render(); } break; }
       case 'nuDia': S.nDia = b.dataset.f; render(); break;
       case 'nuNCom': try { localStorage.setItem('lof-ncom', b.dataset.n); } catch (err) { /* sin almacenamiento */ } render(); break;
       case 'nuCarp': galeriaCarp(b.dataset.m, ''); break;
@@ -1505,5 +1532,5 @@ Reglas: "reparto" lleva una fila por ingesta con sus propias kcal, p, c y g (cad
       '\nCONCLUSIONES DE JESÚS', ...CONC.filter(([k]) => c[k]).map(([k, tt]) => `${tt}: ${c[k]}`), (c.pasos || []).length ? 'Primeros pasos:\n' + c.pasos.map((p, i) => `${i + 1}. ${p}`).join('\n') : ''].filter(v => v !== '').join('\n');
     try { await navigator.clipboard.writeText(t); toast('Copiado: pégalo en ChatGPT junto al resto de su información'); } catch (e) { abrirSheet(`<div class="stack"><h2>Copia este texto</h2><textarea rows="16" style="font-size:12px">${esc(t)}</textarea></div>`); }
   }
-  return { montarCalc, estadoAjuste, esCalc, colaRevisiones, metricasNutri, acuerdo, acuerdoDe, flexTxt, tarjetaTemporal, vSeguimientoCoach: aislar(vSeguimientoCoach), comidasPlan, txtReparto, nombresIng, coherencia, versionCtx, vCoherencia: aislar(vCoherencia), lineaCoh, fase, faseDe, faseCoach, mide, FASES, vSemana7: aislar(vSemana7), formImportar, formPlato, calcular, avisoCena, ALI, objetivoComida, equivVisual, vIncCoach: aislar(vIncCoach), formInc, esInc, guardarResumen, vista: aislar(vista), vCoach: aislar(vCoach), cargar, cargarFicha, cargarCoach, datosPrevia, nuevasDe, DOCS, esPdf, ctxDe };
+  return { CTX_COL, montarCalc, estadoAjuste, esCalc, colaRevisiones, metricasNutri, acuerdo, acuerdoDe, flexTxt, tarjetaTemporal, vSeguimientoCoach: aislar(vSeguimientoCoach), comidasPlan, txtReparto, nombresIng, coherencia, versionCtx, vCoherencia: aislar(vCoherencia), lineaCoh, fase, faseDe, faseCoach, mide, FASES, vSemana7: aislar(vSemana7), formImportar, formPlato, calcular, avisoCena, ALI, objetivoComida, equivVisual, vIncCoach: aislar(vIncCoach), formInc, esInc, guardarResumen, vista: aislar(vista), vCoach: aislar(vCoach), cargar, cargarFicha, cargarCoach, datosPrevia, nuevasDe, DOCS, esPdf, ctxDe };
 })();

@@ -1,6 +1,7 @@
 // Edge Function: avisos automáticos de check-in a los alumnos. La llama Supabase cada 15 min (pg_cron, Bloque 114).
 //  · Check-in del partido: 2 h después de la hora que pusiste en el partido (cuando ya ha terminado).
 //  · Check-in del lunes (futbolistas) y check-in semanal (resto de alumnos): los lunes a las 8:00 (hora de Madrid).
+//  · Futbolistas: check-in diario a las 10:00 (no lunes ni día de partido). Resto: a las 21:30 si llevan 2 días sin registrar (máx. cada 2 días).
 // Cada aviso se envía una sola vez (tabla avisos_enviados). Secretos: VAPID_PUBLIC, VAPID_PRIVATE, VAPID_SUBJECT, CRON_SECRET.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
@@ -53,8 +54,32 @@ Deno.serve(async (req) => {
       avisos.push({ clave: `semanal:${sem}:${p.id}`, alumno_id: p.id, titulo: "✅ Check-in semanal", cuerpo: `${n ? "Buenos días, " + n + ". " : ""}¿Qué tal tu semana? Son 2 minutos y con ello preparo tu plan.`, url: `./?k=${sem}` });
     }
   }
+  const diaRel = (f: string, n: number) => { const d = new Date(f + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  /* Futbolistas · 10:00: check-in diario obligatorio (no los lunes, que tienen el del lunes, ni el día de partido) */
+  if (!lunes && min >= 10 * 60) for (const id of ids) {
+    if ((pts || []).some((p) => p.alumno_id === id)) continue;
+    avisos.push({ clave: `diario:${fecha}:${id}`, alumno_id: id, titulo: "⚽ Tu check-in de hoy", cuerpo: `${nombre(id) ? nombre(id) + ", tu" : "Tu"} check-in diario: 1 minuto.`, url: `./?w=diario&f=${fecha}` });
+  }
+  /* Resto de alumnos · 21:30: si llevan 2 días sin registrar (ayer y anteayer), como mucho un aviso cada 2 días */
+  if (min >= 21 * 60 + 30) {
+    const ayer = diaRel(fecha, -1), anteayer = diaRel(fecha, -2);
+    const { data: sr } = await admin.from("servicios").select("*").or("modulo_futbol.is.null,modulo_futbol.eq.false");
+    const vivos = (sr || []).filter((x) => !(x.estado === "pausado" && (!x.estado_hasta || x.estado_hasta >= fecha)) && (!x.inicio || x.inicio <= anteayer));
+    const vid = vivos.map((x) => x.alumno_id).concat("00000000-0000-0000-0000-000000000000");
+    const [{ data: pr }, { data: rg }, { data: ya }] = await Promise.all([
+      admin.from("perfiles").select("id,nombre,activo,rol").in("id", vid),
+      admin.from("registro_diario").select("alumno_id,fecha,pasos,ingestas,comidas_hechas,alimentacion,observacion").in("alumno_id", vid).gte("fecha", anteayer).lte("fecha", ayer),
+      admin.from("avisos_enviados").select("clave").like("clave", `registro:${ayer}:%`)]);
+    const hechoDia = (id: string, f: string) => (rg || []).some((r) => r.alumno_id === id && r.fecha === f && (r.pasos != null || r.ingestas != null || r.comidas_hechas != null || !!r.alimentacion || !!r.observacion));
+    for (const p of pr || []) {
+      if (p.activo === false || p.rol === "coach" || ids.includes(p.id)) continue;
+      if (hechoDia(p.id, ayer) || hechoDia(p.id, anteayer) || (ya || []).some((x) => x.clave === `registro:${ayer}:${p.id}`)) continue;
+      const n = String(p.nombre || "").split(" ")[0];
+      avisos.push({ clave: `registro:${fecha}:${p.id}`, alumno_id: p.id, titulo: "📝 Marca tu día", cuerpo: `${n ? n + ", llevas" : "Llevas"} 2 días sin registrar. Son 10 segundos y con eso te sigo de cerca.`, url: "./?r=1" });
+    }
+  }
   /* Si ya ha enviado ese check-in, no hace falta avisar */
-  const { data: hechos } = await admin.from("wellness").select("alumno_id,tipo").eq("fecha", fecha).in("tipo", ["partido", "lunes"]);
+  const { data: hechos } = await admin.from("wellness").select("alumno_id,tipo").eq("fecha", fecha).in("tipo", ["partido", "lunes", "diario"]);
   const hecho = (id: string, t: string) => (hechos || []).some((w) => w.alumno_id === id && w.tipo === t);
   let enviados = 0;
   for (const a of avisos) {
