@@ -215,10 +215,10 @@ const Nutricion = (() => {
     const act = mide(fase(d));
     const hoy = vHoyCtx(n, d), met = vMetab(n);
     if (act && (hoy || met)) {   // plan en marcha: metabolismo → calculadora → semana y compra; todo lo demás plegado
-      const resto = vIncAlumno(n, d) + vAcuerdoAlumno(n, d) + vDocs(docs) + vFase(d) + (prev ? '' : vDiario(n, d));
-      return cab + (prev ? '' : tarjetaTemporal(d)) + met + hoy + (prev ? '' : vBtnSemana()) + vMisComidas(n, d, prev) + `<details class="section nu-resto"><summary><b>Registro, acuerdos y documentos</b> <span class="muted small">· solo informativo</span></summary>${resto}</details>`;
+      const resto = planPara + vIncAlumno(n, d) + vAcuerdoAlumno(n, d) + vDocs(docs) + vFase(d) + (prev ? '' : vDiario(n, d));
+      return cab + (prev ? '' : tarjetaTemporal(d)) + met + (prev ? '' : vBtnSemana()) + hoy + vMisComidas(n, d, prev) + `<details class="section nu-resto"><summary><b>Registro, acuerdos y documentos</b> <span class="muted small">· solo informativo</span></summary>${resto}</details>`;
     }
-    return cab + (act ? '' : vFase(d)) + vIncAlumno(n, d) + (prev ? '' : tarjetaTemporal(d)) + hoy + vAcuerdoAlumno(n, d) + (prev ? '' : (act ? vBtnSemana() : '')) + vMisComidas(n, d, prev) + vDocs(docs) + (act ? vFase(d) : '') + (prev ? '' : vDiario(n, d));
+    return cab + (act ? '' : vFase(d)) + vIncAlumno(n, d) + (prev ? '' : tarjetaTemporal(d)) + hoy + planPara + vAcuerdoAlumno(n, d) + (prev ? '' : (act ? vBtnSemana() : '')) + vMisComidas(n, d, prev) + vDocs(docs) + (act ? vFase(d) : '') + (prev ? '' : vDiario(n, d));
   }
   /* Lo primero que ve el alumno: su metabolismo, el déficit aplicado y sus contextos (kcal y macros), en números y gráficas */
   const CTX_COL = ['#3B7BD8', '#7B52A0', '#C98A2E', '#3F8A3F', '#C0504D', '#2E8E94'];
@@ -238,14 +238,18 @@ const Nutricion = (() => {
     }
     if (cx.length) {
       const sem = semanasDe(n)[0], kc = Object.fromEntries(cx.map(c => [c.n, +c.kcal])), ds = sem ? (sem.dias || []).filter(d => d in kc) : [], media = ds.length ? ds.reduce((a, d) => a + kc[d], 0) / ds.length : null;
-      h += `<div class="card stack nu-ctxs"><span class="eyebrow">Tus contextos · calorías del día</span><div class="nu-cg">${cx.map((c, i) => {
+      /* Plegado y compacto (como los anillos): una fila por contexto; al tocarla se despliegan gráfica y macros */
+      const kmax = Math.max(...cx.map(c => +c.kcal));
+      h += `<div class="card stack nu-ctxs"><span class="eyebrow">Tus contextos · calorías del día</span><div class="nu-cl">${cx.map((c, i) => {
         const p = (+c.p || 0) * 4, ch = (+c.c || 0) * 4, g = (+c.g || 0) * 9, t = p + ch + g || 1, a = p / t * 100, b = a + ch / t * 100, col = CTX_COL[i % CTX_COL.length];
-        return `<div class="nu-cc" style="--cc:${col}"><b class="nu-ch">${esc(c.n)}</b><div class="nu-cr"><div><b class="num">${r(+c.kcal)}</b><small>kcal</small></div><i class="nu-dn" style="background:conic-gradient(#3B7BD8 0 ${a}%,#3F8A3F ${a}% ${b}%,#C98A2E ${b}% 100%)"></i></div><div class="nu-mc"><span><i style="background:#3B7BD8"></i>P <b class="num">${r(+c.p || 0)}</b></span><span><i style="background:#3F8A3F"></i>H <b class="num">${r(+c.c || 0)}</b></span><span><i style="background:#C98A2E"></i>G <b class="num">${r(+c.g || 0)}</b></span></div></div>`; }).join('')}</div>
+        return `<details class="nu-cx" style="--cc:${col}"><summary><i class="nu-cx-d"></i><b class="grow">${esc(c.n)}</b><span class="nu-cx-b"><i style="width:${Math.max(8, +c.kcal / kmax * 100)}%"></i></span><b class="num">${r(+c.kcal)}</b><small class="muted">kcal</small></summary>
+          <div class="nu-cr" style="padding:8px 4px 2px"><div class="nu-mc" style="flex-direction:column;align-items:flex-start;gap:4px"><span><i style="background:#3B7BD8"></i>Proteína <b class="num">${r(+c.p || 0)} g</b></span><span><i style="background:#3F8A3F"></i>Hidratos <b class="num">${r(+c.c || 0)} g</b></span><span><i style="background:#C98A2E"></i>Grasas <b class="num">${r(+c.g || 0)} g</b></span></div><i class="nu-dn" style="background:conic-gradient(#3B7BD8 0 ${a}%,#3F8A3F ${a}% ${b}%,#C98A2E ${b}% 100%)"></i></div>${c.d ? `<p class="small muted" style="margin:6px 4px 0">${esc(c.d)}</p>` : ''}</details>`; }).join('')}</div>
         ${media ? `<div class="nu-media"><b class="num">≈ ${r(media)}</b> kcal/día de media en tu semana tipo</div>` : ''}</div>`;
     }
     return `<section class="section">${h}</section>`;
   }
-  const vBtnSemana = () => `<section class="section"><div class="card stack" style="gap:6px"><span class="eyebrow">Tu semana</span><p class="small muted" style="margin:0">Opcional: si te ayuda organizarte, marca cuándo entrenas y trabajas y qué vas a comer. Parte de tus menús o de tu semana anterior y cambia solo los días que haga falta; te calculo las cantidades y la lista de la compra. Comidas flexibles: ${esc(flexTxt(acuerdo(S.d)))}.</p><button class="btn full" data-act="nuSemana">🗓 Planifica tu semana y la compra</button></div></section>`;
+  /* Banner visible justo encima de la calculadora: toda la tarjeta abre la planificación */
+  const vBtnSemana = () => `<section class="section"><button type="button" class="nu-semb" data-act="nuSemana"><span class="nu-semb-i">🗓</span><span class="grow"><b>Mi semana y Lista de la Compra</b><small>Organiza qué comes cada día y te saco la lista de la compra</small></span><span class="nu-semb-f">›</span></button></section>`;
   /* ---------- Mis comidas: archivo propio del alumno, en carpetas por momento del día (opcional) ----------
      Son las mismas filas de comidas_registro que el diario: aquí solo se agrupan por momento para consultarlas como ideas.
      El número de comidas al día es un ajuste del propio dispositivo; una carpeta con comidas nunca se oculta aunque se baje el número. */
@@ -333,7 +337,9 @@ const Nutricion = (() => {
     return (M.find(m => norm(m.ctx) === norm(c.n) && norm(m.ing) === k) || M.find(m => !m.ctx && norm(m.ing) === k) || { ops: [] }).ops;
   }
   const ICO_CALC = '<svg class="ico-calc" viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="2.5" width="15" height="19" rx="2.5"/><rect x="7.5" y="5.5" width="9" height="4" rx="1"/><path d="M8 13h.01M12 13h.01M16 13h.01M8 16.5h.01M12 16.5h.01M16 16.5h.01M8 19.5h.01M12 19.5h4"/></svg>';
+  let planPara = '';   /* «Tu plan para …»: con el plan en marcha va dentro de «Registro, acuerdos y documentos» */
   function vHoyCtx(n, d) {
+    planPara = '';
     const l = ctxDe(n); if (!l.length) return '';
     const i = Math.min(selCtx(n), l.length - 1), c = l[i], ing = +c.ing || comidasDia(d?.servicio), sems = semanasDe(n), auto = ctxPorSemana(n);
     const P = comidasPlan(c, ing), k = S.nIng != null && S.nIng < P.n ? S.nIng : comidaAhora(P), it = P.items[k], ops = opcionesPlan(n, c, it.n), mImg = (docDe(n, 'menus')?.imagenes || []).length;
@@ -351,10 +357,10 @@ const Nutricion = (() => {
         ${P.origen === 'iguales' && P.n > 1 ? '<span class="small muted">Orientativo: tu día dividido entre tus comidas.</span>' : ''}</div>
       <div id="calc-inline" class="stack calc-inline" style="gap:14px" data-ctx="${i}" data-k="${k}"></div></div></section>
     ${dev ? `<section class="section"><div class="nu-dev small card"><span class="eyebrow">Tu prioridad ahora</span><div>${esc(dev.prioridad || dev.ajuste)}</div><span class="muted">Jesús · revisión de la semana del ${esc(fCorta(dev.semana_inicio))}</span></div></section>` : ''}
-    <section class="section"><div class="card stack"><span class="eyebrow">Tu plan para ${esc(it.n.toLowerCase())}</span>
+    ${planPara = `<section class="section"><div class="card stack"><span class="eyebrow">Tu plan para ${esc(it.n.toLowerCase())}</span>
       ${ops.length ? `${ops.slice(0, S.nOpsTodas ? 99 : 3).map(o => `<div class="nu-op"><b class="small">${esc(o.n || 'Opción')}</b>${(o.ingr || []).length ? `<ul class="small">${o.ingr.map(x => `<li>${esc(x.n)}${x.q ? ' · ' + cantTxt(x.n, x.q) : ''}</li>`).join('')}</ul>` : ''}${o.prep ? `<div class="small muted">${esc(o.prep)}</div>` : ''}</div>`).join('')}${ops.length > 3 && !S.nOpsTodas ? `<button class="linkbtn small" data-act="nuOpsTodas" style="align-self:flex-start">Ver las ${ops.length} opciones</button>` : ''}`
         : mImg ? '<p class="small" style="margin:0">Tus opciones para esta comida están en las láminas de tus menús.</p>' : '<p class="small muted" style="margin:0">Aún no tienes menús escritos para esta comida: móntala con la calculadora de arriba o con tus equivalencias.</p>'}
-      <div class="row" style="gap:8px;flex-wrap:wrap">${mImg && !ops.length ? '<button class="btn sm ghost" data-act="nuDoc" data-k="menus">🍽️ Ver mis menús</button>' : ''}${tiene(docDe(n, 'equivalencias')) ? `<button class="btn sm ghost" data-act="nuEqIng" data-k="${k}">✋ Equivalencias de ${esc(it.n.toLowerCase())}</button>` : ''}${ir('menus', '🍽️ Todos mis menús')}${ir('platos', '🥗 Montar un plato')}</div></div></section>`;
+      <div class="row" style="gap:8px;flex-wrap:wrap">${mImg && !ops.length ? '<button class="btn sm ghost" data-act="nuDoc" data-k="menus">🍽️ Ver mis menús</button>' : ''}${tiene(docDe(n, 'equivalencias')) ? `<button class="btn sm ghost" data-act="nuEqIng" data-k="${k}">✋ Equivalencias de ${esc(it.n.toLowerCase())}</button>` : ''}${ir('menus', '🍽️ Todos mis menús')}${ir('platos', '🥗 Montar un plato')}</div></div></section>`, ''}`;
   }
   function vDocs(docs) {
     if (!docs.length) return S.d && fase(S.d) ? '' : `<section class="section"><div class="card stack"><b>Tu plan está en camino</b><p class="small muted" style="margin:0">Jesús está preparando tu plan. Aquí tendrás tu contexto, tus menús, las equivalencias visuales, cómo construir tus platos y tu suplementación.</p></div></section>`;
