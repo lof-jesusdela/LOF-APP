@@ -2486,9 +2486,10 @@ function vOrgSemana(ln) {
       ${conEnt ? `<button type="button" class="og-b${E.ent.has(k) ? ' on' : ''}" data-act="orgT" data-c="ent" data-l="${ln}" data-k="${k}" aria-pressed="${E.ent.has(k)}" aria-label="Entreno el ${DSEM_L[k]}">🏋️</button>` : ''}
       ${conExc ? `<button type="button" class="og-b ex${E.exc.has(k) ? ' on' : ''}" data-act="orgT" data-c="exc" data-l="${ln}" data-k="${k}" aria-pressed="${E.exc.has(k)}" aria-label="Exceso el ${DSEM_L[k]}">🍷</button>` : ''}</div>`; }).join('');
   const prev = orgDe(sumaDias(ln, -7)) || planDe(sumaDias(ln, -7));
+  const sinCx = s.modulo_nutricion && !cx.length ? '<div class="small muted" style="background:#F3F5FA;border-radius:12px;padding:10px">🍽️ El tipo de día de cada jornada lo podrás marcar aquí cuando Jesús te haya puesto tus contextos de alimentación.</div>' : '';
   return `<div class="card stack og"><span class="chk-ey" style="color:#8A6B00">2 · Tu semana que empieza · ${esc(fCorta(ln))} – ${esc(fCorta(sumaDias(ln, 6)))}</span><h2 class="og-t">Organiza tu semana</h2>
     ${prev ? `<button type="button" class="btn sm ghost" data-act="orgCopiar" data-l="${ln}" style="align-self:flex-start">📋 Igual que la semana pasada</button>` : ''}
-    <div class="og-cab"><span style="width:42px"></span><span class="grow">${cx.length ? 'Tipo de día' : ''}</span>${conEnt ? '<span class="og-cb">Entreno</span>' : ''}${conExc ? '<span class="og-cb">Exceso</span>' : ''}</div>${filas}
+    ${sinCx}<div class="og-cab"><span style="width:42px"></span><span class="grow">${cx.length ? 'Tipo de día' : ''}</span>${conEnt ? '<span class="og-cb">Entreno</span>' : ''}${conExc ? '<span class="og-cb">Exceso</span>' : ''}</div>${filas}
     <div class="row" style="gap:6px;flex-wrap:wrap">${conEnt && dpw ? `<span class="og-res nv">${E.ent.size} de ${dpw} entrenos</span>` : ''}${conExc ? `<span class="og-res gd">${E.exc.size} ${E.exc.size === 1 ? 'exceso' : 'excesos'}</span>` : ''}${kc.length ? `<span class="og-res">≈ ${fmtNum(Math.round(kc.reduce((a, b) => a + b, 0) / kc.length), 0)} kcal/día</span>` : ''}</div>
     <span class="small muted">Si algún día cambia, lo cambias en Nutrición tocando tu tipo de día.</span></div>`;
 }
@@ -2501,9 +2502,6 @@ function vCheckin(enHoy) {
   return `<section class="stack"><span class="eyebrow">Semana del ${esc(fCorta(lunes))} al ${esc(fCorta(sumaDias(lunes, 6)))}</span>${enHoy ? '<h2 style="margin:0">Check-in semanal · resumen de tu semana</h2>' : '<h1>Check-in</h1>'}<p class="small muted">${c ? 'Ya lo enviaste esta semana. Puedes corregirlo si algo ha cambiado.' : 'Lo que registras cada día se rellena solo. Aquí solo te pregunto lo que falta.'}</p></section>
   <section class="section">${vChkAnillos(lunes, s, c)}
   ${s.modulo_nutricion && midoAlumno() ? `<div class="card stack"><span class="small"><b>¿Has podido aplicar lo acordado en alimentación?</b></span><div class="choice" role="group" id="k-apl">${APLICACION.map(([v, t]) => `<button type="button" data-apl="${v}" aria-pressed="${c?.aplicacion_plan === v}">${t}</button>`).join('')}</div></div>` : ''}
-  <div class="card stack">
-    <label class="f"><span class="row"><span class="grow">Motivación con el proceso</span><b class="num" id="k-mot-v" style="color:var(--blue-text)">${mot}/10</b></span><input id="k-mot" type="range" min="1" max="10" value="${mot}"></label>
-    <label class="f"><span class="row"><span class="grow">Implicación con el plan que has aplicado esta semana <span class="small muted" style="font-weight:400">(del ${esc(fCorta(lunes))} al ${esc(fCorta(sumaDias(lunes, 6)))})</span></span><b class="num" id="k-imp-v" style="color:var(--blue-text)">${imp}/10</b></span><input id="k-imp" type="range" min="1" max="10" value="${imp}"></label></div>
   ${vOrgSemana(sumaDias(lunes, 7))}
   <div class="card stack chk-ev"><div class="row" style="gap:10px;align-items:flex-start"><span style="font-size:22px">📅</span><b style="font-size:16px">¿Algún evento o situación especial que tengamos que tener en cuenta en tu planificación?</b></div>
     <textarea id="k-prox" class="chk-txt" rows="3" placeholder="Cena de empresa el jueves, viaje el fin de semana, turno de noche…">${esc(c?.proxima_semana || '')}</textarea></div>
@@ -2517,7 +2515,7 @@ async function enviarCheckin() {
   const c0 = (S.d.checkins || []).find(x => x.semana_inicio === (S.chkSemana || lunesDe(hoyISO())));
   const row = { alumno_id: S.user.id, semana_inicio: S.chkSemana || lunesDe(hoyISO()), dificultades: $('#k-dif')?.value.trim() || c0?.dificultades || null,
     proxima_semana_etiquetas: [...S.chips], proxima_semana: $('#k-prox').value.trim() || null,
-    motivacion: +$('#k-mot').value, implicacion: +$('#k-imp').value, enviado_at: new Date().toISOString() };
+    ...($('#k-mot') ? { motivacion: +$('#k-mot').value, implicacion: +$('#k-imp').value } : {}), enviado_at: new Date().toISOString() };
   if ($('#k-foco')) row.foco_comentario = $('#k-foco').value.trim() || null;
   if (S.d.servicio?.modulo_nutricion) { if ($('#k-nali')) row.nota_alimentacion = $('#k-nali').value.trim() || null; const I = ingestasSemana(S.d.diario, row.semana_inicio, S.d.servicio); if (I.pct != null) row.nutricion_pct = I.pct; }
   const apl = document.querySelector('#k-apl [aria-pressed="true"]')?.dataset.apl; if (apl) row.aplicacion_plan = apl;
@@ -3389,8 +3387,8 @@ function estadoAlumno(a) {
   { const sr = Consultas.sinRespuesta?.(a.id); if (sr) { sube('warn'); motivos.push(`💬 No te ha contestado a tu mensaje del ${fCorta(sr)} (más de 48 h)`); } }
   (S.c.cambiosPeso || []).filter(x => x.alumno_id === a.id).forEach(x => { sube('warn'); { const sh = (S.c.sesiones || []).find(z => z.id === x.sesion_id), nd = sh?.dias ? nomDia(sh.dias) : ''; motivos.push(`Ha cambiado su peso en ${x.ejercicio || 'un ejercicio'}: ${x.antes} → ${x.despues} (míralo en su entrenamiento${nd ? ' «' + nd + '»' : ''} del ${fCorta((x.created_at || '').slice(0, 10))})`); }; });
   { const af = avisoFin(srv); if (af) { sube('warn'); motivos.push(af.terminado ? `Su proceso terminó el ${fCorta(af.fin)}: añade una extensión o pásalo a antiguos alumnos` : `Le queda menos de un mes de proceso (termina el ${fCorta(af.fin)}): ¿extensión?`); } }
-  if (ult && ult.motivacion <= 4) { sube('bad'); motivos.push(`Motivación ${ult.motivacion}/10`); }
-  else if (ult && ant && ant.motivacion - ult.motivacion >= 3) { sube('warn'); motivos.push(`Motivación de ${ant.motivacion} a ${ult.motivacion}`); }
+  if (ult && ult.motivacion != null && ult.motivacion <= 4) { sube('bad'); motivos.push(`Motivación ${ult.motivacion}/10`); }
+  else if (ult && ant && ult.motivacion != null && ant.motivacion != null && ant.motivacion - ult.motivacion >= 3) { sube('warn'); motivos.push(`Motivación de ${ant.motivacion} a ${ult.motivacion}`); }
   const semana = new Set(ses.filter(s => s.fecha >= lunes).map(s => s.fecha + s.dia_id)).size;
   const mes = new Set(ses.filter(s => s.fecha >= sumaDias(hoy, -27)).map(s => s.fecha + s.dia_id)).size;
   const seg = conSeguimiento(srv);
@@ -6690,7 +6688,7 @@ function vResumenCoach(est) {
   const conPlan = est.filter(x => x.e.dpw);
   const pctSem = conPlan.length ? Math.round(conPlan.reduce((t, x) => t + Math.min(1, x.e.semana / x.e.dpw), 0) / conPlan.length * 100) : 0;
   const pctMes = conPlan.length ? Math.round(conPlan.reduce((t, x) => t + Math.min(1, x.e.mes / (x.e.dpw4 || x.e.dpw * 4)), 0) / conPlan.length * 100) : 0;
-  const motiv = c.checkins.filter(k => k.semana_inicio >= lunesDe(sumaDias(hoy, -7)));
+  const motiv = c.checkins.filter(k => k.semana_inicio >= lunesDe(sumaDias(hoy, -7)) && k.motivacion != null);
   const motMedia = motiv.length ? (motiv.reduce((t, k) => t + k.motivacion, 0) / motiv.length) : null;
   const W = 320, H = 130, bw = 304 / 8, max = Math.max(previsto, ...totalSem, 1), y = v => 96 - v / max * 80;
   const barras = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Entrenamientos de todos tus alumnos por semana">${previsto ? `<line x1="8" x2="312" y1="${y(previsto)}" y2="${y(previsto)}" stroke="var(--ink)" stroke-dasharray="4 4"/><text x="312" y="${y(previsto) - 4}" fill="var(--fg)" font-size="10" text-anchor="end">Previsto: ${previsto}</text>` : ''}${totalSem.map((v, i) => `<rect x="${8 + i * bw + 6}" y="${y(v)}" width="${bw - 12}" height="${Math.max(96 - y(v), 1)}" rx="4" fill="${previsto && v >= previsto ? 'var(--ok)' : 'var(--blue)'}"/><text x="${8 + i * bw + bw / 2}" y="${y(v) - 4}" fill="var(--fg)" font-size="11" text-anchor="middle">${v || ''}</text><text x="${8 + i * bw + bw / 2}" y="114" fill="var(--muted)" font-size="10" text-anchor="middle">${esc(fecha(semanas[i]).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric' }))}</text>`).join('')}</svg>`;
@@ -7075,7 +7073,7 @@ function vReporteAlumno(a, R, detalle) {
     ${vAnillos(a, R, d, detalle)}
     ${vDestacaSemana(a, R, d)}
     ${d.srv?.modulo_nutricion && midoCoach(a.id) && (w.chk?.aplicacion_plan || w.ing.dias < 7) ? `<div class="small muted">${w.chk?.aplicacion_plan ? `Aplicación declarada: <b>${esc(aplTxt(w.chk.aplicacion_plan))}</b>` : 'Aplicación declarada: sin respuesta'}${Nutricion.acuerdoDe(planNutriDe(a.id)).nivel === 'habitual' ? ` · comidas marcadas en ${w.ing.dias} de 7 días · ${7 - w.ing.dias} sin información` : ''}</div>` : ''}
-    ${w.cansancio || w.poderio || w.chk ? `<div class="row small muted" style="flex-wrap:wrap;gap:8px">${w.cansancio ? `<span class="pill">Cansancio medio ${fmtNum(w.cansancio)}/5</span>` : ''}${w.poderio ? `<span class="pill">Poderío medio ${fmtNum(w.poderio)}/5</span>` : ''}${w.chk ? `<span class="pill">Motivación ${w.chk.motivacion}/10 · implicación ${w.chk.implicacion}/10</span>` : '<span class="pill warn">Sin check-in</span>'}</div>` : ''}
+    ${w.cansancio || w.poderio || w.chk ? `<div class="row small muted" style="flex-wrap:wrap;gap:8px">${w.cansancio ? `<span class="pill">Cansancio medio ${fmtNum(w.cansancio)}/5</span>` : ''}${w.poderio ? `<span class="pill">Poderío medio ${fmtNum(w.poderio)}/5</span>` : ''}${w.chk ? (w.chk.motivacion != null ? `<span class="pill">Motivación ${w.chk.motivacion}/10 · implicación ${w.chk.implicacion}/10</span>` : '<span class="pill ok">Check-in enviado</span>') : '<span class="pill warn">Sin check-in</span>'}</div>` : ''}
     ${(() => { if (!conSeguimiento(d.srv) || !w.chk) return ''; const dv = (S.c.devoluciones || []).find(x => x.alumno_id === a.id && x.semana_inicio === R.lunes), cm = Compromisos.buscar(`dev:${a.id}:${R.lunes}`);
       return `<div class="small">💬 Devolución de esta semana: ${dv ? '<span class="pill ok">Enviada</span>' : cm ? `${Compromisos.chip(cm)} <span class="muted">${Compromisos.venceTxt(cm)}</span>` : '<span class="muted">sin datos</span>'}</div>`; })()}
     ${d.control ? `<div class="aprox small"><b>Esa semana tocaba el control mensual ${d.control.n}</b> (composición corporal, ajustes y reunión de seguimiento).</div>` : ''}
@@ -9337,7 +9335,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v475';
+const APP_VER = 'v476';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
