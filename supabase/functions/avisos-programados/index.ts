@@ -1,6 +1,6 @@
-// Edge Function: avisos automáticos a los futbolistas. La llama Supabase cada 15 min (pg_cron, Bloque 114).
+// Edge Function: avisos automáticos de check-in a los alumnos. La llama Supabase cada 15 min (pg_cron, Bloque 114).
 //  · Check-in del partido: 2 h después de la hora que pusiste en el partido (cuando ya ha terminado).
-//  · Check-in del lunes: los lunes a las 8:00 (hora de Madrid).
+//  · Check-in del lunes (futbolistas) y check-in semanal (resto de alumnos): los lunes a las 8:00 (hora de Madrid).
 // Cada aviso se envía una sola vez (tabla avisos_enviados). Secretos: VAPID_PUBLIC, VAPID_PRIVATE, VAPID_SUBJECT, CRON_SECRET.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
@@ -39,6 +39,20 @@ Deno.serve(async (req) => {
   /* Lunes a partir de las 8:00 */
   if (lunes && min >= LUNES_HORA * 60) for (const id of ids) avisos.push({ clave: `lunes:${fecha}:${id}`, alumno_id: id, titulo: "📝 Check-in del lunes", cuerpo: `${nombre(id) ? "Buenos días, " + nombre(id) + ". " : ""}¿Cómo empiezas la semana? Rellena tu check-in.`, url: `./?w=lunes&f=${fecha}` });
 
+  /* Lunes a las 8:00 · resto de alumnos: check-in semanal de la semana que acaba de terminar (si no lo han enviado) */
+  if (lunes && min >= LUNES_HORA * 60) {
+    const dia = (f: string, n: number) => { const d = new Date(f + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+    const sem = dia(fecha, -7), domingo = dia(fecha, -1);
+    const { data: sa } = await admin.from("servicios").select("*").or("modulo_futbol.is.null,modulo_futbol.eq.false");
+    const vivos = (sa || []).filter((x) => !(x.estado === "pausado" && (!x.estado_hasta || x.estado_hasta >= fecha)) && (!x.inicio || x.inicio <= domingo) && (!x.fin || x.fin >= sem));
+    const { data: pa } = await admin.from("perfiles").select("id,nombre,activo,rol").in("id", vivos.map((x) => x.alumno_id).concat("00000000-0000-0000-0000-000000000000"));
+    const { data: ck } = await admin.from("checkins").select("alumno_id").eq("semana_inicio", sem);
+    for (const p of pa || []) {
+      if (p.activo === false || p.rol === "coach" || ids.includes(p.id) || (ck || []).some((c) => c.alumno_id === p.id)) continue;
+      const n = String(p.nombre || "").split(" ")[0];
+      avisos.push({ clave: `semanal:${sem}:${p.id}`, alumno_id: p.id, titulo: "✅ Check-in semanal", cuerpo: `${n ? "Buenos días, " + n + ". " : ""}¿Qué tal tu semana? Son 2 minutos y con ello preparo tu plan.`, url: `./?k=${sem}` });
+    }
+  }
   /* Si ya ha enviado ese check-in, no hace falta avisar */
   const { data: hechos } = await admin.from("wellness").select("alumno_id,tipo").eq("fecha", fecha).in("tipo", ["partido", "lunes"]);
   const hecho = (id: string, t: string) => (hechos || []).some((w) => w.alumno_id === id && w.tipo === t);
