@@ -791,26 +791,49 @@ async function pedirFotos(rutas) {
   render();
 }
 const miniFotos = rutas => rutas.map(p => fotoUrl(p) ? `<button class="img" data-act="verImagen" data-src="${esc(fotoUrl(p))}" aria-label="Ver foto"><img src="${esc(fotoUrl(p))}" alt="" loading="lazy"></button>` : '').join('');
+/* Registro diario «Marca tu día»: entreno (automático), pasos, sus focos (foco + hábito), su tipo de día y una nota */
+function habitoFoco(f) { const l = (S.d.habitos || []).filter(h => h.estado === 'instalacion' && h.inicio && h.inicio <= f).sort((a, b) => String(b.inicio).localeCompare(String(a.inicio))); return l[0] || null; }
 function vRegistroDia(s) {
   const hoy = hoyISO(), sel = ventanaRegistro().includes(S.regDia) ? S.regDia : hoy;
-  const r = S.d.diario.find(x => x.fecha === sel) || {}, esHoy = sel === hoy, rutas = r.fotos || [];
-  if (rutas.some(p => !(p in FOTOS))) pedirFotos(rutas);
-  return `<section class="section" id="registro"><div class="section-head"><h2>Registro del día</h2><span class="small muted">${esHoy ? 'Hoy' : esc(fLarga(sel))}</span></div><div class="card stack">
-    <div class="stack" style="gap:6px"><span class="small muted">Puedes rellenar los días de esta semana; los lunes, también los de la semana anterior.</span>
-      <div class="reg-dias" role="group" aria-label="Día a registrar" style="--n:${Math.max(7, ventanaRegistro().length)}">${ventanaRegistro().map(f => { const x = S.d.diario.find(y => y.fecha === f), hecho = !!x && (x.pasos != null || x.ingestas != null || !!x.alimentacion); return `<button type="button" data-act="regDia" data-f="${f}" aria-pressed="${f === sel}" class="${hecho ? 'hecho' : ''}"><small>${DIA3[fecha(f).getDay()]}</small><b class="num">${fecha(f).getDate()}</b></button>`; }).join('')}</div></div>
-    ${(() => { const l = S.d.sesiones.filter(x => x.fecha === sel), todos = [S.d.programaBase, S.d.programa, ...(S.d.contextos || []), ...(S.d.alternativos || [])].filter(Boolean).flatMap(p => p.dias || []), dd = esHoy ? diaDeHoy() : null;
-      const nom = x => nomDia(todos.find(d => d.id === x.dia_id)) || 'Entreno';
-      return `<div class="row"><div class="ico">${svg('entreno')}</div><div class="grow"><span class="small"><b>Entrenamiento</b></span><div class="small ${l.length ? '' : 'muted'}">${l.length ? `<span style="color:var(--ok);font-weight:700">✓ Completado</span> · ${esc([...new Set(l.map(nom))].join(' · '))}` : dd ? `Hoy toca ${esc(nomDia(dd))}: empiézalo en «Lo que toca hoy»` : esHoy && esFlex(S.d.programaBase || S.d.programa) ? 'Aún no has entrenado hoy' : esHoy ? 'Hoy no toca entrenar' : 'Sin entreno registrado ese día'}</div></div></div>`; })()}
-    ${conPasos(s) && !(s.modulo_habitos && Habitos.tienePasos(sel)) ? '' : '<!--'}<div class="row"><div class="ico">${svg('pasos')}</div><label class="f grow">Pasos${objPasos(s) ? ` <span class="muted">(objetivo ${fmtNum(objPasos(s), 0)})</span>` : ''}<input id="r-pasos" type="number" inputmode="numeric" min="0" value="${r.pasos ?? ''}" placeholder="Ej. 8500"></label></div>${conPasos(s) && !(s.modulo_habitos && Habitos.tienePasos(sel)) ? '' : '-->'}
-    ${s.modulo_nutricion && !midoAlumno() ? `<div class="small muted">🍽 ${Nutricion.fase(S.d) === 'recogida' ? 'Estos días solo apunta lo que comes en tu diario: aún no hay plan que cumplir.' : 'Tu plan de alimentación está en preparación: todavía no se mide nada.'}</div>` : ''}
-    ${s.modulo_nutricion ? (() => { const l = Nutricion.ctxDe(S.d.nutri || { plan: [] }); return l.length ? `<div class="stack" style="gap:6px"><span class="small">¿Qué tipo de día ${esHoy ? 'has tenido hoy' : 'tuviste'}?</span><div class="chips">${l.map(c => `<button class="pill ${r.contexto === c.n ? 'blue' : ''}" data-act="ctxDia" data-v="${esc(c.n)}" aria-pressed="${r.contexto === c.n}">${esc(c.n)}</button>`).join('')}</div></div>` : ''; })() : ''}
-    ${midoDiario() ? (() => { const n = comidasDia(s), cumple = r.ingestas == null ? null : r.ingestas >= n;   /* Sí = todas las ingestas del plan; No = 0 (así el % de cumplimiento sigue siendo el de siempre) */
-      return `<div class="stack" style="gap:6px"><span class="small">¿Has cumplido tu plan de alimentación ${esHoy ? 'hoy' : 'ese día'}?</span><div class="sino-al" role="group"><button type="button" class="si" data-act="cumplePlan" data-v="1" aria-pressed="${cumple === true}">✓ Sí</button><button type="button" class="no" data-act="cumplePlan" data-v="0" aria-pressed="${cumple === false}">✕ No</button></div><span class="small muted">📷 Las fotos de tus comidas, en la pestaña Nutrición.</span></div>`; })() + `
-    <div class="stack" style="gap:8px">${!s.modulo_nutricion ? '' : (() => { const nc = (S.d.nutri?.comidas || []).filter(x => x.fecha === sel).length; return `<button class="btn ghost full" data-act="nuIrDiario" data-f="${sel}">🍽 ${nc ? `${nc} ${nc === 1 ? 'comida apuntada' : 'comidas apuntadas'} · ver tu diario` : 'Apuntar lo que has comido (opcional)'}</button>`; })()}${rutas.length ? `<div class="plan-imgs">${miniFotos(rutas)}</div>` : ''}</div>` : ''}
-    ${S.d.servicio?.modulo_habitos ? Habitos.enRegistro(sel) : ''}
-    <label class="f">Observaciones${esHoy ? ' del día' : ' de ese día'}<textarea id="r-obs" rows="2" placeholder="Si no llegaste al objetivo, cuéntame por qué; o cualquier cosa del día que quieras que sepa">${esc(r.observacion || '')}</textarea></label>
-    <button class="btn" data-act="guardarDiario">Guardar registro ${esHoy ? 'de hoy' : 'de ese día'}</button>
-    <p class="note">Apúntalo al final del día o, si se te ha pasado, como tarde el lunes siguiente. Tarda 10 segundos y es lo que permite a Jesús ver tu semana real.</p>
+  const r = S.d.diario.find(x => x.fecha === sel) || {}, esHoy = sel === hoy, k = (fecha(sel).getDay() + 6) % 7;
+  const dia = fecha(sel).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' });
+  const yn = (act, extra, si, no, on) => `<div class="md-yn"><button type="button" class="${on === true ? 'ok' : ''}" data-act="${act}" data-v="1" ${extra} aria-pressed="${on === true}">${si}</button><button type="button" class="${on === false ? 'no' : ''}" data-act="${act}" data-v="0" ${extra} aria-pressed="${on === false}">${no}</button></div>`;
+  const it = (ico, bg, tit, sub, der) => `<div class="md-it"><span class="md-ib" style="background:${bg}">${ico}</span><div class="grow"><b>${tit}</b>${sub ? `<small>${sub}</small>` : ''}</div>${der || ''}</div>`;
+  let h = '';
+  /* Entreno: automático */
+  if ((s.modulo_entreno ?? true) && !s.modulo_futbol) {
+    const l = S.d.sesiones.filter(x => x.fecha === sel), pl = planDe(lunesDe(sel)), toca = pl?.dias?.includes(k);
+    const todos = [S.d.programaBase, S.d.programa, ...(S.d.contextos || []), ...(S.d.alternativos || [])].filter(Boolean).flatMap(p => p.dias || []), nom = x => nomDia(todos.find(d => d.id === x.dia_id)) || 'Entreno';
+    h += l.length ? it('🏋️', '#FCE3EA', 'Entreno', `${toca ? 'Tocaba · ' : ''}hecho · ${esc([...new Set(l.map(nom))].join(' · '))}`, '<span class="md-ok">✓</span>')
+      : toca ? it('🏋️', '#FCE3EA', 'Entreno', esHoy ? 'Hoy toca y aún no lo has hecho' : 'Tocaba y no se registró', esHoy ? '<button type="button" class="btn sm" data-act="tab" data-t="entreno">Entrenar</button>' : '<span class="md-no">✗</span>')
+      : it('🏋️', '#F3F5FA', 'Entreno', esHoy ? 'Hoy no te toca' : 'No tocaba', '<span class="muted">—</span>');
+  }
+  /* Pasos */
+  if (conPasos(s) && !(s.modulo_habitos && Habitos.tienePasos(sel))) h += it('👟', '#DDF3FA', 'Pasos', objPasos(s) ? 'Objetivo ' + fmtNum(objPasos(s), 0) : '', `<input id="r-pasos" class="md-num" type="number" inputmode="numeric" min="0" placeholder="0" value="${r.pasos ?? ''}" aria-label="Pasos">`);
+  /* Focos: su foco y su hábito, cada uno de un toque */
+  const fo = s.foco, hb = s.modulo_habitos ? habitoFoco(sel) : null, fs = [];
+  if (fo?.tipo) {
+    const tit = esc(fo.tipo === 'libre' ? (fo.texto || 'Tu foco') : (fo.texto || Foco.titulo(fo)));
+    if (fo.tipo === 'alimentacion') { const n = comidasDia(s), c = r.ingestas == null ? null : r.ingestas >= n; fs.push(`<div class="md-fo"><span class="md-ib" style="background:#C9A227">🎯</span><b class="grow">${tit}</b>${yn('cumplePlan', '', 'Hecho', 'No', c)}</div>`); }
+    else if (['pasos', 'entrenos', 'sueno'].includes(fo.tipo)) fs.push(`<div class="md-fo"><span class="md-ib" style="background:#C9A227">🎯</span><b class="grow">${tit}</b><small class="muted">se cuenta solo</small></div>`);
+    else fs.push(`<div class="md-fo"><span class="md-ib" style="background:#C9A227">🎯</span><b class="grow">${tit}</b>${yn('mdFoco', `data-f="${sel}"`, 'Hecho', 'No', r.foco_ok == null ? null : !!r.foco_ok)}</div>`);
+  }
+  if (hb) { const v = (S.d.habReg || []).find(x => x.habito_id === hb.id && x.fecha === sel)?.valor; fs.push(`<div class="md-fo"><span class="md-ib" style="background:#C9A227">🌱</span><b class="grow">${esc(hb.titulo)}</b>${yn('mdHab', `data-id="${hb.id}" data-f="${sel}"`, 'Hecho', 'No', v ? v !== 'no' : null)}</div>`); }
+  if (fs.length) h += `<div class="md-focos">${fs.join('')}</div>`;
+  /* Tipo de día: el que marcó en su semana; lo puede cambiar */
+  const cx = s.modulo_nutricion ? Nutricion.ctxDe(S.d.nutri || { plan: [] }) : [];
+  if (cx.length) {
+    const pre = r.contexto || (typeof orgDe === 'function' ? orgDe(lunesDe(sel))?.ctx?.[k] : '') || '', ci = cx.findIndex(c => c.n === pre), col = ci >= 0 ? Nutricion.CTX_COL[ci % Nutricion.CTX_COL.length] : '#C0C6D4';
+    h += it('🍽️', '#E6EEFB', esHoy ? 'Tu día es' : 'Tu día fue', pre ? (r.contexto ? 'Toca para cambiar' : 'El que marcaste en tu semana · toca para cambiar') : 'Elige el tuyo', `<label class="md-sel" style="--c:${col}"><select id="r-ctx" aria-label="Tipo de día">${pre ? '' : '<option value="">Elegir…</option>'}${cx.map(c => `<option value="${esc(c.n)}" ${c.n === pre ? 'selected' : ''}>${esc(c.n)}</option>`).join('')}</select><span>${esc(pre || 'Elegir…')} ▾</span></label>`);
+  }
+  const dias = ventanaRegistro();
+  return `<section class="section" id="registro"><div class="card stack md-card">
+    <div class="row" style="align-items:baseline"><span class="md-ey grow">Tu día · ${esc(dia)}</span>${dias.length > 1 ? `<span class="small muted">${esHoy ? 'Hoy' : 'Día pasado'}</span>` : ''}</div>
+    <h2 class="md-t">Marca tu día</h2>
+    ${dias.length > 1 ? `<div class="reg-dias" role="group" aria-label="Día a registrar" style="--n:${Math.max(7, dias.length)}">${dias.map(f => { const x = S.d.diario.find(y => y.fecha === f); return `<button type="button" data-act="regDia" data-f="${f}" aria-pressed="${f === sel}" class="${x ? 'ok' : ''}">${DIA3[fecha(f).getDay()]}<small>${fecha(f).getDate()}</small></button>`; }).join('')}</div>` : ''}
+    ${h}
+    <textarea id="r-obs" class="chk-txt" rows="2" placeholder="¿Algo importante de ${esHoy ? 'hoy' : 'ese día'}? (opcional)">${esc(r.observacion || '')}</textarea>
+    <button class="btn full" data-act="guardarDiario">Guardar mi día</button>
   </div></section>`;
 }
 async function subirFotosComida(input) {
@@ -3126,7 +3149,7 @@ function focoEstado(f, src, aid, hoyRef) {
   const diaOk = d => { const r = reg.find(x => x.fecha === d);
     if (f.tipo === 'pasos') return r?.pasos != null ? r.pasos >= meta * .95 : null;
     if (f.tipo === 'entrenos') return (src?.sesiones || []).some(x => (!x.alumno_id || x.alumno_id === aid) && x.fecha === d) ? true : null;
-    if (f.tipo === 'foto_comida' || f.tipo === 'libre') return r?.foco_ok ? true : null;
+    if (f.tipo === 'foto_comida' || f.tipo === 'libre') return r?.foco_ok ? true : r?.foco_ok === false ? false : null;
     if (f.tipo === 'alimentacion') { if (r?.ingestas == null) return null; const prev = Math.max(1, r.comidas_hechas || 3); return Math.min(prev, r.ingestas) / prev * 100 >= (meta || 80) * .95; }
     if (f.tipo === 'sueno') { const w = (src?.wellness || []).find(x => (!x.alumno_id || x.alumno_id === aid) && x.tipo === 'diario' && x.fecha === d && x.datos?.dormir && x.datos?.levantar), h = w ? horasSueno(w.datos.dormir, w.datos.levantar) : null; return h == null ? null : h >= meta * .95; }
     return null; };
@@ -3158,7 +3181,7 @@ function formFoco(aid) {
 }
 /* Alumno: marca (o desmarca) que hoy ha cumplido su foco */
 async function marcarFoco(ok, fechaF) {
-  const fF = fechaF || hoyISO(), row = { alumno_id: S.d?.uid || S.user?.id, fecha: fF, foco_ok: !!ok };
+  const fF = fechaF || hoyISO(), row = { alumno_id: S.d?.uid || S.user?.id, fecha: fF, foco_ok: ok == null ? null : !!ok };
   const { data, error } = await sb.from('registro_diario').upsert(row, { onConflict: 'alumno_id,fecha' }).select().single();
   if (error) { if (/foco_ok/.test(error.message || '')) toast('Falta ejecutar el Bloque 112 en Supabase'); else console.warn(error); return false; }
   S.d.diario = (S.d.diario || []).filter(x => x.fecha !== fF).concat(data); return true;
@@ -3633,6 +3656,7 @@ async function abrirFicha(id) {
   S.valEd = null;
   const [pr, ru] = await Promise.all([sb.from('presenciales').select('*').eq('alumno_id', id).order('fecha'), sb.from('hoja_ruta').select('*').eq('alumno_id', id).order('orden')]);
   { const r = await sb.from('plan_semana').select('*').eq('alumno_id', id).gte('semana_inicio', sumaDias(lunesDe(hoyISO()), -56)); S.ficha.planes = r.error ? [] : (r.data || []); }
+  { const r = await sb.from('plan_nutri_semana').select('semana_inicio,datos').eq('alumno_id', id).gte('semana_inicio', sumaDias(lunesDe(hoyISO()), -14)); S.ficha.org = r.error ? [] : (r.data || []); }
   S.ficha.pres = pr.data || []; S.ficha.ruta = ru.data || []; if (S.ficha.srv) S.ficha.srv._bloques = bloquesDe(S.ficha.ruta);
   const f = S.ficha; await Promise.all([cargarValoraciones(), cargarProgramasFicha(f), Acomp.cargarFicha(f), IA.cargarFicha(f), S.c.servicios.find(x => x.alumno_id === f.id)?.modulo_nutricion ? Nutricion.cargarFicha(f).catch(() => {}) : null]);
   await Novedades.cargar(f).catch(() => { });
@@ -6893,11 +6917,51 @@ function montanitas(vals, col, obj) {
   return `<svg class="rg-mont" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${barras}${linea}</svg>`;
 }
 /* Ficha · Check-ins: sus anillos (por semanas) y sus últimos 7 días, como los ve el alumno. Tocar un banner abierto lleva a su desglose */
+/* Reporting semanal del coach: 7 casillas por indicador (color = cumplido, número dentro si es una cifra), lo que destaca y su check-in */
+function vSemanaCasillas(a, lunes, f, src) {
+  const hoy = hoyISO(), dias = [...Array(7)].map((_, i) => sumaDias(lunes, i)), R = { lunes, src, pres: f.pres };
+  const d = datosReporte(a, R), w = d.w, srv = d.srv || {}, reg = x => w.reg.find(r => r.fecha === x), pas = x => x > hoy;
+  const marc = dias.filter(x => !pas(x) && reg(x)), sinM = dias.filter(x => !pas(x) && !reg(x)), filas = [], dest = [];
+  const caja = (cls, txt = '', st = '') => `<span class="sc-c ${cls}" style="${st}">${txt}</span>`;
+  const DL = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+  const fila = (tit, tot, cajas) => filas.push(`<div class="sc-k"><div class="sc-kh"><span>${tit}</span><b>${tot}</b></div><div class="sc-d">${cajas.join('')}</div></div>`);
+  /* Foco y foco 2 (hábito) */
+  const fo = Foco.de(a.id);
+  if (fo?.tipo) { let e = null; try { e = focoEstado(fo, src, a.id, sumaDias(lunes, 6)); } catch (er) { }
+    const ok = x => e?.ult7.find(z => z.f === x)?.ok, c = dias.map(x => pas(x) ? caja('fut') : ok(x) ? caja('', '', 'background:#C9A227') : reg(x) ? caja('no') : caja('sin'));
+    const n = dias.filter(x => !pas(x) && ok(x)).length, t = dias.filter(x => !pas(x) && (ok(x) || reg(x))).length;
+    fila(`🎯 ${esc(fo.texto || Foco.titulo(fo))}`, `${n} de ${t}`, c); if (t >= 3) dest.push(n / t >= .8 ? ['ok', `Foco: ${n} de ${t} días, va bien`] : n / t < .5 ? ['warn', `Foco: solo ${n} de ${t} días`] : null); }
+  const hb = (f.habitos || []).filter(h => h.estado === 'instalacion' && h.inicio && h.inicio <= sumaDias(lunes, 6)).sort((x, y) => String(y.inicio).localeCompare(String(x.inicio)))[0];
+  if (hb) { const v = x => (f.habReg || []).find(r => r.habito_id === hb.id && r.fecha === x)?.valor, c = dias.map(x => pas(x) ? caja('fut') : v(x) && v(x) !== 'no' ? caja('', '', 'background:#C9A227') : v(x) === 'no' ? caja('no') : caja('sin'));
+    const n = dias.filter(x => v(x) && v(x) !== 'no').length, t = dias.filter(x => v(x)).length; fila(`🌱 ${esc(hb.titulo)}`, `${n} de ${t}`, c); if (t >= 3 && n / t < .5) dest.push(['warn', `${hb.titulo}: ${n} de ${t} días`]); }
+  /* Entrenos: rosa hecho · gris no tocaba · borde rosa tocaba y no lo hizo */
+  if (d.dpw && !srv.modulo_futbol) { const pl = (f.planes || []).find(x => x.semana_inicio === lunes)?.dias || [], ses = x => w.ses.some(z => z.fecha === x), falt = [];
+    const c = dias.map((x, k) => ses(x) ? caja('', '', 'background:#F0386B') : pas(x) ? caja('fut') : pl.includes(k) ? (falt.push(DL[k]), caja('no', '', 'border-color:#F0386B')) : caja('gr'));
+    fila('🏋️ Entrenos', `${Math.min(w.entrenos, d.dpw)} de ${d.dpw}${w.entrenos > d.dpw ? ' +' + (w.entrenos - d.dpw) : ''}`, c); if (falt.length) dest.unshift(['bad', `Faltó el entreno del ${falt.join(' y del ')}`]); }
+  /* Pasos: el número dentro, más intenso cuanto más cerca del objetivo */
+  if (conPasos(srv)) { const obj = d.obj || 10000, c = dias.map(x => { const p = reg(x)?.pasos; if (pas(x)) return caja('fut'); if (p == null) return caja('sin'); const q = p / obj; return caja('', p >= 1000 ? Math.round(p / 1000) + 'k' : String(p), `background:${q >= 1 ? '#18AFD3;color:#fff' : q >= .75 ? '#A6E1F2' : '#D6F1F9'}`); });
+    fila(`👟 Pasos · obj. ${fmtNum(obj, 0)}`, w.pasosMedia != null ? 'media ' + fmtNum(w.pasosMedia, 0) : '—', c); if (w.pasosMedia != null && w.pasosMedia < obj * .8) dest.push(['warn', `Pasos: media ${fmtNum(w.pasosMedia, 0)}, por debajo del objetivo`]); }
+  if (sinM.length) dest.unshift(['bad', sinM.length === 1 ? `No marcó el ${DL[dias.indexOf(sinM[0])]}` : `No marcó ${sinM.length} días: ${sinM.map(x => DL[dias.indexOf(x)]).join(', ')}`]);
+  const notas = dias.filter(x => reg(x)?.observacion), chk = w.chk;
+  const cab = `<div class="sc-d sc-h">${dias.map((x, k) => { const o = reg(x)?.observacion; return o ? `<button type="button" class="sc-n" data-act="verNotaDia" data-d="${esc(fLarga(x))}" data-t="${esc(o)}" aria-label="Nota del ${DL[k]}">${DSEM[k]}<i>💬</i></button>` : `<span>${DSEM[k]}</span>`; }).join('')}</div>`;
+  const prox = (f.org || []).find(x => x.semana_inicio === sumaDias(lunes, 7))?.datos, cxs = (() => { try { return Nutricion.ctxDe({ plan: planNutriDe(a.id) }); } catch (e) { return []; } })();
+  const colCx = n => { const i = cxs.findIndex(c => c.n === n); return i >= 0 ? Nutricion.CTX_COL[i % Nutricion.CTX_COL.length] : '#DDE1EA'; };
+  const pc = marc.length / Math.max(1, marc.length + sinM.length);
+  return `<section class="section"><div class="section-head"><h2>Su semana</h2><span class="small muted">${esc(fCorta(lunes))} – ${esc(fCorta(sumaDias(lunes, 6)))}</span></div><div class="card stack sc">
+    <div><div class="row small" style="justify-content:space-between"><span class="muted">Días marcados</span><b>${marc.length} de ${marc.length + sinM.length}</b></div><div class="track" style="margin-top:4px"><i style="width:${Math.round(pc * 100)}%;background:#C9A227"></i></div></div>
+    ${filas.length ? cab + filas.join('') + '<span class="small muted" style="font-size:11px">Color = cumplido · blanco = no · punteado = no marcó · gris = no tocaba · 💬 = dejó una nota (tócala)</span>' : '<p class="small muted">Sin indicadores que medir.</p>'}
+    ${dest.filter(Boolean).length ? `<span class="sc-ey">Lo que destaca</span><div class="stack" style="gap:6px">${dest.filter(Boolean).slice(0, 4).map(([n, t]) => `<div class="row small" style="gap:8px;align-items:flex-start"><span style="color:var(--${n})">●</span><span>${esc(t)}</span></div>`).join('')}</div>` : ''}
+    ${chk ? `<span class="sc-ey">Check-in semanal</span><div class="row" style="gap:6px;flex-wrap:wrap">${chk.aplicacion_plan ? `<span class="pill" style="background:#0B1A33;color:#fff">${esc(aplTxt(chk.aplicacion_plan))}</span>` : ''}${chk.motivacion != null ? `<span class="pill">Motivación ${chk.motivacion}</span>` : ''}${chk.implicacion != null ? `<span class="pill">Implicación ${chk.implicacion}</span>` : ''}</div>
+      ${chk.foco_comentario ? `<div class="sc-q">🎯 «${esc(chk.foco_comentario)}»</div>` : ''}${chk.dificultades ? `<div class="sc-q2">Le costó: ${esc(chk.dificultades)}</div>` : ''}${chk.proxima_semana ? `<div class="sc-q2">📅 ${esc(chk.proxima_semana)}</div>` : ''}`
+      : `<span class="small muted">${lunes < lunesDe(hoy) ? 'No envió el check-in semanal.' : 'El check-in de esta semana llega el lunes.'}</span>`}
+    ${prox?.ctx?.some(Boolean) || prox?.exceso?.length ? `<span class="small muted">Su semana que viene</span><div class="sc-px">${[...Array(7)].map((_, k) => `<span title="${esc(prox.ctx?.[k] || 'Sin decidir')}" style="background:${colCx(prox.ctx?.[k])}">${(prox.exceso || []).includes(k) ? '🍷' : (prox.entreno || []).includes(k) ? '🏋️' : ''}</span>`).join('')}</div>` : ''}
+  </div></section>`;
+}
 function vAnillosFicha(a, f, src, hoy, lunes) {
   const lA = S.fSem?.[a.id] && S.fSem[a.id] <= lunes ? S.fSem[a.id] : lunes, R1 = { lunes: lA, src, pres: f.pres }, r7 = sumaDias(hoy, -6), R7 = { lunes: r7, src, pres: f.pres };
   let an = '', u7 = ''; try { an = vAnillos(a, R1, datosReporte(a, R1), false, false); u7 = vAnillos(a, R7, datosReporte(a, R7), false, false); } catch (e) { console.warn(e); return { izq: '', der: '' }; }
   const tit = lA === lunes ? 'Esta semana' : lA === sumaDias(lunes, -7) ? 'Semana pasada' : `Del ${fCorta(lA)} al ${fCorta(sumaDias(lA, 6))}`;
-  return { izq: `${vFocoHoy(null, { f: Foco.de(a.id), src, aid: a.id })}<section class="section rg-ir"><h2>Sus anillos</h2><div class="card stack" style="gap:12px"><div class="row rg-nav"><button class="btn ghost sem-flecha" data-act="fSemAl" data-d="-7" aria-label="Semana anterior">‹</button><div class="grow" style="text-align:center"><b>${esc(tit)}</b><div class="small muted">${esc(fCorta(lA))} – ${esc(fCorta(sumaDias(lA, 6)))}</div></div><button class="btn ghost sem-flecha" data-act="fSemAl" data-d="7" aria-label="Semana siguiente"${lA >= lunes ? ' disabled' : ''}>›</button></div>${an}<span class="small muted">Toca un indicador para ver o plegar sus días; toca su nombre para ir a su apartado.</span></div></section>`, der: `<section class="section rg-ir rg-sinani"><div class="section-head"><h2>Últimos 7 días</h2><span class="small muted">${esc(fCorta(r7))} – ${esc(fCorta(hoy))}</span></div><div class="card">${u7}</div></section>` };
+  return { izq: `${vFocoHoy(null, { f: Foco.de(a.id), src, aid: a.id })}<section class="section rg-ir"><h2>Sus anillos</h2><div class="card stack" style="gap:12px"><div class="row rg-nav"><button class="btn ghost sem-flecha" data-act="fSemAl" data-d="-7" aria-label="Semana anterior">‹</button><div class="grow" style="text-align:center"><b>${esc(tit)}</b><div class="small muted">${esc(fCorta(lA))} – ${esc(fCorta(sumaDias(lA, 6)))}</div></div><button class="btn ghost sem-flecha" data-act="fSemAl" data-d="7" aria-label="Semana siguiente"${lA >= lunes ? ' disabled' : ''}>›</button></div>${an}<span class="small muted">Toca un indicador para ver o plegar sus días; toca su nombre para ir a su apartado.</span></div></section>`, der: (() => { try { return vSemanaCasillas(a, lA, f, src); } catch (e) { console.warn(e); return `<section class="section rg-ir rg-sinani"><div class="section-head"><h2>Últimos 7 días</h2></div><div class="card">${u7}</div></section>`; } })() };
 }
 let MONT_LABS = null;   /* letras de los días cuando la semana no empieza en lunes (últimos 7 días) */
 function vAnillos(a, R, d, detalle, yo) {
@@ -9243,7 +9307,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v472';
+const APP_VER = 'v473';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -9600,7 +9664,10 @@ document.addEventListener('click', async e => {
     case 'terminar': terminar(); break;
     case 'retomar': { const x = S.d.sesiones.find(z => z.id === +b.dataset.id); if (x) await abrirDia(x.dia_id, { sesionId: x.id, fecha: x.fecha, dia: [S.d.programa, S.d.programaBase, ...(S.d.contextos || []), ...(S.d.alternativos || [])].filter(Boolean).flatMap(q => q.dias || []).find(z => z.id === x.dia_id) }); break; }
     case 'guardarSesion': await guardarSesion(); break;
-    case 'guardarDiario': await guardarDiario(); break;
+    case 'guardarDiario': { const sc = $('#r-ctx'); if (sc && !sc.value) { toast('Elige qué tipo de día has tenido'); sc.closest('.md-it')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); break; } await guardarDiario(sc?.value ? { contexto: sc.value } : {}); break; }
+    case 'mdFoco': { const ok = b.dataset.v === '1', f = b.dataset.f, r = S.d.diario.find(x => x.fecha === f); await marcarFoco(r?.foco_ok === ok ? null : ok, f); render(); break; }
+    case 'mdHab': await Habitos.marcar(+b.dataset.id || b.dataset.id, b.dataset.f, b.dataset.v === '1' ? 'hecho' : 'no'); break;
+    case 'verNotaDia': abrirSheet(`<div class="stack"><span class="eyebrow">${esc(b.dataset.d)}</span><p style="white-space:pre-wrap;margin:0">${esc(b.dataset.t)}</p><button class="btn ghost" data-act="cerrarSheet">Cerrar</button></div>`); break;
     case 'ingestas': await guardarDiario({ ingestas: +b.dataset.v }); break;
     case 'ctxDia': await guardarDiario({ contexto: b.dataset.v }); break;
     case 'cumplePlan': { const n = comidasDia(S.d.servicio || {}); await guardarDiario(+b.dataset.v ? { ingestas: n, comidas_hechas: n } : { ingestas: 0, comidas_hechas: n }); break; }

@@ -587,5 +587,5 @@ const Habitos = (() => {
   const aislar = fn => (...args) => { try { return fn(...args); } catch (err) { console.error(err); return `<section class="section"><div class="card small muted">No se han podido mostrar los hábitos. Mándale a Jesús este mensaje: ${esc(String(err && err.message || err).slice(0, 160))}</div></section>`; } };
   /* ¿Tiene un hábito de pasos en marcha? (entonces los pasos se registran en su hábito, no también en el registro del día) */
   function tienePasos(dia = hoyISO()) { try { return mios().some(x => x.estado === 'instalacion' && x.inicio && x.inicio <= dia && /paso|camin/i.test([x.titulo, x.si, x.minimo].filter(Boolean).join(' '))); } catch (e) { return false; } }
-  return { tienePasos, ajustesRecientes, vista: aislar(vista), tarjetaHoy: aislar(tarjetaHoy), enRegistro: aislar(enRegistro), ctaInforme: aislar(ctaInforme), vCoach: aislar(vCoach), resumenCoach: aislar(resumenCoach), cargar, cargarCoach, cargarFicha, contexto, proponer, ordenar, filasPlan, stats, bloque, siguiente, CAT };
+  return { marcar, tienePasos, ajustesRecientes, vista: aislar(vista), tarjetaHoy: aislar(tarjetaHoy), enRegistro: aislar(enRegistro), ctaInforme: aislar(ctaInforme), vCoach: aislar(vCoach), resumenCoach: aislar(resumenCoach), cargar, cargarCoach, cargarFicha, contexto, proponer, ordenar, filasPlan, stats, bloque, siguiente, CAT };
 })();
