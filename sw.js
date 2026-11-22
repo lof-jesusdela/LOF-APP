@@ -1,6 +1,6 @@
 // Guarda la "carcasa" de la app para que abra rápido y sin conexión.
 // Los datos siempre se piden a la base de datos (nunca se guardan aquí).
-const VERSION = 'lof-v468';
+const VERSION = 'lof-v469';
 const CARCASA = ['./', 'index.html', 'app.js', 'temperamento.js', 'habitos.js', 'nutricion.js', 'pdf.js', 'casos.js', 'acomp.js', 'consultas.js', 'negocio.js', 'compromisos.js', 'tandas.js', 'entrenaidor.js', 'oposicion.js', 'menusemana.js', 'cuestionario.js', 'tarifas.js', 'programas.js', 'config.js', 'manifest.webmanifest', 'icons/logo-96.jpg', 'icons/coach.jpg', 'icons/logo-chat.jpg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/whatsapp.png'];
 
 self.addEventListener('install', e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(CARCASA)).then(() => self.skipWaiting())); });
@@ -24,7 +24,7 @@ self.addEventListener('push', e => {
 self.addEventListener('notificationclick', e => {
   e.notification.close();
   const url = (e.notification.data && e.notification.data.url) || './';
-  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(l => l.length ? l[0].focus() : self.clients.openWindow(url)));
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(l => { if (!l.length) return self.clients.openWindow(url); l[0].postMessage({ t: 'abrir', url }); return l[0].focus(); }));
 });
 
 /* Aviso de fin de descanso programado desde la app (respaldo si la página se congela en segundo plano) */

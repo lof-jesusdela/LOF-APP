@@ -548,7 +548,7 @@ function render() {
   const tabs = coach ? [['inicio', 'Tu día'], ['alumnos', 'Alumnos'], ['metodologia', 'Metodología'], ['pagos', 'Negocio']] : tabsAlumno();
   const actual = coach ? S.ctab : (cierreAlumno() && !tabs.some(t => t[0] === S.tab) ? 'hoy' : S.tab);
   const esCoach = S.perfil.rol === 'coach';
-  const vistas = { futbol: () => `<section class="stack"><span class="eyebrow">Élite Player</span><h1>Futbolistas</h1></section>${vFutbolCoach() || '<div class="card empty">Sin futbolistas activos.</div>'}`, hoy: vHoy, entreno: vEntreno, semana: vTuSemanaAl, proceso: vTuProgramaAl, sesiones: () => `<section class="stack"><span class="eyebrow">Presenciales</span><h1>Tus entrenamientos presenciales con Jesús</h1></section>${vCalendarioPres() || '<div class="card empty">No tienes entrenamientos presenciales.</div>'}`, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, tests: vProgreso, coach: Acomp.vTuCoach, inicio: vTuDia, habitos: Habitos.vista, alumnos: vAlumnos, pagos: vEconomiaTabs, ejercicios: vEjercicios, plantillas: vPlantillas, metodologia: () => `<div class="seg" role="group" aria-label="Metodología" style="margin-bottom:12px"><button data-act="metSub" data-v="plantillas" aria-pressed="${S.metSub !== 'ejercicios'}">Plantillas</button><button data-act="metSub" data-v="ejercicios" aria-pressed="${S.metSub === 'ejercicios'}">Ejercicios</button></div>` + (S.metSub === 'ejercicios' ? vEjercicios() : vPlantillas()) };
+  const vistas = { futbol: () => `<section class="stack"><span class="eyebrow">Élite Player</span><h1>Futbolistas</h1></section>${vPartidosHoy()}${vFutbolCoach() || '<div class="card empty">Sin futbolistas activos.</div>'}`, hoy: vHoy, entreno: vEntreno, semana: vTuSemanaAl, proceso: vTuProgramaAl, sesiones: () => `<section class="stack"><span class="eyebrow">Presenciales</span><h1>Tus entrenamientos presenciales con Jesús</h1></section>${vCalendarioPres() || '<div class="card empty">No tienes entrenamientos presenciales.</div>'}`, nutri: vNutri, progreso: vProgreso, checkin: vCheckin, tests: vProgreso, coach: Acomp.vTuCoach, inicio: vTuDia, habitos: Habitos.vista, alumnos: vAlumnos, pagos: vEconomiaTabs, ejercicios: vEjercicios, plantillas: vPlantillas, metodologia: () => `<div class="seg" role="group" aria-label="Metodología" style="margin-bottom:12px"><button data-act="metSub" data-v="plantillas" aria-pressed="${S.metSub !== 'ejercicios'}">Plantillas</button><button data-act="metSub" data-v="ejercicios" aria-pressed="${S.metSub === 'ejercicios'}">Ejercicios</button></div>` + (S.metSub === 'ejercicios' ? vEjercicios() : vPlantillas()) };
   $('#app').innerHTML = `<header class="top">
       <button type="button" class="badge" data-act="logoAct" aria-label="Actualizar la app" title="Toca para actualizar la app" style="background:none;border:0;padding:0;cursor:pointer;text-align:left;color:inherit;font:inherit"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : 'Construyendo tu Prime'}</strong></div></button>
       <div class="row" style="gap:8px">${coach && typeof Consultas !== 'undefined' && ['inicio', 'alumnos', 'metodologia', 'pagos'].includes(actual) ? Consultas.vBoton() : ''}${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
@@ -4295,7 +4295,31 @@ function tdAlertasNegocio() {
 }
 function vTuDia() {
   const f = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
-  return `<section class="stack"><span class="eyebrow">${esc(f)}</span><h1>Tu día</h1></section>${tdCalendario()}${Consultas.vCoach()}${tdTareas()}${tdAlertasAlumnos()}${tdAlertasNegocio()}`;
+  return `<section class="stack"><span class="eyebrow">${esc(f)}</span><h1>Tu día</h1></section>${vPartidosHoy()}${tdCalendario()}${Consultas.vCoach()}${tdTareas()}${tdAlertasAlumnos()}${tdAlertasNegocio()}`;
+}
+/* Día de partido: aviso arriba con los jugadores que juegan hoy; al desplegar, datos del partido y su check-in */
+/* Al tocar el aviso del check-in (partido o lunes) se abre directamente el formulario */
+function abrirDesdeAviso(url) {
+  let q; try { q = new URL(url || location.href, location.href).searchParams; } catch (e) { return; }
+  const w = q.get('w'); if (!/^(partido|lunes)$/.test(w || '')) return;
+  let n = 0; const intenta = () => { if (S.user && S.d?.partidos && S.modo !== 'coach') { formWellness(w, q.get('f') || hoyISO(), null); try { history.replaceState(null, '', location.pathname); } catch (e) { } } else if (++n < 20) setTimeout(intenta, 500); };
+  intenta();
+}
+try { navigator.serviceWorker?.addEventListener('message', e => { if (e.data?.t === 'abrir') abrirDesdeAviso(e.data.url); }); } catch (e) { }
+setTimeout(() => abrirDesdeAviso(location.href), 800);
+function vPartidosHoy() {
+  const hoy = hoyISO(), L = (S.c?.partidos || []).filter(x => x.fecha === hoy && S.c.perfiles.some(p => p.id === x.alumno_id && p.activo !== false)).sort((a, b) => String(a.hora || '').localeCompare(String(b.hora || '')));
+  if (!L.length) return '';
+  const nom = id => S.c.perfiles.find(p => p.id === id)?.nombre || 'Jugador';
+  return `<section class="section"><div class="card" style="border:2px solid var(--gold,#C9A227)"><div class="row" style="gap:8px;margin-bottom:6px"><b class="grow">⚽ Hoy hay partido · ${L.length} ${L.length === 1 ? 'jugador' : 'jugadores'}</b></div>
+    ${L.map(x => { const ck = (S.c.wellness || []).find(w => w.alumno_id === x.alumno_id && w.fecha === hoy && w.tipo === 'partido'), h = x.hora ? String(x.hora).slice(0, 5) : '';
+      return `<details style="border-top:1px solid var(--line);padding:8px 0"><summary style="cursor:pointer"><b>${esc(nom(x.alumno_id).split(' ')[0])}</b> · ${h ? esc(h) + ' · ' : ''}${x.local ? 'vs' : 'en casa de'} ${esc(x.rival || 'rival')} ${ck ? '<span class="pill ok">check-in hecho</span>' : '<span class="pill">check-in pendiente</span>'}</summary>
+        <div class="small stack" style="gap:4px;margin-top:6px">
+          <div>📅 ${esc(fLarga(x.fecha))}${h ? ' · 🕒 ' + esc(h) : ''} · ${x.local ? '🏠 Local' : '🚌 Visitante'}</div>
+          ${x.lugar ? `<div>📍 ${esc(x.lugar)}</div>` : ''}${x.competicion ? `<div>🏆 ${esc(x.competicion)}${x.nivel ? ' · ' + esc(x.nivel) : ''}</div>` : ''}${x.descripcion ? `<div class="muted">${esc(x.descripcion)}</div>` : ''}
+          <div style="margin-top:4px"><b>Check-in del partido:</b> ${ck ? esc(resumenW(ck)) : '<span class="muted">aún no lo ha enviado; le llega el aviso 2 h después de la hora del partido</span>'}</div>
+          <div class="row" style="gap:6px;margin-top:4px"><button class="btn sm ghost" data-act="ficha" data-id="${x.alumno_id}">Abrir ficha</button></div>
+        </div></details>`; }).join('')}</div></section>`;
 }
 function vFutbolCoach() {
   const fut = S.c.perfiles.filter(p => p.activo !== false && S.c.servicios.some(x => x.alumno_id === p.id && x.modulo_futbol));
@@ -9157,7 +9181,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v468';
+const APP_VER = 'v469';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
