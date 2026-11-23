@@ -508,7 +508,7 @@ function claseMain() {
 /* Escritorio del alumno: sus mismas pestañas en una barra lateral */
 function vLateralAlumno(tabs, actual) {
   return `<aside class="lateral" aria-label="Navegación">
-    <nav class="lat-nav">${tabs.map(([k, l]) => `<button data-act="tab" data-t="${k}" ${actual === k ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${k === 'hoy' && (pendientesFutbol().length || tocaCheckin()) ? '<i class="badge-dot" style="position:static;margin-left:auto"></i>' : ''}${k === 'coach' && nChat() ? `<i class="badge-n" style="position:static;margin-left:auto">${nChat()}</i>` : ''}</button>`).join('')}</nav>
+    <nav class="lat-nav">${tabs.map(([k, l]) => `<button data-act="tab" data-t="${k}" ${actual === k ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${k === 'hoy' && nHoy() ? `<i class="badge-n" style="position:static;margin-left:auto">${nHoy()}</i>` : ''}${k === 'coach' && nChat() ? `<i class="badge-n" style="position:static;margin-left:auto">${nChat()}</i>` : ''}</button>`).join('')}</nav>
     ${S.perfil?.nombre ? `<div class="lat-yo small muted">${esc(S.perfil.nombre)}</div>` : ''}
   </aside>`;
 }
@@ -568,7 +568,7 @@ function render() {
   document.body.classList.toggle('modo-alumno', !coach && ANCHO.matches);
   if (coach) aplicarFiltroAl();
   $('#tabs').hidden = false;
-  $('#tabs-in').innerHTML = tabs.map(([k, l]) => `<button ${!coach && k === 'coach' ? 'class="tab-c" ' : ''}data-act="${coach ? 'ctab' : 'tab'}" data-t="${k}" ${actual === k && !((S.ficha || S.editor || S.obj) && coach) ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${!coach && k === 'coach' && nChat() ? `<i class="badge-n">${nChat()}</i>` : ''}${!coach && k === 'hoy' && (pendientesFutbol().length || tocaCheckin()) ? '<i class="badge-dot"></i>' : ''}</button>`).join('');
+  $('#tabs-in').innerHTML = tabs.map(([k, l]) => `<button ${!coach && k === 'coach' ? 'class="tab-c" ' : ''}data-act="${coach ? 'ctab' : 'tab'}" data-t="${k}" ${actual === k && !((S.ficha || S.editor || S.obj) && coach) ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${!coach && k === 'coach' && nChat() ? `<i class="badge-n">${nChat()}</i>` : ''}${!coach && k === 'hoy' && nHoy() ? `<i class="badge-n">${nHoy()}</i>` : ''}</button>`).join(''); if (!coach) badgeApp();
   if (S.dia && ((!coach && S.tab === 'entreno') || (coach && S.obj))) rellenarSesion();
   if (document.getElementById('calc-inline')) Nutricion.montarCalc();
 }
@@ -627,6 +627,19 @@ function checkinPend() {
   return (D.checkins || []).some(c => c.semana_inicio === obj) ? null : obj;
 }
 const tocaCheckin = () => !!checkinPend();
+/* Globo de Hoy: cuántas cosas importantes tiene pendientes. Futbolista: sus check-ins. Resto: su foco (y su hábito) de hoy
+   sin marcar + el check-in semanal si le toca. También va al icono de la app en el móvil (con el chat sin leer). */
+function nHoy() {
+  try {
+    const s = S.d?.servicio; if (!s || S.modo === 'coach') return 0;
+    if (s.modulo_futbol) return pendientesFutbol().length;
+    const hoy = hoyISO(), r = (S.d.diario || []).find(x => x.fecha === hoy) || {}, fo = s.foco; let n = tocaCheckin() ? 1 : 0;
+    if (fo?.tipo && !['pasos', 'entrenos', 'sueno'].includes(fo.tipo)) n += (fo.tipo === 'alimentacion' ? r.ingestas == null : r.foco_ok == null) ? 1 : 0;
+    const hb = s.modulo_habitos ? habitoFoco(hoy) : null; if (hb && !(S.d.habReg || []).some(x => x.habito_id === hb.id && x.fecha === hoy && x.valor)) n++;
+    return n;
+  } catch (e) { return 0; }
+}
+function badgeApp() { if (S.modo === 'coach' || S.vista || S.prueba || !('setAppBadge' in navigator)) return; const n = nHoy() + (nChat() || 0); (n ? navigator.setAppBadge(n) : navigator.clearAppBadge?.())?.catch?.(() => { }); }
 async function avisoCuota() {
   const c = cuotaPend(); if (!c || !('Notification' in window) || Notification.permission !== 'granted') return;
   const hoy = hoyISO(), toca = c.x.some(p => p.vence === hoy) || c.dias === 3 || (c.dias > 3 && c.dias % 7 === 3); if (!toca) return;
@@ -9563,7 +9576,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v502';
+const APP_VER = 'v503';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
