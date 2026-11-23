@@ -4006,7 +4006,8 @@ const tocaDiario = (f, partidos, w) => chkToca(f, partidos) === 'diario' && !(w 
 const NOM_CHK = { diario: 'Check-in diario', lunes: 'Check-in · cierre de semana', partido: 'Check-in · post-partido', semana: 'Semana del equipo' };
 function pendientesFutbol() {
   const s = S.d?.servicio; if (!s?.modulo_futbol || S.d.futbolErr) return [];
-  const w = S.d.wellness || [], hoy = hoyISO(), dow = (fecha(hoy).getDay() + 6) % 7, out = []; if (hoy < CORTE_CHK) return out;
+  const w = S.d.wellness || [], hoy = hoyISO(), dow = (fecha(hoy).getDay() + 6) % 7, out = [];
+  if (hoy < CORTE_CHK) return excPend(w, S.d.partidos).map(([f, t]) => { const pt = (S.d.partidos || []).find(x => x.fecha === f); return { t, f, atr: 1, exc: 1, txt: `${NOM_CHK[t]}${t === 'partido' && pt?.rival ? ' contra ' + pt.rival : ''} · ${fecha(f).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' })}`, sub: '' }; });
   const jugados = (S.d.partidos || []).filter(p => p.fecha <= hoy && p.fecha >= sumaDias(hoy, -3) && p.fecha >= CORTE_CHK && !wDe(w, p.fecha, 'partido'));
   jugados.forEach(p => out.push({ t: 'partido', f: p.fecha, txt: `${NOM_CHK.partido}${p.rival ? ' contra ' + p.rival : ''}`, sub: p.fecha === hoy ? 'Rellénalo al terminar: antes, durante y después.' : 'Te falta contarle a Jesús cómo fue.' }));
   if (chkToca(hoy, S.d.partidos) === 'lunes' && !wDe(w, hoy, 'lunes')) out.push({ t: 'lunes', f: hoy, txt: NOM_CHK.lunes, sub: 'Tu fatiga después del partido y tu semana con el equipo. 2 minutos.' });
@@ -4022,12 +4023,16 @@ function pendientesFutbol() {
   }
   return out;
 }
-const CORTE_CHK = '2026-11-28';   /* futbolistas: nada se pide ni se reclama antes de esta fecha (empiezan con los partidos del 28-29 nov) */
+const CORTE_CHK = '2026-11-28';
+/* Excepción (23 nov, tras el toque de Jesús): el post-partido y el cierre de semana de ESTE fin de semana sí se piden
+   ya, sin bloquear nada. Todo lo demás anterior al 28 se pierde. A partir del 28 deja de aplicarse sola. */
+const EXC_CHK = ['2026-11-21', '2026-11-22', '2026-11-23'];
+const excPend = (w, p) => EXC_CHK.map(d => [d, chkToca(d, p)]).filter(([d, t]) => (t === 'partido' || t === 'lunes') && d <= hoyISO() && !wDe(w, d, t));   /* futbolistas: nada se pide ni se reclama antes de esta fecha (empiezan con los partidos del 28-29 nov) */
 /* Futbolistas: sin el post-partido (desde 2 h después del partido; sin hora, desde las 21:00) o sin el cierre de semana
    la app queda bloqueada hasta rellenarlo. No durante un entreno en curso. El chat con Jesús sigue abierto. */
 function chkBloqueaApp() {
   const s = S.d?.servicio; if (!s?.modulo_futbol || S.d.futbolErr || S.modo === 'coach' || S.vista || S.prueba || S.obj || enCurso()) return null;
-  const hoy = hoyISO(), n = new Date(), min = n.getHours() * 60 + n.getMinutes();
+  const hoy = hoyISO(), n = new Date(), min = n.getHours() * 60 + n.getMinutes(); if (hoy < CORTE_CHK) return null;
   return pendientesFutbol().filter(x => x.t === 'lunes' || x.t === 'partido').filter(x => {
     if (x.t !== 'partido' || x.f < hoy) return true;
     const pt = (S.d.partidos || []).find(p => p.fecha === x.f), [h, m] = (pt?.hora ? String(pt.hora).slice(0, 5) : '19:00').split(':').map(Number);
@@ -4579,7 +4584,7 @@ function vFutbolCoach() {
   const fut = S.c.perfiles.filter(p => p.activo !== false && S.c.servicios.some(x => x.alumno_id === p.id && x.modulo_futbol));
   if (!fut.length) return '';
   const hoy = hoyISO();
-  return `<section class="section"><div class="section-head"><h2>Futbolistas · hoy</h2><div class="row" style="gap:6px"><button class="btn sm gold" data-act="avisarTodos">💬 Avisar a todos: semana lista</button><button class="btn sm" data-act="checkin">Control semanal</button></div></div><div class="card tbl" style="overflow-x:auto"><table class="fut-t"><thead><tr><th>Jugador</th><th>Partido</th><th>Fatiga</th><th>Carga 7 d</th><th>ACWR</th><th>Hoy</th></tr></thead><tbody>
+  return `<section class="section"><div class="section-head"><h2>Futbolistas · hoy</h2><div class="row" style="gap:6px">${(() => { const n = fut.filter(a => { const { w, p } = futDe(a.id); return excPend(w, p).length; }).length; return hoy < CORTE_CHK && n ? `<button class="btn sm" data-act="avisarExc" style="background:#E24B4A;border-color:#E24B4A;color:#fff">🔔 Recordar a ${n} su post-partido / cierre</button>` : ''; })()}<button class="btn sm gold" data-act="avisarTodos">💬 Avisar a todos: semana lista</button><button class="btn sm" data-act="checkin">Control semanal</button></div></div><div class="card tbl" style="overflow-x:auto"><table class="fut-t"><thead><tr><th>Jugador</th><th>Partido</th><th>Fatiga</th><th>Carga 7 d</th><th>ACWR</th><th>Hoy</th></tr></thead><tbody>
     ${fut.map(a => { const { w, p } = futDe(a.id), M = mdDe(p), uf = ultimaFatiga(w), C = cargasSemana(w), [na, ta] = nivelAcwr(C.acwr), hecho = tocaDiario(hoy, p, w) ? wDe(w, hoy, 'diario') || wDe(w, hoy, 'partido') : (fecha(hoy).getDay() === 1 ? wDe(w, hoy, 'lunes') : wDe(w, hoy, 'partido')), mol = molestiasRecientes(w, 3).length;
       return `<tr data-act="ficha" data-id="${a.id}" style="cursor:pointer"><td><b>${esc(a.nombre)}</b>${mol ? ' <span class="pill warn">molestia</span>' : ''}</td><td class="small">${M.md ? `<span class="md-chip sm">${esc(M.md)}</span> ` : ''}${esc(M.prox?.rival || '')}</td><td>${uf ? `<span class="pill ${nivelFat(uf.v)}">${uf.v}/10</span>` : '—'}</td><td class="num">${fmtNum(C.aguda, 0)}</td><td>${C.acwr != null ? `<span class="pill ${na}" title="${ta}">${fmtNum(C.acwr)}</span>` : '—'}</td><td>${hecho ? '<span style="color:var(--ok)">✓</span>' : '<span class="muted">pendiente</span>'}</td></tr>`; }).join('')}
   </tbody></table><p class="note">Carga = minutos × esfuerzo (1-10) del equipo, de tu sesión y del partido. Proporción de carga = últimos 7 días frente a su media semanal de las últimas 4 semanas. Indica un cambio relativo de carga, no un diagnóstico ni un riesgo de lesión individual: contrástalo con molestias, recuperación, historial y la calidad de los registros. Solo se calcula con al menos 3 de 4 semanas registradas.</p></div></section>`;
@@ -9555,7 +9560,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v498';
+const APP_VER = 'v499';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -9926,6 +9931,12 @@ document.addEventListener('click', async e => {
     case 'enviarCheckin': await enviarCheckin(); break;
     case 'ficha': cerrarSheet(); S.iaCoach = false; if (S.obj) await aparcarOSalir(); await abrirFicha(b.dataset.id); break;
     case 'verAlertas': verAlertas(b.dataset.id); break;
+    case 'avisarExc': {   /* push solo a los futbolistas a los que les falta el post-partido o el cierre de este fin de semana */
+      const L = futbolistas().map(a => { const { w, p } = futDe(a.id); return { a, x: excPend(w, p) }; }).filter(o => o.x.length);
+      if (!L.length) { toast('Todos lo tienen rellenado'); break; } b.disabled = true;
+      await Promise.all(L.map(o => { const tx = o.x.map(([, t]) => t === 'partido' ? 'el post-partido' : 'el cierre de semana').join(' y ');
+        return sb.functions.invoke('enviar-aviso-enviar-aviso', { body: { alumno_ids: [o.a.id], titulo: '⚽ Te falta tu check-in', cuerpo: `${(o.a.nombre || '').split(' ')[0]}, te falta ${tx} de este fin de semana. Entra y rellénalo: 1 minuto.`, url: './', tag: 'lof-exc' } }).catch(() => { }); }));
+      toast(`Recordatorio enviado a ${L.length}: ${L.map(o => (o.a.nombre || '').split(' ')[0]).join(', ')}`); b.disabled = false; break; }
     case 'devVisto': {   /* check-in semanal que no necesita respuesta: queda atendido sin enviarle devolución (el alumno no ve nada) */
       const aid = b.dataset.id, l = lunesDe(hoyISO()), chk = (S.c.checkins || []).filter(k => k.alumno_id === aid && k.semana_inicio >= sumaDias(l, -7)).sort((x, y) => y.semana_inicio.localeCompare(x.semana_inicio))[0];
       if (!chk) break; b.disabled = true;
