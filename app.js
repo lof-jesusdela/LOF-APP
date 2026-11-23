@@ -4162,7 +4162,7 @@ function formWellness(tipo, f, alumnoId) {
   const DA = fecha(ay).toLocaleDateString('es-ES', { weekday: 'long' });
   const siNo = (id, v) => `<div class="choice" role="group" id="${id}">${[['si', 'Sí'], ['no', 'No']].map(([k, l]) => `<button type="button" data-v="${k}" aria-pressed="${v === k}">${l}</button>`).join('')}</div>`;
   if (tipo === 'diario') cuerpo = `
-    ${q(`¿Entrenaste ayer (${DA}) con el equipo?`, `${siNo('w-eq', prev ? (d.eq_min ? 'si' : 'no') : '')}<div id="w-eq-x" class="stack" style="gap:6px" ${d.eq_min ? '' : 'hidden'}><label class="f">Minutos totales del entreno<input type="number" step="any" id="w-eq-min" inputmode="numeric" value="${d.eq_min || ''}" placeholder="Ej. 90"></label></div>`)}
+    ${q(`¿Entrenaste ayer (${DA}) con el equipo?`, `${siNo('w-eq', prev ? (d.eq_min ? 'si' : 'no') : '')}<div id="w-eq-x" class="stack" style="gap:6px" ${d.eq_min ? '' : 'hidden'}><label class="f">Minutos totales del entreno<input type="number" step="any" id="w-eq-min" inputmode="numeric" value="${d.eq_min || ''}" placeholder="Ej. 90"></label><span class="small">¿Cómo de duro fue?</span>${escala10('w-eq-rpe', d.eq_rpe, ['1 · Muy suave', '10 · Máximo'])}</div>`)}
     ${q(`¿Hiciste ayer tu sesión de Jesús?${sesLof ? ' (la tienes registrada)' : ''}`, `${siNo('w-lof', prev ? (d.lof_rpe ? 'si' : 'no') : sesLof ? 'si' : '')}<div id="w-lof-x" class="stack" style="gap:6px" ${d.lof_rpe || (!prev && sesLof) ? '' : 'hidden'}><span class="small">¿Cómo de dura?</span>${escala10('w-lof-rpe', d.lof_rpe, ['1 · Muy suave', '10 · Máximo'])}<label class="f">Minutos de la sesión<input type="number" step="any" id="w-lof-min" inputmode="numeric" value="${d.lof_min || sesLof?.duracion_min || ''}" placeholder="Ej. 60"></label></div>`)}
     ${q('Fatiga general ahora mismo', escala10('w-fat', d.fatiga, ['1 · Fresco', '10 · Destrozado']))}
     ${qMol()}
@@ -4207,6 +4207,7 @@ function formWellness(tipo, f, alumnoId) {
       if (!eq) return $('#w-err').textContent = 'Dime si ayer entrenaste con el equipo.';
       if (!lf) return $('#w-err').textContent = 'Dime si ayer hiciste tu sesión de Jesús.';
       datos.eq_min = eq === 'si' ? numero($('#w-eq-min').value) || 0 : 0; if (eq === 'si' && !datos.eq_min) return $('#w-err').textContent = 'Pon los minutos del entreno con el equipo.';
+      datos.eq_rpe = eq === 'si' ? valEscala('w-eq-rpe') : null; if (eq === 'si' && !datos.eq_rpe) return $('#w-err').textContent = 'Indica cómo de duro fue el entreno con el equipo.';
       datos.lof_rpe = lf === 'si' ? valEscala('w-lof-rpe') : null; if (lf === 'si' && !datos.lof_rpe) return $('#w-err').textContent = 'Indica cómo de dura fue la sesión de Jesús.';
       datos.lof_min = datos.lof_rpe ? (numero($('#w-lof-min').value) || 45) : 0;
       datos.fatiga = valEscala('w-fat'); if (!datos.fatiga) return $('#w-err').textContent = 'Indica tu fatiga general.';
@@ -9515,7 +9516,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v493';
+const APP_VER = 'v494';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
