@@ -3759,7 +3759,8 @@ function vSemanasNav(f, a) {
   const acciones = pasada
     ? (aj ? destinos.map(([d, t]) => `<button class="btn sm" data-act="semCopiar" data-src="${aj.id}" data-l="${d}">⧉ Copiar a ${t}</button>`).join('') + `${fija ? `<button class="btn sm ghost" data-act="hacerPatron" data-id="${aj.id}">★ Convertir en semana patrón del bloque</button>` : ''}` : '')
     : aj ? `<button class="btn sm" data-act="sesionesContexto" data-id="${aj.id}">✎ Editar esta semana</button>${fija && !tmp ? `<button class="btn sm ghost" data-act="hacerPatron" data-id="${aj.id}">★ Convertir en semana patrón del bloque</button>` : ''}`
-      : `${pat ? `<button class="btn sm" data-act="semAjustar" data-l="${l}">✎ Modificar solo esta semana</button>` : ''}${ant ? `<button class="btn sm ghost" data-act="semAjustar" data-l="${l}" data-ant="1">⧉ Duplicar la semana anterior</button>` : ''}`;
+      : `${pat ? `<button class="btn sm" data-act="semAjustar" data-l="${l}">✎ Modificar solo esta semana</button>` : ''}`;
+  const copiarAnt = !pasada && (ant || patronSemana(f, sumaDias(l, -7)).pr) ? `<button class="btn sm ghost" data-act="semCopiarAnt" data-l="${l}">⧉ Copiar la semana anterior</button>` : '';
   return `<section class="section"><div class="section-head"><h2>Semanas de entreno</h2>${rel ? '<button class="btn sm ghost" data-act="fsem" data-d="0">Hoy</button>' : ''}</div>
     <div class="card stack" style="gap:12px">
       <div class="row" style="gap:8px;align-items:center"><button class="btn ghost sem-flecha" data-act="fsem" data-d="-1" aria-label="Semana anterior">‹</button>
@@ -3767,7 +3768,7 @@ function vSemanasNav(f, a) {
         <button class="btn ghost sem-flecha" data-act="fsem" data-d="1" aria-label="Semana siguiente">›</button></div>
       <div class="row" style="gap:8px;flex-wrap:wrap;justify-content:center"><span class="pill ${estado[0]}">${estado[1]}</span>${aj ? `<span class="small muted">${esc(aj.contexto_nombre || '')}</span>` : ''}</div>
       ${dias.length ? tilesDias(pr, dias) : '<div class="empty">Sin entrenamientos en esta semana.</div>'}
-      ${acciones || (!pasada && Clip.hay()) ? `<div class="row" style="gap:8px;flex-wrap:wrap">${acciones}${!pasada && Clip.hay() ? `<button class="btn sm gold" data-act="semPegar" data-l="${l}">📥 Pegar aquí «${esc(Clip.hay().tipo === 'dia' ? Clip.hay().nombre : Clip.hay().nombre)}»</button>` : ''}</div>` : ''}
+      ${acciones || copiarAnt || (!pasada && Clip.hay()) ? `<div class="row" style="gap:8px;flex-wrap:wrap">${acciones}${copiarAnt}${!pasada && Clip.hay() ? `<button class="btn sm gold" data-act="semPegar" data-l="${l}">📥 Pegar aquí «${esc(Clip.hay().tipo === 'dia' ? Clip.hay().nombre : Clip.hay().nombre)}»</button>` : ''}</div>` : ''}
       ${fija && !pasada && rel <= 1 ? `<button class="btn sm gold" data-act="avisarSemana" data-al="${a.id}" data-l="${l}" style="align-self:flex-start">💬 Avisar a ${esc(nom)}: semana lista</button>` : ''}
       <p class="note" style="margin:0">${pasada ? 'Semana pasada: se ve tal como la hizo. Para reutilizarla, cópiala a esta semana o a la próxima.' : aj ? 'Lo que cambies aquí solo afecta a esta semana. La semana patrón y las demás semanas no cambian.' : (fija ? 'Esta semana repite la semana patrón del bloque. Si algo cambia (partido, carga, mover un entreno), pulsa «Modificar solo esta semana».' : 'Esta semana entrena su bloque tal cual. Si algo cambia solo esta semana, pulsa «Modificar solo esta semana».')}</p>
     </div>
@@ -4500,8 +4501,20 @@ async function cruceEnBase(aid, ini, fin, excepto) {
   if (error) return null;
   return (data || []).find(x => x.id !== excepto && !esBloqueP(x)) || null;   /* los bloques largos no cuentan: un contexto puede caer dentro de un bloque */
 }
-async function ajustarSemana(lunes, anterior, srcId) {
-  const f = S.ficha, base = srcId ? (f.contextos || []).find(x => x.id === srcId) : anterior ? ctxEnSemana(semanasAj(f), sumaDias(lunes, -7)) : patronSemana(f, lunes).pr;
+/* Copiar la semana anterior (la modificada o la patrón) a esta; si esta ya estaba modificada, la sustituye y la anterior versión queda guardada */
+async function copiarSemanaAnterior(l) {
+  const f = S.ficha; if (!f) return; const pl = sumaDias(l, -7), src = ctxEnSemana(semanasAj(f), pl) || patronSemana(f, pl).pr;
+  if (!src) return toast('La semana anterior no tiene entrenos que copiar');
+  const aj = ctxEnSemana(semanasAj(f), l);
+  if (aj) { const hechas = (f.todas || []).filter(x => x.fecha >= l && x.fecha <= sumaDias(l, 6)).length;
+    if (!confirm(`Esta semana ya está modificada. Se sustituye por la de la semana anterior.${hechas ? ` Ya hay ${hechas} entreno(s) hecho(s) esta semana: se conservan en su historial.` : ''} ¿Seguimos?`)) return;
+    const { error } = await sb.from('programas').update({ contexto_hasta: sumaDias(l, -1), contexto_nombre: `${aj.contexto_nombre || 'Semana'} (sustituida)`, activo: false }).eq('id', aj.id);
+    if (error) return fallo(error, 'No se ha podido sustituir la semana.');
+    await recargarContextosCoach(); await cargarProgramasFicha(f); }
+  await ajustarSemana(l, false, null, src);
+}
+async function ajustarSemana(lunes, anterior, srcId, baseObj) {
+  const f = S.ficha, base = baseObj ? baseObj : srcId ? (f.contextos || []).find(x => x.id === srcId) : anterior ? ctxEnSemana(semanasAj(f), sumaDias(lunes, -7)) : patronSemana(f, lunes).pr;
   if (!base) return toast('Este jugador no tiene programa base todavía');
   if (ctxEnSemana(semanasAj(f), lunes)) return toast('Esa semana ya está modificada');
   if (S._creandoSemana) return; S._creandoSemana = true;
@@ -9353,7 +9366,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v478';
+const APP_VER = 'v479';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -9830,6 +9843,7 @@ document.addEventListener('click', async e => {
     case 'hacerPatron': await hacerPatron(+b.dataset.id); break;
     case 'avisarTodos': avisarSemanaTodos(); break;
     case 'avisarSemana': b.disabled = true; await avisarSemana(b.dataset.al, b.dataset.l); b.disabled = false; break;
+    case 'semCopiarAnt': b.disabled = true; await copiarSemanaAnterior(b.dataset.l); b.disabled = false; break;
     case 'semAjustar': b.disabled = true; await ajustarSemana(b.dataset.l, !!b.dataset.ant); b.disabled = false; break;
     case 'semPegar': b.disabled = true; await pegarSemana(b.dataset.l); b.disabled = false; break;
     case 'semCopiar': b.disabled = true; await ajustarSemana(b.dataset.l, false, +b.dataset.src); b.disabled = false; break;
