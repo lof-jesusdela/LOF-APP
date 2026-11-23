@@ -512,19 +512,29 @@ function vLateralAlumno(tabs, actual) {
     ${S.perfil?.nombre ? `<div class="lat-yo small muted">${esc(S.perfil.nombre)}</div>` : ''}
   </aside>`;
 }
+/* Cuánta atención pide un alumno (para ordenar la columna): lo pendiente pesa más, pero lo ya solventado
+   sigue contando (sus problemas siguen en los datos) y la salud y lo solventado en las últimas 2 semanas suman */
+function focoAl(a, e = estadoAlumno(a)) {
+  const notas = Alertas.de(a.id).notas || {}, d14 = sumaDias(hoyISO(), -14);
+  let p = e.nivel === 'bad' ? 40 : e.nivel === 'warn' ? 20 : 0;
+  (e.items || []).forEach(x => { p += (x.n === 'bad' ? 6 : x.n === 'warn' ? 3 : 1) * (x.ok ? .5 : 1) * (x.t === 'salud' ? 2 : 1); });
+  p += Object.values(notas).filter(n => n?.f >= d14).length * 2;
+  return p;
+}
 function vLateral(actual) {
   if (!S.c?.perfiles) return '';
   const cl = S.c.perfiles.filter(esCliente), byId = id => cl.find(p => p.id === id), q = normaliza(S.alF.q);
   const nav = [['inicio', 'Tu día'], ['alumnos', 'Alumnos'], ['metodologia', 'Metodología'], ['pagos', 'Negocio']];
-  const btn = a => { const e = estadoAlumno(a); return `<button data-act="ficha" data-id="${a.id}" ${S.ficha?.id === a.id ? 'aria-current="page"' : ''}><i class="al-dot ${e.nuevas ? 'nueva' : ''}" data-act="verAlertas" data-id="${a.id}" role="button" aria-label="${e.nivel === 'bad' ? 'Revisar' : e.nivel === 'warn' ? 'Atención' : 'En camino'}: ver pendientes de ${esc(a.nombre)}" style="background:var(--${e.nivel})"></i><span class="grow">${esc(a.nombre)}</span>${e.nuevas ? `<b class="al-n">${e.nuevas}</b>` : ''}</button>`; };
+  const E = new Map(), est = a => { if (!E.has(a.id)) E.set(a.id, estadoAlumno(a)); return E.get(a.id); };
+  const btn = a => { const e = est(a); return `<button data-act="ficha" data-id="${a.id}" ${S.ficha?.id === a.id ? 'aria-current="page"' : ''}><i class="al-dot ${e.nuevas ? 'nueva' : ''}" data-act="verAlertas" data-id="${a.id}" role="button" aria-label="${e.nivel === 'bad' ? 'Revisar' : e.nivel === 'warn' ? 'Atención' : 'En camino'}: ver pendientes de ${esc(a.nombre)}" style="background:var(--${e.nivel})"></i><span class="grow">${esc(a.nombre)}</span>${e.nuevas ? `<b class="al-n">${e.nuevas}</b>` : ''}</button>`; };
   const sec = (t, l) => l.length ? `<div class="lat-sec">${t}</div>${l.map(btn).join('')}` : '';
   const res = q ? cl.filter(a => normaliza(a.nombre).includes(q)).slice(0, 30) : null;
-  const fav = favoritos().map(byId).filter(Boolean), rec = recientes().map(byId).filter(a => a && !fav.includes(a)).slice(0, 6);
-  const at = cl.filter(a => !fav.includes(a) && !rec.includes(a)).map(a => ({ a, e: estadoAlumno(a) })).filter(x => x.e.nivel === 'bad').slice(0, 6).map(x => x.a);
+  const rec = recientes().map(byId).filter(Boolean).slice(0, 5);
+  const resto = cl.filter(a => !rec.includes(a)).map(a => ({ a, p: focoAl(a, est(a)) })).sort((x, y) => y.p - x.p || (x.a.nombre || '').localeCompare(y.a.nombre || '')).map(x => x.a);
   return `<aside class="lateral" aria-label="Navegación del coach">
     <nav class="lat-nav">${nav.map(([k, l]) => `<button data-act="ctab" data-t="${k}" ${actual === k && !S.ficha && !S.reporte && !S.editor && !S.obj ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span></button>`).join('')}</nav>
     <input type="search" id="lat-busca" class="lat-busca" placeholder="Buscar entre ${cl.length} clientes…" value="${esc(S.alF.q)}" aria-label="Buscar alumno" autocomplete="off" style="margin-top:16px">
-    <div class="lat-al" id="lat-al">${res ? (res.length ? res.map(btn).join('') : '<div class="small muted" style="padding:8px 12px">Sin resultados</div>') : sec('★ Favoritos', fav) + sec('🕘 Recientes', rec) + sec('🔴 Requieren revisión', at) || '<div class="small muted" style="padding:8px 12px">Abre fichas o márcalas con ★ para tenerlas aquí.</div>'}</div>
+    <div class="lat-al" id="lat-al">${res ? (res.length ? res.map(btn).join('') : '<div class="small muted" style="padding:8px 12px">Sin resultados</div>') : sec('🕘 Recientes', rec) + sec('Resto de alumnos', resto)}</div>
     <button class="linkbtn small" data-act="ctab" data-t="alumnos" style="margin:6px 12px">Ver todos (${cl.length}) ›</button>
   </aside>`;
 }
@@ -9497,7 +9507,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v491';
+const APP_VER = 'v492';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
