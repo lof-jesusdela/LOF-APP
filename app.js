@@ -4193,6 +4193,7 @@ function formWellness(tipo, f, alumnoId) {
     <label class="f">${tipo === 'lunes' ? '¿Algo que Jesús deba saber para planificar tu semana?' : tipo === 'semana' ? '¿Algo más que deba saber Jesús? (opcional)' : 'Comentario (opcional)'}<textarea id="w-nota" rows="2">${esc(d.nota || '')}</textarea></label>
     <p class="err" id="w-err"></p><button class="btn full" type="submit" id="w-b">Enviar a Jesús</button></form>`);
   const F = $('#f-w'); firmarMini();
+  if (!alumnoId && tipo !== 'semana') pasosW(F);   /* el futbolista lo rellena pregunta a pregunta; tú lo ves todo desplegado */
   F.addEventListener('click', ev => { const q = ev.target.closest('[data-act="quitarCapW"]'); if (!q) return; ev.preventDefault(); ev.stopPropagation(); (d.reloj ||= []).splice(+q.dataset.i, 1); $('#w-gal').innerHTML = d.reloj.length ? `<b class="small">Ya subidas (${d.reloj.length}):</b>${miniW(d.reloj, true)}` : ''; firmarMini(); });
   F.addEventListener('click', ev => {
     const z = ev.target.closest('[data-zona]'); if (z) z.setAttribute('aria-pressed', z.getAttribute('aria-pressed') !== 'true');
@@ -4241,15 +4242,49 @@ function formWellness(tipo, f, alumnoId) {
     if (r.error) { btn.disabled = false; btn.textContent = 'Enviar a Jesús'; return fallo(r.error, /wellness/.test(r.error.message || '') ? 'Falta ejecutar el Bloque 21 en Supabase.' : 'No se ha podido enviar.'); }
     if (pt && tipo === 'partido') await sb.from('partidos').update({ minutos: datos.minutos }).eq('id', pt.id);
     const mol = (datos.molestias || []).length || datos.molestia_txt || RX_SALUD.test(datos.nota || '');
+    /* Cierre de semana sin planificación del equipo o sin GPS: queda enviado, y que se lo pase a Jesús por WhatsApp en cuanto lo tenga */
+    const faltan = tipo === 'lunes' && !alumnoId ? [!datos.semana && !(datos.archivos || []).length && 'la planificación del equipo', !(datos.gps || []).length && 'los datos del GPS'].filter(Boolean) : [];
+    const pFaltan = faltan.length ? `<div class="aprox small" style="text-align:left;border-left:4px solid #C9A227">📎 Tus datos quedan actualizados, a falta de <b>${faltan.join(' y ')}</b>. En cuanto los tengas, mándaselos directamente a Jesús por WhatsApp y él los sube.</div>` : '';
+    if (faltan.length && !mol && !S.vista && !S.prueba) {
+      cerrarSheet(); await cargarFutbol(S.user.id, S.d); render();
+      abrirSheet(`<div class="stack" style="text-align:center;align-items:center"><div style="font-size:44px">✅</div><h2 style="margin:0">Check-in enviado</h2>${pFaltan}<a class="btn full" href="${esc(waJesus(`Hola Jesús, te paso ${faltan.join(' y ')} de esta semana: `))}" target="_blank" rel="noopener" id="w-wa">💬 Mandárselos por WhatsApp</a><button class="btn ghost full" data-act="cerrarSheet">Aún no los tengo</button></div>`);
+      $('#w-wa')?.addEventListener('click', () => setTimeout(cerrarSheet, 400)); return;
+    }
     if (mol && !alumnoId && !S.vista && !S.prueba) {   /* molestia: aviso al móvil de Jesús y al alumno, que se lo cuente por WhatsApp */
       const txtM = [(datos.molestias || []).join(', '), datos.molestia_txt || (RX_SALUD.test(datos.nota || '') ? datos.nota : '')].filter(Boolean).join(' · ');
       sb.functions.invoke('enviar-aviso-enviar-aviso', { body: { a_coach: true, motivo: 'molestia', cuerpo: `🩹 Molestia en su ${NOM_CHK[tipo].toLowerCase()}: ${txtM}` } }).catch(() => { });
       cerrarSheet(); if (alumnoId) await cargarFutbolCoach(); else await cargarFutbol(S.user.id, S.d); render();
-      abrirSheet(`<div class="stack chk-bloq"><div class="chk-bloq-ic">🩹</div><h2 style="margin:0;color:#A32D2D">Has marcado una molestia</h2><p style="margin:0;font-size:17px">Queda guardada en tu check-in, pero <b>escríbele a Jesús por WhatsApp ahora</b> para que lo vea cuanto antes y ajuste tu entreno.</p><span class="small" style="color:#5F5E5A">${esc(txtM)}</span><a class="btn full chk-bloq-b" href="${esc(waJesus(`Hola Jesús, en mi ${NOM_CHK[tipo].toLowerCase()} he marcado una molestia: ${txtM}. `))}" target="_blank" rel="noopener" id="w-wa">💬 Escribir a Jesús por WhatsApp</a><button class="btn ghost full" data-act="cerrarSheet">Ya se lo he dicho</button></div>`);
+      abrirSheet(`<div class="stack chk-bloq"><div class="chk-bloq-ic">🩹</div><h2 style="margin:0;color:#A32D2D">Has marcado una molestia</h2><p style="margin:0;font-size:17px">Queda guardada en tu check-in, pero <b>escríbele a Jesús por WhatsApp ahora</b> para que lo vea cuanto antes y ajuste tu entreno.</p><span class="small" style="color:#5F5E5A">${esc(txtM)}</span>${pFaltan}<a class="btn full chk-bloq-b" href="${esc(waJesus(`Hola Jesús, en mi ${NOM_CHK[tipo].toLowerCase()} he marcado una molestia: ${txtM}. `))}" target="_blank" rel="noopener" id="w-wa">💬 Escribir a Jesús por WhatsApp</a><button class="btn ghost full" data-act="cerrarSheet">Ya se lo he dicho</button></div>`);
       $('#w-wa')?.addEventListener('click', () => setTimeout(cerrarSheet, 400)); return;
     }
     cerrarSheet(); toast(tipo === 'diario' && (datos.reloj || []).length ? `¡Recibido! Gracias · ${datos.reloj.length} captura${datos.reloj.length > 1 ? 's' : ''} subida${datos.reloj.length > 1 ? 's' : ''}` : '¡Recibido! Gracias'); if (alumnoId) await cargarFutbolCoach(); else await cargarFutbol(S.user.id, S.d); render();
   });
+}
+/* Check-in del futbolista pregunta a pregunta (diseño A): cada bloque del formulario es un paso; los de una sola
+   escala avanzan solos al tocar, «No» también; «Siguiente» comprueba lo obligatorio. Los datos se envían igual que siempre. */
+function pasosW(F) {
+  const err = $('#w-err'), btn = $('#w-b'), cab = [...F.children].slice(0, 2), pasos = []; let pend = [];
+  [...F.children].forEach(el => { if (cab.includes(el) || el === err || el === btn) return; if (el.tagName === 'P') { pend.push(el); return; } pasos.push([...pend, el]); pend = []; });
+  const W = pasos.map(g => { const w = document.createElement('div'); w.className = 'wz-p stack'; g[0].before(w); g.forEach(x => w.appendChild(x)); return w; });
+  cab[1].insertAdjacentHTML('afterend', `<div class="wz-top"><span class="small" id="wz-n"></span><div class="wz-bar"><i id="wz-i"></i></div></div>`);
+  err.insertAdjacentHTML('beforebegin', `<div class="wz-nav"><button type="button" class="btn ghost" id="wz-at">‹ Atrás</button><button type="button" class="btn" id="wz-sig">Siguiente ›</button></div>`);
+  const REQ = ['w-fat', 'w-antes', 'w-despues', 'w-durante', 'w-rpe', 'w-eq-rpe', 'w-lof-rpe'];
+  let i = 0;
+  const ver = () => { W.forEach((w, k) => w.hidden = k !== i); $('#wz-n').textContent = `${i + 1} de ${W.length}`; $('#wz-i').style.width = `${(i + 1) / W.length * 100}%`; $('#wz-at').style.visibility = i ? 'visible' : 'hidden'; const ult = i === W.length - 1; $('#wz-sig').hidden = ult; btn.hidden = !ult; err.textContent = ''; $('#sheet-in').scrollTop = 0; };
+  const valido = () => { const w = W[i], vis = el => !el.closest('[hidden]');
+    if ([...w.querySelectorAll('.choice[id]')].some(c => vis(c) && !c.querySelector('[aria-pressed="true"]'))) return 'Elige Sí o No para seguir.';
+    if ([...w.querySelectorAll('.escala10')].some(e => vis(e) && REQ.includes(e.id) && !e.querySelector('[aria-pressed="true"]'))) return 'Elige un número del 1 al 10.';
+    const mi = w.querySelector('#w-eq-min, #w-min'); if (mi && vis(mi) && mi.value.trim() === '') return mi.id === 'w-min' ? 'Pon los minutos que jugaste (0 si no jugaste).' : 'Pon los minutos del entreno.';
+    return ''; };
+  const sig = () => { const e = valido(); if (e) return err.textContent = e; if (i < W.length - 1) { i++; ver(); } };
+  $('#wz-sig').addEventListener('click', sig); $('#wz-at').addEventListener('click', () => { if (i) { i--; ver(); } });
+  F.addEventListener('submit', e => { if (i < W.length - 1) { e.preventDefault(); e.stopImmediatePropagation(); sig(); } }, true);
+  F.addEventListener('click', ev => {
+    const w = W[i], solo = w.querySelectorAll('.escala10').length === 1 && !w.querySelector('input,textarea,select,.choice,[data-zona]');
+    if (ev.target.closest('.escala10 button') && solo) setTimeout(() => { if (!valido()) sig(); }, 260);
+    if (ev.target.closest('.choice[id] [data-v="no"]')) setTimeout(() => { if (!valido()) sig(); }, 260);
+  });
+  ver();
 }
 /* Sube imágenes (reducidas) o PDF al espacio privado "gps" (carpeta del jugador) y añade las rutas a la lista */
 async function subirArchivosW(input, lista, prefijo, txt, msg) {
@@ -9516,7 +9551,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v495';
+const APP_VER = 'v496';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
