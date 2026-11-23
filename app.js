@@ -2009,6 +2009,7 @@ async function abrirDia(id, op = {}) {
     if (S.dia?.id === id) { S.entVer = false; S.tab = 'entreno'; render(); window.scrollTo(0, 0); return; }
     return toast(`Tienes un entreno en curso (${S.dia?.titulo || S.dia?.nombre || 'sin terminar'}). Termínalo o pulsa «Salir» para empezar otro.`);
   }
+  { const t = chkBloqueaEntreno(op); if (t) { abrirSheet(`<div class="stack chk-bloq"><div class="chk-bloq-ic">⚠️</div><h2 style="margin:0;color:#A32D2D">${t === 'lunes' ? 'Check-in de lunes' : 'Check-in diario'} de hoy sin rellenar</h2><p style="margin:0;font-size:17px"><b>Para poder hacer el entrenamiento, rellénalo antes.</b> Es lo primero del día, al levantarte: con él Jesús ajusta tu carga.</p><button class="btn full chk-bloq-b" data-act="wellness" data-t="${t}" data-f="${hoyISO()}">Rellenar mi check-in ahora ›</button><button class="btn ghost full" data-act="cerrarSheet">Ahora no</button></div>`); return; } }
   S.entVer = false;
   S.dia = op.dia || S.d.programa.dias.find(d => d.id === id);
   const fechaS = op.fecha || S.obj?.fecha || hoyISO(), editar = !!op.editar;
@@ -3978,7 +3979,7 @@ function pendientesFutbol() {
   if (false && dom && !wDe(w, dom, 'semana')) out.push({ t: 'semana', f: dom, txt: 'Cierre de semana', sub: 'La semana que viene del club (entrenos, horarios, partido). Escríbela o sube una foto o PDF. Así Jesús te deja tu semana lista el lunes.' });
   if (!wDe(w, hoy, 'diario') && tocaDiario(hoy, S.d.partidos, w)) out.push({ t: 'diario', f: hoy, txt: 'Wellness diario', sub: 'Carga con el equipo, tu sesión y tu fatiga. 30 segundos.' });
   /* Atrasados: todos los que falten desde que empezó a usar los check-ins, sin límite; no se van hasta que los rellena */
-  const ini = [s.inicio, w.map(x => x.fecha).sort()[0]].filter(Boolean).sort().pop();
+  const ini = [s.inicio, w.map(x => x.fecha).sort()[0], CORTE_CHK].filter(Boolean).sort().pop();
   if (ini) for (let d = sumaDias(hoy, -1); d >= ini; d = sumaDias(d, -1)) {
     const dw = (fecha(d).getDay() + 6) % 7, pt = (S.d.partidos || []).find(x => x.fecha === d), DL = fecha(d).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
     if (pt) { if (!wDe(w, d, 'partido') && !out.some(o => o.t === 'partido' && o.f === d)) out.push({ t: 'partido', f: d, txt: `Post-partido del ${DL}`, sub: pt.rival ? 'Contra ' + pt.rival : 'Cómo fue el partido', atr: 1 }); }
@@ -3986,6 +3987,14 @@ function pendientesFutbol() {
     else if (!wDe(w, d, 'diario') && tocaDiario(d, S.d.partidos, w)) out.push({ t: 'diario', f: d, txt: `Check-in diario del ${DL}`, sub: 'Carga del día y fatiga', atr: 1 });
   }
   return out;
+}
+const CORTE_CHK = '2026-11-23';   /* lo anterior a esta fecha ya no se reclama */
+/* Futbolistas: sin el check-in de la mañana (diario o de lunes) no se puede empezar a entrenar */
+function chkBloqueaEntreno(op) {
+  const s = S.d?.servicio; if (!s?.modulo_futbol || S.obj || op.editar || S.prueba) return null;
+  const hoy = hoyISO(), w = S.d.wellness || [], fS = op.fecha || hoy; if (fS !== hoy) return null;
+  const t = (fecha(hoy).getDay() + 6) % 7 === 0 ? 'lunes' : tocaDiario(hoy, S.d.partidos, w) ? 'diario' : null;
+  return t && !wDe(w, hoy, t) ? t : null;
 }
 /* Fatiga del día: del diario; si no hay, del de lunes o del post-partido (así no quedan huecos) */
 const fatDia = (w, f) => { const d = wDe(w, f, 'diario')?.datos?.fatiga ?? wDe(w, f, 'lunes')?.datos?.fatiga; if (d != null) return d; const p = wDe(w, f, 'partido')?.datos; return p ? (p.fatiga ?? (p.despues != null ? 11 - p.despues : null)) : null; };
@@ -9443,7 +9452,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v483';
+const APP_VER = 'v484';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
