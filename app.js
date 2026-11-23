@@ -553,7 +553,7 @@ function render() {
       <button type="button" class="badge" data-act="logoAct" aria-label="Actualizar la app" title="Toca para actualizar la app" style="background:none;border:0;padding:0;cursor:pointer;text-align:left;color:inherit;font:inherit"><img src="icons/logo-96.jpg" alt=""><div class="t">La Obra Fitness<strong>${coach ? 'Panel coach' : 'Construyendo tu Prime'}</strong></div></button>
       <div class="row" style="gap:8px">${coach && typeof Consultas !== 'undefined' && ['inicio', 'alumnos', 'metodologia', 'pagos'].includes(actual) ? Consultas.vBoton() : ''}${esCoach ? `<div class="seg" role="group" aria-label="Vista"><button data-act="modo" data-v="alumno" aria-pressed="${!coach}">Yo</button><button data-act="modo" data-v="coach" aria-pressed="${coach}">Coach</button></div>` : ''}
       <button class="avatar" data-act="${coach ? 'cuenta' : 'menuAl'}" aria-label="${coach ? 'Mi cuenta' : 'Tu menú'}">${esCoach ? '<img src="icons/coach.jpg" alt="">' : S.perfil.foto_url ? `<img src="${esc(S.perfil.foto_url)}" alt="">` : esc((S.perfil.nombre || '?').slice(0, 2).toUpperCase())}</button></div>
-    </header>${S.prueba ? vBannerPrueba() : S.vista ? vBannerVista() : vBarraYo()}${coach && ANCHO.matches ? vLateral(actual) : !coach && ANCHO.matches ? vLateralAlumno(tabs, actual) : ''}<main id="main" class="${coach ? claseMain() : claseMainAlumno(actual)}">${(S.iaCoach && coach) ? seguro(IA.vCoach) : (S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vDuo() + vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vBarraBloque() + seguro(vFicha) : (!coach && S.ia) ? seguro(IA.vChat) : (!coach && Temperamento.activo()) ? seguro(Temperamento.vista) : seguro(vistas[actual])}</main>${coach ? Clip.barra() : ''}${vBarraEntreno()}${IA.vFab(coach)}`;
+    </header>${S.prueba ? vBannerPrueba() : S.vista ? vBannerVista() : vBarraYo()}${coach && ANCHO.matches ? vLateral(actual) : !coach && ANCHO.matches ? vLateralAlumno(tabs, actual) : ''}<main id="main" class="${coach ? claseMain() : claseMainAlumno(actual)}">${(S.iaCoach && coach) ? seguro(IA.vCoach) : (S.factura && coach) ? vFacturaDoc() : (S.obj && coach) ? vDuo() + vEntreno() : (S.reporte && coach) ? vReporte() : (S.editor && coach) ? vEditor() : (S.ficha && S.verPlan && coach) ? vPlanDia() : (S.ficha && S.verSes && coach) ? vSesionCerrada() : (S.ficha && S.valEd && coach) ? vValoracionCoach() : (S.ficha && coach) ? vBarraBloque() + seguro(vFicha) : (!coach && actual !== 'coach' && chkBloqueaApp()) ? vBloqueoChk(chkBloqueaApp()) : (!coach && S.ia) ? seguro(IA.vChat) : (!coach && Temperamento.activo()) ? seguro(Temperamento.vista) : seguro(vistas[actual])}</main>${coach ? Clip.barra() : ''}${vBarraEntreno()}${IA.vFab(coach)}`;
   document.body.classList.toggle('modo-coach', coach);
   document.body.classList.toggle('modo-alumno', !coach && ANCHO.matches);
   if (coach) aplicarFiltroAl();
@@ -4001,6 +4001,26 @@ function pendientesFutbol() {
   return out;
 }
 const CORTE_CHK = '2026-11-23';   /* lo anterior a esta fecha ya no se reclama */
+/* Futbolistas: sin el post-partido (desde 2 h después del partido; sin hora, desde las 21:00) o sin el cierre de semana
+   la app queda bloqueada hasta rellenarlo. No durante un entreno en curso. El chat con Jesús sigue abierto. */
+function chkBloqueaApp() {
+  const s = S.d?.servicio; if (!s?.modulo_futbol || S.d.futbolErr || S.modo === 'coach' || S.vista || S.prueba || S.obj || enCurso()) return null;
+  const hoy = hoyISO(), n = new Date(), min = n.getHours() * 60 + n.getMinutes();
+  return pendientesFutbol().filter(x => x.t === 'lunes' || x.t === 'partido').filter(x => {
+    if (x.t !== 'partido' || x.f < hoy) return true;
+    const pt = (S.d.partidos || []).find(p => p.fecha === x.f), [h, m] = (pt?.hora ? String(pt.hora).slice(0, 5) : '19:00').split(':').map(Number);
+    return min >= h * 60 + (m || 0) + 120;
+  }).sort((a, b) => a.f < b.f ? -1 : 1)[0] || null;
+}
+function vBloqueoChk(x) {
+  const pt = x.t === 'partido' ? (S.d.partidos || []).find(p => p.fecha === x.f) : null, dl = fecha(x.f).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+  const tit = x.t === 'partido' ? `Check-in post-partido sin rellenar` : `Check-in de cierre de semana sin rellenar`;
+  return `<section class="section"><div class="stack chk-bloq"><div class="chk-bloq-ic">⚠️</div><h2 style="margin:0;color:#A32D2D">${tit}</h2>
+    <span class="small" style="color:#5F5E5A">${esc(dl)}${pt?.rival ? ' · contra ' + esc(pt.rival) : ''}</span>
+    <p style="margin:0;font-size:17px"><b>Para poder usar la app, rellénalo antes.</b> ${x.t === 'partido' ? 'Cuéntale a Jesús cómo fue el partido: con esto ajusta tu semana.' : 'Tu fatiga tras el partido y tu semana con el equipo: con esto Jesús prepara tu semana.'}</p>
+    <button class="btn full chk-bloq-b" data-act="wellness" data-t="${x.t}" data-f="${x.f}">Rellenar mi check-in ahora ›</button>
+    ${x.t === 'partido' ? `<span class="small" style="color:#5F5E5A">¿No se jugó o se aplazó? Escríbele a Jesús desde el chat 💬 y lo quita.</span>` : ''}</div></section>`;
+}
 /* Futbolistas: sin el check-in de la mañana (diario o de lunes) no se puede empezar a entrenar */
 function chkBloqueaEntreno(op) {
   const s = S.d?.servicio; if (!s?.modulo_futbol || S.obj || op.editar || S.prueba) return null;
@@ -9462,7 +9482,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v485';
+const APP_VER = 'v486';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
