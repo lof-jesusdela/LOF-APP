@@ -1,7 +1,8 @@
 // Edge Function: avisos automáticos de check-in a los alumnos. La llama Supabase cada 15 min (pg_cron, Bloque 114).
 //  · Check-in del partido: 2 h después de la hora que pusiste en el partido (cuando ya ha terminado).
-//  · Check-in del lunes (futbolistas) y check-in semanal (resto de alumnos): los lunes a las 8:00 (hora de Madrid).
-//  · Futbolistas: check-in diario a las 10:00 (no lunes ni día de partido). Resto: a las 21:30 si llevan 2 días sin registrar (máx. cada 2 días).
+//  · Futbolistas: check-in diario de martes a viernes a las 7:00 (no el día de partido ni el siguiente); cierre de semana el día después del partido a las 8:00
+//    (si no hubo partido el fin de semana, el lunes); post-partido 2 h después del partido.
+//  · Resto de alumnos: check-in semanal los lunes a las 8:00 y, a las 21:30, aviso si llevan 2 días sin registrar (máx. cada 2 días).
 // Cada aviso se envía una sola vez (tabla avisos_enviados). Secretos: VAPID_PUBLIC, VAPID_PRIVATE, VAPID_SUBJECT, CRON_SECRET.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
@@ -22,6 +23,8 @@ Deno.serve(async (req) => {
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT") || "mailto:admin@example.com", Deno.env.get("VAPID_PUBLIC")!, Deno.env.get("VAPID_PRIVATE")!);
   const { fecha, min, lunes } = ahoraMadrid();
+  const dRel = (n: number) => { const d = new Date(fecha + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const dw = (new Date(fecha + "T12:00:00Z").getUTCDay() + 6) % 7;
   const avisos: { clave: string; alumno_id: string; titulo: string; cuerpo: string; url: string }[] = [];
 
   /* Futbolistas activos */
@@ -38,7 +41,11 @@ Deno.serve(async (req) => {
     avisos.push({ clave: `partido:${p.id}`, alumno_id: p.alumno_id, titulo: "⚽ Check-in del partido", cuerpo: `${nombre(p.alumno_id) ? nombre(p.alumno_id) + ", ¿c" : "¿C"}ómo ha ido${p.rival ? " contra " + p.rival : ""}? Cuéntamelo en 1 minuto.`, url: `./?w=partido&f=${fecha}` });
   }
   /* Lunes a partir de las 8:00 */
-  if (lunes && min >= LUNES_HORA * 60) for (const id of ids) avisos.push({ clave: `lunes:${fecha}:${id}`, alumno_id: id, titulo: "📝 Check-in del lunes", cuerpo: `${nombre(id) ? "Buenos días, " + nombre(id) + ". " : ""}¿Cómo empiezas la semana? Rellena tu check-in.`, url: `./?w=lunes&f=${fecha}` });
+  /* Futbolistas · cierre de semana: el día después del partido (o el lunes si no hubo partido el fin de semana) */
+  const { data: ptsR } = await admin.from("partidos").select("alumno_id,fecha").gte("fecha", dRel(-2)).lte("fecha", dRel(-1)).in("alumno_id", ids.length ? ids : ["-"]);
+  const jugo = (id: string, f: string) => (ptsR || []).some((p) => p.alumno_id === id && p.fecha === f) || (pts || []).some((p) => p.alumno_id === id && p.fecha === f);
+  const tocaCierre = (id: string) => jugo(id, dRel(-1)) || (dw === 0 && !jugo(id, dRel(-2)) && !(pts || []).some((p) => p.alumno_id === id));
+  if (min >= LUNES_HORA * 60) for (const id of ids) if (tocaCierre(id)) avisos.push({ clave: `lunes:${fecha}:${id}`, alumno_id: id, titulo: "📝 Check-in · cierre de semana", cuerpo: `${nombre(id) ? "Buenos días, " + nombre(id) + ". " : ""}¿Cómo estás después del partido? Cuéntamelo y pásame tu semana con el equipo.`, url: `./?w=lunes&f=${fecha}` });
 
   /* Lunes a las 8:00 · resto de alumnos: check-in semanal de la semana que acaba de terminar (si no lo han enviado) */
   if (lunes && min >= LUNES_HORA * 60) {
@@ -55,10 +62,10 @@ Deno.serve(async (req) => {
     }
   }
   const diaRel = (f: string, n: number) => { const d = new Date(f + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
-  /* Futbolistas · 10:00: check-in diario obligatorio (no los lunes, que tienen el del lunes, ni el día de partido) */
-  if (!lunes && min >= 10 * 60) for (const id of ids) {
-    if ((pts || []).some((p) => p.alumno_id === id)) continue;
-    avisos.push({ clave: `diario:${fecha}:${id}`, alumno_id: id, titulo: "⚽ Tu check-in de hoy", cuerpo: `${nombre(id) ? nombre(id) + ", tu" : "Tu"} check-in diario: 1 minuto.`, url: `./?w=diario&f=${fecha}` });
+  /* Futbolistas · 7:00: check-in diario de martes a viernes (no el día de partido ni el siguiente) */
+  if (dw >= 1 && dw <= 4 && min >= 7 * 60) for (const id of ids) {
+    if ((pts || []).some((p) => p.alumno_id === id) || jugo(id, dRel(-1))) continue;
+    avisos.push({ clave: `diario:${fecha}:${id}`, alumno_id: id, titulo: "⚽ Tu check-in de hoy", cuerpo: `${nombre(id) ? nombre(id) + ", tu" : "Tu"} check-in diario: 30 segundos. Sin él no podrás empezar tu entreno.`, url: `./?w=diario&f=${fecha}` });
   }
   /* Resto de alumnos · 21:30: si llevan 2 días sin registrar (ayer y anteayer), como mucho un aviso cada 2 días */
   if (min >= 21 * 60 + 30) {
