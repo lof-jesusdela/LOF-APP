@@ -3420,7 +3420,7 @@ function vListaAlertas(aid, e, conResueltas = false) {
   const nota = x => Alertas.de(aid).notas?.[x.k];
   const sil = Alertas.silenciado(aid);
   return `<div class="stack" style="gap:6px">${sil ? `<div class="aprox small">🔕 Avisos silenciados ${sil >= '9999' ? 'hasta que los reactives' : 'hasta el ' + esc(fLarga(sil))}. <button class="linkbtn small" data-act="alConfig" data-id="${aid}">Cambiar</button></div>` : ''}
-    ${pend.map(g => `<div class="row small" style="gap:8px;align-items:flex-start"><span class="al-dot-s" style="background:var(--${g.n})"></span><span class="grow" data-act="alIr" data-id="${aid}" data-m="${esc(g.items[0].m)}" data-todos="${esc(g.items.filter(x => !x.comp).map(x => x.m).join('\n'))}" data-g="${g.items.length > 1 ? g.t : ''}" role="button" style="cursor:pointer"><span style="text-decoration:underline dotted;color:var(--bad);font-weight:700">${esc(g.m)}</span>${g.sub ? `<span class="muted" style="display:block">${esc(g.sub)}</span>` : ''}${g.nueva || g.items.some(x => S.ficha?.recien?.has(x.k)) ? ' <span class="pill bad">Nueva</span>' : ''}</span><span class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn sm ghost" data-act="cq" data-q="hilo" data-v="${aid}">💬 Chat</button><button class="btn sm" data-act="alResolver" data-id="${aid}" data-m="${esc(msDe(g))}" data-on="1">✓ Solventado</button></span></div>`).join('')}
+    ${pend.map(g => `<div class="row small" style="gap:8px;align-items:flex-start"><span class="al-dot-s" style="background:var(--${g.n})"></span><span class="grow" data-act="alIr" data-id="${aid}" data-m="${esc(g.items[0].m)}" data-todos="${esc(g.items.filter(x => !x.comp).map(x => x.m).join('\n'))}" data-g="${g.items.length > 1 ? g.t : ''}" role="button" style="cursor:pointer"><span style="text-decoration:underline dotted;color:var(--bad);font-weight:700">${esc(g.m)}</span>${g.sub ? `<span class="muted" style="display:block">${esc(g.sub)}</span>` : ''}${g.nueva || g.items.some(x => S.ficha?.recien?.has(x.k)) ? ' <span class="pill bad">Nueva</span>' : ''}</span><span class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn sm ghost" data-act="cq" data-q="hilo" data-v="${aid}">💬 Chat</button>${g.items.every(x => x.comp) ? `<button class="btn sm" data-act="alIr" data-id="${aid}" data-m="${esc(g.items[0].m)}" title="Se quita sola cuando lo haces">Hacerlo ›</button>` : `<button class="btn sm" data-act="alResolver" data-id="${aid}" data-m="${esc(msDe(g))}" data-on="1">✓ Solventado</button>`}</span></div>`).join('')}
     ${hechas.map(x => `<div class="row small" style="gap:8px;align-items:flex-start"><span class="al-dot-s" style="background:var(--ok)"></span><span class="grow" style="text-decoration:line-through;color:var(--muted)">${esc(x.m)}${nota(x) ? `<span style="display:block;text-decoration:none;color:var(--ok)">✓ ${esc(nota(x).t || 'Atendida')} · ${esc(fCorta(nota(x).f))}</span>` : ''}</span><button class="btn sm ghost" data-act="alResolver" data-id="${aid}" data-m="${esc(x.m)}" data-on="0">Deshacer</button></div>`).join('')}</div>`;
 }
 function verAlertas(id) {
@@ -4385,6 +4385,24 @@ function abrirDesdeAviso(url) {
   let n = 0; const intenta = () => { if (S.user && S.d?.partidos && S.modo !== 'coach') { formWellness(w, q.get('f') || hoyISO(), null); try { history.replaceState(null, '', location.pathname); } catch (e) { } } else if (++n < 20) setTimeout(intenta, 500); };
   intenta();
 }
+/* Buscador de ejercicios de la valoración: como el de las sesiones (lista completa con foto); al elegir, pone su foto y su vídeo */
+(() => {
+  const pinta = inp => { const l = inp.parentElement.querySelector('.ej-ac-l'); if (!l) return; const q = norm(inp.value).split(/\s+/).filter(Boolean);
+    const base = (S.c?.ejercicios || []).filter(z => !/^cardio ·/i.test(z.nombre || '')).filter(z => q.every(w => norm(z.nombre + ' ' + (z.musculo || '')).includes(w)))
+      .sort((a, b) => (!!b.imagen_url - !!a.imagen_url) || a.nombre.localeCompare(b.nombre, 'es')).slice(0, 60);
+    l.innerHTML = base.length ? base.map(z => `<button type="button" class="ej-ac-i" data-n="${esc(z.nombre)}">${z.imagen_url ? `<img src="${esc(z.imagen_url)}" alt="" loading="lazy">` : '<span class="ej-ac-ph">🏋️</span>'}<span class="grow">${esc(z.nombre)}${z.musculo ? `<small>${esc(z.musculo)}</small>` : ''}</span>${z.video_url ? '<span title="Tiene vídeo">🎬</span>' : ''}</button>`).join('') : '<div class="small muted" style="padding:10px">Sin resultados en tu biblioteca</div>';
+    l.hidden = false; };
+  document.addEventListener('focusin', e => { if (e.target.matches?.('input.ej-ac')) pinta(e.target); });
+  document.addEventListener('input', e => { if (e.target.matches?.('input.ej-ac')) pinta(e.target); });
+  document.addEventListener('pointerdown', e => {
+    const it = e.target.closest?.('.ej-ac-i');
+    if (it) { e.preventDefault(); const w = it.closest('.ej-ac-w'), inp = w.querySelector('input.ej-ac'), n = it.dataset.n; inp.value = n; w.querySelector('.ej-ac-l').hidden = true;
+      const fila = w.parentElement, mini = fila.firstElementChild; if (mini && mini !== w) mini.outerHTML = miniEj({ ejercicio: n });
+      const dato = w.closest('[data-dato]'), pr = dato?.querySelector('[data-k="nombre"]'); if (pr && !pr.value.trim()) pr.value = n;   /* sin nombre de prueba: usa el del ejercicio */
+      inp.blur(); return; }
+    document.querySelectorAll('.ej-ac-l:not([hidden])').forEach(l => { if (!l.parentElement.contains(e.target)) l.hidden = true; });
+  });
+})();
 try { navigator.serviceWorker?.addEventListener('message', e => { if (e.data?.t === 'abrir') abrirDesdeAviso(e.data.url); }); } catch (e) { }
 document.addEventListener('change', e => { const t = e.target; if (!t.matches?.('select[data-org="ctx"]')) return; const E = orgEstado(t.dataset.l); E.ctx[+t.dataset.k] = t.value; render(); });
 setTimeout(() => abrirDesdeAviso(location.href), 800);
@@ -8409,7 +8427,7 @@ function filaDato(x, di, tipo) {
       : mov ? `<label class="f">Resultado<select data-k="valor"><option value="">—</option>${opc.map(o => `<option ${o === x.valor ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></label>`
       : `<label class="f">Resultado<input type="text" data-k="valor" value="${esc(x.valor || '')}"></label>`}
     <button type="button" class="btn sm ghost" data-quitar aria-label="Quitar" style="padding:8px 0">✕</button></div>
-    ${conEj ? `<div class="row" style="gap:8px;align-items:flex-end;margin-top:6px">${miniEj(x)}<label class="f grow" style="margin:0">Ejercicio (sale su foto al alumno)<input type="text" list="dl-ej" data-k="ejercicio" value="${esc(x.ejercicio || '')}" placeholder="Escribe y elige de tu biblioteca"></label></div>` : ''}
+    ${conEj ? `<div class="row" style="gap:8px;align-items:flex-end;margin-top:6px">${miniEj(x)}<label class="f grow ej-ac-w" style="margin:0;position:relative">Ejercicio (sale su foto al alumno)<input type="search" class="ej-ac" data-k="ejercicio" value="${esc(x.ejercicio || '')}" placeholder="Busca en tu biblioteca" autocomplete="off"><div class="ej-ac-l" hidden></div></label></div>` : ''}
     ${obs ? `<label class="f" style="margin-top:6px">Ajustes de máquina u observaciones<input type="text" data-k="obs" value="${esc(x.obs || '')}" placeholder="Ej. asiento 4, respaldo 2 · compensa con la espalda"></label>` : ''}
     ${mov ? `<div class="fslots" style="margin-top:6px">${slotFoto('foto', x.foto, 'Foto de la prueba')}</div>` : ''}</div>`;
 }
@@ -9335,7 +9353,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v476';
+const APP_VER = 'v477';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
