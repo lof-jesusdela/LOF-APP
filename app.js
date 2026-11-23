@@ -3917,8 +3917,8 @@ function vRevisionesFicha(a) {
 const ZONAS = ['Isquiotibiales', 'Aductor', 'Cuádriceps', 'Gemelo', 'Tobillo', 'Rodilla', 'Cadera / pubis', 'Espalda', 'Otra'];
 async function cargarFutbol(uid, dst) {
   const [pt, wl] = await Promise.all([
-    sb.from('partidos').select('*').eq('alumno_id', uid).gte('fecha', sumaDias(hoyISO(), -60)).order('fecha'),
-    sb.from('wellness').select('*').eq('alumno_id', uid).gte('fecha', sumaDias(hoyISO(), -42)).order('fecha')
+    sb.from('partidos').select('*').eq('alumno_id', uid).gte('fecha', sumaDias(hoyISO(), -365)).order('fecha'),
+    sb.from('wellness').select('*').eq('alumno_id', uid).gte('fecha', sumaDias(hoyISO(), -365)).order('fecha')
   ]);
   dst.partidos = pt.data || []; dst.wellness = wl.data || []; dst.futbolErr = pt.error || wl.error ? 'Falta ejecutar el Bloque 21 en Supabase.' : null;
 }
@@ -3977,7 +3977,26 @@ function pendientesFutbol() {
   const dom = dow === 6 ? hoy : dow === 0 ? sumaDias(hoy, -1) : null;
   if (dom && !wDe(w, dom, 'semana')) out.push({ t: 'semana', f: dom, txt: 'Cierre de semana', sub: 'La semana que viene del club (entrenos, horarios, partido). Escríbela o sube una foto o PDF. Así Jesús te deja tu semana lista el lunes.' });
   if (!wDe(w, hoy, 'diario') && tocaDiario(hoy, S.d.partidos, w)) out.push({ t: 'diario', f: hoy, txt: 'Wellness diario', sub: 'Carga con el equipo, tu sesión y tu fatiga. 30 segundos.' });
+  /* Atrasados: todos los que falten desde que empezó a usar los check-ins, sin límite; no se van hasta que los rellena */
+  const ini = [s.inicio, w.map(x => x.fecha).sort()[0]].filter(Boolean).sort().pop();
+  if (ini) for (let d = sumaDias(hoy, -1); d >= ini; d = sumaDias(d, -1)) {
+    const dw = (fecha(d).getDay() + 6) % 7, pt = (S.d.partidos || []).find(x => x.fecha === d), DL = fecha(d).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' });
+    if (pt) { if (!wDe(w, d, 'partido') && !out.some(o => o.t === 'partido' && o.f === d)) out.push({ t: 'partido', f: d, txt: `Post-partido · ${DL}`, sub: pt.rival ? 'Contra ' + pt.rival : 'Cómo fue el partido', atr: 1 }); }
+    else if (dw === 0) { if (!wDe(w, d, 'lunes')) out.push({ t: 'lunes', f: d, txt: `Lunes · ${DL}`, sub: 'Tu fatiga tras el fin de semana', atr: 1 }); }
+    else if (!wDe(w, d, 'diario') && tocaDiario(d, S.d.partidos, w)) out.push({ t: 'diario', f: d, txt: `Diario · ${DL}`, sub: 'Carga del día y fatiga', atr: 1 });
+  }
   return out;
+}
+/* Fatiga del día: del diario; si no hay, del de lunes o del post-partido (así no quedan huecos) */
+const fatDia = (w, f) => { const d = wDe(w, f, 'diario')?.datos?.fatiga ?? wDe(w, f, 'lunes')?.datos?.fatiga; if (d != null) return d; const p = wDe(w, f, 'partido')?.datos; return p ? (p.fatiga ?? (p.despues != null ? 11 - p.despues : null)) : null; };
+/* Qué check-in toca un día: lunes, post-partido o diario */
+const chkTipoDia = (f, partidos) => (partidos || []).some(p => p.fecha === f) ? 'partido' : (fecha(f).getDay() + 6) % 7 === 0 ? 'lunes' : 'diario';
+const escudo = (url, nom, tam = 40) => url ? `<img src="${esc(url)}" alt="" class="esc" style="width:${tam}px;height:${tam}px">` : `<span class="esc esc-ini" style="width:${tam}px;height:${tam}px;font-size:${Math.round(tam / 3.2)}px">${esc(String(nom || '?').split(/\s+/).map(x => x[0]).join('').slice(0, 3).toUpperCase())}</span>`;
+/* Tarjeta de partido grande con los dos escudos */
+function vPartidoXL(pt, srv, compacto) {
+  if (!pt) return ''; const h = pt.hora ? String(pt.hora).slice(0, 5) : '', club = srv?.club_nombre || 'Tu club', dl = fecha(pt.fecha).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
+  const yo = `<div class="pxl-eq">${escudo(srv?.club_escudo, club, compacto ? 34 : 48)}<span>${esc(club)}</span></div>`, el = `<div class="pxl-eq">${escudo(pt.imagen_url, pt.rival, compacto ? 34 : 48)}<span>${esc(pt.rival || 'Rival')}</span></div>`;
+  return `<div class="pxl${compacto ? ' cmp' : ''}"><span class="pxl-ey">${esc(pt.competicion || 'Partido')}</span><div class="pxl-r">${pt.local === false ? el + `<div class="pxl-c"><b>${esc(h || 'vs')}</b><small>${esc(dl)} · fuera</small></div>` + yo : yo + `<div class="pxl-c"><b>${esc(h || 'vs')}</b><small>${esc(dl)} · en casa</small></div>` + el}</div>${pt.lugar && !compacto ? `<span class="pxl-l">📍 ${esc(pt.lugar)}</span>` : ''}</div>`;
 }
 const escala10 = (id, val, ext) => `<div class="escala10" role="group" id="${id}">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => `<button type="button" data-act="escala10" data-v="${n}" aria-pressed="${val === n}">${n}</button>`).join('')}</div>${ext ? `<div class="row small muted"><span class="grow">${ext[0]}</span><span>${ext[1]}</span></div>` : ''}`;
 const valEscala = id => { const b = document.querySelector(`#${id} [aria-pressed="true"]`); return b ? +b.dataset.v : null; };
@@ -3985,14 +4004,36 @@ const chipsZonas = sel => `<div class="chips" id="w-zonas">${ZONAS.map(z => `<bu
 function vFutbolHoy() {
   const D = S.d; if (D.futbolErr) return `<section class="section"><div class="card small muted">${esc(D.futbolErr)}</div></section>`;
   const M = mdDe(D.partidos || []), pend = pendientesFutbol(), fut = (D.partidos || []).filter(p => p.fecha >= hoyISO()).slice(0, 3);
-  return `<section class="section"><div class="card md-card stack">
+  const atr = pend.filter(x => x.atr), hoyP = pend.filter(x => !x.atr);
+  const rojo = atr.length ? `<section class="section"><div class="card stack chk-pend"><div class="row" style="gap:8px"><span class="chk-pend-n">${atr.length}</span><b class="grow">Check-ins pendientes</b></div><span class="small">No desaparece hasta que los rellenes: con estos datos Jesús ajusta tu carga.</span>
+    ${atr.slice(0, 8).map(x => `<button class="chk-pend-i" data-act="wellness" data-t="${x.t}" data-f="${x.f}"><span class="grow" style="text-align:left">${esc(x.txt)}</span><span style="color:var(--blue-text);font-weight:700">Rellenar ›</span></button>`).join('')}${atr.length > 8 ? `<span class="small muted">y ${atr.length - 8} más (cada vez que rellenes uno, sale el siguiente)</span>` : ''}</div></section>` : '';
+  const w14 = D.wellness || [], ini14 = sumaDias(hoyISO(), -13), fs = [...Array(14)].map((_, i) => sumaDias(ini14, i)), fv = fs.map(f => fatDia(w14, f)).filter(v => v != null);
+  let su = null; try { su = resumenSueno(w14, D.servicio, ini14, hoyISO()); } catch (e) { }
+  const toca = fs.filter(f => f < hoyISO() || wDe(w14, f, chkTipoDia(f, D.partidos))), hechos = toca.filter(f => wDe(w14, f, chkTipoDia(f, D.partidos)));
+  const mis = `<section class="section"><div class="card stack"><span class="eyebrow">Mis check-ins · 14 días</span><div class="mis-chk"><div><span>Fatiga media</span><b>${fv.length ? fmtNum(fv.reduce((a, b) => a + b, 0) / fv.length, 1) : '—'}</b></div><div><span>Sueño</span><b>${su?.media != null ? fmtNum(su.media, 1) + ' h' : '—'}</b></div><div><span>Rellenados</span><b>${hechos.length}/${toca.length}</b></div></div><span class="small muted">Los lunes y los días de partido cuentan con su propio check-in.</span></div></section>`;
+  return rojo + (M.prox ? `<section class="section">${vPartidoXL(M.prox, D.servicio)}</section>` : '') + `<section class="section"><div class="card md-card stack">
       <div class="row"><span class="md-chip">${esc(M.md || '—')}</span><div class="grow"><b>${esc(M.txt)}</b>${M.prox ? `<div class="small muted">Próximo: ${esc(M.prox.rival || 'partido')} · ${esc(fCorta(M.prox.fecha))}${M.prox.hora ? ' · ' + esc(String(M.prox.hora).slice(0, 5)) : ''}${M.prox.lugar ? ' · ' + esc(M.prox.lugar) : M.prox.local === false ? ' · fuera' : M.prox.local ? ' · en casa' : ''}</div>${M.prox.descripcion ? `<div class="small" style="margin-top:4px">${esc(M.prox.descripcion)}</div>` : ''}` : '<div class="small muted">Añade tu próximo partido para que Jesús ajuste tu semana.</div>'}</div></div>
-      ${pend.map(p => `<button class="pend-b" data-act="wellness" data-t="${p.t}" data-f="${p.f}"><span class="badge-dot" style="position:static"></span><div class="grow" style="text-align:left"><b>${esc(p.txt)}</b><div class="small muted">${esc(p.sub)}</div></div><span style="color:var(--blue-text);font-weight:700">Rellenar ›</span></button>`).join('')}
-      ${!pend.length ? '<div class="small" style="color:var(--ok)"><b>✓ Todo al día.</b> Gracias: Jesús ya tiene tu información de hoy.</div>' : ''}
+      ${hoyP.map(p => `<button class="pend-b" data-act="wellness" data-t="${p.t}" data-f="${p.f}"><span class="badge-dot" style="position:static"></span><div class="grow" style="text-align:left"><b>${esc(p.txt)}</b><div class="small muted">${esc(p.sub)}</div></div><span style="color:var(--blue-text);font-weight:700">Rellenar ›</span></button>`).join('')}
+      ${!hoyP.length ? '<div class="small" style="color:var(--ok)"><b>✓ Lo de hoy, al día.</b> Gracias: Jesús ya tiene tu información de hoy.</div>' : ''}
       ${(() => { const dd = wDe(S.d.wellness || [], hoyISO(), 'diario'); return dd ? `<button class="btn sm ghost" data-act="wellness" data-t="diario" data-f="${hoyISO()}" style="align-self:flex-start">Ver lo que he enviado hoy${(dd.datos?.reloj || []).length ? ' · ' + dd.datos.reloj.length + ' captura(s)' : ''}</button>` : ''; })()}
       ${fut.length ? `<div class="stack" style="gap:4px"><span class="eyebrow">Próximos partidos</span>${fut.map(p => `<div class="line" data-act="partido" data-id="${p.id}" style="cursor:pointer;padding:6px 0"><span class="small num" style="width:56px">${esc(fCorta(p.fecha))}</span><span class="small grow"><b>${esc(p.rival || 'Partido')}</b>${p.competicion ? ' · ' + esc(p.competicion) : ''}${p.hora ? ' · ' + esc(p.hora) : ''}</span><span class="small" style="color:var(--blue-text)">Editar</span></div>`).join('')}</div>` : ''}
       <button class="btn sm ghost" data-act="partido" style="align-self:flex-start">＋ Añadir partido</button>
-    </div></section>`;
+    </div></section>` + mis;
+}
+/* Club del futbolista: nombre y escudo (salen en sus partidos y en sus documentos) */
+function formClub(aid) {
+  const sv = (S.c.servicios || []).find(x => x.alumno_id === aid) || {};
+  abrirSheet(`<form class="stack" id="f-club"><h2>Su club</h2><p class="small muted" style="margin-top:-6px">Sale con su escudo en sus partidos, en tu calendario y en sus documentos.</p>
+    <label class="f">Nombre del club<input type="text" id="cl-n" value="${esc(sv.club_nombre || '')}" placeholder="Ej. CD Arnedo"></label>
+    <div class="row" style="gap:12px;align-items:center">${escudo(sv.club_escudo, sv.club_nombre, 64)}<label class="btn sm ghost"><input type="file" id="cl-f" accept="image/*" hidden>📷 ${sv.club_escudo ? 'Cambiar escudo' : 'Subir escudo'}</label><span class="small muted" id="cl-fn"></span></div>
+    <button class="btn full" type="submit">Guardar</button></form>`);
+  $('#cl-f').addEventListener('change', e => { $('#cl-fn').textContent = e.target.files[0]?.name || ''; });
+  $('#f-club').addEventListener('submit', async e => { e.preventDefault(); if (!sv.id) return toast('Este alumno no tiene servicio activo');
+    const row = { club_nombre: $('#cl-n').value.trim() || null }, fi = $('#cl-f').files[0];
+    if (fi) { try { row.club_escudo = await subirImagenEj(fi, `club-${aid}-${Date.now()}`, 400); } catch (err) { return toast(motivoImg(err)); } }
+    const { error } = await sb.from('servicios').update(row).eq('id', sv.id);
+    if (error) return fallo(error, /club_/.test(error.message || '') ? 'Falta ejecutar el Bloque 116 en Supabase.' : 'No se ha podido guardar.');
+    Object.assign(sv, row); cerrarSheet(); toast('Club guardado'); render(); });
 }
 /* «Liga · Jornada 12» → { tipo: 'Liga', jornada: 12 } (sin columna nueva: va en «competicion») */
 const compDe = c => { const t = String(c || ''); const j = t.match(/jornada\s*(\d+)/i); return { tipo: /copa/i.test(t) ? 'Copa' : /amist/i.test(t) ? 'Amistoso' : 'Liga', jornada: j ? +j[1] : null }; };
@@ -4672,9 +4713,13 @@ function vCalSemana({ w, p, ses = [], pres = [], todos, DP, H, PS, PB, lunes, ai
   const chipP = x => alumno ? chip('#0f766e', '⚽ Partido', esc([hhmm(x.hora), x.rival].filter(Boolean).join(' · ')))
     : `<button type="button" data-act="partido" data-al="${aid}" data-id="${x.id}" style="display:block;width:100%;text-align:left;border:0;border-radius:8px;padding:5px 7px;background:#0f766e;color:#fff;font-size:12px;line-height:1.25;cursor:pointer"><b>⚽ Partido</b><div style="opacity:.9">${esc([hhmm(x.hora), x.rival].filter(Boolean).join(' · '))}</div><div style="opacity:.9;font-weight:700">Editar ›</div></button>`;
   const chip = (c, t, sub, op, id) => `<${id && alumno ? `button type="button" data-act="abrirDia" data-id="${id}"` : 'div'} style="display:block;width:100%;text-align:left;border:0;border-radius:8px;padding:5px 7px;background:${c};color:#fff;opacity:${op ? .55 : 1};font-size:12px;line-height:1.25${id && alumno ? ';cursor:pointer' : ''}"><b>${t}</b>${sub ? `<div style="opacity:.9">${sub}</div>` : ''}${id && alumno ? '<div style="opacity:.9;font-weight:700">Abrir ›</div>' : ''}</${id && alumno ? 'button' : 'div'}>`;
+  const fut0 = fut, srvC = alumno ? S.d?.servicio : (S.c?.servicios || []).find(x => x.alumno_id === aid);
+  const chipPX = x => `<button type="button" data-act="partido" ${alumno ? '' : `data-al="${aid}"`} data-id="${x.id}" class="pxl-btn">${vPartidoXL(x, srvC, true)}</button>`;
+  const banChk = d => { if (alumno || !fut0) return ''; const t = chkTipoDia(d, p), hecho = wDe(w, d, t), nom = { diario: 'Diario', lunes: 'Lunes', partido: 'Partido' }[t];
+    return d > hoy ? `<span class="chk-ban nt">${nom}</span>` : `<button type="button" class="chk-ban ${hecho ? 'ok' : 'pe'}" data-act="verChkDia" data-al="${aid}" data-f="${d}" data-t="${t}">${hecho ? '✓' : '!'} ${nom}</button>`; };
   const col = [...Array(7)].map((_, i) => { const d = sumaDias(lunes, i), M = mdDe(p, d), fut = d > hoy, out = [], antes = [], despues = [];
     const conPt = p.some(x => x.fecha === d), sitio = dia => !conPt ? out : fase(dia) === 0 ? antes : fase(dia) === 2 ? despues : out;
-    p.filter(x => x.fecha === d).forEach(x => out.push(chipP(x)));
+    p.filter(x => x.fecha === d).forEach(x => out.push(fut0 ? chipPX(x) : chipP(x)));
     const dd = wDe(w, d, 'diario');
     if (dd?.datos?.eq_min) out.push(chip('#2563eb', '🏟 Equipo', `${dd.datos.eq_min} min${dd.datos.eq_rpe ? ' · RPE ' + dd.datos.eq_rpe : ''}`));
     else if (H[i] != null && !p.some(x => x.fecha === d) && !(dd && dd.datos?.eq_min === 0)) out.push(chip('#2563eb', '🏟 Equipo', esc(H[i] || 'previsto'), true));
@@ -4684,7 +4729,7 @@ function vCalSemana({ w, p, ses = [], pres = [], todos, DP, H, PS, PB, lunes, ai
       if (!hecho) sitio(x).push(chip('#c2410c', '💪 ' + (alumno ? 'Tu sesión' : 'LOF'), esc(lab(x)) + (d < hoy ? ' · no hecho' : ''), true, x.id)); });
     pres.filter(x => x.fecha === d && x.estado !== 'cancelada').forEach(x => out.push(chip('#7c3aed', alumno ? '📍 Con Jesús' : '📍 Contigo', esc([hhmm(x.hora), x.tipo].filter(Boolean).join(' · ')), x.estado === 'programada' && fut)));
     return `<div class="stack" style="gap:5px;min-width:0;padding:6px;border-radius:10px;background:${d === hoy ? 'var(--surface-2, #eef3ff)' : 'transparent'};border:1px solid var(--line)">
-      <div style="text-align:center"><b class="small">${L[i]} ${+d.slice(8)}</b>${fut && M.md ? `<div class="small" style="font-weight:700;color:${M.md === 'MD' ? '#0f766e' : 'var(--muted)'}">${M.md}</div>` : ''}</div>${[...antes, ...out, ...despues].join('') || '<span class="small muted" style="text-align:center">—</span>'}</div>`; }).join('');
+      ${banChk(d)}<div style="text-align:center"><b class="small">${L[i]} ${+d.slice(8)}</b>${fut && M.md ? `<div class="small" style="font-weight:700;color:${M.md === 'MD' ? '#0f766e' : 'var(--muted)'}">${M.md}</div>` : ''}</div>${[...antes, ...out, ...despues].join('') || '<span class="small muted" style="text-align:center">—</span>'}</div>`; }).join('');
   const nav = k => `data-act="${alumno ? 'futSemA' : 'futSem'}" data-l="${sumaDias(lunes, k)}"`;
   return `<section class="section" style="grid-column:1/-1;column-span:all;-webkit-column-span:all"><div class="section-head"><h2>${alumno ? 'Tu semana' : 'Calendario de la semana'}</h2><span class="row" style="gap:6px">${alumno || !fut ? '' : `<button class="btn sm ghost" data-act="partido" data-al="${aid}">＋ Partido</button><button class="btn sm ghost" data-act="futEquipo" data-al="${aid}">🗓 Horario de la semana</button>`}<button class="btn sm ghost" ${nav(-7)} aria-label="Semana anterior">◀</button><button class="btn sm ghost" ${nav(7)} aria-label="Semana siguiente">▶</button></span></div>
     <div class="card stack"><div class="small muted">Del ${esc(fCorta(lunes))} al ${esc(fCorta(sumaDias(lunes, 6)))}${lunes === lunesDe(hoy) ? ' · esta semana' : ''} · claro = previsto, fuerte = hecho${alumno ? ' · toca tu sesión para abrirla' : ''}</div>
@@ -4712,9 +4757,9 @@ function formEquipo(aid) {
 }
 /* ---------- Futbolista · pestaña Check-ins: primero lo visual (gráficas), luego el detalle ---------- */
 const svgW = (vb, body, lbl) => `<svg viewBox="${vb}" role="img" aria-label="${esc(lbl)}" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;display:block">${body}</svg>`;
-function graficaCargaXL(w, n = 14) {
+function graficaCargaXL(w, n = 14, aid = null, partidos = null) {
   const hoy = hoyISO(), dias = [...Array(n)].map((_, i) => sumaDias(hoy, i - n + 1)), cs = dias.map(f => cargaDia(w, f));
-  const fat = dias.map(f => wDe(w, f, 'diario')?.datos?.fatiga ?? wDe(w, f, 'lunes')?.datos?.fatiga ?? null);
+  const fat = dias.map(f => fatDia(w, f));
   const W = 760, H = 270, L = 44, R = 34, T = 18, B = 34, ch = H - T - B, cw = W - L - R, bw = cw / n, max = Math.ceil(Math.max(400, ...cs.map(c => c.total)) / 200) * 200;
   const y = v => T + ch - v / max * ch, yf = v => T + ch - v / 10 * ch, DS = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
   let s = '';
@@ -4728,6 +4773,7 @@ function graficaCargaXL(w, n = 14) {
   const pts = fat.map((v, i) => v == null ? null : [L + i * bw + bw / 2, yf(v), v]).filter(Boolean);
   if (pts.length > 1) s += `<polyline points="${pts.map(p => p[0] + ',' + p[1]).join(' ')}" fill="none" stroke="var(--fg)" stroke-width="2" stroke-dasharray="5 4" opacity=".75"/>`;
   pts.forEach(([x, yy, v]) => { s += `<circle cx="${x}" cy="${yy}" r="6" fill="var(--${nivelFat(v) || 'ok'})" stroke="#fff" stroke-width="2"><title>Fatiga ${v}/10</title></circle><text x="${x + 9}" y="${yy + 4}" font-size="11" font-weight="700" fill="var(--${nivelFat(v) || 'ok'})" stroke="#fff" stroke-width="3" paint-order="stroke">${v}</text>`; });
+  if (aid) dias.forEach((f, i) => { if (f <= hoy) s += `<rect x="${L + i * bw}" y="${T}" width="${bw}" height="${ch + 30}" fill="transparent" style="cursor:pointer" data-act="verChkDia" data-al="${aid}" data-f="${f}" data-t="${chkTipoDia(f, partidos)}"><title>Ver check-in del ${fCorta(f)}</title></rect>`; });
   s += `<text x="${L}" y="11" font-size="10.5" fill="var(--muted)">Carga (min × RPE)</text><text x="${W - R + 30}" y="11" text-anchor="end" font-size="10.5" fill="var(--muted)">Fatiga</text>`;
   return svgW(`0 0 ${W} ${H}`, s, `Carga y fatiga de los últimos ${n} días`);
 }
@@ -4749,7 +4795,7 @@ function graficaSemanas(w) {
   if (media) s += `<line x1="5" x2="${W - 5}" y1="${y(media)}" y2="${y(media)}" stroke="var(--fg)" stroke-dasharray="5 4" opacity=".6"/><text x="${W - 6}" y="${y(media) + 13}" text-anchor="end" font-size="10" fill="var(--muted)" stroke="#fff" stroke-width="3" paint-order="stroke">media 4 semanas</text>`;
   return svgW(`0 0 ${W} ${H}`, s, 'Carga por semana');
 }
-const sparkFat = w => { const d = [...Array(14)].map((_, i) => sumaDias(hoyISO(), i - 13)), v = d.map(f => wDe(w, f, 'diario')?.datos?.fatiga ?? wDe(w, f, 'lunes')?.datos?.fatiga ?? null), pts = v.map((x, i) => x == null ? null : `${i * 10 + 4},${36 - x * 3.2}`).filter(Boolean);
+const sparkFat = w => { const d = [...Array(14)].map((_, i) => sumaDias(hoyISO(), i - 13)), v = d.map(f => fatDia(w, f)), pts = v.map((x, i) => x == null ? null : `${i * 10 + 4},${36 - x * 3.2}`).filter(Boolean);
   return pts.length > 1 ? svgW('0 0 140 40', `<polyline points="${pts.join(' ')}" fill="none" stroke="var(--fg)" stroke-width="2" opacity=".6"/>${v.map((x, i) => x == null ? '' : `<circle cx="${i * 10 + 4}" cy="${36 - x * 3.2}" r="2.6" fill="var(--${nivelFat(x) || 'ok'})"/>`).join('')}`, 'Fatiga 14 días') : ''; };
 const sparkCarga = w => { const d = [...Array(7)].map((_, i) => sumaDias(hoyISO(), i - 6)), c = d.map(f => cargaDia(w, f).total), m = Math.max(1, ...c);
   return svgW('0 0 140 40', c.map((v, i) => `<rect x="${i * 20 + 3}" y="${38 - v / m * 34}" width="14" height="${v / m * 34}" rx="2" fill="var(--gold)"/>`).join(''), 'Carga 7 días'); };
@@ -4769,7 +4815,7 @@ function vFutbolFicha(a) {
       ${kpi('Proporción de carga', C.acwr != null ? fmtNum(C.acwr, 2) + '<small>×</small>' : '—', esc(ta), gaugeAcwr(C.acwr), na)}
     </div>
     <section class="card stack fchk-big"><div class="row" style="gap:8px;flex-wrap:wrap;align-items:center"><h2 class="grow" style="margin:0">Carga y fatiga</h2><div class="seg">${[14, 28].map(k => `<button class="${nC === k ? 'on' : ''}" data-act="cargaN" data-n="${k}">${k} días</button>`).join('')}</div></div>
-      ${graficaCargaXL(w, nC)}
+      ${graficaCargaXL(w, nC, a.id, p)}<span class="small muted" style="margin-top:-6px">Toca un día de la gráfica para ver su check-in.</span>
       <div class="row small muted" style="gap:14px;flex-wrap:wrap"><span><i class="ley" style="background:var(--blue)"></i>Equipo</span><span><i class="ley" style="background:var(--gold)"></i>Sesión LOF</span><span><i class="ley" style="background:var(--bad)"></i>Partido</span><span><i class="ley" style="background:var(--ok);border-radius:50%"></i>Fatiga (1-10, eje derecho)</span><span>┆ lunes</span></div></section>
     <div class="fchk-2">
       <section class="card stack"><div class="row"><h3 class="grow" style="margin:0">Carga por semana</h3><span class="small muted">últimas 6</span></div>${graficaSemanas(w)}<span class="small muted">En naranja, semanas más de un 30 % por encima de su media.</span></section>
@@ -5476,7 +5522,7 @@ function vFichaBase() {
       <div class="row" style="gap:6px;flex-wrap:wrap"><span class="pill ${e.nivel}">${nivTxt}</span>${srv?.producto ? `<span class="pill blue">${esc(srv.producto)}</span>` : ''}${P && !P.antes && !P.fuera ? `<span class="pill">Semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}</span>` : ''}${a.acceso_pausado ? '<span class="pill bad">Acceso pausado</span>' : ''}</div></div></div>
     <div class="fh-kpis"><div><b class="num">${dpw ? `${cur.entrenos}/${dpw}` : cur.entrenos}</b><small>entrenos semana</small></div><div><b class="num">${pasos7 != null ? fmtNum(pasos7, 0) : '—'}</b><small>pasos · 7 días</small></div><div><b class="num">${!srv?.modulo_nutricion ? '—' : !midoCoach(a.id) ? '—' : ing7.pct != null ? ing7.pct + ' %' : ing7.dias ? ing7.dias + '/7 d' : '—'}</b><small>${!srv?.modulo_nutricion ? 'sin nutrición' : !midoCoach(a.id) ? esc((Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || '').toLowerCase()) : ing7.pct != null ? 'alimentación · 7 días' : 'días registrados'}</small></div><div><b class="num">${ultM?.peso != null ? fmtNum(ultM.peso, 1) : '—'}</b><small>kg · ${ultM ? esc(fCorta(ultM.fecha)) : 'sin medir'}</small></div></div>
     <div class="row fh-acc" style="flex-wrap:wrap;gap:8px"><button class="btn sm gold" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como ${esc(nom)}</button><button class="btn sm" data-act="abrirReporte" data-id="${a.id}">📋 Reporting</button></div>
-    <details class="fh-mas"><summary class="small">Más acciones · ${esc(a.email || '')} · alta ${esc(fCorta(a.fecha_alta))}</summary><div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button><button class="btn sm ghost" data-act="accesoAl" data-id="${a.id}">🔑 Acceso y contraseña</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}<button class="btn sm ghost" data-act="pausarAcceso" data-id="${a.id}" data-on="${a.acceso_pausado ? 0 : 1}">${a.acceso_pausado ? '🔓 Devolver el acceso' : '🔒 Quitar el acceso (conserva el perfil)'}</button></div></details>
+    <details class="fh-mas"><summary class="small">Más acciones · ${esc(a.email || '')} · alta ${esc(fCorta(a.fecha_alta))}</summary><div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button><button class="btn sm ghost" data-act="accesoAl" data-id="${a.id}">🔑 Acceso y contraseña</button>${(S.c.servicios || []).find(x => x.alumno_id === a.id)?.modulo_futbol ? `<button class="btn sm ghost" data-act="clubAl" data-id="${a.id}">🛡️ Su club y escudo</button>` : ''}${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}<button class="btn sm ghost" data-act="pausarAcceso" data-id="${a.id}" data-on="${a.acceso_pausado ? 0 : 1}">${a.acceso_pausado ? '🔓 Devolver el acceso' : '🔒 Quitar el acceso (conserva el perfil)'}</button></div></details>
     ${a.activo === false ? '<div class="aprox small">Antiguo alumno: no le llegan avisos de seguimiento al coach. Sus datos siguen guardados y puede seguir usando la app. Reactívalo si vuelve a empezar un proceso.</div>' : ''}</section>`}
   ${(() => {
     /* Las mismas secciones se ven como acordeón en el móvil y como pestañas con un panel de inicio en el ordenador */
@@ -5504,7 +5550,7 @@ function vFichaBase() {
       <div class="fx-acc fx-acc-mov"><button class="btn sm" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar</button><button class="btn sm ghost" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como</button><button class="btn sm ghost" data-act="abrirReporte" data-id="${a.id}">📋 Reporting</button></div>
       <div class="fx-datos">${filaP('Plan', esc(srv?.producto || 'Sin plan'))}${waNum(a.id) ? filaP('WhatsApp', `<a href="https://wa.me/${waNum(a.id)}" target="_blank" rel="noopener">+${waNum(a.id)}</a>`) : ''}${srv ? filaP('Tipo', esc(modalidadDe(a.id)) + (conSeguimiento(srv) ? '' : ' · sin seguimiento')) : ''}${filaP('Bloque', P && !P.antes && !P.fuera ? esc(nomCiclo(P.cc)) : '')}${filaP('Semana', P && !P.antes && !P.fuera ? `${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : P?.antes ? 'Empieza ' + esc(fCorta(srv.inicio)) : '')}${filaP('Programa', f.prog ? esc(f.prog.nombre) : '')}${filaP('Alta', esc(fF(a.fecha_alta || srv?.inicio || hoy)))}${filaP('Email', esc(a.email || ''))}<button class="fx-dato fx-pago" data-act="fTab" data-t="pagos"><span>Pagos</span><b style="${pagV.length ? 'color:var(--bad)' : ''}">${pagaPor(a.id) ? `Con ${esc((S.c.perfiles.find(x => x.id === pagaPor(a.id))?.nombre || '').split(' ')[0])}` : pagV.length ? `${pagV.length} vencida${pagV.length === 1 ? '' : 's'}` : pagP.length ? `Próxima ${esc(fCorta(pagP.slice().sort((x, y) => x.vence.localeCompare(y.vence))[0].vence))}` : pagos.length ? 'Al día' : 'Sin cuotas'} ›</b></button></div>
       <div class="fx-acc"><button class="btn sm" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar con ${esc(nom)}</button><button class="btn sm ghost" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como ${esc(nom)}</button><button class="btn sm ghost" data-act="abrirReporte" data-id="${a.id}">📋 Reporting</button></div>
-      <details class="fx-mas"><summary>Más acciones</summary><div class="stack" style="gap:6px;margin-top:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button><button class="btn sm ghost" data-act="accesoAl" data-id="${a.id}">🔑 Acceso y contraseña</button>${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}<button class="btn sm ghost" data-act="pausarAcceso" data-id="${a.id}" data-on="${a.acceso_pausado ? 0 : 1}">${a.acceso_pausado ? '🔓 Devolver el acceso' : '🔒 Quitar el acceso'}</button></div></details>
+      <details class="fx-mas"><summary>Más acciones</summary><div class="stack" style="gap:6px;margin-top:8px">${botonFoto(a.id, !!a.foto_url)}<button class="btn sm ghost" data-act="datosAlumno" data-id="${a.id}">✎ Datos del alumno</button><button class="btn sm ghost" data-act="accesoAl" data-id="${a.id}">🔑 Acceso y contraseña</button>${(S.c.servicios || []).find(x => x.alumno_id === a.id)?.modulo_futbol ? `<button class="btn sm ghost" data-act="clubAl" data-id="${a.id}">🛡️ Su club y escudo</button>` : ''}${a.activo === false ? `<button class="btn sm gold" data-act="reactivarAlumno" data-id="${a.id}">Reactivar</button>` : `<button class="btn sm ghost" data-act="archivarAlumno" data-id="${a.id}">Pasar a antiguos alumnos</button>`}<button class="btn sm ghost" data-act="pausarAcceso" data-id="${a.id}" data-on="${a.acceso_pausado ? 0 : 1}">${a.acceso_pausado ? '🔓 Devolver el acceso' : '🔒 Quitar el acceso'}</button></div></details>
       ${a.activo === false ? '<p class="small muted" style="margin:0">Antiguo alumno: no genera avisos.</p>' : ''}</aside>`;
     /* Todas las secciones en la barra horizontal (se desliza en el móvil), en orden de uso: resumen y seguimiento primero */
     const ORD = ['resumen', 'checkins', 'oposicion', 'entreno', 'nutri', 'habitos', 'progreso', 'medidas'];
@@ -9366,7 +9412,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v479';
+const APP_VER = 'v480';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -9794,6 +9840,8 @@ document.addEventListener('click', async e => {
     case 'verGps': { const r = await sb.storage.from('gps').createSignedUrls([b.dataset.r], 3600); const u = r.data?.[0]?.signedUrl; if (!u) { toast('No se ha podido abrir el archivo'); break; } if (/\.pdf$/i.test(b.dataset.r)) window.open(u, '_blank', 'noopener'); else abrirSheet(`<div class="stack"><img src="${esc(u)}" alt="GPS" style="width:100%;border-radius:12px"><a class="btn ghost full" href="${esc(u)}" target="_blank" rel="noopener">Abrir en grande</a><button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`); break; }
     case 'wellnessSem': { const l = $('#fs-sem-' + b.dataset.al)?.value || lunesDe(hoyISO()); formWellness(b.dataset.t, b.dataset.t === 'lunes' ? l : sumaDias(l, -1), b.dataset.al); break; }
     case 'wellness': formWellness(b.dataset.t, b.dataset.f || null, b.dataset.al || null); break;
+    case 'verChkDia': formWellness(b.dataset.t, b.dataset.f, b.dataset.al); break;
+    case 'clubAl': formClub(b.dataset.id); break;
     case 'partido': formPartido(b.dataset.id ? +b.dataset.id : null, b.dataset.al || null, b.dataset.f || null); break;
     case 'escala10': { const g = b.closest('.escala10'); g.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); break; }
     case 'editarApartado': formApartado(b.dataset.sec, b.dataset.k); break;
