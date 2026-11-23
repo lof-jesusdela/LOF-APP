@@ -99,12 +99,21 @@ const Consultas = (() => {
   }
 
   /* ---------- Hilo tipo WhatsApp ---------- */
+  /* Responder a un mensaje concreto (deslizar a la derecha, como en WhatsApp): la cita va al inicio del texto como [[cita:id:al|je]] */
+  const CITA = /^\[\[cita:([^:\]]+):(al|je)\]\]\s*/;
+  const conCita = txt => { const r = CITA.exec(txt || ''); return r ? { txt: String(txt).slice(r[0].length), cita: { id: r[1], de: r[2] } } : { txt, cita: null }; };
+  function vCita(ci, yo, aid) {
+    const L = (yo === 'je' ? S.c?.consultas : S.d?.consultas) || [], o = L.find(x => String(x.id) === String(ci.id));
+    const t = o ? conCita(String((ci.de === 'al' ? o.texto : o.respuesta) || '').replace(MARCA_AV, '')).txt.trim() : '';
+    const quien = ci.de === yo ? 'Tú' : ci.de === 'je' ? 'Jesús' : ((nombreAl(aid) || 'Alumno').split(' ')[0]);
+    return `<button type="button" class="wa-cita ${ci.de}" data-act="cq" data-q="irCita" data-v="m-${esc(ci.id)}-${ci.de}"><b>${esc(quien)}</b><span>${esc(!o ? 'Mensaje eliminado' : o.foto && (!t || t === '📷') ? '📷 Foto' : t)}</span></button>`;
+  }
   function mensajes(L, conSys) {
     const M = [];
     L.forEach(c => {
       if (/^wa_/.test(c.tema)) { if (conSys) { const [, ico, t] = tm(c.tema); M.push({ sys: true, t: c.creado_at, txt: `${ico} Abrió WhatsApp para: ${t.toLowerCase()}` }); } return; }
-      if (c.texto) M.push({ de: 'al', t: c.creado_at, txt: c.texto, c });
-      if (c.respuesta) M.push({ de: 'je', t: c.respondida_at || c.creado_at, txt: c.respuesta, c });
+      if (c.texto) M.push({ de: 'al', t: c.creado_at, ...conCita(c.texto), c });
+      if (c.respuesta) M.push({ de: 'je', t: c.respondida_at || c.creado_at, ...conCita(c.respuesta), c });
     });
     return M.sort((a, b) => new Date(a.t) - new Date(b.t));
   }
@@ -129,7 +138,7 @@ const Consultas = (() => {
     const ejHtml = ej ? `<button type="button" class="wa-ejref" data-act="cq" data-q="fotourl" data-u="${esc(ej.imagen_url || '')}">${ej.imagen_url ? `<img src="${esc(ej.imagen_url)}" alt="" loading="lazy">` : '<span class="ph">🏋️</span>'}<b>${esc(ej.nombre)}</b></button>` : '';
     const foto = m.de === 'al' && c.foto ? `<button type="button" class="wa-foto" data-act="cq" data-q="foto" data-p="${esc(c.foto)}"><img data-foto="${esc(c.foto)}" alt="Foto"></button>` : '';
     const marca = MARCA_AV.test(m.txt || ''), txt = marca ? m.txt.replace(MARCA_AV, '').trim() : m.txt;
-    return `<div class="wa-msg ${mio ? 'mio' : ''}${yo === 'je' ? ' pulsable' : ''}"${yo === 'je' ? ` data-cid="${c.id}" data-de="${m.de}"` : ''}>${chip}${ejHtml}${foto}${txt && !(foto && txt === '📷') ? `<span class="wa-txt">${esc(txt)}</span>` : ''}${marca ? vAvisosMsg(yo) : ''}<span class="wa-hr">${esc(hora(m.t))}${tick}</span></div>${leidoTxt}`;
+    return `<div class="wa-msg ${mio ? 'mio' : ''}${yo === 'je' ? ' pulsable' : ''}" id="m-${c.id}-${m.de}"${yo === 'je' ? ` data-cid="${c.id}" data-de="${m.de}"` : ''}>${m.cita ? vCita(m.cita, yo, c.alumno_id) : ''}${chip}${ejHtml}${foto}${txt && !(foto && txt === '📷') ? `<span class="wa-txt">${esc(txt)}</span>` : ''}${marca ? vAvisosMsg(yo) : ''}<span class="wa-hr">${esc(hora(m.t))}${tick}</span></div>${leidoTxt}`;
   }
   function hilo(L, yo) {
     const M = mensajes(L, yo === 'je'); let ult = '';
@@ -490,7 +499,17 @@ Jesús`, 'nutricion']];
     abrirHilo(aid); render();
   }
   /* ---------- Mantener pulsado un mensaje (coach): Copiar · Reenviar a otro alumno · Eliminar ---------- */
-  const msgDe = (cid, de) => { const c = (S.c.consultas || []).find(x => String(x.id) === String(cid)); return c ? { c, txt: String((de === 'al' ? c.texto : c.respuesta) || '').replace(MARCA_AV, '').trim() } : null; };
+  const msgDe = (cid, de) => { const c = (S.c.consultas || []).find(x => String(x.id) === String(cid)); return c ? { c, txt: conCita(String((de === 'al' ? c.texto : c.respuesta) || '').replace(MARCA_AV, '')).txt.trim() } : null; };
+  /* Deslizar a la derecha un mensaje: queda citado encima de la caja de texto y la respuesta va a ese mensaje */
+  function citar(cid, de) {
+    const m = msgDe(cid, de); if (!m) return; S.cqCita = { id: cid, de, aid: S.cqAl }; navigator.vibrate?.(10);
+    pintaCita(); const t = document.getElementById('cq-resp'); if (t) t.focus();
+  }
+  function vBarCita() {
+    const ci = S.cqCita; if (!ci || ci.aid !== S.cqAl) return ''; const m = msgDe(ci.id, ci.de); if (!m) return '';
+    return `<div class="wa-citabar" id="wa-citabar"><div class="wa-cita ${ci.de} grow"><b>${ci.de === 'je' ? 'Tú' : esc((nombreAl(S.cqAl) || 'Alumno').split(' ')[0])}</b><span>${esc(m.c.foto && (!m.txt || m.txt === '📷') ? '📷 Foto' : m.txt)}</span></div><button type="button" class="wa-citax" data-act="cq" data-q="sincita" aria-label="Quitar la cita">✕</button></div>`;
+  }
+  function pintaCita() { document.getElementById('wa-citabar')?.remove(); const bar = document.querySelector('#sheet-in .wa-bar'); if (bar) bar.insertAdjacentHTML('beforebegin', vBarCita()); }
   function menuMsg(el) {
     const cid = el.dataset.cid, de = el.dataset.de, m = msgDe(cid, de); if (!m) return;
     document.querySelectorAll('.wa-msg.sel').forEach(x => x.classList.remove('sel')); el.classList.add('sel');
@@ -539,12 +558,12 @@ Jesús`, 'nutricion']];
     toast('Mensaje eliminado'); abrirHilo(S.cqAl); render();
   }
   function abrirHilo(aid) {
-    S.cqAl = aid; const L = (S.c.consultas || []).filter(c => c.alumno_id === aid).reverse();
+    S.cqAl = aid; if (S.cqCita && S.cqCita.aid !== aid) S.cqCita = null; const L = (S.c.consultas || []).filter(c => c.alumno_id === aid).reverse();
     const volver = S.cqLista ? '<button type="button" class="wa-back" data-act="cq" data-q="lista" aria-label="Volver a chats">‹</button>' : null;
     montar(`<div class="wa">${cab(avatarDe(perfilDe(aid), 36), nombreAl(aid), 'Respondes tú en persona', `<button type="button" class="wa-tel" data-act="cq" data-q="cwa" aria-label="Contestar por WhatsApp">${WA_ICO}</button>`, volver)}
       <div class="wa-body" id="wa-body">${hilo(L, 'je')}</div>
       <div class="wa-temas"><button type="button" class="wa-ch wa-ch-wa" data-act="cq" data-q="cwa">📲 Contestar por WhatsApp</button>${RAPIDAS.map((r, i) => `<button type="button" class="wa-ch" data-act="cq" data-q="rapida" data-i="${i}">${esc(r.slice(0, 30))}…</button>`).join('')}</div>
-      <div class="wa-bar"><textarea id="cq-resp" rows="1" placeholder="Mensaje"></textarea><button type="button" class="wa-send" data-act="cq" data-q="envresp" aria-label="Enviar">➤</button></div>
+      ${vBarCita()}<div class="wa-bar"><textarea id="cq-resp" rows="1" placeholder="Mensaje"></textarea><button type="button" class="wa-send" data-act="cq" data-q="envresp" aria-label="Enviar">➤</button></div>
       <div class="wa-pie">El alumno ve: «Te responde Jesús en persona, como tarde en tu revisión semanal». Tu objetivo interno: &lt; 48 h.${L.some(c => c.estado === 'abierta' && !/^wa_/.test(c.tema)) ? ' · <button type="button" class="wa-link" data-act="cq" data-q="cerrar">Marcar como atendido sin responder</button>' : ''}</div></div>`);
   }
   /* Notificación al móvil del alumno cuando Jesús responde (como un WhatsApp) */
@@ -562,6 +581,16 @@ Jesús`, 'nutricion']];
     const aid = S.cqAl, txt = document.getElementById('cq-resp')?.value.trim(), ahora = new Date().toISOString();
     if (!cerrar && !txt) return;
     const ab = abiertas().filter(c => c.alumno_id === aid).sort((a, b) => new Date(a.creado_at) - new Date(b.creado_at));
+    const ci = !cerrar && S.cqCita && S.cqCita.aid === aid ? S.cqCita : null;
+    if (ci) {   /* respuesta a un mensaje concreto: va en ese mensaje si aún no tiene respuesta; si no, como mensaje nuevo con la cita */
+      const o = (S.c.consultas || []).find(c => String(c.id) === String(ci.id)), cuerpo = `[[cita:${ci.id}:${ci.de}]]${txt}`;
+      if (o && ci.de === 'al' && !o.respuesta) {
+        const cambio = { estado: 'respondida', respuesta: cuerpo, respondida_at: ahora }; const { error } = await sb.from('consultas').update(cambio).eq('id', o.id); if (error) return fallo(error, 'No se ha podido enviar.'); Object.assign(o, cambio);
+      } else {
+        const { data, error } = await sb.from('consultas').insert({ alumno_id: aid, tema: 'jesus', texto: null, respuesta: cuerpo, estado: 'respondida', respondida_at: ahora, sesion_ref: 'chat' }).select().single(); if (error) return fallo(error, 'No se ha podido enviar.'); meter(S.c.consultas, data);
+      }
+      S.cqCita = null; avisarAlumno(aid, txt); abrirHilo(aid); render(); return;
+    }
     if (cerrar) {
       const { error } = await sb.from('consultas').update({ estado: 'cerrada', cerrada_at: ahora }).in('id', ab.map(c => c.id));
       if (error) return fallo(error, 'No se ha podido guardar.'); ab.forEach(c => Object.assign(c, { estado: 'cerrada', cerrada_at: ahora }));
@@ -615,6 +644,8 @@ Jesús`, 'nutricion']];
       case 'cwa': await pasarWa(S.cqAl); break;
       case 'fotourl': if (b.dataset.u) verFoto(null, b.dataset.u); break;
       case 'envresp': await guardaResp(false); break;
+      case 'sincita': S.cqCita = null; pintaCita(); break;
+      case 'irCita': { const el = document.getElementById(v); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1400); } else toast('Ese mensaje ya no está en el chat'); break; }
       case 'cerrar': await guardaResp(true); break;
     }
   }
@@ -628,7 +659,7 @@ Jesús`, 'nutricion']];
     const t = new Date(mio).getTime(), h = (Date.now() - t) / 36e5;
     return (!suyo || suyo < mio) && h >= 48 && h <= 24 * 21 ? mio.slice(0, 10) : null;
   }
-  return { marcarLeido, ponNoLeido, abrirLista, sinRespuesta, mensajeJesus, menuMsg, reenviarPick, difTecleo: () => { if (S.cqDif) { S.cqDif.conf = false; clearTimeout(S.cqDifT); S.cqDifT = setTimeout(() => { const t = document.getElementById('cq-dif'); if (!t) return; const pos = t.selectionStart; S.cqDif.txt = t.value; abrirDifusion(); const n = document.getElementById('cq-dif'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }, 900); } }, ajustaAlto, elegirFoto, TEL, vBoton, abrirLista, vDevolucion, metrica, cargarAlumno, cargarCoach, vAlumno, vAvisoHoy, vCoach, vFinEntreno, leerFinEntreno, crearDeFin, accion, sinLeer, abiertas, abrirHilo };
+  return { citar, marcarLeido, ponNoLeido, abrirLista, sinRespuesta, mensajeJesus, menuMsg, reenviarPick, difTecleo: () => { if (S.cqDif) { S.cqDif.conf = false; clearTimeout(S.cqDifT); S.cqDifT = setTimeout(() => { const t = document.getElementById('cq-dif'); if (!t) return; const pos = t.selectionStart; S.cqDif.txt = t.value; abrirDifusion(); const n = document.getElementById('cq-dif'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }, 900); } }, ajustaAlto, elegirFoto, TEL, vBoton, abrirLista, vDevolucion, metrica, cargarAlumno, cargarCoach, vAlumno, vAvisoHoy, vCoach, vFinEntreno, leerFinEntreno, crearDeFin, accion, sinLeer, abiertas, abrirHilo };
 })();
 
 /* Intro envía el mensaje (Mayús+Intro hace salto de línea) */
@@ -655,4 +686,16 @@ document.addEventListener('change', e => { const sel = e.target.closest && e.tar
   ['pointerup', 'pointercancel', 'scroll'].forEach(ev => document.addEventListener(ev, fin, true));
   document.addEventListener('contextmenu', e => { const el = e.target.closest && e.target.closest('.wa-msg.pulsable'); if (el) { e.preventDefault(); Consultas.menuMsg(el); } });
   document.addEventListener('input', e => { if (e.target.id === 'wa-pick-q') { clearTimeout(e.target._t); const v = e.target.value, d = e.target.dataset; e.target._t = setTimeout(() => Consultas.reenviarPick(d.cid, d.de, v), 250); } });
+})();
+
+/* Deslizar a la derecha un mensaje en el chat del coach: responder a ese mensaje (como en WhatsApp) */
+(() => {
+  let el = null, x0 = 0, y0 = 0, dx = 0, on = false;
+  const soltar = () => { if (!el) return; const e = el; e.style.transition = 'transform .18s ease'; e.style.transform = ''; e.classList.remove('desliza', 'listo'); setTimeout(() => { e.style.transition = ''; }, 200);
+    if (on && dx >= 60) Consultas.citar(e.dataset.cid, e.dataset.de); el = null; on = false; dx = 0; };
+  document.addEventListener('pointerdown', e => { const m = e.target.closest?.('.wa-msg.pulsable'); if (!m || e.target.closest('button,a') || S.modo !== 'coach') return; el = m; x0 = e.clientX; y0 = e.clientY; dx = 0; on = false; });
+  document.addEventListener('pointermove', e => { if (!el) return; const ddx = e.clientX - x0, ddy = e.clientY - y0;
+    if (!on) { if (Math.abs(ddy) > 12 && Math.abs(ddy) > Math.abs(ddx)) { el = null; return; } if (ddx > 12 && ddx > Math.abs(ddy) * 1.3) { on = true; el.classList.add('desliza'); } else return; }
+    dx = Math.max(0, Math.min(ddx, 90)); el.style.transform = `translateX(${dx}px)`; el.classList.toggle('listo', dx >= 60); });
+  ['pointerup', 'pointercancel'].forEach(ev => document.addEventListener(ev, soltar));
 })();
