@@ -4100,6 +4100,9 @@ function formClub(aid) {
     if (fi) { try { row.club_escudo = await subirImagenEj(fi, `club-${aid}-${Date.now()}`, 400); } catch (err) { return toast(motivoImg(err)); } }
     const { error } = await sb.from('servicios').update(row).eq('id', sv.id);
     if (error) return fallo(error, /club_/.test(error.message || '') ? 'Falta ejecutar el Bloque 116 en Supabase.' : 'No se ha podido guardar.');
+    /* El mismo escudo vale para sus compañeros de club y para los partidos en que ese club es el rival: se cambia en todos */
+    if (row.club_escudo && row.club_nombre) { await sb.from('servicios').update({ club_escudo: row.club_escudo }).ilike('club_nombre', row.club_nombre).then(() => { }, () => { }); await sb.from('partidos').update({ imagen_url: row.club_escudo }).ilike('rival', row.club_nombre).then(() => { }, () => { });
+      (S.c?.servicios || []).filter(x => norm(x.club_nombre || '') === norm(row.club_nombre)).forEach(x => x.club_escudo = row.club_escudo); (S.c?.partidos || []).filter(x => norm(x.rival || '') === norm(row.club_nombre)).forEach(x => x.imagen_url = row.club_escudo); }
     Object.assign(sv, row); cerrarSheet(); toast('Club guardado'); render(); });
 }
 /* «Liga · Jornada 12» → { tipo: 'Liga', jornada: 12 } (sin columna nueva: va en «competicion») */
@@ -4150,6 +4153,8 @@ function formPartido(id, alumnoId, fechaDef = null) {
     let { error } = id ? await sb.from('partidos').update(row).eq('id', id) : await sb.from('partidos').insert(row);
     if (error && /lugar|descripcion|imagen_url/.test(error.message || '')) { delete row.lugar; delete row.descripcion; delete row.imagen_url; ({ error } = id ? await sb.from('partidos').update(row).eq('id', id) : await sb.from('partidos').insert(row)); if (!error) toast('Guardado sin lugar, imagen ni descripción: falta ejecutar el Bloque 49'); }
     if (error) return fallo(error, /partidos/.test(error.message || '') ? 'Falta ejecutar el Bloque 21 en Supabase.' : undefined);
+    /* Escudo nuevo de un rival: se cambia en todos los partidos contra ese rival (de todos tus jugadores) y en el club de quien juegue en él */
+    if (fi && row.imagen_url && row.rival && alumnoId) { await sb.from('partidos').update({ imagen_url: row.imagen_url }).ilike('rival', row.rival).then(() => { }, () => { }); await sb.from('servicios').update({ club_escudo: row.imagen_url }).ilike('club_nombre', row.rival).then(() => { }, () => { }); }
     toast('Partido guardado'); recargar();
   });
 }
@@ -9558,7 +9563,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v501';
+const APP_VER = 'v502';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
