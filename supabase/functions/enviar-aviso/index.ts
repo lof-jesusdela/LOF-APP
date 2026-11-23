@@ -19,13 +19,14 @@ Deno.serve(async (req) => {
     const { data: { user }, error: ue } = await admin.auth.getUser(jwt);
     if (ue || !user) return json({ error: "No autorizado" }, 401);
     const { data: perfil } = await admin.from("perfiles").select("rol").eq("id", user.id).maybeSingle();
-    let { alumno_ids, titulo, cuerpo, url, a_coach } = await req.json();
+    let { alumno_ids, titulo, cuerpo, url, a_coach, motivo } = await req.json();
     /* Un alumno solo puede avisar a Jesús (mensaje nuevo en el chat): destino y título los fija la función */
     if (perfil?.rol !== "coach") {
       if (!a_coach) return json({ error: "Solo el coach puede enviar avisos" }, 403);
       const [{ data: cs }, { data: yo }] = await Promise.all([admin.from("perfiles").select("id").eq("rol", "coach"), admin.from("perfiles").select("nombre").eq("id", user.id).maybeSingle()]);
       alumno_ids = (cs || []).map((x: { id: string }) => x.id);
-      titulo = `💬 ${String(yo?.nombre || "Un alumno").split(" ")[0]} te ha escrito`; cuerpo = String(cuerpo || "").slice(0, 120); url = "./";
+      const nom = String(yo?.nombre || "Un alumno").split(" ")[0];
+      titulo = motivo === "molestia" ? `🩹 ${nom} tiene una molestia` : `💬 ${nom} te ha escrito`; cuerpo = String(cuerpo || "").slice(0, 120); url = "./";
     }
     if (!Array.isArray(alumno_ids) || !alumno_ids.length || !titulo) return json({ error: "Faltan datos" }, 400);
     const pub = Deno.env.get("VAPID_PUBLIC"), priv = Deno.env.get("VAPID_PRIVATE");

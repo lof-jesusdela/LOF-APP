@@ -3262,6 +3262,7 @@ function saludDe(aid) {
   const desde = sumaDias(hoyISO(), -7), out = [], nd = x => { const n = x.dias ? nomDia(x.dias) : ''; return n ? ` (${n})` : ''; }, corta = t => { t = String(t || '').trim(); return t.length > 90 ? t.slice(0, 87) + '…' : t; };
   (S.c.wellness || []).filter(x => x.alumno_id === aid && x.fecha >= desde).forEach(x => { const d = x.datos || {};
     if (d.molestias?.length) out.push({ f: x.fecha, m: `Molestia: ${d.molestias.join(', ')}${d.molestia_txt ? ' («' + corta(d.molestia_txt) + '»)' : ''}` });
+    else if (d.molestia_txt) out.push({ f: x.fecha, m: `Molestia: «${corta(d.molestia_txt)}»` });
     if (d.fatiga >= 8) out.push({ f: x.fecha, m: `Fatiga ${d.fatiga}/10` });
     if (d.dolor >= 7) out.push({ f: x.fecha, m: `Dolor muscular ${d.dolor}/10` });
     if (RX_SALUD.test(d.nota || '')) out.push({ f: x.fecha, m: `«${corta(d.nota)}»` }); });
@@ -4141,9 +4142,10 @@ function formWellness(tipo, f, alumnoId) {
   let cuerpo = '';
   /* Diario: se rellena al levantarse → el entreno es el de AYER; el sueño, el de esta noche */
   const DA = fecha(ay).toLocaleDateString('es-ES', { weekday: 'long' });
+  const siNo = (id, v) => `<div class="choice" role="group" id="${id}">${[['si', 'Sí'], ['no', 'No']].map(([k, l]) => `<button type="button" data-v="${k}" aria-pressed="${v === k}">${l}</button>`).join('')}</div>`;
   if (tipo === 'diario') cuerpo = `
-    ${q(`Entreno de ayer (${DA}) con el equipo`, `<label class="f">Minutos totales<input type="number" step="any" id="w-eq-min" inputmode="numeric" value="${d.eq_min || ''}" placeholder="Déjalo vacío si ayer no entrenaste con el equipo"></label>`)}
-    ${q(sesLof ? `Tu sesión de ayer con Jesús${sesLof.duracion_min ? ` (${sesLof.duracion_min} min)` : ''}: ¿cómo de dura?` : `¿Hiciste ayer tu sesión de Jesús? ¿Cómo de dura?`, `${escala10('w-lof-rpe', d.lof_rpe, ['1 · Muy suave', '10 · Máximo'])}<label class="f">Minutos de la sesión<input type="number" step="any" id="w-lof-min" inputmode="numeric" value="${d.lof_min ?? sesLof?.duracion_min ?? ''}" placeholder="Déjalo vacío si ayer no tocaba"></label>`)}
+    ${q(`¿Entrenaste ayer (${DA}) con el equipo?`, `${siNo('w-eq', prev ? (d.eq_min ? 'si' : 'no') : '')}<div id="w-eq-x" class="stack" style="gap:6px" ${d.eq_min ? '' : 'hidden'}><label class="f">Minutos totales del entreno<input type="number" step="any" id="w-eq-min" inputmode="numeric" value="${d.eq_min || ''}" placeholder="Ej. 90"></label></div>`)}
+    ${q(`¿Hiciste ayer tu sesión de Jesús?${sesLof ? ' (la tienes registrada)' : ''}`, `${siNo('w-lof', prev ? (d.lof_rpe ? 'si' : 'no') : sesLof ? 'si' : '')}<div id="w-lof-x" class="stack" style="gap:6px" ${d.lof_rpe || (!prev && sesLof) ? '' : 'hidden'}><span class="small">¿Cómo de dura?</span>${escala10('w-lof-rpe', d.lof_rpe, ['1 · Muy suave', '10 · Máximo'])}<label class="f">Minutos de la sesión<input type="number" step="any" id="w-lof-min" inputmode="numeric" value="${d.lof_min || sesLof?.duracion_min || ''}" placeholder="Ej. 60"></label></div>`)}
     ${q('Fatiga general ahora mismo', escala10('w-fat', d.fatiga, ['1 · Fresco', '10 · Destrozado']))}
     ${qMol()}
     ${q('El sueño de esta noche', `<span class="small">Calidad</span>${escala10('w-sueno', d.sueno, ['1 · Fatal', '10 · Genial'])}<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="f">Me acosté a las<input type="time" id="w-dormir" value="${esc(d.dormir || '')}"></label><label class="f">Me levanté a las<input type="time" id="w-levantar" value="${esc(d.levantar || '')}"></label></div><span class="small muted">Tu horario objetivo: acostarte a las ${esc(objSueno(D.servicio || S.d?.servicio).dormir)} y levantarte a las ${esc(objSueno(D.servicio || S.d?.servicio).levantar)}.</span>
@@ -4152,9 +4154,9 @@ function formWellness(tipo, f, alumnoId) {
     ${pt ? `<p class="small muted">${esc(pt.rival ? 'Contra ' + pt.rival : 'Partido')} · ${esc(fCorta(pt.fecha))}</p>` : ''}
     <label class="f">Minutos jugados<input type="number" step="any" id="w-min" inputmode="numeric" value="${d.minutos ?? ''}" placeholder="0 si no jugaste" required></label>
     ${q('¿Cómo te sentías ANTES del partido?', escala10('w-antes', d.antes, ['1 · Muy mal', '10 · Perfecto']))}
-    ${q('¿Cómo te sentiste DURANTE el partido?', escala10('w-durante', d.durante, ['1 · Muy mal', '10 · Perfecto']))}
+    ${q('¿Cómo te sentiste de rendimiento durante el partido?', escala10('w-durante', d.durante, ['1 · Sin chispa', '10 · Con mucha chispa']))}
     ${q('¿Cómo te sientes DESPUÉS?', escala10('w-despues', d.despues, ['1 · Muy mal', '10 · Perfecto']))}
-    ${q('¿Cómo de duro ha sido el partido?', escala10('w-rpe', d.rpe, ['1 · Muy suave', '10 · Máximo']))}
+    ${q('¿Qué fatiga te ha causado el partido?', escala10('w-rpe', d.rpe, ['1 · Ninguna', '10 · Máxima']))}
     ${qMol()}`;
   if (tipo === 'lunes') cuerpo = `
     ${q('Fatiga general hoy', escala10('w-fat', d.fatiga, ['1 · Fresco', '10 · Destrozado']))}
@@ -4176,14 +4178,19 @@ function formWellness(tipo, f, alumnoId) {
   F.addEventListener('click', ev => { const q = ev.target.closest('[data-act="quitarCapW"]'); if (!q) return; ev.preventDefault(); ev.stopPropagation(); (d.reloj ||= []).splice(+q.dataset.i, 1); $('#w-gal').innerHTML = d.reloj.length ? `<b class="small">Ya subidas (${d.reloj.length}):</b>${miniW(d.reloj, true)}` : ''; firmarMini(); });
   F.addEventListener('click', ev => {
     const z = ev.target.closest('[data-zona]'); if (z) z.setAttribute('aria-pressed', z.getAttribute('aria-pressed') !== 'true');
+    const sn = ev.target.closest('#w-eq [data-v], #w-lof [data-v]'); if (sn) { const g = sn.parentElement; g.querySelectorAll('[data-v]').forEach(x => x.setAttribute('aria-pressed', x === sn)); $(`#${g.id}-x`).hidden = sn.dataset.v !== 'si'; }
   });
   F.addEventListener('submit', async e => {
     e.preventDefault();
     const datos = { molestias: [...F.querySelectorAll('[data-zona][aria-pressed="true"]')].map(x => x.dataset.zona), nota: $('#w-nota').value.trim() || null, molestia_txt: $('#w-mol-txt')?.value.trim() || null };
     if (tipo === 'diario') {
       datos.ayer = true;   /* el entreno que cuenta es el de ayer (la carga se apunta en ese día) */
-      datos.eq_min = numero($('#w-eq-min').value) || 0;
-      datos.lof_rpe = valEscala('w-lof-rpe'); datos.lof_min = datos.lof_rpe ? (numero($('#w-lof-min').value) || 45) : 0;
+      const eq = F.querySelector('#w-eq [aria-pressed="true"]')?.dataset.v, lf = F.querySelector('#w-lof [aria-pressed="true"]')?.dataset.v;
+      if (!eq) return $('#w-err').textContent = 'Dime si ayer entrenaste con el equipo.';
+      if (!lf) return $('#w-err').textContent = 'Dime si ayer hiciste tu sesión de Jesús.';
+      datos.eq_min = eq === 'si' ? numero($('#w-eq-min').value) || 0 : 0; if (eq === 'si' && !datos.eq_min) return $('#w-err').textContent = 'Pon los minutos del entreno con el equipo.';
+      datos.lof_rpe = lf === 'si' ? valEscala('w-lof-rpe') : null; if (lf === 'si' && !datos.lof_rpe) return $('#w-err').textContent = 'Indica cómo de dura fue la sesión de Jesús.';
+      datos.lof_min = datos.lof_rpe ? (numero($('#w-lof-min').value) || 45) : 0;
       datos.fatiga = valEscala('w-fat'); if (!datos.fatiga) return $('#w-err').textContent = 'Indica tu fatiga general.';
       datos.sueno = valEscala('w-sueno'); datos.dormir = $('#w-dormir').value || null; datos.levantar = $('#w-levantar').value || null;
       datos.reloj = d.reloj || [];
@@ -4214,6 +4221,14 @@ function formWellness(tipo, f, alumnoId) {
     const r = prev?.id ? await sb.from('wellness').update({ datos }).eq('id', prev.id) : await sb.from('wellness').insert(row);
     if (r.error) { btn.disabled = false; btn.textContent = 'Enviar a Jesús'; return fallo(r.error, /wellness/.test(r.error.message || '') ? 'Falta ejecutar el Bloque 21 en Supabase.' : 'No se ha podido enviar.'); }
     if (pt && tipo === 'partido') await sb.from('partidos').update({ minutos: datos.minutos }).eq('id', pt.id);
+    const mol = (datos.molestias || []).length || datos.molestia_txt || RX_SALUD.test(datos.nota || '');
+    if (mol && !alumnoId && !S.vista && !S.prueba) {   /* molestia: aviso al móvil de Jesús y al alumno, que se lo cuente por WhatsApp */
+      const txtM = [(datos.molestias || []).join(', '), datos.molestia_txt || (RX_SALUD.test(datos.nota || '') ? datos.nota : '')].filter(Boolean).join(' · ');
+      sb.functions.invoke('enviar-aviso-enviar-aviso', { body: { a_coach: true, motivo: 'molestia', cuerpo: `🩹 Molestia en su ${NOM_CHK[tipo].toLowerCase()}: ${txtM}` } }).catch(() => { });
+      cerrarSheet(); if (alumnoId) await cargarFutbolCoach(); else await cargarFutbol(S.user.id, S.d); render();
+      abrirSheet(`<div class="stack chk-bloq"><div class="chk-bloq-ic">🩹</div><h2 style="margin:0;color:#A32D2D">Has marcado una molestia</h2><p style="margin:0;font-size:17px">Queda guardada en tu check-in, pero <b>escríbele a Jesús por WhatsApp ahora</b> para que lo vea cuanto antes y ajuste tu entreno.</p><span class="small" style="color:#5F5E5A">${esc(txtM)}</span><a class="btn full chk-bloq-b" href="${esc(waJesus(`Hola Jesús, en mi ${NOM_CHK[tipo].toLowerCase()} he marcado una molestia: ${txtM}. `))}" target="_blank" rel="noopener" id="w-wa">💬 Escribir a Jesús por WhatsApp</a><button class="btn ghost full" data-act="cerrarSheet">Ya se lo he dicho</button></div>`);
+      $('#w-wa')?.addEventListener('click', () => setTimeout(cerrarSheet, 400)); return;
+    }
     cerrarSheet(); toast(tipo === 'diario' && (datos.reloj || []).length ? `¡Recibido! Gracias · ${datos.reloj.length} captura${datos.reloj.length > 1 ? 's' : ''} subida${datos.reloj.length > 1 ? 's' : ''}` : '¡Recibido! Gracias'); if (alumnoId) await cargarFutbolCoach(); else await cargarFutbol(S.user.id, S.d); render();
   });
 }
@@ -4554,7 +4569,7 @@ function botonesArchivos(x) {
 function resumenW(x) {
   const d = x.datos || {}, m = (d.molestias || []).length ? ` · molestia: ${d.molestias.join(', ')}` : '';
   if (x.tipo === 'diario') return `Fatiga ${d.fatiga ?? '—'}/10${d.dormir && d.levantar ? ` · sueño ${d.dormir}–${d.levantar} (${fmtNum(horasSueno(d.dormir, d.levantar))} h)` : ''}${d.alimentacion ? ` · alimentación ${{ si: 'cumplida', parcial: 'a medias', no: 'no cumplida' }[d.alimentacion]}` : ''} ${d.sueno ? ` · calidad ${d.sueno}/10` : ''} · equipo${d.ayer ? ' (ayer)' : ''} ${d.eq_min ? `${d.eq_min}′${d.eq_rpe ? ' esfuerzo ' + d.eq_rpe : ''}` : 'no'} · sesión ${d.lof_rpe ? `esfuerzo ${d.lof_rpe}` : 'no'}${m}`;
-  if (x.tipo === 'partido') return `${d.minutos ?? 0}′ jugados · antes ${d.antes ?? '—'} · durante ${d.durante ?? '—'} · después ${d.despues ?? '—'} · esfuerzo ${d.rpe ?? '—'}${m}`;
+  if (x.tipo === 'partido') return `${d.minutos ?? 0}′ jugados · antes ${d.antes ?? '—'} · rendimiento ${d.durante ?? '—'} · después ${d.despues ?? '—'} · fatiga ${d.rpe ?? '—'}${m}`;
   if (x.tipo === 'semana') return `Cierre de semana${d.texto ? ': ' + d.texto : ''}`;
   return `Fatiga ${d.fatiga ?? '—'}/10${d.dolor != null ? ' · dolor ' + d.dolor : ''} · sueño ${d.sueno ?? '—'}${d.semana ? ' · semana: ' + d.semana : ''}${m}`;
 }
@@ -4675,7 +4690,7 @@ function detalleW(x) {
   const cab = { diario: 'Wellness diario', partido: 'Wellness de partido', lunes: 'Wellness de lunes', semana: 'Planificación del equipo' }[x.tipo] || x.tipo;
   let c = '';
   if (x.tipo === 'diario') c = fila(d.ayer ? 'Equipo (ayer)' : 'Entreno con el equipo', d.eq_min != null ? (d.eq_min ? `${d.eq_min} min${d.eq_rpe ? ` · esfuerzo ${d.eq_rpe}/10` : ''}` : 'No') : '') + fila(d.ayer ? 'Sesión LOF (ayer)' : 'Sesión LOF', d.lof_rpe ? `${d.lof_min || 45} min · esfuerzo ${d.lof_rpe}/10` : 'No') + fila('Fatiga', d.fatiga != null ? d.fatiga + '/10' : '') + fila('Sueño', [d.sueno ? `calidad ${d.sueno}/10` : '', d.dormir && d.levantar ? `${d.dormir}–${d.levantar} (${fmtNum(horasSueno(d.dormir, d.levantar))} h)` : ''].filter(Boolean).join(' · ')) + fila('Alimentación', ali);
-  else if (x.tipo === 'partido') c = fila('Minutos', d.minutos) + fila('Antes / durante / después', `${d.antes ?? '—'} / ${d.durante ?? '—'} / ${d.despues ?? '—'}`) + fila('Esfuerzo', d.rpe != null ? d.rpe + '/10' : '');
+  else if (x.tipo === 'partido') c = fila('Minutos', d.minutos) + fila('Antes / después', `${d.antes ?? '—'} / ${d.despues ?? '—'}`) + fila('Rendimiento', d.durante != null ? d.durante + '/10' : '') + fila('Fatiga del partido', d.rpe != null ? d.rpe + '/10' : '');
   else if (x.tipo === 'lunes') c = fila('Fatiga', d.fatiga != null ? d.fatiga + '/10' : '') + fila('Dolor', d.dolor) + fila('Sueño', d.sueno) + fila('Semana', esc(d.semana || ''));
   else c = d.texto ? `<div class="small pre">${esc(d.texto)}</div>` : '';
   return `<div class="card stack" style="gap:4px"><b>${cab}</b>${c}${(d.molestias || []).length || d.molestia_txt ? fila('Molestias', esc([(d.molestias || []).join(', '), d.molestia_txt ? '«' + d.molestia_txt + '»' : ''].filter(Boolean).join(' · '))) : ''}${d.nota ? `<div class="small muted">"${esc(d.nota)}"</div>` : ''}${(d.reloj || []).length ? `<div class="small muted">Capturas del reloj (${d.reloj.length})</div>${miniW(d.reloj)}` : ''}${botonesArchivos(x)}</div>`;
@@ -9482,7 +9497,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v488';
+const APP_VER = 'v489';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
