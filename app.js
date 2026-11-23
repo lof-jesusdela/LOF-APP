@@ -181,9 +181,9 @@ function vistaLogin(msg = '') {
   $('#f-login').addEventListener('submit', async e => {
     e.preventDefault();
     const btn = $('#f-login button[type=submit]'); btn.disabled = true;
-    const { data, error } = await sb.auth.signInWithPassword({ email: $('#l-email').value.trim().toLowerCase(), password: $('#l-pass').value });
+    const { data, error } = await sb.auth.signInWithPassword({ email: $('#l-email').value.trim().toLowerCase(), password: $('#l-pass').value.trim() });   /* al copiar la contraseña de WhatsApp el iPhone suele añadir un espacio al final */
     btn.disabled = false;
-    if (error) { $('#l-err').textContent = errorAcceso(error, 'entrar'); return; }
+    if (error) { console.warn('login', error); $('#l-err').textContent = errorAcceso(error, 'entrar') + (error.code || error.status ? ` (${error.code || error.status})` : ''); return; }
     S.user = data.user; await cargarPerfil();
   });
   $('#l-olvido').addEventListener('click', async () => {
@@ -5838,7 +5838,7 @@ async function pintaAcceso(id) {
     <div class="row" style="gap:8px;flex-wrap:wrap"><button type="button" class="btn sm ghost" id="da-gen">🎲 Generar</button><button type="button" class="btn sm" id="da-pwok">Guardar contraseña</button></div><div id="da-pwr"></div>`;
   $('#da-conf')?.addEventListener('click', async ev => { ev.target.disabled = true; const x = await acceso({ accion: 'confirmar', alumno_id: id }); if (x.error) { ev.target.disabled = false; return toast(x.error); } toast('Cuenta confirmada: ya puede entrar'); pintaAcceso(id); });
   $('#da-gen').addEventListener('click', () => { $('#da-pw').value = claveNueva(); $('#da-pw').type = 'text'; });
-  $('#da-pwok').addEventListener('click', async ev => { const pw = $('#da-pw').value; if (pw.length < 8) return toast('Mínimo 8 caracteres'); ev.target.disabled = true;
+  $('#da-pwok').addEventListener('click', async ev => { const pw = $('#da-pw').value.trim(); if (pw.length < 8) return toast('Mínimo 8 caracteres'); ev.target.disabled = true;
     const x = await acceso({ accion: 'clave', alumno_id: id, password: pw }); ev.target.disabled = false; if (x.error) return toast(x.error);
     toast('Contraseña cambiada'); $('#da-pwr').innerHTML = vEnviarAcceso(a.nombre, r.email, pw); });
 }
@@ -5852,7 +5852,7 @@ function formNuevoAlumno() {
   $('#na-p').type = 'text';
   $('#na-gen').addEventListener('click', () => { $('#na-p').value = claveNueva(); });
   $('#f-na').addEventListener('submit', async e => {
-    e.preventDefault(); const b = $('#na-b'), nombre = $('#na-n').value.trim(), email = $('#na-e').value.trim().toLowerCase(), password = $('#na-p').value;
+    e.preventDefault(); const b = $('#na-b'), nombre = $('#na-n').value.trim(), email = $('#na-e').value.trim().toLowerCase(), password = $('#na-p').value.trim();
     b.disabled = true; b.textContent = 'Creando…'; $('#na-err').textContent = '';
     const r = await acceso({ accion: 'crear', nombre, email, password });
     if (r.error) { b.disabled = false; b.textContent = 'Crear cuenta'; return $('#na-err').textContent = r.error; }
@@ -9353,7 +9353,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v477';
+const APP_VER = 'v478';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
