@@ -5544,7 +5544,7 @@ function vFichaBase() {
     const perfil = `<aside class="fx-perfil card">
       <button class="fx-volver" data-act="cerrarFicha">← Alumnos</button>
       <div class="fx-av">${avatarDe(a, 96)}</div>
-      <h2 class="fx-nom">${esc(a.nombre)} <button class="fx-fav" data-act="favorito" data-id="${a.id}" aria-pressed="${favoritos().includes(a.id)}" aria-label="${favoritos().includes(a.id) ? 'Quitar de favoritos' : 'Añadir a favoritos'}" title="Favorito">${favoritos().includes(a.id) ? '★' : '☆'}</button></h2>
+      <h2 class="fx-nom">${esc(a.nombre)} <button class="fx-fav" data-act="favorito" data-id="${a.id}" aria-pressed="${favoritos().includes(a.id)}" aria-label="${favoritos().includes(a.id) ? 'Quitar de favoritos' : 'Añadir a favoritos'}" title="Favorito">${favoritos().includes(a.id) ? '★' : '☆'}</button><button class="fx-fav fx-chat" data-act="cq" data-q="hilo" data-v="${a.id}" aria-label="Abrir el chat con ${esc((a.nombre || '').split(' ')[0])}" title="Chat">💬</button></h2>
       ${citaHoyRev(a.id) ? `<div class="aprox small" style="margin:6px 0;border-left:4px solid var(--gold,#b8901e)"><b>${esc(citaHoyRev(a.id).txt)}</b></div>` : ''}
       <div class="fx-est"><span class="fx-dot ${e.nivel}"></span>${nivTxt}${pend.length ? ` · ${pend.length} aviso${pend.length > 1 ? 's' : ''}` : ''}</div>
       <div class="fx-acc fx-acc-mov"><button class="btn sm" data-act="entrenarAhora" data-id="${a.id}">▶ Entrenar</button><button class="btn sm ghost" data-act="verComoAlumno" data-id="${a.id}">👁 Ver como</button><button class="btn sm ghost" data-act="abrirReporte" data-id="${a.id}">📋 Reporting</button></div>
@@ -9438,7 +9438,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v481';
+const APP_VER = 'v482';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
