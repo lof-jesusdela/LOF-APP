@@ -1,5 +1,5 @@
 // Edge Function: avisos automáticos de check-in a los alumnos. La llama Supabase cada 15 min (pg_cron, Bloque 114).
-//  · Check-in del partido: 2 h después de la hora que pusiste en el partido (cuando ya ha terminado).
+//  · Check-in del partido: 2 h después de la hora que pusiste en el partido (sin hora, a las 21:00). Es cuando la app lo empieza a exigir.
 //  · Futbolistas: check-in diario de martes a viernes a las 7:00 (no el día de partido ni el siguiente); cierre de semana el día después del partido a las 8:00
 //    (si no hubo partido el fin de semana, el lunes); post-partido 2 h después del partido.
 //  · Resto de alumnos: check-in semanal los lunes a las 8:00 y, a las 21:30, aviso si llevan 2 días sin registrar (máx. cada 2 días).
@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
   /* Partidos de hoy cuya hora + 2 h ya ha pasado */
   const { data: pts } = await admin.from("partidos").select("*").eq("fecha", fecha).in("alumno_id", ids.length ? ids : ["-"]);
   for (const p of pts || []) {
-    if (!p.hora) continue; const [h, m] = String(p.hora).split(":").map(Number);
+    const [h, m] = (p.hora ? String(p.hora) : "19:00").split(":").map(Number);   /* sin hora: a las 21:00, igual que en la app */
     if (min < h * 60 + (m || 0) + DESPUES_PARTIDO_MIN) continue;
     avisos.push({ clave: `partido:${p.id}`, alumno_id: p.alumno_id, titulo: "⚽ Check-in del partido", cuerpo: `${nombre(p.alumno_id) ? nombre(p.alumno_id) + ", ¿c" : "¿C"}ómo ha ido${p.rival ? " contra " + p.rival : ""}? Cuéntamelo en 1 minuto.`, url: `./?w=partido&f=${fecha}` });
   }
@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
   /* Futbolistas · 7:00: check-in diario de martes a viernes (no el día de partido ni el siguiente) */
   if (dw >= 1 && dw <= 4 && min >= 7 * 60) for (const id of ids) {
     if ((pts || []).some((p) => p.alumno_id === id) || jugo(id, dRel(-1))) continue;
-    avisos.push({ clave: `diario:${fecha}:${id}`, alumno_id: id, titulo: "⚽ Tu check-in de hoy", cuerpo: `${nombre(id) ? nombre(id) + ", tu" : "Tu"} check-in diario: 30 segundos. Sin él no podrás empezar tu entreno.`, url: `./?w=diario&f=${fecha}` });
+    avisos.push({ clave: `diario:${fecha}:${id}`, alumno_id: id, titulo: "⚽ Tu check-in de hoy", cuerpo: `${nombre(id) ? "Buenos días, " + nombre(id) + ". " : ""}Tu check-in diario: cómo has dormido y el entreno de ayer. 1 minuto. Sin él no podrás empezar tu entreno.`, url: `./?w=diario&f=${fecha}` });
   }
   /* Resto de alumnos · 21:30: si llevan 2 días sin registrar (ayer y anteayer), como mucho un aviso cada 2 días */
   if (min >= 21 * 60 + 30) {
