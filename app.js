@@ -8608,7 +8608,7 @@ function vEditor() {
     ${d.bloques_sesion.map(b => `<div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:10px">
       <div class="row" style="flex-wrap:wrap"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}${b.variante ? ` <span class="pill blue">${esc(b.variante)}</span>` : ''}</h3>${(() => { const k = d.bloques_sesion.indexOf(b), pr = d.bloques_sesion[k - 1]; return b.tipo === 'fuerza' && pr?.tipo === 'fuerza' ? `<button class="btn sm ghost" data-act="unirBloque" data-id="${b.id}" title="Pasa sus ejercicios al bloque ${esc(pr.letra)}">⤒ Unir con ${esc(pr.letra)}</button>` : ''; })()}<button class="btn sm ghost" data-act="dupBloque" data-id="${b.id}">⧉ Duplicar</button><button class="btn sm ghost" data-act="edBloque" data-id="${b.id}">✎ Editar bloque</button></div>
       ${b.agrupacion ? `<div class="small muted">${esc(b.agrupacion)}</div>` : ''}
-      ${b.tipo === 'fuerza' ? `${edEjercicios(b, (e, i) => `<div class="ed-ej">${(() => { const u = e.imagen_url || (S.c.ejercicios || []).find(x => x.id === e.ejercicio_id)?.imagen_url; return u ? `<img class="ed-mini" src="${esc(u)}" alt="" loading="lazy" data-act="edEj" data-id="${e.id}">` : `<span class="ed-mini ed-sin" data-act="edEj" data-id="${e.id}" title="Sin foto: toca para añadirla">📷</span>`; })()}<div class="grow" data-act="edEj" data-id="${e.id}" style="cursor:pointer;min-width:0"><b class="small">${i + 1}. ${esc(e.nombre || e.ejercicios?.nombre || '')}</b><div class="small muted">${resumen(e)}</div></div>${i > 0 ? `<button class="mini" data-act="separarEj" data-id="${e.id}" aria-label="Separar en un bloque nuevo desde este ejercicio" title="Separar en un bloque nuevo desde aquí">✂</button>` : ''}<button class="mini" data-act="aBloque" data-id="${e.id}" aria-label="Mover a otro bloque" title="Mover a otro bloque">⇄</button><button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="-1" aria-label="Subir" ${i === 0 ? 'disabled' : ''}>↑</button><button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="1" aria-label="Bajar" ${i === b.ejercicios_sesion.length - 1 ? 'disabled' : ''}>↓</button></div>`)}
+      ${b.tipo === 'fuerza' ? `${edEjercicios(b, (e, i) => `<div class="ed-ej" data-ejid="${e.id}" data-blq="${b.id}">${(() => { const u = e.imagen_url || (S.c.ejercicios || []).find(x => x.id === e.ejercicio_id)?.imagen_url; return u ? `<img class="ed-mini" src="${esc(u)}" alt="" loading="lazy" data-act="edEj" data-id="${e.id}">` : `<span class="ed-mini ed-sin" data-act="edEj" data-id="${e.id}" title="Sin foto: toca para añadirla">📷</span>`; })()}<div class="grow" data-act="edEj" data-id="${e.id}" style="cursor:pointer;min-width:0"><b class="small">${i + 1}. ${esc(e.nombre || e.ejercicios?.nombre || '')}</b><div class="small muted">${resumen(e)}</div></div>${i > 0 ? `<button class="mini" data-act="separarEj" data-id="${e.id}" aria-label="Separar en un bloque nuevo desde este ejercicio" title="Separar en un bloque nuevo desde aquí">✂</button>` : ''}<button class="mini" data-act="aBloque" data-id="${e.id}" aria-label="Mover a otro bloque" title="Mover a otro bloque">⇄</button><button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="-1" aria-label="Subir" ${i === 0 ? 'disabled' : ''}>↑</button><button class="mini" data-act="moverEj" data-id="${e.id}" data-dir="1" aria-label="Bajar" ${i === b.ejercicios_sesion.length - 1 ? 'disabled' : ''}>↓</button></div>`)}
         <button class="btn sm ghost" data-act="edEj" data-bloque="${b.id}" style="align-self:flex-start">+ Añadir ejercicio</button>` : `<div class="row" style="gap:10px">${(b.imagen_url || (esContrasteFrioCalor(b) && IMG_CONTRASTE) || miniYoutube(b.video_url) || fotosCardio(b)[0]) ? `<img class="ed-mini" src="${esc(b.imagen_url || (esContrasteFrioCalor(b) && IMG_CONTRASTE) || miniYoutube(b.video_url) || fotosCardio(b)[0])}" alt="" loading="lazy" data-act="verImagen" data-src="${esc(b.imagen_url)}" onerror="this.outerHTML='<span class=&quot;ed-mini ed-sin&quot;>⚠</span>'">` : ''}<div class="small muted">${esc(b.tipo === 'cardio' ? [b.duracion, fcTexto(b.fc_objetivo, fcEditor()), b.maquina].filter(Boolean).join(' · ') : 'Movilidad')}</div></div>`}
     </div>`).join('')}
     <button class="btn sm" data-act="edParte" data-dia="${d.id}" style="align-self:flex-start">＋ Añadir parte</button>
@@ -9270,6 +9270,32 @@ async function aBloqueOk(id, bid) {
   const { error } = await sb.from('ejercicios_sesion').update({ bloque_id: bid, orden, grupo: null }).eq('id', id); if (error) return fallo(error);
   cerrarSheet(); toast('Ejercicio movido al bloque ' + dest.letra); refrescarEditor();
 }
+/* Ordenar ejercicios arrastrando: mantén el dedo sobre un ejercicio (medio segundo) y muévelo arriba o abajo dentro de su bloque */
+(() => {
+  let t = null, st = null, drag = null, saltaClick = false;
+  const filas = blq => [...document.querySelectorAll(`.ed-ej[data-blq="${blq}"]`)];
+  const ini = (e, el) => { const p = e.touches ? e.touches[0] : e; st = { x: p.clientX, y: p.clientY, el }; clearTimeout(t);
+    t = setTimeout(() => { drag = { el, blq: el.dataset.blq, y0: st.y }; el.classList.add('ed-arr'); document.body.classList.add('ed-arrastrando'); try { navigator.vibrate?.(15); } catch (er) { } }, 450); };
+  const mov = e => { const p = e.touches ? e.touches[0] : e; if (!st) return;
+    if (!drag) { if (Math.abs(p.clientY - st.y) > 8 || Math.abs(p.clientX - st.x) > 8) { clearTimeout(t); st = null; } return; }
+    e.preventDefault();
+    const L = filas(drag.blq).filter(x => x !== drag.el), sig = L.find(x => { const r = x.getBoundingClientRect(); return p.clientY < r.top + r.height / 2; });
+    if (sig) { if (drag.el.nextElementSibling !== sig) sig.before(drag.el); } else if (L.length && L[L.length - 1].nextElementSibling !== drag.el) L[L.length - 1].after(drag.el);
+    const r0 = window.innerHeight; if (p.clientY < 80) window.scrollBy(0, -12); else if (p.clientY > r0 - 80) window.scrollBy(0, 12); };
+  const fin = async () => { clearTimeout(t); st = null; if (!drag) return; const { el, blq } = drag; drag = null; el.classList.remove('ed-arr'); document.body.classList.remove('ed-arrastrando'); saltaClick = true; setTimeout(() => { saltaClick = false; }, 400);
+    const ids = filas(blq).map(x => +x.dataset.ejid), B = S.editor?.prog?.dias.flatMap(d => d.bloques_sesion).find(b => String(b.id) === String(blq)); if (!B) return;
+    const antes = B.ejercicios_sesion.map(x => x.id); if (ids.join() === antes.join()) return;
+    try { for (let i = 0; i < ids.length; i++) { const x = B.ejercicios_sesion.find(z => z.id === ids[i]); if (x && x.orden !== i + 1) { const { error } = await sb.from('ejercicios_sesion').update({ orden: i + 1 }).eq('id', ids[i]); if (error) throw error; } }
+      toast('Orden guardado'); } catch (err) { fallo(err, 'No se ha podido guardar el orden.'); }
+    refrescarEditor(); };
+  document.addEventListener('touchstart', e => { const el = e.target.closest?.('.ed-ej[data-ejid]'); if (el && !e.target.closest('button')) ini(e, el); }, { passive: true });
+  document.addEventListener('touchmove', mov, { passive: false });
+  document.addEventListener('touchend', fin); document.addEventListener('touchcancel', fin);
+  document.addEventListener('mousedown', e => { const el = e.target.closest?.('.ed-ej[data-ejid]'); if (el && !e.target.closest('button')) ini(e, el); });
+  document.addEventListener('mousemove', e => { if (st) mov(e); }); document.addEventListener('mouseup', fin);
+  document.addEventListener('click', e => { if (saltaClick && e.target.closest?.('.ed-ej')) { e.stopPropagation(); e.preventDefault(); } }, true);
+  document.addEventListener('contextmenu', e => { if (e.target.closest?.('.ed-ej[data-ejid]')) e.preventDefault(); });
+})();
 async function moverEj(id, dir) {
   const blq = S.editor.prog.dias.flatMap(d => d.bloques_sesion).find(b => b.ejercicios_sesion.some(x => x.id === id));
   const l = blq.ejercicios_sesion, i = l.findIndex(x => x.id === id), j = i + dir; if (j < 0 || j >= l.length) return;
@@ -9412,7 +9438,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v480';
+const APP_VER = 'v481';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
