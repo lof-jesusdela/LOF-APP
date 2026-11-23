@@ -3927,19 +3927,27 @@ function vRevisionesFicha(a) {
 }
 /* ======================= ELITE PLAYER · futbolistas: partidos, wellness y carga ======================= */
 const ZONAS = ['Isquiotibiales', 'Aductor', 'Cuádriceps', 'Gemelo', 'Tobillo', 'Rodilla', 'Cadera / pubis', 'Espalda', 'Otra'];
+/* Post-partido (23 nov): «antes» y «después» pasan a ser CANSANCIO (1 nada · 10 muy cansado). Los antiguos eran
+   «cómo te sentías» (10 = perfecto): se dan la vuelta (11 − x) y se marcan con cans:1. El coach los guarda ya corregidos. */
+function normPartido(rows, guardar) {
+  (rows || []).filter(x => x.tipo === 'partido' && x.datos && !x.datos.cans).forEach(x => {
+    const d = x.datos; if (d.antes != null) d.antes = 11 - d.antes; if (d.despues != null) d.despues = 11 - d.despues; d.cans = 1;
+    if (guardar && x.id) sb.from('wellness').update({ datos: d }).eq('id', x.id).then(() => { }, () => { });
+  });
+}
 async function cargarFutbol(uid, dst) {
   const [pt, wl] = await Promise.all([
     sb.from('partidos').select('*').eq('alumno_id', uid).gte('fecha', sumaDias(hoyISO(), -365)).order('fecha'),
     sb.from('wellness').select('*').eq('alumno_id', uid).gte('fecha', sumaDias(hoyISO(), -365)).order('fecha')
   ]);
-  dst.partidos = pt.data || []; dst.wellness = wl.data || []; dst.futbolErr = pt.error || wl.error ? 'Falta ejecutar el Bloque 21 en Supabase.' : null;
+  dst.partidos = pt.data || []; dst.wellness = wl.data || []; normPartido(dst.wellness, false); dst.futbolErr = pt.error || wl.error ? 'Falta ejecutar el Bloque 21 en Supabase.' : null;
 }
 async function cargarFutbolCoach() {
   const [pt, wl] = await Promise.all([
     sb.from('partidos').select('*').gte('fecha', sumaDias(hoyISO(), -60)).order('fecha'),
     sb.from('wellness').select('*').gte('fecha', sumaDias(hoyISO(), -90)).order('fecha')
   ]);
-  S.c.partidos = pt.data || []; S.c.wellness = wl.data || [];
+  S.c.partidos = pt.data || []; S.c.wellness = wl.data || []; normPartido(S.c.wellness, !S.vista && !S.prueba);
 }
 /* Día respecto al partido: MD-3 … MD (partido) … MD+2 */
 function mdDe(partidos, f = hoyISO()) {
@@ -3974,7 +3982,7 @@ const nivelAcwr = r => r == null ? ['', 'datos insuficientes'] : r > 1.5 ? ['war
 const nivelFat = v => v == null ? '' : v >= 7 ? 'bad' : v >= 5 ? 'warn' : 'ok';
 function ultimaFatiga(w) {
   const l = w.filter(x => x.datos && (x.datos.fatiga != null || x.datos.despues != null)).sort((a, b) => (b.fecha + b.tipo).localeCompare(a.fecha + a.tipo))[0];
-  return l ? { v: l.datos.fatiga ?? (11 - l.datos.despues), f: l.fecha } : null;
+  return l ? { v: l.datos.fatiga ?? l.datos.despues, f: l.fecha } : null;
 }
 function molestiasRecientes(w, dias = 4) {
   const desde = sumaDias(hoyISO(), -dias);
@@ -4042,7 +4050,7 @@ function chkBloqueaEntreno(op) {
   return tocaDiario(hoy, S.d.partidos, w) && !wDe(w, hoy, 'diario') ? 'diario' : null;   /* solo el diario bloquea el entreno */
 }
 /* Fatiga del día: del diario; si no hay, del de lunes o del post-partido (así no quedan huecos) */
-const fatDia = (w, f) => { const d = wDe(w, f, 'diario')?.datos?.fatiga ?? wDe(w, f, 'lunes')?.datos?.fatiga; if (d != null) return d; const p = wDe(w, f, 'partido')?.datos; return p ? (p.fatiga ?? (p.despues != null ? 11 - p.despues : null)) : null; };
+const fatDia = (w, f) => { const d = wDe(w, f, 'diario')?.datos?.fatiga ?? wDe(w, f, 'lunes')?.datos?.fatiga; if (d != null) return d; const p = wDe(w, f, 'partido')?.datos; return p ? (p.fatiga ?? p.despues) : null; };
 /* Qué check-in toca un día: lunes, post-partido o diario */
 const chkTipoDia = (f, partidos) => chkToca(f, partidos);
 const escudo = (url, nom, tam = 40) => url ? `<img src="${esc(url)}" alt="" class="esc" style="width:${tam}px;height:${tam}px">` : `<span class="esc esc-ini" style="width:${tam}px;height:${tam}px;font-size:${Math.round(tam / 3.2)}px">${esc(String(nom || '?').split(/\s+/).map(x => x[0]).join('').slice(0, 3).toUpperCase())}</span>`;
@@ -4163,10 +4171,10 @@ function formWellness(tipo, f, alumnoId) {
   if (tipo === 'partido') cuerpo = `
     ${pt ? `<p class="small muted">${esc(pt.rival ? 'Contra ' + pt.rival : 'Partido')} · ${esc(fCorta(pt.fecha))}</p>` : ''}
     <label class="f">Minutos jugados<input type="number" step="any" id="w-min" inputmode="numeric" value="${d.minutos ?? ''}" placeholder="0 si no jugaste" required></label>
-    ${q('¿Cómo te sentías ANTES del partido?', escala10('w-antes', d.antes, ['1 · Muy mal', '10 · Perfecto']))}
-    ${q('¿Cómo te sentiste de rendimiento durante el partido?', escala10('w-durante', d.durante, ['1 · Sin chispa', '10 · Con mucha chispa']))}
-    ${q('¿Cómo te sientes DESPUÉS?', escala10('w-despues', d.despues, ['1 · Muy mal', '10 · Perfecto']))}
-    ${q('¿Qué fatiga te ha causado el partido?', escala10('w-rpe', d.rpe, ['1 · Ninguna', '10 · Máxima']))}
+    ${q('¿Cómo te sentías de cansado ANTES del partido?', escala10('w-antes', d.antes, ['1 · Nada cansado', '10 · Muy cansado']))}
+    ${q('¿Cómo te sentiste de rendimiento DURANTE el partido?', escala10('w-durante', d.durante, ['1 · Muy flojo', '10 · Como un cohete']))}
+    ${q('¿Cómo te sentiste de cansado DESPUÉS del partido?', escala10('w-despues', d.despues, ['1 · Nada', '10 · Muy cansado']))}
+    ${q('Nivel de dureza competitiva del partido', escala10('w-rpe', d.rpe, ['1 · Fácil', '10 · Durísimo']))}
     ${qMol()}`;
   if (tipo === 'lunes') cuerpo = `
     ${q('Fatiga general hoy', escala10('w-fat', d.fatiga, ['1 · Fresco', '10 · Destrozado']))}
@@ -4207,8 +4215,8 @@ function formWellness(tipo, f, alumnoId) {
       if (!await subirArchivosW($('#w-reloj'), datos.reloj, `${alumnoId || uidSes()}/${f}-reloj`, 'Subiendo capturas…', 'No se han podido subir las capturas.')) return;
     }
     if (tipo === 'partido') {
-      Object.assign(datos, { minutos: numero($('#w-min').value) ?? 0, antes: valEscala('w-antes'), durante: valEscala('w-durante'), despues: valEscala('w-despues'), rpe: valEscala('w-rpe'), partido_id: pt?.id || null, gps: d.gps || [] });
-      if (!datos.antes || !datos.despues) return $('#w-err').textContent = 'Responde al menos cómo te sentías antes y después.';
+      Object.assign(datos, { minutos: numero($('#w-min').value) ?? 0, antes: valEscala('w-antes'), durante: valEscala('w-durante'), despues: valEscala('w-despues'), rpe: valEscala('w-rpe'), partido_id: pt?.id || null, gps: d.gps || [], cans: 1 });
+      if (!datos.antes || !datos.despues) return $('#w-err').textContent = 'Responde al menos cómo de cansado estabas antes y después.';
     }
     if (tipo === 'semana') {
       Object.assign(datos, { texto: $('#w-plan').value.trim() || null, archivos: d.archivos || [], gps: d.gps || [], otros: d.otros || [] });
@@ -4579,7 +4587,7 @@ function botonesArchivos(x) {
 function resumenW(x) {
   const d = x.datos || {}, m = (d.molestias || []).length ? ` · molestia: ${d.molestias.join(', ')}` : '';
   if (x.tipo === 'diario') return `Fatiga ${d.fatiga ?? '—'}/10${d.dormir && d.levantar ? ` · sueño ${d.dormir}–${d.levantar} (${fmtNum(horasSueno(d.dormir, d.levantar))} h)` : ''}${d.alimentacion ? ` · alimentación ${{ si: 'cumplida', parcial: 'a medias', no: 'no cumplida' }[d.alimentacion]}` : ''} ${d.sueno ? ` · calidad ${d.sueno}/10` : ''} · equipo${d.ayer ? ' (ayer)' : ''} ${d.eq_min ? `${d.eq_min}′${d.eq_rpe ? ' esfuerzo ' + d.eq_rpe : ''}` : 'no'} · sesión ${d.lof_rpe ? `esfuerzo ${d.lof_rpe}` : 'no'}${m}`;
-  if (x.tipo === 'partido') return `${d.minutos ?? 0}′ jugados · antes ${d.antes ?? '—'} · rendimiento ${d.durante ?? '—'} · después ${d.despues ?? '—'} · fatiga ${d.rpe ?? '—'}${m}`;
+  if (x.tipo === 'partido') return `${d.minutos ?? 0}′ jugados · cansancio antes ${d.antes ?? '—'} · rendimiento ${d.durante ?? '—'} · cansancio después ${d.despues ?? '—'} · dureza ${d.rpe ?? '—'}${m}`;
   if (x.tipo === 'semana') return `Cierre de semana${d.texto ? ': ' + d.texto : ''}`;
   return `Fatiga ${d.fatiga ?? '—'}/10${d.dolor != null ? ' · dolor ' + d.dolor : ''} · sueño ${d.sueno ?? '—'}${d.semana ? ' · semana: ' + d.semana : ''}${m}`;
 }
@@ -4700,7 +4708,7 @@ function detalleW(x) {
   const cab = { diario: 'Wellness diario', partido: 'Wellness de partido', lunes: 'Wellness de lunes', semana: 'Planificación del equipo' }[x.tipo] || x.tipo;
   let c = '';
   if (x.tipo === 'diario') c = fila(d.ayer ? 'Equipo (ayer)' : 'Entreno con el equipo', d.eq_min != null ? (d.eq_min ? `${d.eq_min} min${d.eq_rpe ? ` · esfuerzo ${d.eq_rpe}/10` : ''}` : 'No') : '') + fila(d.ayer ? 'Sesión LOF (ayer)' : 'Sesión LOF', d.lof_rpe ? `${d.lof_min || 45} min · esfuerzo ${d.lof_rpe}/10` : 'No') + fila('Fatiga', d.fatiga != null ? d.fatiga + '/10' : '') + fila('Sueño', [d.sueno ? `calidad ${d.sueno}/10` : '', d.dormir && d.levantar ? `${d.dormir}–${d.levantar} (${fmtNum(horasSueno(d.dormir, d.levantar))} h)` : ''].filter(Boolean).join(' · ')) + fila('Alimentación', ali);
-  else if (x.tipo === 'partido') c = fila('Minutos', d.minutos) + fila('Antes / después', `${d.antes ?? '—'} / ${d.despues ?? '—'}`) + fila('Rendimiento', d.durante != null ? d.durante + '/10' : '') + fila('Fatiga del partido', d.rpe != null ? d.rpe + '/10' : '');
+  else if (x.tipo === 'partido') c = fila('Minutos', d.minutos) + fila('Cansancio antes / después', `${d.antes ?? '—'} / ${d.despues ?? '—'}`) + fila('Rendimiento', d.durante != null ? d.durante + '/10' : '') + fila('Dureza competitiva', d.rpe != null ? d.rpe + '/10' : '');
   else if (x.tipo === 'lunes') c = fila('Fatiga', d.fatiga != null ? d.fatiga + '/10' : '') + fila('Dolor', d.dolor) + fila('Sueño', d.sueno) + fila('Semana', esc(d.semana || ''));
   else c = d.texto ? `<div class="small pre">${esc(d.texto)}</div>` : '';
   return `<div class="card stack" style="gap:4px"><b>${cab}</b>${c}${(d.molestias || []).length || d.molestia_txt ? fila('Molestias', esc([(d.molestias || []).join(', '), d.molestia_txt ? '«' + d.molestia_txt + '»' : ''].filter(Boolean).join(' · '))) : ''}${d.nota ? `<div class="small muted">"${esc(d.nota)}"</div>` : ''}${(d.reloj || []).length ? `<div class="small muted">Capturas del reloj (${d.reloj.length})</div>${miniW(d.reloj)}` : ''}${botonesArchivos(x)}</div>`;
@@ -9507,7 +9515,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v492';
+const APP_VER = 'v493';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
