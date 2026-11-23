@@ -4829,7 +4829,7 @@ function vCalSemana({ w, p, ses = [], pres = [], todos, DP, H, PS, PB, lunes, ai
   const fut0 = fut, srvC = alumno ? S.d?.servicio : (S.c?.servicios || []).find(x => x.alumno_id === aid);
   const chipPX = x => `<button type="button" data-act="partido" ${alumno ? '' : `data-al="${aid}"`} data-id="${x.id}" class="pxl-btn">${vPartidoXL(x, srvC, true)}</button>`;
   const banChk = d => { if (alumno || !fut0) return ''; const t = chkTipoDia(d, p); if (!t) return '<span class="chk-ban nt">—</span>'; const hecho = wDe(w, d, t), nom = { diario: 'Diario', lunes: 'Cierre', partido: 'Partido' }[t];
-    return d > hoy || d < CORTE_CHK ? `<span class="chk-ban nt">${nom}</span>` : `<button type="button" class="chk-ban ${hecho ? 'ok' : 'pe'}" data-act="verChkDia" data-al="${aid}" data-f="${d}" data-t="${t}">${hecho ? '✓' : '!'} ${nom}</button>`; };
+    return d > hoy ? `<span class="chk-ban nt">${nom}</span>` : `<button type="button" class="chk-ban ${hecho ? 'ok' : d < CORTE_CHK ? 'nt' : 'pe'}" data-act="verChkDia" data-al="${aid}" data-f="${d}" data-t="${t}">${hecho ? '✓' : '!'} ${nom}</button>`; };
   const col = [...Array(7)].map((_, i) => { const d = sumaDias(lunes, i), M = mdDe(p, d), fut = d > hoy, out = [], antes = [], despues = [];
     const conPt = p.some(x => x.fecha === d), sitio = dia => !conPt ? out : fase(dia) === 0 ? antes : fase(dia) === 2 ? despues : out;
     p.filter(x => x.fecha === d).forEach(x => out.push(fut0 ? chipPX(x) : chipP(x)));
@@ -9551,7 +9551,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v496';
+const APP_VER = 'v497';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
