@@ -3925,7 +3925,7 @@ async function cargarFutbol(uid, dst) {
 async function cargarFutbolCoach() {
   const [pt, wl] = await Promise.all([
     sb.from('partidos').select('*').gte('fecha', sumaDias(hoyISO(), -60)).order('fecha'),
-    sb.from('wellness').select('*').gte('fecha', sumaDias(hoyISO(), -42)).order('fecha')
+    sb.from('wellness').select('*').gte('fecha', sumaDias(hoyISO(), -90)).order('fecha')
   ]);
   S.c.partidos = pt.data || []; S.c.wellness = wl.data || [];
 }
