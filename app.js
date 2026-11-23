@@ -4921,6 +4921,15 @@ function vFutbolFicha(a) {
   const aliDots = [...Array(14)].map((_, i) => sumaDias(hoyISO(), i - 13)).map(f => { const v = al.por[f]; return `<span class="fchk-dot" title="${esc(fCorta(f))}: ${v === 'si' ? 'cumplida' : v === 'parcial' ? 'a medias' : v === 'no' ? 'no cumplida' : 'sin dato'}" style="background:${v === 'si' ? 'var(--ok)' : v === 'parcial' ? 'var(--gold)' : v === 'no' ? 'var(--bad)' : 'var(--line)'}"></span>`; }).join('');
   const kpi = (t, v, sub, vis, col) => `<div class="card fchk-kpi"><span class="fx-l">${t}</span><b style="${col ? `color:var(--${col})` : ''}">${v}</b><span class="small muted">${sub}</span>${vis ? `<div class="fchk-vis">${vis}</div>` : ''}</div>`;
   return `<div class="fx-ent fchk">
+    <div class="fchk-2">
+      <div>${vSemanaCal(a)}</div>
+      <section class="card stack"><h3 style="margin:0">Esta semana</h3>
+        ${(() => { const sw = w.filter(x => x.tipo === 'semana' && x.fecha >= sumaDias(hoyISO(), -8)).sort((a, b) => b.fecha.localeCompare(a.fecha))[0]; return sw ? `<div class="aprox small"><b>Semana del equipo · del ${esc(fCorta(sumaDias(sw.fecha, 1)))} al ${esc(fCorta(sumaDias(sw.fecha, 7)))}</b>${sw.datos?.texto ? `<div class="pre" style="margin-top:4px">${esc(sw.datos.texto)}</div>` : ''}${sw.datos?.nota ? `<div class="muted">"${esc(sw.datos.nota)}"</div>` : ''}${botonesArchivos(sw)}</div>` : ((fecha(hoyISO()).getDay() + 6) % 7 <= 1 ? '<div class="small muted">Aún no ha compartido la planificación de su equipo para esta semana.</div>' : ''); })()}
+        <div><span class="eyebrow">Respuestas de esta semana</span>${ult.filter(x => x.fecha >= lunesDe(hoyISO())).map(x => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(x.fecha))}</span><div class="grow small"><b>${{ diario: 'Diario', partido: 'Partido', lunes: 'Lunes', semana: 'Cierre de semana' }[x.tipo]}</b> · ${esc(resumenW(x))}${x.datos?.nota ? `<div class="muted">"${esc(x.datos.nota)}"</div>` : ''}${botonesArchivos(x)}</div></div>`).join('') || '<div class="empty">Esta semana todavía no ha respondido.</div>'}${(() => { const ant = ult.filter(x => x.fecha < lunesDe(hoyISO())); return ant.length ? `<details style="margin-top:8px"><summary class="small"><b>Ver histórico (${ant.length})</b></summary>${ant.map(x => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(x.fecha))}</span><div class="grow small"><b>${{ diario: 'Diario', partido: 'Partido', lunes: 'Lunes', semana: 'Cierre de semana' }[x.tipo]}</b> · ${esc(resumenW(x))}${x.datos?.nota ? `<div class="muted">"${esc(x.datos.nota)}"</div>` : ''}${botonesArchivos(x)}</div></div>`).join('')}</details>` : ''; })()}</div>
+
+      </section>
+    </div>
+    ${vCalFut(a)}
     <div class="fchk-kpis">
       <div class="card fchk-kpi fchk-md"><span class="fx-l">Partido</span><div class="row" style="gap:10px;align-items:center"><span class="md-chip">${esc(M.md || '—')}</span><div><b style="font-size:16px">${esc(M.txt)}</b>${M.prox ? `<div class="small muted">${esc(M.prox.rival || 'Partido')} · ${esc(fCorta(M.prox.fecha))}${M.prox.hora ? ' · ' + esc(M.prox.hora) : ''}${M.prox.nivel ? ' · rival ' + esc(M.prox.nivel.toLowerCase()) : ''}</div>` : ''}</div></div><button class="btn sm ghost" data-act="partido" data-al="${a.id}" style="align-self:flex-start;margin-top:auto">＋ Partido</button></div>
       ${kpi('Fatiga', uf ? `${uf.v}<small>/10</small>` : '—', uf ? `último registro ${esc(fCorta(uf.f))}` : 'sin registros', sparkFat(w), nivelFat(uf?.v))}
@@ -4934,15 +4943,6 @@ function vFutbolFicha(a) {
       <section class="card stack"><div class="row"><h3 class="grow" style="margin:0">Carga por semana</h3><span class="small muted">últimas 6</span></div>${graficaSemanas(w)}<span class="small muted">En naranja, semanas más de un 30 % por encima de su media.</span></section>
       <section class="card stack"><div class="row"><h3 class="grow" style="margin:0">Sueño · 14 días</h3><span class="small"><b>${G.su.media == null ? '—' : fmtNum(G.su.media) + ' h'}</b> de media · en horario ${G.su.n ? G.su.enHorario + '/' + G.su.n : '—'}</span></div>${G.svg}
         <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap"><span class="small" style="width:110px">Alimentación <b>${al.pct == null ? '—' : al.pct + ' %'}</b></span><div class="fchk-dots">${aliDots}</div></div></section>
-    </div>
-    ${vCalFut(a)}
-    <div class="fchk-2">
-      <div>${vSemanaCal(a)}</div>
-      <section class="card stack"><h3 style="margin:0">Esta semana</h3>
-        ${(() => { const sw = w.filter(x => x.tipo === 'semana' && x.fecha >= sumaDias(hoyISO(), -8)).sort((a, b) => b.fecha.localeCompare(a.fecha))[0]; return sw ? `<div class="aprox small"><b>Semana del equipo · del ${esc(fCorta(sumaDias(sw.fecha, 1)))} al ${esc(fCorta(sumaDias(sw.fecha, 7)))}</b>${sw.datos?.texto ? `<div class="pre" style="margin-top:4px">${esc(sw.datos.texto)}</div>` : ''}${sw.datos?.nota ? `<div class="muted">"${esc(sw.datos.nota)}"</div>` : ''}${botonesArchivos(sw)}</div>` : ((fecha(hoyISO()).getDay() + 6) % 7 <= 1 ? '<div class="small muted">Aún no ha compartido la planificación de su equipo para esta semana.</div>' : ''); })()}
-        <div><span class="eyebrow">Respuestas de esta semana</span>${ult.filter(x => x.fecha >= lunesDe(hoyISO())).map(x => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(x.fecha))}</span><div class="grow small"><b>${{ diario: 'Diario', partido: 'Partido', lunes: 'Lunes', semana: 'Cierre de semana' }[x.tipo]}</b> · ${esc(resumenW(x))}${x.datos?.nota ? `<div class="muted">"${esc(x.datos.nota)}"</div>` : ''}${botonesArchivos(x)}</div></div>`).join('') || '<div class="empty">Esta semana todavía no ha respondido.</div>'}${(() => { const ant = ult.filter(x => x.fecha < lunesDe(hoyISO())); return ant.length ? `<details style="margin-top:8px"><summary class="small"><b>Ver histórico (${ant.length})</b></summary>${ant.map(x => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(x.fecha))}</span><div class="grow small"><b>${{ diario: 'Diario', partido: 'Partido', lunes: 'Lunes', semana: 'Cierre de semana' }[x.tipo]}</b> · ${esc(resumenW(x))}${x.datos?.nota ? `<div class="muted">"${esc(x.datos.nota)}"</div>` : ''}${botonesArchivos(x)}</div></div>`).join('')}</details>` : ''; })()}</div>
-
-      </section>
     </div>
     <details class="card fx-ban"><summary><span class="fx-ban-ic">✎</span><span class="grow"><b>Añadir o editar respuestas</b><span class="small muted"> · por si te las pasa por otro medio${p.length ? ` · ${p.length} partidos` : ''}</span></span></summary><div class="fx-ban-in stack" style="gap:12px">
       <div class="stack" style="gap:8px"><span class="eyebrow">Añadir o editar respuestas (por si te las pasa por otro medio)</span>
@@ -5583,18 +5583,22 @@ function vFichaBase() {
   const ban = (id, n, ico, tit, res, html, abierto = false) => `<details class="fb" data-fb="${id}" ${ab[id] ? 'open' : ''}><summary><span class="fb-n">${n}</span><span class="fb-ico">${ico}</span><div class="grow fb-t"><b>${tit}</b>${res ? `<small>${res}</small>` : ''}</div>${dot(n)}<span class="fb-chev" aria-hidden="true"></span></summary><div class="fb-body">${html}</div></details>`;
   const ultM = f.med[0], pagP = pagos.filter(p => !p.pagado_at), pagV = pagP.filter(p => p.vence < hoy);
   const modE = srv?.modulo_entreno ?? true;
+  const cmP = Compromisos.deAlumno(a.id).filter(x => x.tipo !== 'tarea').sort(Compromisos.ordenar), cmYa = cmP.filter(x => !x.futuro || x.estado !== 'pendiente'), cmFut = cmP.filter(x => x.futuro && x.estado === 'pendiente');
   const fb1 = `<div class="stack" style="gap:12px">
-    <div class="card stack" id="ac-pend"><div class="row"><b class="grow">Pendiente de ti</b>${Compromisos.deAlumno(a.id).length ? '' : '<span class="pill ok">✓ Nada pendiente</span>'}</div>${Compromisos.vFicha(a.id, false)}</div>
+    <section class="section"><div class="section-head"><h2>Notas y tareas</h2></div><div class="card stack" style="gap:16px">${vTareasFicha(a, true)}
+    <div class="stack" style="gap:6px"><div class="row"><b class="grow">Notas privadas</b><button class="btn sm ghost" data-act="nuevaNota">＋ Nota</button></div>${f.notas.map(n => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(n.fecha))}</span><div class="small grow">${esc(n.texto)}</div></div>`).join('') || '<div class="small muted">Solo tú ves estas notas.</div>'}</div>
+    ${Negocio.vRecordatorios(a.id, true)}</div></section>
+    <section class="section" id="ac-pend"><div class="section-head"><h2>Próximos y avisos</h2></div><div class="stack" style="gap:12px">
+    ${cmP.length ? `<div class="card stack"><b class="small">Próximos</b><div class="fx-lista">${cmYa.map(x => Compromisos.fila(x, false, false)).join('')}${cmFut.length ? `<div class="small muted" style="margin-top:6px">Más adelante: ${cmFut.map(x => `${esc(Compromisos.T[x.tipo].uno)} (${esc(fCorta(x.vence))})`).join(' · ')}</div>` : ''}</div></div>` : ''}
     <div class="card stack"><div class="row"><b class="grow">Avisos</b>${pend.filter(x => !x.comp).length ? `<span class="pill ${e.nivel}">${pend.filter(x => !x.comp).length}</span>` : '<span class="pill">Sin avisos</span>'}</div>
       ${pend.filter(x => !x.comp).length ? vListaAlertas(a.id, { ...e, items: e.items.filter(x => !x.comp) }, false) : '<p class="small muted" style="margin:0">Señales de su semana (pasos, motivación, cambios de peso…). Las que marcas como vistas pasan al historial.</p>'}
       ${hechas.length ? `<button class="linkbtn small" data-act="histAvisos" data-id="${a.id}" style="align-self:flex-start">🗂 Historial de avisos solventados (${hechas.length})</button>` : ''}</div>
-    <section class="section"><div class="section-head"><h2>Notas y tareas</h2></div><div class="card stack" style="gap:16px">${vTareasFicha(a, true)}
-    <div class="stack" style="gap:6px"><div class="row"><b class="grow">Notas privadas</b><button class="btn sm ghost" data-act="nuevaNota">＋ Nota</button></div>${f.notas.map(n => `<div class="line" style="align-items:flex-start"><span class="small muted num" style="width:64px;flex:none">${esc(fCorta(n.fecha))}</span><div class="small grow">${esc(n.texto)}</div></div>`).join('') || '<div class="small muted">Solo tú ves estas notas.</div>'}</div>
-    ${Negocio.vRecordatorios(a.id, true)}</div></section></div>`;
+</div></section></div>`;
   const resumen1 = [pend.length ? `${pend.length} aviso${pend.length === 1 ? '' : 's'}` : 'Sin avisos', (S.c.tareas || []).filter(t => t.alumno_id === a.id).length ? `${(S.c.tareas || []).filter(t => t.alumno_id === a.id).length} tarea(s)` : '', f.notas.length ? `${f.notas.length} nota(s)` : ''].filter(Boolean).join(' · ');
   const AF = vAnillosFicha(a, f, src, hoy, lunes);
   /* Dos columnas que crecen por separado (sin huecos): anillos y check-ins · últimos 7 días y revisiones */
-  const fb2 = `${srv?.modulo_futbol ? vFutbolFicha(a) : ''}<div class="stack"><div class="ck-cols"><div class="stack ck-col">${AF.izq}${Acomp.vCheckinsFicha(f, chks)}</div><div class="stack ck-col">${AF.der}${vRevisionesFicha(a)}</div></div></div>`;
+  /* Futbolista: semana de check-ins, calendario y estadísticas (sin foco, anillos, check-ins semanales ni revisiones) */
+  const fb2 = srv?.modulo_futbol ? vFutbolFicha(a) : `<div class="stack"><div class="ck-cols"><div class="stack ck-col">${AF.izq}${Acomp.vCheckinsFicha(f, chks)}</div><div class="stack ck-col">${AF.der}${vRevisionesFicha(a)}</div></div></div>`;
   const fb3 = `  <section class="section"><div class="section-head"><h2>Plan</h2><button class="btn sm ghost" data-act="editarServicio">✎ Editar</button></div><div class="card stack">
     ${srv ? `<div class="chips" style="gap:6px"><span class="pill blue">${esc(modalidadDe(a.id))}</span>${srv.meses ? `<span class="pill">${srv.meses} meses</span>` : ''}${FRECUENCIAS[srv.pt_frecuencia] ? `<span class="pill">Personales: ${esc(FRECUENCIAS[srv.pt_frecuencia].toLowerCase())}</span>` : ''}<span class="pill ${conSeguimiento(srv) ? 'ok' : ''}">${conSeguimiento(srv) ? 'Con seguimiento' : 'Sin seguimiento'}</span>${!srv.modalidad ? '<button class="linkbtn small" data-act="editarServicio">Elegir tipo de programa ›</button>' : ''}</div>` : ''}
     <button class="plan-b" data-act="fichaSub" data-s="plan"><div class="grow"><h3>${esc(srv?.producto || 'Sin plan asignado')} <span style="color:var(--blue-text)">›</span></h3><div class="small" style="color:var(--blue-text)">Ver toda su planificación${(() => { const m = [(srv?.modulo_entreno ?? true) && 'entrenamiento', srv?.modulo_nutricion && 'alimentación', srv?.modulo_habitos && 'hábitos'].filter(Boolean); return m.length ? ': ' + m.join(', ').replace(/, ([^,]*)$/, ' y $1') : ''; })()}</div></div></button>
@@ -5640,7 +5644,7 @@ function vFichaBase() {
   ${(() => {
     /* Las mismas secciones se ven como acordeón en el móvil y como pestañas con un panel de inicio en el ordenador */
     const SECS = [
-      ['resumen', 1, '🔔', 'Pendientes, avisos, notas y tareas', resumen1, fb1, 'Avisos'],
+      ['resumen', 1, '🔔', 'Notas y tareas · próximos y avisos', resumen1, fb1, 'Avisos'],
       srv?.oposicion && ['oposicion', '👮', '🎯', 'Oposición · pruebas físicas', Oposicion.resumen(true), Oposicion.tarjeta(true), 'Oposición'],
       ['checkins', 2, '✅', 'Check-ins y revisiones', `${dpw ? `${cur.entrenos}/${dpw} entrenos` : ''}${chks[0] ? ` · último check-in ${esc(fCorta(chks[0].semana_inicio))}` : ''}`, fb2, 'Check-ins'],
       ['plan', 3, '📑', 'Plan contratado y bloques', `${esc(srv?.producto || 'Sin plan')}${P && !P.antes && !P.fuera ? ` · semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''}`, fb3 + `<h2 style="margin:18px 0 8px">Pagos</h2>` + fb9, 'Plan'],
@@ -5732,7 +5736,7 @@ function vFichaBase() {
         const lCtx = f.contextos || contextosDe(a.id), semF = [[lunes, 'Esta semana'], [sumaDias(lunes, 7), 'La que viene']].map(([l, t]) => { const c = ctxEnSemana(lCtx, l); return `<div class="fx-prox"><span class="grow"><b>${t}</b> <span class="muted small">· ${esc(fCorta(l))}</span><br><span class="small ${c ? '' : 'muted'}">${c ? '✓ Ajustada' : 'Semana patrón'}</span></span><button class="btn sm ghost" data-act="avisarSemana" data-al="${a.id}" data-l="${l}">🔔 Avisar</button></div>`; }).join('');
         const cSem = `<div class="card fx-c"><div class="fx-ct">Semana de entreno</div><div class="fx-lista">${semF}</div><button class="linkbtn small" data-act="fTab" data-t="checkins" style="align-self:flex-start">Ajustar o ver su calendario ›</button></div>`;
         const cMol = `<div class="card fx-c"><div class="fx-ct">Molestias · 7 días</div>${mol.length ? `<div class="fx-lista">${mol.slice(0, 4).map(x => `<div class="fx-prox"><span class="fx-ic">🩹</span><span class="grow">${esc([].concat(x.z).join(', '))}${x.t ? ` · <span class="muted">${esc(x.t.slice(0, 80))}</span>` : ''}</span><b>${esc(fCorta(x.f))}</b></div>`).join('')}</div>` : '<div class="fx-vacio">Sin molestias</div>'}</div>`;
-        cuerpo = `${cAcuerdo}<div class="fx-kpis">${kF}</div><div class="fx-fila">${cSem}${cMol}</div>`;
+        cuerpo = cAcuerdo;   /* Plan del futbolista: solo objetivo y acuerdo (+ plan, pagos e histórico); lo demás está en Check-ins */
       } else if (srv?.oposicion) {
         /* Opositor: examen, nota de cada prueba y lo que le falta */
         const O = Oposicion.datos(true);
@@ -9551,7 +9555,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v497';
+const APP_VER = 'v498';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
