@@ -161,7 +161,7 @@ const Acomp = (() => {
   /* Última indicación de Jesús en Hoy (cuando no hay una devolución nueva sin leer, que ya sale en Pendiente) */
   function ultimaIndicacion() {
     const D = S.d || {}; if (S.vista || S.prueba || (D.devoluciones || []).some(x => !x.leida_at)) return '';
-    const d = (D.devoluciones || [])[0], r = (D.revisiones || [])[0];
+    const d = (D.devoluciones || []).find(x => x.prioridad || x.ajuste || x.avance || x.dificultad), r = (D.revisiones || [])[0];   /* las marcadas «Visto» (sin texto) no cuentan */
     const usarRev = r?.resumen && (!d || r.fecha > d.semana_inicio);
     if (!d && !usarRev) return '';
     const fechaTxt = usarRev ? fLarga(r.fecha) : 'semana del ' + fCorta(d.semana_inicio), principal = usarRev ? r.resumen : (d.prioridad || d.ajuste || d.avance || '');
