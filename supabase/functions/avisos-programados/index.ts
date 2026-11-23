@@ -26,12 +26,13 @@ Deno.serve(async (req) => {
   const dRel = (n: number) => { const d = new Date(fecha + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
   const dw = (new Date(fecha + "T12:00:00Z").getUTCDay() + 6) % 7;
   const avisos: { clave: string; alumno_id: string; titulo: string; cuerpo: string; url: string }[] = [];
+  const CORTE_FUT = "2026-11-28";   // futbolistas: ningún aviso de check-in antes de esta fecha (igual que en la app)
 
   /* Futbolistas activos */
   const { data: sv } = await admin.from("servicios").select("alumno_id").eq("modulo_futbol", true);
   const { data: pf } = await admin.from("perfiles").select("id,nombre,activo").in("id", (sv || []).map((x) => x.alumno_id));
   const fut = (pf || []).filter((p) => p.activo !== false), nombre = (id: string) => String(fut.find((p) => p.id === id)?.nombre || "").split(" ")[0];
-  const ids = fut.map((p) => p.id);
+  const todosFut = fut.map((p) => p.id), ids = fecha < CORTE_FUT ? [] : todosFut;
 
   /* Partidos de hoy cuya hora + 2 h ya ha pasado */
   const { data: pts } = await admin.from("partidos").select("*").eq("fecha", fecha).in("alumno_id", ids.length ? ids : ["-"]);
@@ -56,7 +57,7 @@ Deno.serve(async (req) => {
     const { data: pa } = await admin.from("perfiles").select("id,nombre,activo,rol").in("id", vivos.map((x) => x.alumno_id).concat("00000000-0000-0000-0000-000000000000"));
     const { data: ck } = await admin.from("checkins").select("alumno_id").eq("semana_inicio", sem);
     for (const p of pa || []) {
-      if (p.activo === false || p.rol === "coach" || ids.includes(p.id) || (ck || []).some((c) => c.alumno_id === p.id)) continue;
+      if (p.activo === false || p.rol === "coach" || todosFut.includes(p.id) || (ck || []).some((c) => c.alumno_id === p.id)) continue;
       const n = String(p.nombre || "").split(" ")[0];
       avisos.push({ clave: `semanal:${sem}:${p.id}`, alumno_id: p.id, titulo: "✅ Check-in semanal", cuerpo: `${n ? "Buenos días, " + n + ". " : ""}¿Qué tal tu semana? Son 2 minutos y con ello preparo tu plan.`, url: `./?k=${sem}` });
     }
@@ -79,7 +80,7 @@ Deno.serve(async (req) => {
       admin.from("avisos_enviados").select("clave").like("clave", `registro:${ayer}:%`)]);
     const hechoDia = (id: string, f: string) => (rg || []).some((r) => r.alumno_id === id && r.fecha === f && (r.pasos != null || r.ingestas != null || r.comidas_hechas != null || !!r.alimentacion || !!r.observacion));
     for (const p of pr || []) {
-      if (p.activo === false || p.rol === "coach" || ids.includes(p.id)) continue;
+      if (p.activo === false || p.rol === "coach" || todosFut.includes(p.id)) continue;
       if (hechoDia(p.id, ayer) || hechoDia(p.id, anteayer) || (ya || []).some((x) => x.clave === `registro:${ayer}:${p.id}`)) continue;
       const n = String(p.nombre || "").split(" ")[0];
       avisos.push({ clave: `registro:${fecha}:${p.id}`, alumno_id: p.id, titulo: "📝 Marca tu día", cuerpo: `${n ? n + ", llevas" : "Llevas"} 2 días sin registrar. Son 10 segundos y con eso te sigo de cerca.`, url: "./?r=1" });
