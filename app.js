@@ -1215,7 +1215,7 @@ function vHoy() {
   ${vCheckinTarjeta()}
   ${MenuSemana.tarjeta()}
   ${avisoAl('fotos') ? Casos.tarjetaHoy(false) : ''}
-  ${Temperamento.tarjetaHoy()}
+  ${s.modulo_futbol && !s.modulo_habitos ? '' : Temperamento.tarjetaHoy()}
   ${s.modulo_futbol || !s.modulo_habitos ? '' : Habitos.tarjetaHoy(true)}
   `;
 }
@@ -5649,7 +5649,7 @@ function vFichaBase() {
       ['plan', 3, '📑', 'Plan contratado y bloques', `${esc(srv?.producto || 'Sin plan')}${P && !P.antes && !P.fuera ? ` · semana ${P.semana}${P.sinFin ? '' : ' de ' + P.total}` : ''}`, fb3 + `<h2 style="margin:18px 0 8px">Pagos</h2>` + fb9, 'Plan'],
       modE && ['entreno', 4, '🏋️', 'Entrenamiento · bloque actual', `${esc(f.prog?.nombre || 'Sin programa')}${dpw ? ` · ${cur.entrenos}/${dpw} esta semana` : ''}`, fb4, 'Entreno'],
       srv?.modulo_nutricion && ['nutri', 5, '🥗', 'Nutrición', !midoCoach(a.id) ? esc(Nutricion.FASES[Nutricion.faseCoach(a.id)]?.[0] || 'Plan de alimentación') : ing7.pct != null ? `${ing7.pct} % de ingestas bien · ${ing7.dias} días registrados` : `${ing7.dias} de 7 días registrados`, fb5, 'Nutrición'],
-      (srv?.modulo_habitos || Temperamento.tieneDatos(a)) && ['habitos',   /* solo con Hábitos activado (o si ya tiene un cuestionario de temperamento, para no perderlo) */ 6, '🧭', 'Hábitos y temperamento', pasos7 != null ? `${fmtNum(pasos7, 0)} pasos de media · objetivo ${fmtNum(obj, 0)}` : '', fb6, 'Hábitos'],
+      (srv?.modulo_habitos || (!srv?.modulo_futbol && Temperamento.tieneDatos(a))) && ['habitos',   /* solo con Hábitos activado (o si ya tiene un cuestionario de temperamento, para no perderlo) */ 6, '🧭', 'Hábitos y temperamento', pasos7 != null ? `${fmtNum(pasos7, 0)} pasos de media · objetivo ${fmtNum(obj, 0)}` : '', fb6, 'Hábitos'],
       ['progreso', 7, '📈', 'Progreso y composición corporal', ultM ? `Última medición ${esc(fCorta(ultM.fecha))}${ultM.peso != null ? ' · ' + fmtNum(ultM.peso, 1) + ' kg' : ''}${ultM.grasa_pct != null ? ' · ' + fmtNum(ultM.grasa_pct, 1) + ' % grasa' : ''}` : 'Sin mediciones', fb7 + vTestsFicha(f), 'Progreso'],
       ['medidas', 11, '📸', 'Testimonio · medidas, fotos y casos de éxito', '', fb11, 'Testimonio']
     ].filter(Boolean);
@@ -6537,6 +6537,8 @@ function formServicio() {
     if (error && /nutri_fase/.test(error.message || '')) return fallo(error, 'Falta ejecutar el Bloque 57 en Supabase.');
     if (error && /objetivo_pasos/.test(error.message || '')) { delete row.objetivo_pasos; ({ error } = await guardar(row)); toast('Para guardar el objetivo de pasos falta ejecutar el Bloque 10'); }
     if (error) return fallo(error);
+    /* Futbolista: al activarle Hábitos se le pide el cuestionario de temperamento (antes no lo ve: primero check-ins, luego nutrición, luego hábitos) */
+    if (row.modulo_habitos === true && !s.modulo_habitos && (row.modulo_futbol ?? s.modulo_futbol)) { const hoyT = hoyISO(), rt = await sb.from('perfiles').update({ temperamento_pedido: hoyT }).eq('id', S.ficha.id); if (!rt.error) { const pf = S.c.perfiles.find(p => p.id === S.ficha.id); if (pf) pf.temperamento_pedido = hoyT; toast('Hábitos activado: le aparecerá el cuestionario de temperamento en su Hoy'); } }
     if (cuotas.length) { let { error: ep } = await sb.from('pagos').insert(cuotas.map(c => ({ ...c, concepto: conceptoDe(S.ficha.id, c.concepto), alumno_id: pagadorDe(S.ficha.id), ...(tSel ? { tarifa: tSel.id } : {}) })));
       if (ep && /tarifa/.test(ep.message || '')) ({ error: ep } = await sb.from('pagos').insert(cuotas.map(c => ({ ...c, concepto: conceptoDe(S.ficha.id, c.concepto), alumno_id: pagadorDe(S.ficha.id) })))); toast(ep ? 'Servicio guardado, pero el plan de pagos no: ' + (ep.message || '') : `Plan de pagos creado: ${cuotas.length} cuota${cuotas.length === 1 ? '' : 's'}`); }
     /* Los entrenos del programa no se apuntan aquí: dependen de su planificación y de cada bloque */
@@ -8504,11 +8506,11 @@ function formConectarPrueba(pid) {
 function vTests() {
   const l = S.d.valoraciones || [];
   const btTP = S.obj ? '' : '<button class="btn sm ghost" data-act="testPropio" style="align-self:flex-start">＋ Hacerme un test</button>';
-  if (!l.length) return `<section class="stack"><span class="eyebrow">Control y evolución</span><h1>Tests</h1>${btTP}</section>${Temperamento.seccionTests()}<div class="section card empty">Al empezar tu proceso Jesús te hará el test inicial. Aquí verás tu informe y el resultado de cada prueba.</div>`;
+  if (!l.length) return `<section class="stack"><span class="eyebrow">Control y evolución</span><h1>Tests</h1>${btTP}</section>${S.d?.servicio?.modulo_futbol && !S.d.servicio.modulo_habitos ? '' : Temperamento.seccionTests()}<div class="section card empty">Al empezar tu proceso Jesús te hará el test inicial. Aquí verás tu informe y el resultado de cada prueba.</div>`;
   const inf = l.filter(v => v.origen !== 'alumno').length ? l.filter(v => v.origen !== 'alumno') : l, sel = inf.find(v => v.id === S.valSel) || inf[0];
   return `<section class="stack"><span class="eyebrow">Control y evolución</span><h1>Tests</h1>
     ${inf.length > 1 ? `<div class="chips" style="gap:6px">${inf.map(v => `<button class="pill ${v.id === sel.id ? 'blue' : ''}" data-act="verValoracion" data-id="${v.id}">${esc(v.nombre)} · ${esc(fCorta(v.fecha))}</button>`).join('')}</div>` : ''}${btTP}</section>
-  ${Temperamento.seccionTests()}<section class="section">${vInforme(sel, l, false)}</section>${vTestsPropios() ? `<section class="section">${vTestsPropios()}</section>` : ''}`;
+  ${S.d?.servicio?.modulo_futbol && !S.d.servicio.modulo_habitos ? '' : Temperamento.seccionTests()}<section class="section">${vInforme(sel, l, false)}</section>${vTestsPropios() ? `<section class="section">${vTestsPropios()}</section>` : ''}`;
 }
 
 /* Tests dentro de Progreso (antes tenían pestaña propia) */
@@ -9556,7 +9558,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v500';
+const APP_VER = 'v501';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
