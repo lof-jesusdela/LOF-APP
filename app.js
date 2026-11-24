@@ -1417,9 +1417,9 @@ function vEjercicio(e, i, ro) {
     const foto = ej.imagen_url ? `<div class="ex-foto"><button class="ex-f" data-act="verImagen" data-src="${esc(ej.imagen_url)}" aria-label="Ver imagen del ejercicio"><img src="${esc(ej.imagen_url)}" alt="${esc(ej.nombre)}" loading="lazy" onerror="this.parentNode.hidden=true"></button><span class="ex-vid">${vid}</span>${mus}</div>` : `<div class="ex-vid-fila">${vid}${mus}</div>`;
     const ms = Tandas.metodosSeries(e), sr = x => x.de === x.a ? `${x.de}ª` : `${x.de}ª–${x.a}ª`;
     const T = [];   // casillas
-    T.push(`<div class="xt xt-o"><span class="xt-l">Series</span><b class="xt-n">${e.series}</b></div>`);
-    if (ms.length) T.push(`<button class="xt xt-o" data-act="metodo" data-n="Series mixtas"><span class="xt-l">Método ⓘ</span><b class="xt-n xt-s">Mixtas</b></button>`);
-    else if (e.metodos) T.push(`<button class="xt xt-o" data-act="metodo" data-n="${esc(e.metodos.nombre)}"><span class="xt-l">Método ⓘ</span><b class="xt-n xt-s">${esc(e.metodos.nombre)}</b></button>`);
+    T.push(`<div class="xt xt-o xt-big"><span class="xt-l">Series</span><b class="xt-n">${e.series}</b></div>`);
+    if (ms.length) T.push(`<button class="xt xt-o xt-big" data-act="metodo" data-n="Series mixtas"><span class="xt-l">Método ⓘ</span><b class="xt-n xt-s">Mixtas</b></button>`);
+    else if (e.metodos) T.push(`<button class="xt xt-o xt-big" data-act="metodo" data-n="${esc(e.metodos.nombre)}"><span class="xt-l">Método ⓘ</span><b class="xt-n xt-s">${esc(e.metodos.nombre)}</b></button>`);
     /* Ajustes: uno sencillo («Silla: 3», «Polea: 16», «Banco: 30°») → casilla grande; varios → chips */
     const par = x => { const m = /^([^:]{2,22}):\s*(.+)$/.exec(x); return m ? [m[1].trim(), m[2].trim()] : [x, '']; };
     /* Ajuste = cómo se adapta la máquina al cuerpo («Silla: 3», «Polea: 16»). Agarre y material NUNCA cuentan como ajuste */
@@ -1427,10 +1427,10 @@ function vEjercicio(e, i, ro) {
     const ajP = todos.filter(([k, v]) => v && !esAg(k) && !/material/i.test(k)), sueltos = aj.filter((x, i) => !ajP.includes(todos[i]));
     const agTxt = sueltos.find(esAg), matTxt = sueltos.filter(x => !esAg(x)).join(' · ');
     const simple = ajP.length === 1 && ajP[0][1].length <= 6;
-    if (simple) T.push(`<div class="xt xt-d"><span class="xt-l">${esc(ajP[0][0].replace(/^altura\s+/i, ''))}</span><b class="xt-n">${esc(ajP[0][1])}</b></div>`);
-    const foto1 = (u, l) => `<button class="xt xt-f" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver ${esc(l.toLowerCase())}"><img src="${esc(u)}" alt="${esc(l)}" loading="lazy" onerror="this.parentNode.hidden=true"><span>${esc(l)}</span></button>`;
+    if (simple) T.push(`<div class="xt xt-d xt-sm"><span class="xt-l">${esc(ajP[0][0].replace(/^altura\s+/i, ''))}</span><b class="xt-n">${esc(ajP[0][1])}</b></div>`);
+    const foto1 = (u, l) => `<button class="xt xt-f xt-sm" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver ${esc(l.toLowerCase())}"><img src="${esc(u)}" alt="${esc(l)}" loading="lazy" onerror="this.parentNode.hidden=true"><span>${esc(l)}</span></button>`;
     const ag = AGARRES.find(x => x[0] === e.agarre);
-    const txtT = (l, v) => `<div class="xt xt-o"><span class="xt-l">${l}</span><b class="xt-n xt-s xt-t">${esc(v)}</b></div>`;
+    const txtT = (l, v) => `<div class="xt xt-d xt-sm"><span class="xt-l">${l}</span><b class="xt-n xt-s xt-t">${esc(v)}</b></div>`;
     if (ag) { const u = S.agarres?.[ag[0]]; T.push(u ? foto1(u, 'Agarre') : txtT('Agarre', ag[1])); }
     else if (agTxt) T.push(txtT('Agarre', agTxt.replace(/^agarre\s*:?\s*/i, '')));
     const mt = e.material ?? ej.material, mi = e.material_img_url ?? ej.material_img_url;
@@ -9667,7 +9667,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v514';
+const APP_VER = 'v515';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
