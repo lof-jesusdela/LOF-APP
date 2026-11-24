@@ -7078,6 +7078,7 @@ const FCA = {
   alumnos() { return S.c.perfiles.filter(p => p && p.activo !== false && p.rol !== 'coach' && !esFamilia(p.id) && srvDe(p.id) && conSeguimiento(srvDe(p.id))).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '')); },
   /* Interruptores del check-in diario: [clave, título, dónde se guarda] */
   DIA: [['pasos', 'Pasos'], ['dia_contexto', 'Tipo de día'], ['dia_nota', 'Nota del día']],
+  CORTO: { registro: 'Días sin registrar', checkin: 'Check-in semanal', menu: 'Menú semana', fotos: 'Fotos del mes', pago: 'Cuota', incorporacion: 'Incorpo­ración', peso: 'Cambio de peso', control: 'Control mensual', casos: 'Caso de éxito' },
   on(srv, k) { return k === 'pasos' ? srv.pasos_activo !== false : (srv.avisos_alumno || {})[k] !== false; },
   aplica(srv, k) { return !srv.modulo_futbol && (k !== 'dia_contexto' || !!srv.modulo_nutricion); },
   nAv(srv) { const va = srv.avisos_alumno || {}; return AVISOS_ALUMNO.filter(([k]) => va[k] !== false).length; },
@@ -7092,9 +7093,10 @@ const FCA = {
   tabla() {
     const L = this.alumnos(), cel = (on, act, aid, k, txt) => `<button type="button" class="fca-c ${on === null ? 'na' : on ? 'y' : 'n'}" ${on === null ? 'disabled' : `data-act="${act}" data-id="${aid}" data-k="${k || ''}"`}>${txt ?? (on === null ? '—' : on ? '✓' : 'No')}</button>`;
     abrirSheet(`<div class="stack"><h2 style="margin:0">Foco, check-ins y avisos</h2><p class="small muted" style="margin:0">Toca una casilla para cambiarla: se guarda al momento y el alumno lo nota ya. Toca el nombre para ver su ficha completa.</p>
-      <div class="fca-t fca-cab"><span></span><span class="fca-h">Foco</span>${this.DIA.map(([, t]) => `<span class="fca-h">${t}</span>`).join('')}<span class="fca-h">Avisos</span></div>
+      <div class="fca-wrap"><div class="fca-t fca-cab"><span></span><span></span><span class="fca-g" style="grid-column:span ${this.DIA.length}">Check-in diario</span><span class="fca-g av" style="grid-column:span ${AVISOS_ALUMNO.length}">Avisos si no lo hace</span>
+        <span></span><span class="fca-h">Foco</span>${this.DIA.map(([, t]) => `<span class="fca-h">${t}</span>`).join('')}${AVISOS_ALUMNO.map(([k]) => `<span class="fca-h av">${this.CORTO[k] || k}</span>`).join('')}</div>
       <div class="fca-t fca-cuerpo" id="fca-cuerpo">${L.map(a => { const sv = srvDe(a.id), f = sv.modulo_futbol ? null : Foco.de(a.id);
-        return `<button type="button" class="fca-n" data-act="fcaAlumno" data-id="${a.id}">${esc((a.nombre || '').split(' ').slice(0, 2).join(' '))}</button>${sv.modulo_futbol ? cel(null, '', a.id, '', '⚽ Check-ins') : `<button type="button" class="fca-c ${f ? 'fo' : 'n'}" data-act="fcaFoco" data-id="${a.id}">${esc(this.focoTxt(a.id, sv))}</button>`}${this.DIA.map(([k]) => cel(this.aplica(sv, k) ? this.on(sv, k) : null, 'fcaDia', a.id, k)).join('')}${cel(true, 'fcaAvisos', a.id, '', `${this.nAv(sv)}/${AVISOS_ALUMNO.length}`)}`; }).join('')}</div></div>`);
+        return `<button type="button" class="fca-n" data-act="fcaAlumno" data-id="${a.id}">${esc((a.nombre || '').split(' ').slice(0, 2).join(' '))}</button>${sv.modulo_futbol ? cel(null, '', a.id, '', '⚽ Check-ins') : `<button type="button" class="fca-c ${f ? 'fo' : 'n'}" data-act="fcaFoco" data-id="${a.id}">${esc(this.focoTxt(a.id, sv))}</button>`}${this.DIA.map(([k]) => cel(this.aplica(sv, k) ? this.on(sv, k) : null, 'fcaDia', a.id, k)).join('')}${AVISOS_ALUMNO.map(([k]) => cel((sv.avisos_alumno || {})[k] !== false, 'fcaDia', a.id, k)).join('')}`; }).join('')}</div></div></div>`);
     $('#sheet-in')?.classList.add('ancho', 'fca');
     /* Vuelve a donde estabas en la lista (al volver de un foco o de una ficha) */
     const cu = $('#fca-cuerpo'); if (cu && S.fcaScroll) { cu.scrollTop = S.fcaScroll; } if (cu) cu.addEventListener('scroll', () => { S.fcaScroll = cu.scrollTop; }, { passive: true });
@@ -9623,7 +9625,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v506';
+const APP_VER = 'v507';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
