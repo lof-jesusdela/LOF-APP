@@ -1697,9 +1697,14 @@ async function descartarEntreno() {
     const r = await sb.from('sesiones_hechas').select('id,estado').eq('alumno_id', x.alumnoId).eq('dia_id', x.diaId).eq('fecha', x.fecha);
     const ids = (r.data || []).filter(z => !esCompleta(z)).map(z => z.id);
     if (S.sesion?.id && dentro && !ids.includes(S.sesion.id) && !esCompleta((S.d?.sesiones || []).find(z => z.id === S.sesion.id))) ids.push(S.sesion.id);
-    if (ids.length) { const a = await sb.from('registros_series').delete().in('sesion_id', ids); if (a.error) throw a.error; const b = await sb.from('sesiones_hechas').delete().in('id', ids); if (b.error) throw b.error;
-      if (S.d?.sesiones) S.d.sesiones = S.d.sesiones.filter(z => !ids.includes(z.id)); }
-  } catch (err) { console.error(err); toast('Descartado, pero no he podido borrar lo guardado: revísalo en su ficha'); }
+    /* Series pendientes de enviar (sin conexión) de ese entreno: fuera, para que no vuelvan a crear la sesión */
+    try { const l = Cola.leer(), r = l.filter(it => !(it.ses?.dia_id === x.diaId && it.ses?.fecha === x.fecha && (it.ses?.alumno_id || x.alumnoId) === x.alumnoId)); if (r.length !== l.length) { Cola.escribir(r); Cola.pintar(); } } catch (e) { }
+    if (ids.length) { const a = await sb.from('registros_series').delete().in('sesion_id', ids); if (a.error) throw a.error;
+      const b = await sb.from('sesiones_hechas').delete().in('id', ids).select('id'); if (b.error) throw b.error;
+      /* Si la base de datos no deja borrar (permisos), no da error: se comprueba que se haya borrado de verdad */
+      if ((b.data || []).length < ids.length) { const c = await sb.from('sesiones_hechas').update({ estado: 'omitida' }).in('id', ids).select('id'); if (c.error || (c.data || []).length < ids.length) throw new Error('sin permiso para borrar'); }
+      if (S.d?.sesiones) S.d.sesiones = S.d.sesiones.filter(z => !ids.includes(z.id)); if (S.c?.sesiones) S.c.sesiones = S.c.sesiones.filter(z => !ids.includes(z.id)); }
+  } catch (err) { console.error(err); alert('⚠️ Se ha salido del entreno, pero NO se ha podido borrar lo guardado: puede contar como hecho. Avísame (Claude) con una captura.'); }
   S.reanudar = null;
   if (dentro) { stopTimer(); if (S.obj) { await salirComo(); } else { S.dia = null; S.sesion = null; } }
   detectarEntrenoEnCurso(); toast('Entreno descartado: no cuenta como hecho'); render();
@@ -9630,7 +9635,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v509';
+const APP_VER = 'v510';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
