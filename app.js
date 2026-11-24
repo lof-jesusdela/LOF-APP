@@ -1422,14 +1422,21 @@ function vEjercicio(e, i, ro) {
     else if (e.metodos) T.push(`<button class="xt xt-o" data-act="metodo" data-n="${esc(e.metodos.nombre)}"><span class="xt-l">Método ⓘ</span><b class="xt-n xt-s">${esc(e.metodos.nombre)}</b></button>`);
     /* Ajustes: uno sencillo («Silla: 3», «Polea: 16», «Banco: 30°») → casilla grande; varios → chips */
     const par = x => { const m = /^([^:]{2,22}):\s*(.+)$/.exec(x); return m ? [m[1].trim(), m[2].trim()] : [x, '']; };
-    const ajP = aj.map(par), simple = ajP.length === 1 && ajP[0][1] && ajP[0][1].length <= 6;
+    /* Ajuste = cómo se adapta la máquina al cuerpo («Silla: 3», «Polea: 16»). Agarre y material NUNCA cuentan como ajuste */
+    const esAg = x => /agarre|prono|supino|neutro|palmas/i.test(x), todos = aj.map(par);
+    const ajP = todos.filter(([k, v]) => v && !esAg(k) && !/material/i.test(k)), sueltos = aj.filter((x, i) => !ajP.includes(todos[i]));
+    const agTxt = sueltos.find(esAg), matTxt = sueltos.filter(x => !esAg(x)).join(' · ');
+    const simple = ajP.length === 1 && ajP[0][1].length <= 6;
     if (simple) T.push(`<div class="xt xt-d"><span class="xt-l">${esc(ajP[0][0].replace(/^altura\s+/i, ''))}</span><b class="xt-n">${esc(ajP[0][1])}</b></div>`);
     const foto1 = (u, l) => `<button class="xt xt-f" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver ${esc(l.toLowerCase())}"><img src="${esc(u)}" alt="${esc(l)}" loading="lazy" onerror="this.parentNode.hidden=true"><span>${esc(l)}</span></button>`;
     const ag = AGARRES.find(x => x[0] === e.agarre);
-    if (ag) { const u = S.agarres?.[ag[0]]; T.push(u ? foto1(u, 'Agarre') : `<div class="xt xt-o"><span class="xt-l">Agarre</span><b class="xt-n xt-s">${esc(ag[1])}</b></div>`); }
+    const txtT = (l, v) => `<div class="xt xt-o"><span class="xt-l">${l}</span><b class="xt-n xt-s xt-t">${esc(v)}</b></div>`;
+    if (ag) { const u = S.agarres?.[ag[0]]; T.push(u ? foto1(u, 'Agarre') : txtT('Agarre', ag[1])); }
+    else if (agTxt) T.push(txtT('Agarre', agTxt.replace(/^agarre\s*:?\s*/i, '')));
     const mt = e.material ?? ej.material, mi = e.material_img_url ?? ej.material_img_url;
     if (mi) String(mi).split(';').filter(Boolean).forEach(u => T.push(foto1(u, 'Material')));
-    else if (mt && !/sin material/i.test(mt)) T.push(`<div class="xt xt-o"><span class="xt-l">Material</span><b class="xt-n xt-s xt-t">${esc(mt)}</b></div>`);
+    else if (mt && !/sin material/i.test(mt)) T.push(txtT('Material', mt));
+    else if (matTxt) T.push(txtT('Material', matTxt));
     const chipsAj = !simple && ajP.length ? `<div class="xt-aj"><span class="xt-ajk">Ajustes</span>${ajP.map(([k, v]) => `<span class="xt-chip">${esc(k)}${v ? ` <b>${esc(v)}</b>` : ''}</span>`).join('')}</div>` : '';
     const mixtas = ms.length ? `<div class="chips ex-chips">${ms.map(x => x.mt === 'Normal' ? `<span class="pill">${sr(x)} serie${x.de === x.a ? '' : 's'}: dinámico</span>` : `<button class="pill ex-met" data-act="metodo" data-n="${esc(x.mt)}">${sr(x)} serie${x.de === x.a ? '' : 's'}: ${esc(x.mt)} ⓘ</button>`).join('')}</div>` : '';
     const descP = tandas ? '' : `<div class="chips ex-chips"><span class="pill">${desc ? 'Descanso ' + seg(desc) : 'Sin descanso'}</span></div>`;
@@ -9660,7 +9667,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v513';
+const APP_VER = 'v514';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
