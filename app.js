@@ -51,10 +51,10 @@ const seg = s => s >= 60 ? (s % 60 ? `${Math.floor(s / 60)}' ${s % 60}''` : `${s
 function toast(t) { const el = $('#toast'); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 2600); }
 /* ---------- Hojas (formularios): salida visible, Escape, cambios sin guardar y estado del guardado ---------- */
 function abrirSheet(html) {
-  $('#sheet-in').classList.remove('chat', 'ancho'); $('#sheet-in').innerHTML = `<div class="sheet-top"><span class="sheet-est" id="sheet-est" aria-live="polite"></span><button type="button" class="sheet-x" data-act="cerrarSheetPide" aria-label="Cerrar">Cerrar ✕</button></div>` + html;
+  $('#sheet-in').classList.remove('chat', 'ancho', 'fca'); $('#sheet-in').innerHTML = `<div class="sheet-top"><span class="sheet-est" id="sheet-est" aria-live="polite"></span><button type="button" class="sheet-x" data-act="cerrarSheetPide" aria-label="Cerrar">Cerrar ✕</button></div>` + html;
   $('#sheet').hidden = false; S.sheetSucio = false; $('#sheet-in').scrollTop = 0;
 }
-function cerrarSheet() { $('#sheet').hidden = true; $('#sheet-in').classList.remove('chat', 'ancho'); $('#sheet-in').innerHTML = ''; S.sheetSucio = false; }
+function cerrarSheet() { $('#sheet').hidden = true; $('#sheet-in').classList.remove('chat', 'ancho', 'fca'); $('#sheet-in').innerHTML = ''; S.sheetSucio = false; }
 function pedirCerrarSheet() {
   if (!S.sheetSucio) return cerrarSheet();
   if ($('#sheet-aviso')) return;
@@ -7092,10 +7092,12 @@ const FCA = {
   tabla() {
     const L = this.alumnos(), cel = (on, act, aid, k, txt) => `<button type="button" class="fca-c ${on === null ? 'na' : on ? 'y' : 'n'}" ${on === null ? 'disabled' : `data-act="${act}" data-id="${aid}" data-k="${k || ''}"`}>${txt ?? (on === null ? '—' : on ? '✓' : 'No')}</button>`;
     abrirSheet(`<div class="stack"><h2 style="margin:0">Foco, check-ins y avisos</h2><p class="small muted" style="margin:0">Toca una casilla para cambiarla: se guarda al momento y el alumno lo nota ya. Toca el nombre para ver su ficha completa.</p>
-      <div class="fca-t"><span></span><span class="fca-h">Foco</span>${this.DIA.map(([, t]) => `<span class="fca-h">${t}</span>`).join('')}<span class="fca-h">Avisos</span>
-      ${L.map(a => { const sv = srvDe(a.id), f = sv.modulo_futbol ? null : Foco.de(a.id);
+      <div class="fca-t fca-cab"><span></span><span class="fca-h">Foco</span>${this.DIA.map(([, t]) => `<span class="fca-h">${t}</span>`).join('')}<span class="fca-h">Avisos</span></div>
+      <div class="fca-t fca-cuerpo" id="fca-cuerpo">${L.map(a => { const sv = srvDe(a.id), f = sv.modulo_futbol ? null : Foco.de(a.id);
         return `<button type="button" class="fca-n" data-act="fcaAlumno" data-id="${a.id}">${esc((a.nombre || '').split(' ').slice(0, 2).join(' '))}</button>${sv.modulo_futbol ? cel(null, '', a.id, '', '⚽ Check-ins') : `<button type="button" class="fca-c ${f ? 'fo' : 'n'}" data-act="fcaFoco" data-id="${a.id}">${esc(this.focoTxt(a.id, sv))}</button>`}${this.DIA.map(([k]) => cel(this.aplica(sv, k) ? this.on(sv, k) : null, 'fcaDia', a.id, k)).join('')}${cel(true, 'fcaAvisos', a.id, '', `${this.nAv(sv)}/${AVISOS_ALUMNO.length}`)}`; }).join('')}</div></div>`);
-    $('#sheet-in')?.classList.add('ancho');
+    $('#sheet-in')?.classList.add('ancho', 'fca');
+    /* Vuelve a donde estabas en la lista (al volver de un foco o de una ficha) */
+    const cu = $('#fca-cuerpo'); if (cu && S.fcaScroll) { cu.scrollTop = S.fcaScroll; } if (cu) cu.addEventListener('scroll', () => { S.fcaScroll = cu.scrollTop; }, { passive: true });
   },
   ficha(aid) {
     const a = S.c.perfiles.find(p => p.id === aid), sv = srvDe(aid); if (!a || !sv) return; const va = sv.avisos_alumno || {};
@@ -9621,7 +9623,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v505';
+const APP_VER = 'v506';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -9992,10 +9994,11 @@ document.addEventListener('click', async e => {
     case 'enviarCheckin': await enviarCheckin(); break;
     case 'ficha': cerrarSheet(); S.iaCoach = false; if (S.obj) await aparcarOSalir(); await abrirFicha(b.dataset.id); break;
     case 'verAlertas': verAlertas(b.dataset.id); break;
-    case 'fcaAbrir': FCA.tabla(); break;
+    case 'fcaAbrir': if (!b.closest('#sheet')) S.fcaScroll = 0; FCA.tabla(); break;
     case 'fcaAlumno': FCA.ficha(b.dataset.id); break;
     case 'fcaFoco': S.fcaVolver = b.closest('.fca-t') ? 'tabla' : b.dataset.id; formFoco(b.dataset.id); break;
-    case 'fcaDia': await FCA.cambiar(b.dataset.id, b.dataset.k); if (b.closest('.fca-t')) FCA.tabla(); else toast('Guardado'); break;
+    case 'fcaDia': { await FCA.cambiar(b.dataset.id, b.dataset.k);
+      if (b.classList.contains('fca-c')) { const on = FCA.on(srvDe(b.dataset.id) || {}, b.dataset.k); b.className = `fca-c ${on ? 'y' : 'n'}`; b.textContent = on ? '✓' : 'No'; } else toast('Guardado'); break; }
     case 'fcaAvisos': FCA.ficha(b.dataset.id); break;
     case 'fcaAviso': await FCA.cambiar(b.dataset.id, b.dataset.k); toast('Guardado'); break;
     case 'avisarExc': {   /* push solo a los futbolistas a los que les falta el post-partido o el cierre de este fin de semana */
