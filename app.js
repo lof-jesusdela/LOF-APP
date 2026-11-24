@@ -2401,6 +2401,21 @@ function vObjetivoResto(obj, med) {
   const o2 = { ...obj }; ['peso', 'grasa_pct', 'cintura'].forEach(k => delete o2[k]);
   return `<details class="small pg-resto"><summary>Resto de tu objetivo${otros.length ? ` · ${otros.map(x => x[1].toLowerCase()).join(', ')}` : ''}</summary>${vObjetivoComp(o2, med, false)}</details>`;
 }
+/* Histórico de mediciones (coach): cada día se abre con todas sus medidas y se puede editar */
+const kgGrasa = m => m.grasa_kg ?? (m.peso != null && m.grasa_pct != null ? m.peso * m.grasa_pct / 100 : null);
+function vHistMed(med) {
+  const L = (med || []).slice().sort((x, y) => y.fecha.localeCompare(x.fecha)); if (!L.length) return '';
+  const v = (x, u, d = 1) => x != null ? fmtNum(x, d) + u : '—';
+  return `<details class="card fx-ban hm"><summary><span class="fx-ban-ic">📋</span><span class="grow"><b>Histórico de mediciones</b><span class="small muted"> · ${L.length}</span></span></summary>
+    <div class="hm-t"><div class="hm-r"><span class="hm-h">Fecha</span><span class="hm-h">Peso</span><span class="hm-h">% grasa</span><span class="hm-h">Kg grasa</span><span class="hm-h">Cintura</span><span></span></div>
+    ${L.map(m => `<button type="button" class="hm-f hm-r" data-act="verMedicion" data-id="${m.id}"><span>${esc(fCorta(m.fecha))} ${String(fecha(m.fecha).getFullYear()).slice(2)}</span><span>${v(m.peso, ' kg')}</span><span>${v(m.grasa_pct, ' %')}</span><span>${v(kgGrasa(m), ' kg')}</span><span>${v(m.cintura, ' cm', 0)}</span><span class="hm-ir">›</span></button>`).join('')}</div></details>`;
+}
+function verMedicion(id) {
+  const m = (S.ficha?.med || []).find(x => String(x.id) === String(id)); if (!m) return;
+  const filas = CAMPOS_OBJ.map(([k, t, u]) => { const x = k === 'grasa_kg' ? kgGrasa(m) : m[k]; return x != null && x !== '' ? `<div class="line"><span class="grow">${t}</span><b>${fmtNum(x, u.trim() === 'cm' ? 1 : 1)}${u}</b></div>` : ''; }).join('');
+  abrirSheet(`<div class="stack"><h2 style="margin:0">Medición del ${esc(fLarga(m.fecha))}</h2>${filas || '<p class="small muted">Sin medidas apuntadas.</p>'}${m.nota ? `<p class="small">«${esc(m.nota)}»</p>` : ''}
+    <button class="btn full" data-act="editarMedicion" data-id="${m.id}">✎ Editar esta medición</button><button class="btn ghost full" data-act="cerrarSheet">Cerrar</button></div>`);
+}
 function vObjetivoComp(obj, med, coach) {
   if (!obj) return coach ? `<div class="card stack"><b>🎯 Objetivo de composición corporal</b><p class="small muted">Sin objetivo todavía. Fíjalo en la valoración inicial: cuánta grasa tiene que perder y qué perímetros quieres mantener.</p><button class="btn sm" data-act="objetivoComp" style="align-self:flex-start">Fijar objetivo</button></div>` : '';
   const m = conKgGrasa(med), ext = (k, i) => { const p = serie(m, k); return p.length ? p[i < 0 ? p.length - 1 : 0].v : null; };
@@ -5661,7 +5676,7 @@ function vFichaBase() {
   const fb6 = `${Temperamento.bloqueFicha(f, a)}${conPasos(srv) || srv?.modulo_habitos ? `<div style="padding:0 2px"><button class="btn ghost full" data-act="fichaSub" data-s="habitos">${srv?.modulo_habitos ? 'Hábitos y pasos' : 'Pasos'} ›</button></div>` : ''}`;
   const fb7 = `  <section class="section"><div class="section-head"><h2>Composición corporal</h2><div class="row" style="gap:6px"><button class="btn sm ghost" data-act="objetivoComp">🎯 Objetivo</button><button class="btn sm ghost" data-act="nuevaMedicion">＋ Medición</button></div></div>
     ${vGraficaComp(f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), a, f.medObj) || '<div class="card empty">Sin mediciones todavía.</div>'}
-    ${vObjetivoComp(f.medObj, f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), true)}</section>`;
+    ${vObjetivoComp(f.medObj, f.med.slice().sort((x, y) => x.fecha.localeCompare(y.fecha)), true)}${vHistMed(f.med)}</section>`;
   const fb8 = `${vRevisionesFicha(a)}`;
   const pPor = pagaPor(a.id), pagador = pPor && S.c.perfiles.find(x => x.id === pPor), cubre = cubreA(a.id);
   const fbPaga = srv ? `<section class="section"><div class="card stack" style="gap:8px"><b class="small">💑 ¿Quién paga?</b>
@@ -9635,7 +9650,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v510';
+const APP_VER = 'v511';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -10110,6 +10125,7 @@ document.addEventListener('click', async e => {
     case 'nuevaMedicion': abrirSheet(`<div class="stack"><h2>Nueva medición</h2><p class="small muted" style="margin:0">¿Es solo una medición o también es su revisión mensual? Si hay revisión, al guardar las medidas se abre la revisión para rellenar el foco y los acuerdos.</p><button class="btn full" data-act="medTipo" data-v="rev">📋 Medición + revisión mensual</button><button class="btn ghost full" data-act="medTipo" data-v="sola">📏 Solo medición</button></div>`); break;
     case 'medTipo': cerrarSheet(); formMedicion(null, { conRev: b.dataset.v === 'rev' }); break;
     case 'editarMedicion': formMedicion(b.dataset.id); break;
+    case 'verMedicion': verMedicion(b.dataset.id); break;
     case 'objetivoComp': formObjetivoComp(); break;
     case 'misMedidas': formMisMedidas(); break;
     case 'calcGrasa': formCalculadoraGrasa(); break;
