@@ -371,6 +371,12 @@ const Consultas = (() => {
     const l = noLeidos().filter(x => x !== aid); if (on) l.push(aid); const v = JSON.stringify(l);
     (S.c.fiscal ||= {}).cq_noleidos = v; await sb.from('ajustes_privados').upsert({ clave: 'cq_noleidos', valor: v }, { onConflict: 'clave' }).then(() => {}, () => {});
   }
+  /* Chats fijados arriba (todos los que quieras), guardados en tus ajustes privados */
+  const fijados = () => { try { return JSON.parse(S.c?.fiscal?.cq_fijados || '[]') || []; } catch (e) { return []; } };
+  async function ponFijado(aid, on) {
+    const l = fijados().filter(x => x !== aid); if (on) l.unshift(aid); const v = JSON.stringify(l);
+    (S.c.fiscal ||= {}).cq_fijados = v; await sb.from('ajustes_privados').upsert({ clave: 'cq_fijados', valor: v }, { onConflict: 'clave' }).then(() => {}, () => {});
+  }
   /* Abrir un chat lo da por leído: sus mensajes pendientes quedan atendidos (un «Ok» no hace falta contestarlo) */
   async function marcarLeido(aid) {
     if (S.vista || S.prueba) return; const ahora = new Date().toISOString(), ab = abiertas().filter(c => c.alumno_id === aid);
@@ -381,20 +387,22 @@ const Consultas = (() => {
   function vCoach(enSheet) {
     if (S.c?.consultasErr) return '';
     const desde = Date.now() - 30 * 864e5, todas = (S.c.consultas || []).filter(c => new Date(c.creado_at).getTime() >= desde), ab = abiertas();
-    const ids = [...new Set([...todas.map(c => c.alumno_id), ...noLeidos()])];
+    const FJ = fijados(), ids = [...new Set([...FJ, ...todas.map(c => c.alumno_id), ...noLeidos()])];
     if (!ids.length && !enSheet) return '';
     const NL = noLeidos();
     const fila = aid => { const L = todas.filter(c => c.alumno_id === aid), pend0 = ab.filter(c => c.alumno_id === aid), pend = pend0.length ? pend0 : NL.includes(aid) ? [{ creado_at: new Date().toISOString(), _nl: 1 }] : [], u = mensajes(L.slice().reverse()).pop(), viejo = pend.reduce((m, c) => Math.max(m, edad(c)), 0);
       const col = !pend.length ? '' : viejo > H48 ? 'bad' : viejo > 24 * 36e5 ? 'warn' : 'ok';
-      return { pend: pend.length, viejo, html: `<div class="wa-fila" data-act="cq" data-q="hilo" data-v="${aid}" style="cursor:pointer">${avatarDe(perfilDe(aid), 44)}<div class="grow" style="min-width:0"><div class="row"><b class="grow">${esc(nombreAl(aid))}</b>${u ? `<span class="small ${pend.length ? 'wa-nue' : 'muted'}">${esc(cuando(u.t))}</span>` : ''}</div>
+      return { pend: pend.length, viejo, html: `<div class="wa-fila" data-act="cq" data-q="hilo" data-v="${aid}" style="cursor:pointer">${avatarDe(perfilDe(aid), 44)}<div class="grow" style="min-width:0"><div class="row"><b class="grow">${esc(nombreAl(aid))}</b>${FJ.includes(aid) ? '<span class="wa-pin" aria-label="Fijado">📌</span>' : ''}${u ? `<span class="small ${pend.length ? 'wa-nue' : 'muted'}">${esc(cuando(u.t))}</span>` : ''}</div>
         <div class="row"><span class="small muted wa-prev grow">${u ? (u.de === 'je' ? 'Tú: ' : '') + esc(u.txt) : ''}</span>${pend.length ? `<span class="wa-badge ${col}">${pend[0]?._nl ? '●' : pend.length}</span>` : ''}</div></div></div>` }; };
-    const F = ids.map(fila).sort((a, b) => b.pend - a.pend || b.viejo - a.viejo), conP = F.filter(f => f.pend), sinP = F.filter(f => !f.pend);
+    const F0 = ids.map(aid => ({ aid, ...fila(aid) })), fij = FJ.map(id => F0.find(f => f.aid === id)).filter(Boolean);
+    const F = F0.filter(f => !FJ.includes(f.aid)).sort((a, b) => b.pend - a.pend || b.viejo - a.viejo), conP = F.filter(f => f.pend), sinP = F.filter(f => !f.pend);
+    const fijH = fij.length ? `<div class="eyebrow" style="margin-top:4px">📌 Fijados</div>${fij.map(f => f.html).join('')}<div class="eyebrow" style="margin-top:8px">Chats</div>` : '';
     const M = metrica(), venc = ab.filter(c => edad(c) > H48).length;
     const met = M.n ? `<div class="small muted">30 días: ${M.pct != null ? `<b style="color:var(--${M.pct >= 90 ? 'ok' : M.pct >= 70 ? 'warn' : 'bad'})">${M.pct}%</b> respondidas en &lt;48 h` : 'sin respuestas aún'}${M.media != null ? ` · media ${M.media} h` : ''} · ${M.n} mensajes · ${M.wa} derivados a WhatsApp${venc ? ` · <b style="color:var(--bad)">${venc} fuera de plazo</b>` : ''}</div>` : '';
     const nuevo = enSheet ? `<select class="wa-nuevo" data-cq-nuevo><option value="">＋ Nuevo chat con…</option>${(S.c.perfiles || []).filter(p => p.rol !== 'coach' && p.activo !== false && (typeof esCliente !== 'function' || esCliente(p))).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '')).map(p => `<option value="${p.id}">${esc(p.nombre || '')}</option>`).join('')}</select>` : '';
-    if (enSheet) return `${met}${nuevo}${conP.map(f => f.html).join('') || '<div class="small muted" style="padding:8px 0">Sin mensajes pendientes ✓</div>'}${sinP.length ? `<div class="eyebrow" style="margin-top:8px">Al día</div>${sinP.map(f => f.html).join('')}` : ''}`;
+    if (enSheet) return `${met}${nuevo}${fijH}${conP.map(f => f.html).join('') || '<div class="small muted" style="padding:8px 0">Sin mensajes pendientes ✓</div>'}${sinP.length ? `<div class="eyebrow" style="margin-top:8px">Al día</div>${sinP.map(f => f.html).join('')}` : ''}`;
     return `<section class="section"><div class="section-head"><h2>Chats con alumnos</h2></div><div class="card stack" style="gap:4px">${met}
-      ${conP.map(f => f.html).join('') || '<div class="small muted">Sin mensajes pendientes ✓</div>'}
+      ${fijH}${conP.map(f => f.html).join('') || '<div class="small muted">Sin mensajes pendientes ✓</div>'}
       ${sinP.length ? `<details><summary class="small muted">${sinP.length} chat${sinP.length === 1 ? '' : 's'} al día</summary>${sinP.map(f => f.html).join('')}</details>` : ''}</div></section>`;
   }
   /* Acceso al chat desde la cabecera del coach (Tu día, Alumnos, Metodología, Negocio) */
@@ -659,21 +667,30 @@ Jesús`, 'nutricion']];
     const t = new Date(mio).getTime(), h = (Date.now() - t) / 36e5;
     return (!suyo || suyo < mio) && h >= 48 && h <= 24 * 21 ? mio.slice(0, 10) : null;
   }
-  return { citar, marcarLeido, ponNoLeido, abrirLista, sinRespuesta, mensajeJesus, menuMsg, reenviarPick, difTecleo: () => { if (S.cqDif) { S.cqDif.conf = false; clearTimeout(S.cqDifT); S.cqDifT = setTimeout(() => { const t = document.getElementById('cq-dif'); if (!t) return; const pos = t.selectionStart; S.cqDif.txt = t.value; abrirDifusion(); const n = document.getElementById('cq-dif'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }, 900); } }, ajustaAlto, elegirFoto, TEL, vBoton, abrirLista, vDevolucion, metrica, cargarAlumno, cargarCoach, vAlumno, vAvisoHoy, vCoach, vFinEntreno, leerFinEntreno, crearDeFin, accion, sinLeer, abiertas, abrirHilo };
+  return { fijados, ponFijado, citar, marcarLeido, ponNoLeido, abrirLista, sinRespuesta, mensajeJesus, menuMsg, reenviarPick, difTecleo: () => { if (S.cqDif) { S.cqDif.conf = false; clearTimeout(S.cqDifT); S.cqDifT = setTimeout(() => { const t = document.getElementById('cq-dif'); if (!t) return; const pos = t.selectionStart; S.cqDif.txt = t.value; abrirDifusion(); const n = document.getElementById('cq-dif'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }, 900); } }, ajustaAlto, elegirFoto, TEL, vBoton, abrirLista, vDevolucion, metrica, cargarAlumno, cargarCoach, vAlumno, vAvisoHoy, vCoach, vFinEntreno, leerFinEntreno, crearDeFin, accion, sinLeer, abiertas, abrirHilo };
 })();
 
 /* Intro envía el mensaje (Mayús+Intro hace salto de línea) */
 document.addEventListener('keydown', e => { if (e.key !== 'Enter' || e.shiftKey || e.isComposing || !e.target.matches?.('.wa-bar textarea')) return; const bt = e.target.parentElement?.querySelector('.wa-send'); if (!bt) return; e.preventDefault(); bt.click(); });
 document.addEventListener('input', e => { if (e.target.matches && e.target.matches('.wa-bar textarea')) Consultas.ajustaAlto(e.target); if (e.target.id === 'cq-dif') Consultas.difTecleo(); });
-/* Mantén pulsada una conversación: «no leído» (te la deja de recordatorio) o, si ya lo estaba, leída */
-(() => { let t = null, x0 = 0, y0 = 0;
-  document.addEventListener('pointerdown', e => { const f = e.target.closest?.('.wa-fila[data-v]'); if (!f || S.modo !== 'coach') return; x0 = e.clientX; y0 = e.clientY; clearTimeout(t);
-    t = setTimeout(async () => { t = null; S._cqLP = Date.now(); navigator.vibrate?.(15); const aid = f.dataset.v, yaNL = !!f.querySelector('.wa-badge');
-      if (yaNL) { await Consultas.marcarLeido(aid); toast('Marcado como leído'); } else { await Consultas.ponNoLeido(aid, true); toast('Marcado como no leído'); }
-      if (S.cqLista) Consultas.abrirLista(); render(); }, 550); });
-  document.addEventListener('pointermove', e => { if (t && Math.hypot(e.clientX - x0, e.clientY - y0) > 10) { clearTimeout(t); t = null; } });
-  ['pointerup', 'pointercancel'].forEach(ev => document.addEventListener(ev, () => { clearTimeout(t); t = null; }));
-  document.addEventListener('contextmenu', e => { if (e.target.closest?.('.wa-fila')) e.preventDefault(); });
+/* Lista de chats del coach (como WhatsApp): deslizar a la derecha = leído / no leído; mantener pulsado = menú con «Fijar» */
+(() => { let t = null, x0 = 0, y0 = 0, f = null, dx = 0, sw = false;
+  const refrescar = () => { if (S.cqLista) Consultas.abrirLista(); render(); };
+  const alternarLeido = async el => { const aid = el.dataset.v, yaNL = !!el.querySelector('.wa-badge');
+    if (yaNL) { await Consultas.marcarLeido(aid); toast('Marcado como leído'); } else { await Consultas.ponNoLeido(aid, true); toast('Marcado como no leído'); } refrescar(); };
+  const menu = el => { document.getElementById('cq-fmenu')?.remove(); const aid = el.dataset.v, fij = Consultas.fijados().includes(aid), nl = !!el.querySelector('.wa-badge');
+    document.body.insertAdjacentHTML('beforeend', `<div class="cq-fmenu" id="cq-fmenu"><div class="cq-fm-in"><button type="button" data-m="fij">${fij ? '📌 Quitar de fijados' : '📌 Fijar arriba'}</button><button type="button" data-m="nl">${nl ? '✓ Marcar como leído' : '● Marcar como no leído'}</button><button type="button" data-m="x" class="x">Cancelar</button></div></div>`);
+    const m = document.getElementById('cq-fmenu'); m.addEventListener('click', async ev => { const b = ev.target.closest('[data-m]'); if (ev.target === m || b?.dataset.m === 'x') return m.remove(); if (!b) return; m.remove();
+      if (b.dataset.m === 'fij') { await Consultas.ponFijado(aid, !fij); toast(fij ? 'Quitado de fijados' : 'Chat fijado arriba'); refrescar(); } else alternarLeido(el); }); };
+  document.addEventListener('pointerdown', e => { const el = e.target.closest?.('.wa-fila[data-v]'); if (!el || S.modo !== 'coach') return; f = el; x0 = e.clientX; y0 = e.clientY; dx = 0; sw = false; clearTimeout(t);
+    t = setTimeout(() => { t = null; if (sw) return; S._cqLP = Date.now(); navigator.vibrate?.(15); menu(el); }, 550); });
+  document.addEventListener('pointermove', e => { if (!f) return; const ddx = e.clientX - x0, ddy = e.clientY - y0;
+    if (t && Math.hypot(ddx, ddy) > 10) { clearTimeout(t); t = null; }
+    if (!sw) { if (Math.abs(ddy) > 12 && Math.abs(ddy) > Math.abs(ddx)) { f = null; return; } if (ddx > 14 && ddx > Math.abs(ddy) * 1.3) { sw = true; f.classList.add('wa-desl'); } else return; }
+    dx = Math.max(0, Math.min(ddx, 110)); f.style.transform = `translateX(${dx}px)`; f.classList.toggle('wa-listo', dx >= 70); });
+  ['pointerup', 'pointercancel'].forEach(ev => document.addEventListener(ev, () => { clearTimeout(t); t = null; if (!f) return; const el = f; f = null;
+    if (sw) { S._cqLP = Date.now(); el.style.transition = 'transform .18s'; el.style.transform = ''; setTimeout(() => { el.style.transition = ''; el.classList.remove('wa-desl', 'wa-listo'); }, 200); if (dx >= 70) alternarLeido(el); } }));
+  document.addEventListener('contextmenu', e => { const el = e.target.closest?.('.wa-fila[data-v]'); if (el) { e.preventDefault(); if (S.modo === 'coach') menu(el); } });
 })();
 document.addEventListener('change', e => { const sel = e.target.closest && e.target.closest('[data-cq-nuevo]'); if (sel && sel.value) Consultas.abrirHilo(sel.value); if (e.target.id === 'cq-foto') Consultas.elegirFoto(e.target); });
 
