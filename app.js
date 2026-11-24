@@ -4950,9 +4950,10 @@ function vCalSemana({ w, p, ses = [], pres = [], todos, DP, H, PS, PB, lunes, ai
     ses.filter(x => x.fecha === d && !x.previa).forEach(x => sitio(dDe(x.dia_id)).push(chip('#c2410c', '💪 ' + (alumno ? 'Tu sesión' : 'LOF'), esc(nomDia(x.dia_id)) + (x.estado === 'parcial' ? ' · a medias' : ' · hecha'), false, x.dia_id)));
     if (!ses.some(x => x.fecha === d) && dd?.datos?.lof_rpe) out.push(chip('#c2410c', '💪 LOF', `RPE ${dd.datos.lof_rpe}`));
     DP.filter(x => wd(x) === i).forEach(x => { const hecho = ses.some(z => z.fecha >= lunes && z.fecha <= sumaDias(lunes, 6) && (esFut ? mismo(dDe(z.dia_id), x) : dDe(z.dia_id)?.numero === x.numero));   /* si ya lo hizo otro día de esa semana, no sale como pendiente */
-      if (!hecho) sitio(x).push(chip('#c2410c', '💪 ' + (alumno ? 'Tu sesión' : 'LOF'), esc(lab(x)) + (d < hoy ? ' · no hecho' : ''), true, x.id)); });
+      if (!hecho) { const c = chip('#c2410c', '💪 ' + (alumno ? 'Tu sesión' : 'LOF'), esc(lab(x)) + (d < hoy ? ' · no hecho' : ''), true, x.id);
+        sitio(x).push(!alumno && !fut0 && aid ? `<div class="cal-drag" data-drag="${x.numero}" data-al="${aid}" data-l="${lunes}" title="Mantén pulsado y arrástralo a otro día">${c}</div>` : c); } });
     pres.filter(x => x.fecha === d && x.estado !== 'cancelada').forEach(x => out.push(chip('#7c3aed', alumno ? '📍 Con Jesús' : '📍 Contigo', esc([hhmm(x.hora), x.tipo].filter(Boolean).join(' · ')), x.estado === 'programada' && fut)));
-    return `<div class="stack" style="gap:5px;min-width:0;padding:6px;border-radius:10px;background:${d === hoy ? 'var(--surface-2, #eef3ff)' : 'transparent'};border:1px solid var(--line)">
+    return `<div class="stack" data-dk="${i}" style="gap:5px;min-width:0;padding:6px;border-radius:10px;background:${d === hoy ? 'var(--surface-2, #eef3ff)' : 'transparent'};border:1px solid var(--line)">
       ${banChk(d)}<div style="text-align:center"><b class="small">${L[i]} ${+d.slice(8)}</b>${fut && M.md ? `<div class="small" style="font-weight:700;color:${M.md === 'MD' ? '#0f766e' : 'var(--muted)'}">${M.md}</div>` : ''}</div>${[...antes, ...out, ...despues].join('') || '<span class="small muted" style="text-align:center">—</span>'}</div>`; }).join('');
   const nav = k => `data-act="${alumno ? 'futSemA' : 'futSem'}" data-l="${sumaDias(lunes, k)}"`;
   return `<section class="section" style="grid-column:1/-1;column-span:all;-webkit-column-span:all"><div class="section-head"><h2>${alumno ? 'Tu semana' : 'Calendario de la semana'}</h2><span class="row" style="gap:6px">${alumno || !fut ? '' : `<button class="btn sm ghost" data-act="partido" data-al="${aid}">＋ Partido</button><button class="btn sm ghost" data-act="futEquipo" data-al="${aid}">🗓 Horario de la semana</button>`}<button class="btn sm ghost" ${nav(-7)} aria-label="Semana anterior">◀</button><button class="btn sm ghost" ${nav(7)} aria-label="Semana siguiente">▶</button></span></div>
@@ -4960,6 +4961,31 @@ function vCalSemana({ w, p, ses = [], pres = [], todos, DP, H, PS, PB, lunes, ai
       <div style="overflow-x:auto"><div style="display:grid;grid-template-columns:repeat(7,minmax(92px,1fr));gap:6px">${col}</div></div>
       <div class="row small" style="gap:12px;flex-wrap:wrap">${fut ? '<span>⚽ Partido</span><span>🏟 Equipo</span>' : ''}<span>💪 ${alumno ? 'Tu sesión' : 'Tu sesión (online)'}</span><span>📍 ${alumno ? 'Con Jesús' : 'Sesión contigo'}</span></div></div></section>`;
 }
+/* Coach: mantener pulsada una sesión prevista del calendario y arrastrarla a otro día (solo cambia esa semana) */
+async function moverSesionCal(aid, lunes, num, k) {
+  const f = S.ficha; if (!f || f.id !== aid) return;
+  const asig = {}; document.querySelectorAll(`.cal-drag[data-al="${aid}"][data-l="${lunes}"]`).forEach(el => { const col = el.closest('[data-dk]'); if (col) asig[el.dataset.drag] = +col.dataset.dk; });
+  asig[num] = k;
+  const fin = sumaDias(lunes, 6), hechos = (f.ses || []).filter(x => x.fecha >= lunes && x.fecha <= fin && !x.previa).map(x => (fecha(x.fecha).getDay() + 6) % 7);
+  const dias = [...new Set([...hechos, ...Object.values(asig)])].sort((a, b) => a - b);
+  const { data, error } = await sb.from('plan_semana').upsert({ alumno_id: aid, semana_inicio: lunes, dias, asig }, { onConflict: 'alumno_id,semana_inicio' }).select().single();
+  if (error) return fallo(error, /asig/.test(error.message || '') ? 'Falta ejecutar el Bloque 118 en Supabase.' : undefined);
+  f.planes = [data, ...(f.planes || []).filter(x => x.semana_inicio !== lunes)]; toast(`Movido al ${DSEM_L[k]}`); render();
+}
+(() => { let t = null, el = null, gh = null, x0 = 0, y0 = 0, on = false;
+  const limpiar = () => { clearTimeout(t); t = null; gh?.remove(); gh = null; document.querySelectorAll('[data-dk].cal-sobre').forEach(c => c.classList.remove('cal-sobre')); el?.classList.remove('cal-cogido'); el = null; on = false; };
+  const colEn = (x, y) => { gh && (gh.style.display = 'none'); const c = document.elementFromPoint(x, y)?.closest('[data-dk]'); gh && (gh.style.display = ''); return c; };
+  const empezar = (x, y) => { on = true; navigator.vibrate?.(15); el.classList.add('cal-cogido'); gh = el.cloneNode(true); gh.className = 'cal-ghost'; gh.style.width = el.offsetWidth + 'px'; document.body.appendChild(gh); mover(x, y); };
+  const mover = (x, y) => { if (!gh) return; gh.style.left = (x - gh.offsetWidth / 2) + 'px'; gh.style.top = (y - 20) + 'px'; document.querySelectorAll('[data-dk].cal-sobre').forEach(c => c.classList.remove('cal-sobre')); const c = colEn(x, y); if (c && c.closest('.card') === el.closest('.card')) c.classList.add('cal-sobre'); };
+  const soltar = (x, y) => { if (!on) return limpiar(); const c = colEn(x, y), e = el; if (c && c.closest('.card') === e.closest('.card')) { const k = +c.dataset.dk, de = +e.closest('[data-dk]').dataset.dk; if (k !== de) moverSesionCal(e.dataset.al, e.dataset.l, e.dataset.drag, k); } limpiar(); };
+  document.addEventListener('touchstart', ev => { const d = ev.target.closest?.('.cal-drag'); if (!d || S.modo !== 'coach') return; el = d; const p = ev.touches[0]; x0 = p.clientX; y0 = p.clientY; t = setTimeout(() => { t = null; if (el) empezar(x0, y0); }, 400); }, { passive: true });
+  document.addEventListener('touchmove', ev => { if (!el) return; const p = ev.touches[0]; if (!on) { if (Math.hypot(p.clientX - x0, p.clientY - y0) > 10) limpiar(); return; } ev.preventDefault(); mover(p.clientX, p.clientY); }, { passive: false });
+  document.addEventListener('touchend', ev => { if (!el) return; const p = ev.changedTouches[0]; soltar(p.clientX, p.clientY); }, { passive: true });
+  document.addEventListener('touchcancel', limpiar, { passive: true });
+  document.addEventListener('mousedown', ev => { const d = ev.target.closest?.('.cal-drag'); if (!d || S.modo !== 'coach') return; el = d; x0 = ev.clientX; y0 = ev.clientY; t = setTimeout(() => { t = null; if (el) empezar(x0, y0); }, 400); });
+  document.addEventListener('mousemove', ev => { if (!el) return; if (!on) { if (Math.hypot(ev.clientX - x0, ev.clientY - y0) > 10) limpiar(); return; } mover(ev.clientX, ev.clientY); });
+  document.addEventListener('mouseup', ev => { if (el) soltar(ev.clientX, ev.clientY); });
+})();
 function formEquipo(aid) {
   const H = horarioEq(aid), L = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'], { w } = futDe(aid), sw = w.filter(x => x.tipo === 'semana').sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
   const PS = planSem(aid), DP = diasProg(S.ficha);
@@ -9704,7 +9730,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v522';
+const APP_VER = 'v523';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
