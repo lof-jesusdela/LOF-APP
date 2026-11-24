@@ -4299,6 +4299,14 @@ function formWellness(tipo, f, alumnoId) {
     <p class="err" id="w-err"></p><button class="btn full" type="submit" id="w-b">Enviar a Jesús</button></form>`);
   const F = $('#f-w'); firmarMini();
   if (!alumnoId && tipo !== 'semana') pasosW(F);   /* el futbolista lo rellena pregunta a pregunta; tú lo ves todo desplegado */
+  /* Archivos ya subidos (planificación, GPS, otros): verlos y quitarlos (p. ej. una foto mal hecha) antes de subir otra. Se quitan al guardar */
+  const ARCH = [['#w-arch', 'archivos', 'Planificación'], ['#w-gps', 'gps', 'GPS'], ['#w-otros', 'otros', 'Equipo']];
+  const pintaArch = () => ARCH.forEach(([sel, k, et]) => { const inp = F.querySelector(sel); if (!inp) return; let box = F.querySelector(`[data-wl="${k}"]`);
+    if (!box) { inp.insertAdjacentHTML('beforebegin', `<div class="row" data-wl="${k}" style="gap:6px;flex-wrap:wrap"></div>`); box = F.querySelector(`[data-wl="${k}"]`); }
+    const l = d[k] || []; box.innerHTML = l.map((r, i) => `<span class="pill blue" style="gap:6px"><button type="button" data-wv="${esc(r)}" style="border:0;background:none;padding:0;color:inherit;font:inherit;cursor:pointer">📎 ${et}${l.length > 1 ? ' ' + (i + 1) : ''}${/\.pdf$/.test(r) ? ' (PDF)' : ''}</button><button type="button" data-wq="${k}" data-i="${i}" aria-label="Quitar este archivo" style="border:0;background:none;padding:0 2px;color:var(--bad);font-weight:800;cursor:pointer">✕</button></span>`).join(''); });
+  pintaArch();
+  F.addEventListener('click', async ev => { const v = ev.target.closest('[data-wv]'); if (!v) return; ev.preventDefault(); ev.stopPropagation(); const w = window.open('', '_blank'); const r = await sb.storage.from('gps').createSignedUrls([v.dataset.wv], 3600), u = r.data?.[0]?.signedUrl; if (u && w) w.location = u; else { w?.close(); toast('No se ha podido abrir el archivo'); } });
+  F.addEventListener('click', ev => { const q = ev.target.closest('[data-wq]'); if (!q) return; ev.preventDefault(); ev.stopPropagation(); (d[q.dataset.wq] ||= []).splice(+q.dataset.i, 1); pintaArch(); F.querySelectorAll('span.small.muted').forEach(x => { if (/^Ya has subido/.test(x.textContent)) x.remove(); }); toast('Quitado. Se guarda al enviar.'); });
   F.addEventListener('click', ev => { const q = ev.target.closest('[data-act="quitarCapW"]'); if (!q) return; ev.preventDefault(); ev.stopPropagation(); (d.reloj ||= []).splice(+q.dataset.i, 1); $('#w-gal').innerHTML = d.reloj.length ? `<b class="small">Ya subidas (${d.reloj.length}):</b>${miniW(d.reloj, true)}` : ''; firmarMini(); });
   F.addEventListener('click', ev => {
     const z = ev.target.closest('[data-zona]'); if (z) z.setAttribute('aria-pressed', z.getAttribute('aria-pressed') !== 'true');
@@ -9798,7 +9806,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v531';
+const APP_VER = 'v532';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
