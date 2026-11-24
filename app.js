@@ -97,6 +97,7 @@ const IC = {
   entreno: '<path d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12"/>',
   nutri: '<path d="M12 21c-4 0-7-3-7-7 0-5 4-8 7-8s7 3 7 8c0 4-3 7-7 7z"/><path d="M12 6c0-2 1-3 3-3"/>',
   progreso: '<path d="M4 19h16M6 15l4-4 3 3 5-6"/>',
+  semana: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r=".8" fill="currentColor"/>',
   checkin: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4h6v3H9zM9 13l2 2 4-4"/>',
   coach: '<path d="M4 18.5V7a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H8.5z"/><path d="M8.5 9h7M8.5 12h4"/>',
   alumnos: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c.8-3.2 3.2-5 6-5s5.2 1.8 6 5"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.2c2.5.2 4.3 1.9 5 4.8"/>',
@@ -477,7 +478,7 @@ function menuAlumno() {
   const P = proceso(s), pres = !!s.modulo_presencial;
   const prog = `<button type="button" class="m-it m-prog" data-act="tab" data-t="proceso"><span class="m-ic">🏁</span><span class="grow"><b>Tu programa</b>${P && !P.sinFin ? `<span>${P.antes ? 'Empieza pronto' : P.fuera ? 'Completado' : `Semana ${P.semana} de ${P.total}`} · ${P.antes ? 0 : P.fuera ? 100 : P.pctTotal} %</span><span class="m-bar"><i style="width:${P.antes ? 0 : P.fuera ? 100 : P.pctTotal}%"></i></span>` : `<span>${P ? `Semana ${P.semana}` : 'Tu proceso con Jesús'}</span>`}</span></button>`;
   d.innerHTML = `<div class="m-ov" data-act="menuCerrar"></div><aside class="m-dr"><div class="m-hd"><img src="icons/logo-96.jpg" alt=""><div><span>La Obra Fitness</span><b>Construyendo tu Prime</b></div></div>
-    ${prog}${(s.modulo_entreno ?? true) || s.modulo_futbol ? it('tab', 'semana', '📅', 'Cómo va tu semana', 'Tus anillos, calendario y últimos 7 días') : ''}${pres ? it('tab', 'sesiones', '🤝', 'Tus entrenamientos presenciales con Jesús', 'Tu calendario de sesiones') : ''}
+    ${prog}${((s.modulo_entreno ?? true) || s.modulo_futbol) && !tabsAlumno().some(t => t[0] === 'semana') ? it('tab', 'semana', '📅', 'Cómo va tu semana', 'Tus anillos, calendario y últimos 7 días') : ''}${pres ? it('tab', 'sesiones', '🤝', 'Tus entrenamientos presenciales con Jesús', 'Tu calendario de sesiones') : ''}
     ${s.modulo_habitos ? `<span class="m-ey">Servicios extra</span>${it('tab', 'habitos', '🔁', 'Hábitos', 'Tu plan de hábitos y pasos')}` : ''}
     <span class="m-ey">App</span>${it('cuenta', '', '👤', 'Mi cuenta', 'Datos, avisos, contraseña')}${it('logoAct', '', '🔄', 'Actualizar la app', 'Coge la última versión', 'az')}</aside>`;
   d.addEventListener('click', e => { if (e.target.closest('[data-act]') && !e.target.closest('[data-act="menuCerrar"]')) setTimeout(() => d.remove(), 0); });
@@ -488,6 +489,8 @@ function tabsAlumno() {
   if (ci) return ci.cerrado ? [['hoy', 'Inicio']] : [['hoy', 'Inicio'], ['progreso', 'Progreso'], ['coach', 'Chat']];
   /* Contacto en el centro (destacado); Hábitos pasa al menú del logo («Servicios extra») */
   const L = [['hoy', 'Hoy'], (s.modulo_entreno ?? true) && ['entreno', 'Entreno'], s.modulo_nutricion && ['nutri', 'Nutrición'], ['progreso', 'Progreso']].filter(Boolean);
+  /* Siempre 5 botones con el chat en el centro: si falta entreno o nutrición, entra «Tu foco» (Cómo va tu semana) */
+  if (L.length === 3) L.splice(2, 0, ['semana', 'Tu foco']);
   L.splice(Math.ceil(L.length / 2), 0, ['coach', 'Chat']); return L;
 }
 
@@ -671,7 +674,7 @@ function vBarraIngestas(diario, srv) {
 /* Menú del logo: «Tu semana» (calendario + reporting) y «Tu programa» (proceso de acompañamiento) */
 function vTuSemanaAl() {
   const s = S.d.servicio || {};
-  return `<section class="stack"><span class="eyebrow">Construyendo tu Prime</span><h1>Cómo va tu semana</h1></section>${s.modulo_futbol ? '' : vSemanaAnillos(s)}${s.modulo_futbol ? vCalFutAlumno() : vCalPlanAlumno()}${s.modulo_futbol ? (() => { const ini = sumaDias(hoyISO(), -6); return vSemanaFutbol(ini, semana(ini), S.d.programa); })() : vUltimos7()}`;
+  return `<section class="stack"><span class="eyebrow">Construyendo tu Prime</span><h1>${tabsAlumno().some(t => t[0] === 'semana') ? 'Tu foco' : 'Cómo va tu semana'}</h1></section>${s.modulo_futbol ? '' : vSemanaAnillos(s)}${s.modulo_futbol ? vCalFutAlumno() : vCalPlanAlumno()}${s.modulo_futbol ? (() => { const ini = sumaDias(hoyISO(), -6); return vSemanaFutbol(ini, semana(ini), S.d.programa); })() : vUltimos7()}`;
 }
 function vTuProgramaAl() {
   const s = S.d.servicio || {}, p = S.d.programaBase || S.d.programa;
@@ -9754,7 +9757,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v526';
+const APP_VER = 'v527';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
