@@ -300,6 +300,17 @@ nav.tabs button[aria-current="page"]{color:var(--blue)}
 .sheet-x{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 12px;font:600 13px/1 inherit;color:var(--ink);min-height:36px;cursor:pointer}
 .sheet .in{background:var(--surface);width:100%;max-width:460px;border-radius:20px 20px 0 0;padding:20px 16px calc(20px + env(safe-area-inset-bottom,0px));max-height:85vh;overflow:auto}
 /* Chat «Habla con Jesús»: aspecto WhatsApp con colores LOF */
+.sheet .in.ancho{max-width:860px}
+.fca-t{display:grid;grid-template-columns:minmax(92px,1.2fr) minmax(110px,1.6fr) repeat(4,minmax(54px,1fr));gap:4px;align-items:center}
+.fca-h{font-size:12px;color:var(--muted);text-align:center;font-weight:700;position:sticky;top:0;background:var(--surface);padding:4px 0;z-index:1}
+.fca-n{border:0;background:none;text-align:left;font-weight:700;font-size:14px;color:var(--blue-text);padding:6px 2px;cursor:pointer;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fca-c{border:0;border-radius:9px;min-height:36px;font-size:13px;font-weight:700;padding:4px 6px;cursor:pointer;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fca-c.y{background:#EAF3DE;color:#27500A}.fca-c.n{background:#F1EFE8;color:#888780}.fca-c.fo{background:#FAEEDA;color:#633806}.fca-c.na{background:transparent;color:#B4B2A9;cursor:default}
+.fca-sec.fo{background:#FBF6E8;border-color:#E9D9A6}
+.fca-tg{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line);font-size:15px}.fca-tg small{display:block;font-size:12px;color:var(--muted)}
+.fca-tg input.sw{appearance:none;-webkit-appearance:none;width:44px;height:26px;border-radius:13px;background:#D3D1C7;position:relative;flex:none;cursor:pointer;transition:background .15s}
+.fca-tg input.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .15s}
+.fca-tg input.sw:checked{background:#0B5CFF}.fca-tg input.sw:checked::after{left:21px}
 .sheet .in.chat{padding:0;height:92vh;max-height:92vh;overflow:hidden;display:flex;flex-direction:column;position:relative}
 .sheet .in.chat .sheet-top{display:none}
 .wa{display:flex;flex-direction:column;height:100%;min-height:0;background:#EEF1F6;font-size:15px}

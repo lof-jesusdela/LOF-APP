@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
     const dia = (f: string, n: number) => { const d = new Date(f + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
     const sem = dia(fecha, -7), domingo = dia(fecha, -1);
     const { data: sa } = await admin.from("servicios").select("*").or("modulo_futbol.is.null,modulo_futbol.eq.false");
-    const vivos = (sa || []).filter((x) => !(x.estado === "pausado" && (!x.estado_hasta || x.estado_hasta >= fecha)) && (!x.inicio || x.inicio <= domingo) && (!x.fin || x.fin >= sem));
+    const vivos = (sa || []).filter((x) => !(x.estado === "pausado" && (!x.estado_hasta || x.estado_hasta >= fecha)) && (!x.inicio || x.inicio <= domingo) && (!x.fin || x.fin >= sem) && (x.avisos_alumno || {}).checkin !== false);   // apagado por Jesús en «Foco, check-ins y avisos»
     const { data: pa } = await admin.from("perfiles").select("id,nombre,activo,rol").in("id", vivos.map((x) => x.alumno_id).concat("00000000-0000-0000-0000-000000000000"));
     const { data: ck } = await admin.from("checkins").select("alumno_id").eq("semana_inicio", sem);
     for (const p of pa || []) {
@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
   if (min >= 21 * 60 + 30) {
     const ayer = diaRel(fecha, -1), anteayer = diaRel(fecha, -2);
     const { data: sr } = await admin.from("servicios").select("*").or("modulo_futbol.is.null,modulo_futbol.eq.false");
-    const vivos = (sr || []).filter((x) => !(x.estado === "pausado" && (!x.estado_hasta || x.estado_hasta >= fecha)) && (!x.inicio || x.inicio <= anteayer));
+    const vivos = (sr || []).filter((x) => !(x.estado === "pausado" && (!x.estado_hasta || x.estado_hasta >= fecha)) && (!x.inicio || x.inicio <= anteayer) && (x.avisos_alumno || {}).registro !== false);
     const vid = vivos.map((x) => x.alumno_id).concat("00000000-0000-0000-0000-000000000000");
     const [{ data: pr }, { data: rg }, { data: ya }] = await Promise.all([
       admin.from("perfiles").select("id,nombre,activo,rol").in("id", vid),

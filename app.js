@@ -51,10 +51,10 @@ const seg = s => s >= 60 ? (s % 60 ? `${Math.floor(s / 60)}' ${s % 60}''` : `${s
 function toast(t) { const el = $('#toast'); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 2600); }
 /* ---------- Hojas (formularios): salida visible, Escape, cambios sin guardar y estado del guardado ---------- */
 function abrirSheet(html) {
-  $('#sheet-in').classList.remove('chat'); $('#sheet-in').innerHTML = `<div class="sheet-top"><span class="sheet-est" id="sheet-est" aria-live="polite"></span><button type="button" class="sheet-x" data-act="cerrarSheetPide" aria-label="Cerrar">Cerrar ✕</button></div>` + html;
+  $('#sheet-in').classList.remove('chat', 'ancho'); $('#sheet-in').innerHTML = `<div class="sheet-top"><span class="sheet-est" id="sheet-est" aria-live="polite"></span><button type="button" class="sheet-x" data-act="cerrarSheetPide" aria-label="Cerrar">Cerrar ✕</button></div>` + html;
   $('#sheet').hidden = false; S.sheetSucio = false; $('#sheet-in').scrollTop = 0;
 }
-function cerrarSheet() { $('#sheet').hidden = true; $('#sheet-in').classList.remove('chat'); $('#sheet-in').innerHTML = ''; S.sheetSucio = false; }
+function cerrarSheet() { $('#sheet').hidden = true; $('#sheet-in').classList.remove('chat', 'ancho'); $('#sheet-in').innerHTML = ''; S.sheetSucio = false; }
 function pedirCerrarSheet() {
   if (!S.sheetSucio) return cerrarSheet();
   if ($('#sheet-aviso')) return;
@@ -841,7 +841,7 @@ function vRegistroDia(s) {
   if (hb) { const v = (S.d.habReg || []).find(x => x.habito_id === hb.id && x.fecha === sel)?.valor; fs.push(`<div class="md-fo"><span class="md-ib" style="background:#C9A227">🌱</span><b class="grow">${esc(hb.titulo)}</b>${yn('mdHab', `data-id="${hb.id}" data-f="${sel}"`, 'Hecho', 'No', v ? v !== 'no' : null)}</div>`); }
   if (fs.length) h += `<div class="md-focos">${fs.join('')}</div>`;
   /* Tipo de día: el que marcó en su semana; lo puede cambiar */
-  const cx = s.modulo_nutricion ? Nutricion.ctxDe(S.d.nutri || { plan: [] }) : [];
+  const cx = s.modulo_nutricion && (s.avisos_alumno || {}).dia_contexto !== false ? Nutricion.ctxDe(S.d.nutri || { plan: [] }) : [];
   if (cx.length) {
     const pre = r.contexto || (typeof orgDe === 'function' ? orgDe(lunesDe(sel))?.ctx?.[k] : '') || '', ci = cx.findIndex(c => c.n === pre), col = ci >= 0 ? Nutricion.CTX_COL[ci % Nutricion.CTX_COL.length] : '#C0C6D4';
     h += it('🍽️', '#E6EEFB', esHoy ? 'Tu día es' : 'Tu día fue', pre ? (r.contexto ? 'Toca para cambiar' : 'El que marcaste en tu semana · toca para cambiar') : 'Elige el tuyo', `<label class="md-sel" style="--c:${col}"><select id="r-ctx" aria-label="Tipo de día">${pre ? '' : '<option value="">Elegir…</option>'}${cx.map(c => `<option value="${esc(c.n)}" ${c.n === pre ? 'selected' : ''}>${esc(c.n)}</option>`).join('')}</select><span>${esc(pre || 'Elegir…')} ▾</span></label>`);
@@ -852,7 +852,7 @@ function vRegistroDia(s) {
     <h2 class="md-t">Marca tu día</h2>
     ${dias.length > 1 ? `<div class="reg-dias" role="group" aria-label="Día a registrar" style="--n:${Math.max(7, dias.length)}">${dias.map(f => { const x = S.d.diario.find(y => y.fecha === f); return `<button type="button" data-act="regDia" data-f="${f}" aria-pressed="${f === sel}" class="${x ? 'ok' : ''}">${DIA3[fecha(f).getDay()]}<small>${fecha(f).getDate()}</small></button>`; }).join('')}</div>` : ''}
     ${h}
-    <textarea id="r-obs" class="chk-txt" rows="2" placeholder="¿Algo importante de ${esHoy ? 'hoy' : 'ese día'}? (opcional)">${esc(r.observacion || '')}</textarea>
+    ${(s.avisos_alumno || {}).dia_nota === false ? '' : `<textarea id="r-obs" class="chk-txt" rows="2" placeholder="¿Algo importante de ${esHoy ? 'hoy' : 'ese día'}? (opcional)">${esc(r.observacion || '')}</textarea>`}
     <button class="btn full" data-act="guardarDiario">Guardar mi día</button>
   </div></section>`;
 }
@@ -3207,7 +3207,8 @@ function formFoco(aid) {
     if (t === 'libre' && !tx) return $('#fo-err').textContent = 'Escribe el foco en «Lo que verá el alumno».';
     const nuevo = t ? { tipo: t, meta: conMeta ? mv : null, texto: tx, dias: +$('#fo-d').value || null, desde: $('#fo-i').value || hoyISO() } : null;
     try { await Foco.guardar(aid, nuevo); } catch (er) { return fallo(er, 'No se ha podido guardar el foco.'); }
-    cerrarSheet(); toast(nuevo ? 'Foco guardado' : 'Foco quitado'); render(); });
+    cerrarSheet(); toast(nuevo ? 'Foco guardado' : 'Foco quitado'); render();
+    if (S.fcaVolver) { const v = S.fcaVolver; S.fcaVolver = null; v === 'tabla' ? FCA.tabla() : FCA.ficha(v); } });
 }
 /* Alumno: marca (o desmarca) que hoy ha cumplido su foco */
 async function marcarFoco(ok, fechaF) {
@@ -7072,6 +7073,40 @@ function vFacturaDoc() {
   </div>`;
 }
 
+/* ---------- Foco, check-ins y avisos de cada alumno (desde el reporting): tabla de todos, se cambia tocando ---------- */
+const FCA = {
+  alumnos() { return S.c.perfiles.filter(p => p && p.activo !== false && p.rol !== 'coach' && !esFamilia(p.id) && srvDe(p.id) && conSeguimiento(srvDe(p.id))).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '')); },
+  /* Interruptores del check-in diario: [clave, título, dónde se guarda] */
+  DIA: [['pasos', 'Pasos'], ['dia_contexto', 'Tipo de día'], ['dia_nota', 'Nota del día']],
+  on(srv, k) { return k === 'pasos' ? srv.pasos_activo !== false : (srv.avisos_alumno || {})[k] !== false; },
+  aplica(srv, k) { return !srv.modulo_futbol && (k !== 'dia_contexto' || !!srv.modulo_nutricion); },
+  nAv(srv) { const va = srv.avisos_alumno || {}; return AVISOS_ALUMNO.filter(([k]) => va[k] !== false).length; },
+  focoTxt(aid, srv) { if (srv.modulo_futbol) return 'Fútbol'; const f = Foco.de(aid); return f ? Foco.titulo(f) : 'Sin foco'; },
+  async cambiar(aid, k) {
+    const srv = srvDe(aid); if (!srv) return; const v = !this.on(srv, k);
+    const cambio = k === 'pasos' ? { pasos_activo: v } : { avisos_alumno: { ...(srv.avisos_alumno || {}), [k]: v ? undefined : false } };
+    if (cambio.avisos_alumno) Object.keys(cambio.avisos_alumno).forEach(x => cambio.avisos_alumno[x] === undefined && delete cambio.avisos_alumno[x]);
+    const { error } = await sb.from('servicios').update(cambio).eq('alumno_id', aid).eq('activo', true); if (error) return fallo(error);
+    Object.assign(srv, cambio);
+  },
+  tabla() {
+    const L = this.alumnos(), cel = (on, act, aid, k, txt) => `<button type="button" class="fca-c ${on === null ? 'na' : on ? 'y' : 'n'}" ${on === null ? 'disabled' : `data-act="${act}" data-id="${aid}" data-k="${k || ''}"`}>${txt ?? (on === null ? '—' : on ? '✓' : 'No')}</button>`;
+    abrirSheet(`<div class="stack"><h2 style="margin:0">Foco, check-ins y avisos</h2><p class="small muted" style="margin:0">Toca una casilla para cambiarla: se guarda al momento y el alumno lo nota ya. Toca el nombre para ver su ficha completa.</p>
+      <div class="fca-t"><span></span><span class="fca-h">Foco</span>${this.DIA.map(([, t]) => `<span class="fca-h">${t}</span>`).join('')}<span class="fca-h">Avisos</span>
+      ${L.map(a => { const sv = srvDe(a.id), f = sv.modulo_futbol ? null : Foco.de(a.id);
+        return `<button type="button" class="fca-n" data-act="fcaAlumno" data-id="${a.id}">${esc((a.nombre || '').split(' ').slice(0, 2).join(' '))}</button>${sv.modulo_futbol ? cel(null, '', a.id, '', '⚽ Check-ins') : `<button type="button" class="fca-c ${f ? 'fo' : 'n'}" data-act="fcaFoco" data-id="${a.id}">${esc(this.focoTxt(a.id, sv))}</button>`}${this.DIA.map(([k]) => cel(this.aplica(sv, k) ? this.on(sv, k) : null, 'fcaDia', a.id, k)).join('')}${cel(true, 'fcaAvisos', a.id, '', `${this.nAv(sv)}/${AVISOS_ALUMNO.length}`)}`; }).join('')}</div></div>`);
+    $('#sheet-in')?.classList.add('ancho');
+  },
+  ficha(aid) {
+    const a = S.c.perfiles.find(p => p.id === aid), sv = srvDe(aid); if (!a || !sv) return; const va = sv.avisos_alumno || {};
+    const tg = (on, act, k, t, sub, na) => `<label class="fca-tg"><span class="grow">${t}${sub ? `<small>${sub}</small>` : ''}</span>${na ? '<span class="small muted">No aplica</span>' : `<input type="checkbox" class="sw" ${on ? 'checked' : ''} data-act="${act}" data-id="${aid}" data-k="${k}">`}</label>`;
+    abrirSheet(`<div class="stack"><button class="btn sm ghost" data-act="fcaAbrir" style="align-self:flex-start">‹ Todos</button><h2 style="margin:0">${esc(a.nombre)}</h2>
+      <div class="card stack fca-sec fo"><span class="eyebrow">Foco</span>${sv.modulo_futbol ? '<span class="small">Futbolista: su seguimiento son los check-ins diario, post-partido y cierre de semana.</span>' : `<div class="row"><b class="grow">${esc(this.focoTxt(aid, sv))}</b><button class="btn sm gold" data-act="fcaFoco" data-id="${aid}">${Foco.de(aid) ? 'Cambiar' : '+ Poner foco'}</button></div>`}</div>
+      <div class="card stack fca-sec"><span class="eyebrow">Check-in diario · lo que marca cada día</span>
+        ${sv.modulo_futbol ? '<span class="small muted">Diario, post-partido y cierre de semana (fijos).</span>' : `${tg(true, '', '', 'Entreno', 'se marca solo al entrenar', true)}${this.DIA.map(([k, t]) => tg(this.on(sv, k), 'fcaDia', k, t, k === 'pasos' ? `objetivo ${fmtNum(objPasos(sv) || 10000, 0)}` : k === 'dia_contexto' ? 'el día de su plan de alimentación' : 'un texto opcional', !this.aplica(sv, k))).join('')}${tg(!!sv.modulo_habitos, '', '', 'Hábito', sv.modulo_habitos ? 'activo · se cambia en su plan' : 'sin plan de hábitos', true)}`}</div>
+      <div class="card stack fca-sec"><span class="eyebrow">Avisos si no lo hace</span>${AVISOS_ALUMNO.map(([k, t, d]) => tg(va[k] !== false, 'fcaAviso', k, t, k === 'registro' ? 'aviso al móvil a las 21:30 tras 2 días' : k === 'checkin' ? 'aviso al móvil el lunes a las 8:00' : 'sale en ' + d)).join('')}</div></div>`);
+  },
+};
 /* ---------- Reporting semanal (coach) ---------- */
 async function abrirReporte(alumno = null, lunes = null) {
   /* Por defecto, la semana en curso (como la ficha); el lunes, la que acaba de terminar */
@@ -7321,7 +7356,7 @@ function vReporte() {
   if (R.alumno) { const a = S.c.perfiles.find(p => p.id === R.alumno) || { id: R.alumno, nombre: 'Alumno' }; let fut = ''; try { if (futbolistas().some(x => x.id === a.id)) fut = `<section class="section"><h2>⚽ Control de futbolista</h2>${vFutbolFicha(a)}</section>`; } catch (er) { console.warn(er); } return cab + aviso + `<section class="section">${tarjeta(a, true)}</section>` + fut; }
   const als = S.c.perfiles.filter(p => p && p.activo !== false && !esFamilia(p.id) && (S.c.servicios.some(x => x.alumno_id === p.id) || S.c.programas.some(x => x.alumno_id === p.id)) && (!srvDe(p.id) || conSeguimiento(srvDe(p.id))));
   const lista = als.map(a => { try { return { a, d: datosReporte(a, R) }; } catch (err) { console.error('Reporting de', a?.nombre, err); return { a, d: { score: -1 } }; } }).sort((x, y) => x.d.score - y.d.score);
-  return cab + aviso + `<section class="section rep-lista"><p class="small muted">Ordenados de menor a mayor cumplimiento. Toca "Ver" para el detalle de cada alumno.</p><details class="small muted"><summary>Cómo se calcula la alimentación</summary><p style="margin:6px 0 0">Comidas del plan = comidas que el alumno marca como hechas ÷ comidas previstas de los días que registró. Solo se valora con ${MIN_DIAS_NUTRI} días o más; los días sin información no cuentan como fallo y se muestran aparte. Bien ≥ 85 %, regular 60–84 %, mal &lt; 60 %. La aplicación declarada en el check-in («aplicado», «en parte», «necesito ayuda») se muestra tal cual, sin convertirla en porcentaje. Con seguimiento ligero solo cuenta esa respuesta.</p></details>${lista.map(({ a }) => tarjeta(a, false)).join('') || '<div class="empty">Sin alumnos activos.</div>'}</section>` + (() => { try { return futbolistas().length ? `<section class="section"><h2>⚽ Control de futbolistas</h2>${vFutbolCoach()}</section>` : ''; } catch (er) { console.warn(er); return ''; } })();
+  return cab + aviso + `<button class="btn full" data-act="fcaAbrir" style="margin:4px 0 8px">🎯 Foco, check-ins y avisos de tus alumnos</button><section class="section rep-lista"><p class="small muted">Ordenados de menor a mayor cumplimiento. Toca "Ver" para el detalle de cada alumno.</p><details class="small muted"><summary>Cómo se calcula la alimentación</summary><p style="margin:6px 0 0">Comidas del plan = comidas que el alumno marca como hechas ÷ comidas previstas de los días que registró. Solo se valora con ${MIN_DIAS_NUTRI} días o más; los días sin información no cuentan como fallo y se muestran aparte. Bien ≥ 85 %, regular 60–84 %, mal &lt; 60 %. La aplicación declarada en el check-in («aplicado», «en parte», «necesito ayuda») se muestra tal cual, sin convertirla en porcentaje. Con seguimiento ligero solo cuenta esa respuesta.</p></details>${lista.map(({ a }) => tarjeta(a, false)).join('') || '<div class="empty">Sin alumnos activos.</div>'}</section>` + (() => { try { return futbolistas().length ? `<section class="section"><h2>⚽ Control de futbolistas</h2>${vFutbolCoach()}</section>` : ''; } catch (er) { console.warn(er); return ''; } })();
 }
 const numSemanaISO = iso => { const d = fecha(iso); d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7); const y = new Date(d.getFullYear(), 0, 4); return 1 + Math.round(((d - y) / 864e5 - 3 + (y.getDay() + 6) % 7) / 7); };
 
@@ -9586,7 +9621,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v504';
+const APP_VER = 'v505';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -9957,6 +9992,12 @@ document.addEventListener('click', async e => {
     case 'enviarCheckin': await enviarCheckin(); break;
     case 'ficha': cerrarSheet(); S.iaCoach = false; if (S.obj) await aparcarOSalir(); await abrirFicha(b.dataset.id); break;
     case 'verAlertas': verAlertas(b.dataset.id); break;
+    case 'fcaAbrir': FCA.tabla(); break;
+    case 'fcaAlumno': FCA.ficha(b.dataset.id); break;
+    case 'fcaFoco': S.fcaVolver = b.closest('.fca-t') ? 'tabla' : b.dataset.id; formFoco(b.dataset.id); break;
+    case 'fcaDia': await FCA.cambiar(b.dataset.id, b.dataset.k); if (b.closest('.fca-t')) FCA.tabla(); else toast('Guardado'); break;
+    case 'fcaAvisos': FCA.ficha(b.dataset.id); break;
+    case 'fcaAviso': await FCA.cambiar(b.dataset.id, b.dataset.k); toast('Guardado'); break;
     case 'avisarExc': {   /* push solo a los futbolistas a los que les falta el post-partido o el cierre de este fin de semana */
       const L = futbolistas().map(a => { const { w, p } = futDe(a.id); return { a, x: excPend(w, p) }; }).filter(o => o.x.length);
       if (!L.length) { toast('Todos lo tienen rellenado'); break; } b.disabled = true;
