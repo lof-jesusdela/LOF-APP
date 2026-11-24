@@ -749,7 +749,8 @@ function semanaFlex(p) {
   const altIds = new Set((S.d.alternativos || []).flatMap(c => c.dias.map(d => d.id))), altN = new Set(S.d.sesiones.filter(x => x.fecha >= l && esCompleta(x) && altIds.has(x.dia_id)).map(x => x.fecha + x.dia_id)).size;
   const total = Math.min(p.dias_semana || dias.length, dias.length) || dias.length, n = Math.min(total, dias.filter(d => hechas.has(d.id)).length + altN);
   const hoyD = S.d.sesiones.filter(x => x.fecha === hoyISO()).map(x => dias.find(d => d.id === x.dia_id)).find(Boolean);
-  const sig = hoyD && !hechas.has(hoyD.id) ? hoyD : dias.find(d => !hechas.has(d.id)) || null;
+  const as = planDe(l)?.asig, hi = hoyIdx(), porDia = as ? dias.filter(d => !hechas.has(d.id) && as[d.numero] != null && +as[d.numero] >= hi).sort((a, b) => as[a.numero] - as[b.numero])[0] : null;
+  const sig = hoyD && !hechas.has(hoyD.id) ? hoyD : porDia || dias.find(d => !hechas.has(d.id)) || null;
   return { dias, hechas, total, n, sig, hoyD, completa: n >= total };
 }
 /* Pasar un programa de días de la semana a «Día 1, Día 2…» (alumnos que no son futbolistas) */
@@ -765,10 +766,11 @@ const DSEM = ['L', 'M', 'X', 'J', 'V', 'S', 'D'], DSEM_L = ['lunes', 'martes', '
 const planDe = lunes => (S.d?.planes || []).find(x => x.semana_inicio === lunes) || null;
 const hoyIdx = () => (fecha(hoyISO()).getDay() + 6) % 7;
 const usaPlan = () => { const p = S.d?.programaBase || S.d?.programa; return !!p && esFlex(p) && !S.d?.servicio?.modulo_futbol; };
-async function guardarPlanSemana(lunes, dias) {
+async function guardarPlanSemana(lunes, dias, asig) {
   dias = [...new Set(dias)].sort((a, b) => a - b);
-  const { data, error } = await sb.from('plan_semana').upsert({ alumno_id: S.user.id, semana_inicio: lunes, dias }, { onConflict: 'alumno_id,semana_inicio' }).select().single();
-  if (error) return fallo(error, 'Falta ejecutar el Bloque 56 en Supabase.');
+  const row = { alumno_id: S.user.id, semana_inicio: lunes, dias }; if (asig !== undefined) row.asig = asig;
+  const { data, error } = await sb.from('plan_semana').upsert(row, { onConflict: 'alumno_id,semana_inicio' }).select().single();
+  if (error) return fallo(error, /asig/.test(error.message || '') ? 'Falta ejecutar el Bloque 118 en Supabase.' : 'Falta ejecutar el Bloque 56 en Supabase.');
   S.d.planes = [data, ...(S.d.planes || []).filter(x => x.semana_inicio !== lunes)]; if (S.planSel) delete S.planSel[lunes]; toast(dias.length ? 'Tu semana está planificada' : 'Plan borrado'); render();
 }
 function chipsPlan(lunes, dpw, desdeHoy) {
@@ -1284,7 +1286,7 @@ function entrenoDeHoy() {
   let d = DP.find(x => esDia(x, norm(DSEM_L[i])));
   if (!d && semanaFija(D.servicio)) { const pl = horarioDe(D.uid).plan || {}, PB = (D.programaBase?.dias || []);
     d = DP.find(x => { const b = PB.find(z => z.id === x.id) || PB.find(z => k(z) && k(z) === k(x)) || (!PB.length ? x : null); return b && pl[b.numero] !== '' && pl[b.numero] != null && +pl[b.numero] === i; }); }
-  if (!d && !semanaFija(D.servicio)) { try { const todos = [D.programa, D.programaBase, ...(D.contextos || [])].filter(Boolean).flatMap(q => q.dias || []), PS = psDePlan(DP.slice().sort((x, y) => (x.numero || 0) - (y.numero || 0)), lunes, (D.sesiones || []).filter(x => !x.previa && x.fecha < hoy), id => todos.find(z => z.id === id), planDe(lunes)?.dias); d = DP.find(x => PS[x.numero] === i); } catch (e) { } }
+  if (!d && !semanaFija(D.servicio)) { try { const todos = [D.programa, D.programaBase, ...(D.contextos || [])].filter(Boolean).flatMap(q => q.dias || []), PS = psDePlan(DP.slice().sort((x, y) => (x.numero || 0) - (y.numero || 0)), lunes, (D.sesiones || []).filter(x => !x.previa && x.fecha < hoy), id => todos.find(z => z.id === id), planDe(lunes)?.dias, planDe(lunes)?.asig); d = DP.find(x => PS[x.numero] === i); } catch (e) { } }
   if (!d || d.tipo_dia === 'descanso') return null;
   return { d, hecho: (D.sesiones || []).some(s => s.fecha === hoy && s.dia_id === d.id && esCompleta(s)) };
 }
@@ -4855,9 +4857,12 @@ function vCalFutAlumno() {
 }
 /* Alumnos que no son futbolistas: su semana con lo que planificó (plan_semana) o, si el programa va por días de la semana, por esos días */
 /* Qué día de la semana le toca cada día del programa: por el nombre del día, o por los días que marcó en su check-in (plan_semana), sin contar los que ya hizo */
-function psDePlan(DP, lunes, ses, dDe, planDias) {
+function psDePlan(DP, lunes, ses, dDe, planDias, asig) {
   const fin = sumaDias(lunes, 6), ix = d => [0, 1, 2, 3, 4, 5, 6].find(k => esDia(d, norm(DSEM_L[k]))), PS = {};
   if (DP.length && DP.every(d => ix(d) != null)) DP.forEach(d => { PS[d.numero] = ix(d); });
+  else if (asig && Object.keys(asig).length) {   /* el alumno eligió qué día hace cada sesión (puede cambiar el orden) */
+    const hechoN = new Set(ses.filter(x => x.fecha >= lunes && x.fecha <= fin).map(x => dDe(x.dia_id)?.numero));
+    DP.filter(d => !hechoN.has(d.numero) && asig[d.numero] != null).forEach(d => { PS[d.numero] = +asig[d.numero]; }); }
   else { const pl = (planDias || []).slice().sort((a, b) => a - b), hechoN = new Set(ses.filter(x => x.fecha >= lunes && x.fecha <= fin).map(x => dDe(x.dia_id)?.numero));
     const conSes = new Set(ses.filter(x => x.fecha >= lunes && x.fecha <= fin).map(x => (fecha(x.fecha).getDay() + 6) % 7)), libres = pl.filter(k => !conSes.has(k));
     DP.filter(d => !hechoN.has(d.numero) && d.tipo_dia !== 'descanso').forEach((d, k) => { if (libres[k] != null) PS[d.numero] = libres[k]; }); }
@@ -4869,7 +4874,7 @@ function vCalPlanCoach(f, a) {
   const lunes = f.semFut || lunesDe(hoyISO()), pr = ctxEnSemana(f.contextos || [], lunes) || f.progFull; if (!pr?.dias?.length) return '';
   const DP = pr.dias.filter(d => !d.oculto).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0)), todos = [f.progFull, ...(f.contextos || []), ...(f.guardados || [])].filter(Boolean).flatMap(q => q.dias || []), dDe = id => todos.find(d => d.id === id);
   const ses = (f.ses || []).filter(x => !x.previa), pl = f.planes.find(x => x.semana_inicio === lunes);
-  const PS = psDePlan(DP, lunes, ses, dDe, pl?.dias);
+  const PS = psDePlan(DP, lunes, ses, dDe, pl?.dias, pl?.asig);
   return vCalSemana({ w: [], p: [], ses, pres: f.pres || [], todos, DP, H: {}, PS, lunes, aid: a.id, alumno: false, fut: false })
     .replace('</div></section>', !pl && !Object.keys(PS).length ? `<div class="small muted">No ha marcado en su check-in qué días entrena esta semana.</div></div></section>` : '</div></section>');
 }
@@ -4877,7 +4882,7 @@ function vCalPlanAlumno() {
   const D = S.d, lunes = S.semFutA || lunesDe(hoyISO()), pr = ctxEnSemana(D.contextos || [], lunes) || D.programa; if (!pr?.dias?.length) return '';
   const DP = pr.dias.filter(d => !d.oculto).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0));
   const todos = [D.programa, D.programaBase, ...(D.contextos || []), ...(D.alternativos || [])].filter(Boolean).flatMap(q => q.dias || []), dDe = id => todos.find(d => d.id === id);
-  const ses = (D.sesiones || []).filter(x => !x.previa), PS = psDePlan(DP, lunes, ses, dDe, planDe(lunes)?.dias);
+  const ses = (D.sesiones || []).filter(x => !x.previa), PS = psDePlan(DP, lunes, ses, dDe, planDe(lunes)?.dias, planDe(lunes)?.asig);
   const sinPlan = !Object.keys(PS).length && lunes >= lunesDe(hoyISO());
   const puede = usaPlan() && !S.vista && lunes === lunesDe(hoyISO()) && !DP.every(d => [0, 1, 2, 3, 4, 5, 6].some(k => esDia(d, norm(DSEM_L[k])))) && pendSemana(DP, lunes, ses, dDe).length;
   return vCalSemana({ w: [], p: [], ses, pres: D.presenciales || [], todos, DP, H: {}, PS, lunes, alumno: true, fut: false })
@@ -4893,22 +4898,24 @@ function formCambiarDias() {
   const D = S.d, lunes = lunesDe(hoyISO()), pr = ctxEnSemana(D.contextos || [], lunes) || D.programa; if (!pr?.dias?.length) return;
   const DP = pr.dias.filter(d => !d.oculto).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0)), todos = [D.programa, D.programaBase, ...(D.contextos || []), ...(D.alternativos || [])].filter(Boolean).flatMap(q => q.dias || []), dDe = id => todos.find(d => d.id === id);
   const ses = (D.sesiones || []).filter(x => !x.previa), fin = sumaDias(lunes, 6), semS = ses.filter(x => x.fecha >= lunes && x.fecha <= fin);
-  const conSes = new Set(semS.map(x => (fecha(x.fecha).getDay() + 6) % 7)), pend = pendSemana(DP, lunes, ses, dDe), PS = psDePlan(DP, lunes, ses, dDe, planDe(lunes)?.dias), min = hoyIdx();
+  const conSes = new Set(semS.map(x => (fecha(x.fecha).getDay() + 6) % 7)), pend = pendSemana(DP, lunes, ses, dDe), PS = psDePlan(DP, lunes, ses, dDe, planDe(lunes)?.dias, planDe(lunes)?.asig), min = hoyIdx();
   S.cdSel = pend.map(d => PS[d.numero] != null && PS[d.numero] >= min ? PS[d.numero] : null);
   const pinta = () => {
     const hechas = semS.map(x => `<div class="cd-s ok"><div class="cd-t"><span class="cd-ic">✓</span><div>${esc(nomDia(dDe(x.dia_id) || {}))}<small>Hecha el ${esc(DSEM_L[(fecha(x.fecha).getDay() + 6) % 7])} ${fecha(x.fecha).getDate()}</small></div></div></div>`).join('');
-    const filas = pend.map((d, i) => { const prev = Math.max(-1, ...S.cdSel.slice(0, i).filter(k => k != null));
+    const filas = pend.map((d, i) => {
       return `<div class="cd-s"><div class="cd-t"><span class="cd-ic">💪</span><div>${esc(nomDia(d))}${d.duracion_min ? `<small>~${d.duracion_min} min</small>` : ''}</div></div>
-        <div class="cd-d">${DSEM.map((x, k) => { const no = k < min || conSes.has(k) || k <= prev; return `<button type="button" data-cd="${i}" data-k="${k}" class="${S.cdSel[i] === k ? 'on' : ''}" ${no ? 'disabled' : ''} aria-label="${DSEM_L[k]}">${x}</button>`; }).join('')}</div></div>`; }).join('');
+        <div class="cd-d">${DSEM.map((x, k) => { const no = k < min || conSes.has(k), otro = S.cdSel.some((x, j) => j !== i && x === k); return `<button type="button" data-cd="${i}" data-k="${k}" class="${S.cdSel[i] === k ? 'on' : otro ? 'oc' : ''}" ${no ? 'disabled' : ''} aria-label="${DSEM_L[k]}">${x}</button>`; }).join('')}</div></div>`; }).join('');
     const falta = S.cdSel.some(k => k == null);
     $('#cd-cuerpo').innerHTML = `${hechas}${filas}${falta ? '<div class="aprox small">Hay alguna sesión sin día. Si esta semana no te da para todas, déjala sin marcar y Jesús lo verá.</div>' : ''}`;
   };
-  abrirSheet(`<div class="stack"><h2 style="margin:0">Cambia tus días de esta semana</h2><p class="small muted" style="margin:0">Toca el día en que vas a hacer cada sesión. Van en orden (el Día 2 antes que el Día 3) y los días que ya han pasado no se pueden elegir.</p>
+  abrirSheet(`<div class="stack"><h2 style="margin:0">Cambia tus días de esta semana</h2><p class="small muted" style="margin:0">Toca el día en que vas a hacer cada sesión, en el orden que te venga mejor. Si eliges un día que ya tenía otra sesión, se intercambian. Los días que ya han pasado no se pueden elegir.</p>
     <div class="stack" id="cd-cuerpo" style="gap:8px"></div><button class="btn full" id="cd-ok">Guardar mi semana</button><p class="small muted" style="margin:0;text-align:center">Jesús verá el cambio en tu ficha. Si es por algo importante (lesión, viaje…), cuéntaselo en el chat.</p></div>`);
   pinta();
   $('#cd-cuerpo').addEventListener('click', e => { const b = e.target.closest('[data-cd]'); if (!b || b.disabled) return; const i = +b.dataset.cd, k = +b.dataset.k;
-    S.cdSel[i] = S.cdSel[i] === k ? null : k; for (let j = i + 1; j < S.cdSel.length; j++) if (S.cdSel[j] != null && S.cdSel[j] <= (S.cdSel[i] ?? -1)) S.cdSel[j] = null; pinta(); });
-  $('#cd-ok').addEventListener('click', async () => { const dias = [...new Set([...conSes, ...S.cdSel.filter(k => k != null)])]; cerrarSheet(); await guardarPlanSemana(lunes, dias); toast('Tu semana queda así. ¡A por ella!'); });
+    /* Si ese día ya lo tenía otra sesión, se intercambian */
+    const j = S.cdSel.findIndex((x, q) => q !== i && x === k); if (S.cdSel[i] === k) S.cdSel[i] = null; else { if (j >= 0) S.cdSel[j] = S.cdSel[i]; S.cdSel[i] = k; } pinta(); });
+  $('#cd-ok').addEventListener('click', async () => { const dias = [...new Set([...conSes, ...S.cdSel.filter(k => k != null)])], asig = {}; pend.forEach((d, i) => { if (S.cdSel[i] != null) asig[d.numero] = S.cdSel[i]; });
+    cerrarSheet(); await guardarPlanSemana(lunes, dias, asig); toast('Tu semana queda así. ¡A por ella!'); });
 }
 function vCalSemana({ w, p, ses = [], pres = [], todos, DP, H, PS, PB, lunes, aid, alumno, fut = true }) {
   const hoy = hoyISO(), L = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'], dDe = id => todos.find(d => d.id === id);
@@ -9695,7 +9702,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v520';
+const APP_VER = 'v521';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
