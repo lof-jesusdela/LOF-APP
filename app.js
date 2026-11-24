@@ -1410,20 +1410,30 @@ function vEjercicio(e, i, ro) {
     ${e.nota ? `<div class="small ex-nota"><b>Nota de Jesús:</b> ${esc(e.nota)}</div>` : ''}
 `;
   const topNuevo = () => {
+    /* Diseño de casillas: músculo en la esquina de la foto; Series y Método en dorado; un ajuste sencillo (silla, polea, banco…) en número
+       grande; varios ajustes en chips; agarre y material con su foto («Material», sin decir cuál). El descanso de tandas va como siempre. */
     const lam = laminaDe(ej.musculo_img_url);
     const mus = ej.musculo_img_url ? `<button class="ex-mus" data-act="verImagen" data-src="${esc(ej.musculo_img_url)}" aria-label="Ver músculo objetivo"><img src="${esc(ej.musculo_img_url)}" alt="Músculo objetivo${lam ? ': ' + esc(laminaNombre(lam)) : ''}" loading="lazy" onerror="this.parentNode.hidden=true"></button>` : ej.musculo ? `<div class="ex-mus ex-mus-t small">${esc(ej.musculo)}</div>` : '';
-    const foto = ej.imagen_url ? `<div class="ex-foto"><button class="ex-f" data-act="verImagen" data-src="${esc(ej.imagen_url)}" aria-label="Ver imagen del ejercicio"><img src="${esc(ej.imagen_url)}" alt="${esc(ej.nombre)}" loading="lazy" onerror="this.parentNode.hidden=true"></button><span class="ex-vid">${vid}</span></div>` : `<div class="ex-vid-fila">${vid}</div>`;
+    const foto = ej.imagen_url ? `<div class="ex-foto"><button class="ex-f" data-act="verImagen" data-src="${esc(ej.imagen_url)}" aria-label="Ver imagen del ejercicio"><img src="${esc(ej.imagen_url)}" alt="${esc(ej.nombre)}" loading="lazy" onerror="this.parentNode.hidden=true"></button><span class="ex-vid">${vid}</span>${mus}</div>` : `<div class="ex-vid-fila">${vid}${mus}</div>`;
     const ms = Tandas.metodosSeries(e), sr = x => x.de === x.a ? `${x.de}ª` : `${x.de}ª–${x.a}ª`;
-    const met = !ms.length ? (e.metodos ? `<button class="pill ex-met" data-act="metodo" data-n="${esc(e.metodos.nombre)}">Método: ${esc(e.metodos.nombre)} ⓘ</button>` : '')
-      : '<button class="pill ex-met" data-act="metodo" data-n="Series mixtas">Series mixtas ⓘ</button>' + ms.map(x => x.mt === 'Normal' ? `<span class="pill">${sr(x)} serie${x.de === x.a ? '' : 's'}: dinámico</span>` : `<button class="pill ex-met" data-act="metodo" data-n="${esc(x.mt)}">${sr(x)} serie${x.de === x.a ? '' : 's'}: ${esc(x.mt)} ⓘ</button>`).join('');
-    const chips = `<span class="pill ex-series">${e.series} ${e.series === 1 ? 'serie' : 'series'}</span>${met}${tandas ? '' : `<span class="pill">${desc ? 'Descanso ' + seg(desc) : 'Sin descanso'}</span>`}`;
-    const th = (u, alt) => `<button class="ex-ti" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver imagen: ${esc(alt)}"><img src="${esc(u)}" alt="${esc(alt)}" loading="lazy" onerror="this.parentNode.hidden=true"></button>`;
-    const tl = [], ag = AGARRES.find(x => x[0] === e.agarre);
-    if (ag) { const u = S.agarres?.[ag[0]]; tl.push(`<div class="ex-t">${u ? th(u, 'Agarre ' + ag[1]) : ''}<span><b>Agarre:</b> ${ag[1]}</span></div>`); }
+    const T = [];   // casillas
+    T.push(`<div class="xt xt-o"><span class="xt-l">Series</span><b class="xt-n">${e.series}</b></div>`);
+    if (ms.length) T.push(`<button class="xt xt-o" data-act="metodo" data-n="Series mixtas"><span class="xt-l">Método ⓘ</span><b class="xt-n xt-s">Mixtas</b></button>`);
+    else if (e.metodos) T.push(`<button class="xt xt-o" data-act="metodo" data-n="${esc(e.metodos.nombre)}"><span class="xt-l">Método ⓘ</span><b class="xt-n xt-s">${esc(e.metodos.nombre)}</b></button>`);
+    /* Ajustes: uno sencillo («Silla: 3», «Polea: 16», «Banco: 30°») → casilla grande; varios → chips */
+    const par = x => { const m = /^([^:]{2,22}):\s*(.+)$/.exec(x); return m ? [m[1].trim(), m[2].trim()] : [x, '']; };
+    const ajP = aj.map(par), simple = ajP.length === 1 && ajP[0][1] && ajP[0][1].length <= 6;
+    if (simple) T.push(`<div class="xt xt-d"><span class="xt-l">${esc(ajP[0][0].replace(/^altura\s+/i, ''))}</span><b class="xt-n">${esc(ajP[0][1])}</b></div>`);
+    const foto1 = (u, l) => `<button class="xt xt-f" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver ${esc(l.toLowerCase())}"><img src="${esc(u)}" alt="${esc(l)}" loading="lazy" onerror="this.parentNode.hidden=true"><span>${esc(l)}</span></button>`;
+    const ag = AGARRES.find(x => x[0] === e.agarre);
+    if (ag) { const u = S.agarres?.[ag[0]]; T.push(u ? foto1(u, 'Agarre') : `<div class="xt xt-o"><span class="xt-l">Agarre</span><b class="xt-n xt-s">${esc(ag[1])}</b></div>`); }
     const mt = e.material ?? ej.material, mi = e.material_img_url ?? ej.material_img_url;
-    if (mt || mi) tl.push(`<div class="ex-t">${mi ? `<div class="ex-tg">${String(mi).split(';').filter(Boolean).map(u => th(u, 'Material')).join('')}</div>` : ''}<span>${mt ? `<b>Material:</b> ${esc(mt)}` : '<b>Material</b>'}</span></div>`);
-    if (aj.length) tl.push(`<div class="ex-t clamp" data-act="tlAbrir"><span class="ex-ti ex-ti-i" aria-hidden="true">⚙</span><span><b>Tus ajustes:</b> ${aj.map(esc).join(' · ')}</span></div>`);
-    return foto + `<div class="ex-fila"><div class="ex-izq"><div class="chips ex-chips">${chips}</div></div>${mus}</div>` + (tl.length ? `<div class="ex-medida">${tl.join('')}</div>` : '');
+    if (mi) String(mi).split(';').filter(Boolean).forEach(u => T.push(foto1(u, 'Material')));
+    else if (mt && !/sin material/i.test(mt)) T.push(`<div class="xt xt-o"><span class="xt-l">Material</span><b class="xt-n xt-s xt-t">${esc(mt)}</b></div>`);
+    const chipsAj = !simple && ajP.length ? `<div class="xt-aj"><span class="xt-ajk">Ajustes</span>${ajP.map(([k, v]) => `<span class="xt-chip">${esc(k)}${v ? ` <b>${esc(v)}</b>` : ''}</span>`).join('')}</div>` : '';
+    const mixtas = ms.length ? `<div class="chips ex-chips">${ms.map(x => x.mt === 'Normal' ? `<span class="pill">${sr(x)} serie${x.de === x.a ? '' : 's'}: dinámico</span>` : `<button class="pill ex-met" data-act="metodo" data-n="${esc(x.mt)}">${sr(x)} serie${x.de === x.a ? '' : 's'}: ${esc(x.mt)} ⓘ</button>`).join('')}</div>` : '';
+    const descP = tandas ? '' : `<div class="chips ex-chips"><span class="pill">${desc ? 'Descanso ' + seg(desc) : 'Sin descanso'}</span></div>`;
+    return foto + `<div class="xt-g">${T.join('')}</div>` + chipsAj + mixtas + descP;
   };
   const notaJ = e.nota ? `<div class="small ex-nota"><b>Comentario de Jesús:</b> ${esc(e.nota)}</div>` : '';
   return `<div class="card ex ${om ? 'omitido' : ''}" id="ex-${e.id}">
@@ -9650,7 +9660,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v512';
+const APP_VER = 'v513';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}

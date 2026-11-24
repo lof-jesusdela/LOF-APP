@@ -233,7 +233,7 @@ const Tandas = {
     }).join('');
     const eT = this.rango(entreT, true), eS = this.rango(entreS, true);
     const rit = partes.find(x => x.ritmo)?.ritmo, info = [rit ? `Ritmo de ejecución: ${rit}` : M.tempo ? this.TEMPO : ''].filter(Boolean), pos = partes.find(x => x.pos)?.pos;
-    return `<div class="rp-met small">${info.map(x => `<span>${esc(x)}</span>`).join('')}</div>
+    return `${info.length ? `<div class="rp-met small">${info.map(x => `<span>${esc(x)}</span>`).join('')}</div>` : ''}
       ${pos ? `<div class="rp-rir">${this.ICO.rir}<div><b>Posición a mantener</b><span class="small">${esc(pos)}</span></div></div>` : ''}
       ${eT || (eS && N > 1) ? `<div class="rp-desc">${this.ICO.reloj}${eT ? `<div><span class="small">Entre ${M.tipo === 'uni' || M.tipo === 'ucontraste' ? 'lados' : 'tandas'}:</span><b>${esc(eT)}</b></div>` : ''}${eT && eS && N > 1 ? '<div class="rp-sep"></div>' : ''}${eS && N > 1 ? `<div><span class="small">Entre series:</span><b>${esc(eS)}</b></div>` : ''}</div>` : ''}
       <div class="rp-wrap" id="rpw-${e.id}">${html}</div>`;
