@@ -2139,7 +2139,11 @@ async function toggleSerie(b) {
   });
   marcar(b, fila, true); Guia.series(); setTimeout(() => Guia.pintar(), 0);
   const d = z.editar ? 0 : +b.dataset.d;
-  if (z.editar) { } else if (d > 0) startTimer(d, 'Descanso · ' + b.dataset.lbl); else toast('Sin descanso: sigue con el siguiente');
+  /* Lo que viene después del descanso: la siguiente serie de este ejercicio (peso × reps) o el siguiente ejercicio */
+  const sigTxt = (() => { try { const nf = `${es}-${n + 1}`, kg = document.getElementById(`kg-${nf}-0`), rp = document.getElementById(`rp-${nf}-0`);
+    if (rp) { const v = i => i ? (i.value.trim() || i.dataset.plan || i.placeholder || '') : ''; const k = v(kg), r = v(rp); return `Siguiente: serie ${n + 1}${k ? ' · ' + k + ' kg' : ''}${r ? ' × ' + r : ''}`; }
+    const L = (S.dia.bloques_sesion || []).flatMap(x => x.ejercicios_sesion || []), i = L.findIndex(x => x.id === es), sg = i >= 0 ? L[i + 1] : null; return sg ? 'Siguiente: ' + (ejDe(sg).nombre || 'siguiente ejercicio') : 'Último ejercicio'; } catch (er) { return ''; } })();
+  if (z.editar) { } else if (d > 0) startTimer(d, 'Descanso · ' + b.dataset.lbl, sigTxt); else toast('Sin descanso: sigue con el siguiente');
   const sig = siguienteFila(es, n); if (sig) irAFila(sig[0], sig[1]);
   try {
     const sid = await asegurarSesion(); rows.forEach(r => r.sesion_id = sid);
@@ -9626,7 +9630,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v508';
+const APP_VER = 'v509';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -9721,9 +9725,10 @@ function silencioVivo(on) {
 function avisoSW(on) {
   try { navigator.serviceWorker?.ready.then(r => r.active?.postMessage(on ? { t: 'descanso', ms: Math.max(0, T.end - Date.now()), body: T.lbl.replace(/^Descanso · /, '') || 'Fin del descanso' } : { t: 'descanso-cancelar' })); } catch (e) { }
 }
-async function startTimer(sec, lbl) {
-  audio(); pararAlarma(); clearInterval(T.iv); T.total = sec * 1000; T.end = Date.now() + T.total; T.fin = false; T.lbl = lbl;
-  const el = $('#timer'); el.hidden = false; el.classList.remove('done'); $('#t-lbl').textContent = lbl;
+async function startTimer(sec, lbl, sig) {
+  audio(); pararAlarma(); clearInterval(T.iv); T.total = sec * 1000; T.end = Date.now() + T.total; T.fin = false; T.lbl = lbl; T.pausa = null;
+  const el = $('#timer'); el.hidden = false; el.classList.remove('done', 'pausa'); el.classList.toggle('mini', !!S.tmMini); document.body.classList.toggle('tm-grande', !S.tmMini);
+  $('#t-lbl').textContent = lbl; $('#t-sig').textContent = sig || ''; $('#t-de').textContent = 'de ' + fmtT(T.total); $('#t-pausa').textContent = '❚❚';
   try { if (navigator.wakeLock && !T.lock) T.lock = await navigator.wakeLock.request('screen'); } catch (e) { }
   if (sec >= 45) pedirAvisos();
   silencioVivo(true); avisoSW(true);
@@ -9733,7 +9738,8 @@ function tick() {
   if (T.fin) return;
   const left = T.end - Date.now();
   $('#t-clock').textContent = fmtT(left);
-  $('#t-bar').style.width = Math.min(100, (1 - left / T.total) * 100) + '%';
+  const fr = Math.max(0, Math.min(1, left / T.total)); $('#t-bar').style.width = (1 - fr) * 100 + '%'; $('#t-ring').style.strokeDashoffset = 552.9 * (1 - fr);
+  $('#t-hora').textContent = '🔔 ' + new Date(T.end).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
   if (left <= 0) { clearInterval(T.iv); T.iv = null; finTimer(left); }
 }
 function finTimer(left) {
@@ -9747,7 +9753,11 @@ function finTimer(left) {
   sonarFin(); try { navigator.vibrate && navigator.vibrate([300, 250, 300, 250, 300]); } catch (e) { }
 }
 function pararAlarma() { callar(); const ov = $('#alarma'); if (ov) ov.hidden = true; }
-function stopTimer() { silencioVivo(false); avisoSW(false); clearInterval(T.iv); T.iv = null; T.fin = true; pararAlarma(); $('#timer').hidden = true; try { T.lock?.release(); } catch (e) { } T.lock = null; }
+function stopTimer() { silencioVivo(false); avisoSW(false); clearInterval(T.iv); T.iv = null; T.fin = true; T.pausa = null; pararAlarma(); $('#timer').hidden = true; document.body.classList.remove('tm-grande'); try { T.lock?.release(); } catch (e) { } T.lock = null; }
+/* Deslizar el descanso hacia abajo lo minimiza; hacia arriba lo amplía */
+(() => { let y0 = null; document.addEventListener('touchstart', e => { y0 = e.target.closest?.('#t-in') ? e.touches[0].clientY : null; }, { passive: true });
+  document.addEventListener('touchend', e => { if (y0 == null) return; const dy = e.changedTouches[0].clientY - y0, el = $('#timer'); y0 = null; if (Math.abs(dy) < 50) return;
+    S.tmMini = dy > 0; el.classList.toggle('mini', S.tmMini); document.body.classList.toggle('tm-grande', !S.tmMini); }, { passive: true }); })();
 /* Bloquear la pantalla o salir de la app para la alarma al momento */
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') { callar(); return; }
@@ -9807,8 +9817,18 @@ document.addEventListener('click', async e => {
   if (e.target.closest('[data-alarma]')) { stopTimer(); return; }
   const tm = e.target.closest('[data-tm]');
   if (tm) {
-    if (tm.dataset.tm === 'plus') { T.end += 15000; T.total += 15000; avisoSW(true); if ($('#timer').classList.contains('done')) { $('#timer').classList.remove('done'); clearInterval(T.iv); T.iv = setInterval(tick, 250); } }
-    else stopTimer();
+    const el = $('#timer'), q = tm.dataset.tm;
+    if (q === 'mini' || q === 'grande') { if (q === 'grande' && !el.classList.contains('mini')) return; S.tmMini = q === 'mini' && !el.classList.contains('mini'); el.classList.toggle('mini', S.tmMini); document.body.classList.toggle('tm-grande', !S.tmMini); return; }
+    if (q === 'pausa') { if (T.fin) return;
+      if (T.pausa == null) { T.pausa = T.end - Date.now(); clearInterval(T.iv); T.iv = null; avisoSW(false); el.classList.add('pausa'); tm.textContent = '▶'; tm.setAttribute('aria-label', 'Seguir'); }
+      else { T.end = Date.now() + T.pausa; T.pausa = null; avisoSW(true); el.classList.remove('pausa'); tm.textContent = '❚❚'; tm.setAttribute('aria-label', 'Pausar'); tick(); T.iv = setInterval(tick, 250); }
+      return; }
+    if (q === 'plus' || q === 'minus') { const dlt = q === 'plus' ? 15000 : -15000;
+      if (T.pausa != null) { T.pausa = Math.max(1000, T.pausa + dlt); T.total = Math.max(T.total + (q === 'plus' ? dlt : 0), T.pausa); $('#t-clock').textContent = fmtT(T.pausa); return; }
+      T.end = q === 'plus' ? T.end + dlt : Math.max(Date.now() + 1000, T.end + dlt); if (q === 'plus') T.total += dlt; $('#t-de').textContent = 'de ' + fmtT(T.total); avisoSW(true);
+      if (el.classList.contains('done') && q === 'plus') { el.classList.remove('done'); T.fin = false; silencioVivo(true); clearInterval(T.iv); T.iv = setInterval(tick, 250); }
+      tick(); return; }
+    stopTimer();
     return;
   }
   const b = e.target.closest('[data-act]'); if (!b) return;

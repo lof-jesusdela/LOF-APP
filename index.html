@@ -272,13 +272,25 @@ nav.tabs button{flex:1;border:0;background:none;padding:10px 2px 12px;display:fl
 nav.tabs svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 nav.tabs button[aria-current="page"]{color:var(--blue)}
 .timer{position:fixed;left:0;right:0;bottom:calc(64px + env(safe-area-inset-bottom,0px));z-index:7;padding:0 12px}
-.timer .in{max-width:436px;margin:0 auto;background:var(--ink);color:var(--on-ink);border-radius:16px;padding:12px 14px;display:flex;align-items:center;gap:12px;box-shadow:0 10px 30px rgba(12,20,40,.25)}
-.timer .clock{font-family:var(--display);font-weight:800;font-size:34px;line-height:1;min-width:76px}
-.timer .lbl{font-size:12px;color:var(--on-ink-muted)}
-.timer .bar{height:4px;border-radius:99px;background:rgba(255,255,255,.15);margin-top:6px;overflow:hidden}
-.timer .bar i{display:block;height:100%;background:var(--glow)}
-.timer button{border:0;border-radius:10px;padding:8px 10px;font-weight:700;font-size:13px;background:rgba(255,255,255,.12);color:var(--on-ink)}
-.timer.done .in{background:var(--blue)}
+.timer .in{max-width:436px;margin:0 auto;background:#0B1A33;color:#fff;border-radius:26px;padding:10px 16px 16px;display:flex;flex-direction:column;align-items:center;gap:6px;box-shadow:0 -6px 30px rgba(12,20,40,.3);min-height:min(46vh,430px);justify-content:center}
+.tm-asa{border:0;background:none;padding:6px 30px;cursor:pointer}.tm-asa::before{content:"";display:block;width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.3)}
+.timer .lbl{font-size:13px;color:#B5C0D6;text-align:center;line-height:1.35}
+.tm-ring{position:relative;width:min(200px,26vh);aspect-ratio:1}.tm-ring svg{width:100%;height:100%;display:block}
+.tm-ring circle{fill:none;stroke-width:10}.tm-ring .tr-bg{stroke:rgba(255,255,255,.12)}.tm-ring .tr-fg{stroke:#C9A227;stroke-linecap:round;stroke-dasharray:552.9;transition:stroke-dashoffset .25s linear}
+.tm-c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.tm-hora,.tm-de{font-size:13px;color:#B5C0D6}
+.timer .clock{font-family:var(--display);font-weight:800;font-size:clamp(40px,8vh,60px);line-height:1;letter-spacing:1px}
+.tm-sig{font-size:13px;color:#C9A227;font-weight:700;text-align:center;min-height:1em}
+.timer .bar{display:none;height:4px;border-radius:99px;background:rgba(255,255,255,.15);overflow:hidden}.timer .bar i{display:block;height:100%;background:#C9A227}
+.tm-bts{display:flex;gap:8px;width:100%;margin-top:2px}
+.timer button:not(.tm-asa){flex:1;border:0;border-radius:24px;padding:11px 6px;font-weight:700;font-size:14px;background:rgba(255,255,255,.12);color:#fff}.timer button.sk{flex:1.3;background:#0B5CFF}
+.timer.pausa .tr-fg{stroke:#888780}
+.timer.done .in{background:#0B5CFF}.timer.done .tr-fg{stroke:#fff}
+.timer.mini .in{min-height:0;flex-direction:row;flex-wrap:wrap;padding:10px 14px;border-radius:16px;gap:4px 10px}
+.timer.mini .tm-asa,.timer.mini .tm-hora,.timer.mini .tm-de,.timer.mini .tm-sig,.timer.mini .tm-ring svg,.timer.mini .tm-x{display:none}
+.timer.mini .tm-ring{width:auto;aspect-ratio:auto;order:-1;cursor:pointer}.timer.mini .tm-c{position:static}.timer.mini .clock{font-size:34px}
+.timer.mini .lbl{flex:1;text-align:left;font-size:12px}.timer.mini .bar{display:block;flex-basis:100%;order:5}.timer.mini .tm-bts{width:auto;margin:0}.timer.mini .tm-bts button{flex:none;padding:8px 10px;font-size:13px;border-radius:10px}
+body.tm-grande main{padding-bottom:50vh}
 .alarma{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;padding:24px 20px calc(24px + env(safe-area-inset-bottom,0px));color:var(--on-ink);background:radial-gradient(90% 60% at 50% 30%,rgba(0,102,255,.38) 0%,rgba(0,102,255,0) 70%),var(--ink)}
 .al-in{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;width:100%;max-width:400px}
 .al-logo{position:relative;width:120px;height:120px;margin-bottom:10px}
@@ -1312,7 +1324,10 @@ body:not(.modo-coach) main .section{margin-top:26px}
 <body>
 <div class="app" id="app"><div class="splash"><img src="icons/icon-512.png" alt="LOF"><h1>La Obra Fitness</h1><p>Construyendo tu Prime</p><small>Cargando…</small></div></div>
 <nav class="tabs" id="tabs" hidden><div class="in" id="tabs-in"></div></nav>
-<div class="timer" id="timer" hidden><div class="in"><div class="clock num" id="t-clock">0:00</div><div class="grow"><div class="lbl" id="t-lbl">Descanso</div><div class="bar"><i id="t-bar" style="width:0"></i></div></div><button data-tm="plus">+15 s</button><button data-tm="skip">Saltar</button></div></div>
+<div class="timer" id="timer" hidden><div class="in" id="t-in"><button type="button" class="tm-asa" data-tm="mini" aria-label="Minimizar o ampliar el descanso"></button><div class="lbl" id="t-lbl">Descanso</div>
+<div class="tm-ring" data-tm="grande"><svg viewBox="0 0 200 200" aria-hidden="true"><circle cx="100" cy="100" r="88" class="tr-bg"/><circle cx="100" cy="100" r="88" class="tr-fg" id="t-ring" transform="rotate(-90 100 100)"/></svg><div class="tm-c"><span class="tm-hora" id="t-hora"></span><div class="clock num" id="t-clock">0:00</div><span class="tm-de" id="t-de"></span></div></div>
+<div class="tm-sig" id="t-sig"></div><div class="bar"><i id="t-bar" style="width:0"></i></div>
+<div class="tm-bts"><button data-tm="minus" class="tm-x">−15 s</button><button data-tm="pausa" class="tm-x" id="t-pausa" aria-label="Pausar">❚❚</button><button data-tm="plus">+15 s</button><button data-tm="skip" class="sk">Saltar</button></div></div></div>
 <div class="alarma" id="alarma" hidden role="alertdialog" aria-modal="true" aria-labelledby="al-tit"><div class="al-in">
   <div class="al-logo"><img src="icons/icon-192.png" alt="La Obra Fitness"></div>
   <div class="al-e">La Obra Fitness</div>
