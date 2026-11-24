@@ -4870,13 +4870,17 @@ function psDePlan(DP, lunes, ses, dDe, planDias, asig) {
 }
 /* El coach ve el calendario de la semana de quien marcó en su check-in los días que va a entrenar */
 function vCalPlanCoach(f, a) {
-  if (!(f.planes || []).length) return '';
+  if (!(f.planes || []).length && !(f.progFull && esFlex(f.progFull))) return '';
   const lunes = f.semFut || lunesDe(hoyISO()), pr = ctxEnSemana(f.contextos || [], lunes) || f.progFull; if (!pr?.dias?.length) return '';
   const DP = pr.dias.filter(d => !d.oculto).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0)), todos = [f.progFull, ...(f.contextos || []), ...(f.guardados || [])].filter(Boolean).flatMap(q => q.dias || []), dDe = id => todos.find(d => d.id === id);
   const ses = (f.ses || []).filter(x => !x.previa), pl = f.planes.find(x => x.semana_inicio === lunes);
   const PS = psDePlan(DP, lunes, ses, dDe, pl?.dias, pl?.asig);
+  /* Sesiones que aún no tienen día: bandeja para arrastrarlas al calendario (si no hizo el check-in, se las repartes tú) */
+  const sinDia = lunes >= lunesDe(hoyISO()) ? pendSemana(DP, lunes, ses, dDe).filter(d => PS[d.numero] == null) : [];
+  const lab = d => `Día ${d.numero || ''}${d.titulo ? ' · ' + d.titulo : (/^d[ií]a \d+$/i.test(d.nombre || '') ? '' : ' · ' + (d.nombre || ''))}`;
+  const bandeja = sinDia.length ? `<div class="cal-bandeja"><span class="small"><b>${!pl ? 'No ha hecho su check-in: repártele las sesiones.' : 'Sesiones sin día:'}</b> mantén pulsada una y arrástrala a un día.</span><div class="row" style="gap:6px;flex-wrap:wrap">${sinDia.map(d => `<div class="cal-drag" data-drag="${d.numero}" data-al="${a.id}" data-l="${lunes}" style="flex:0 1 130px"><div style="border-radius:8px;padding:5px 7px;background:#c2410c;color:#fff;font-size:12px;line-height:1.25;opacity:.75"><b>💪 LOF</b><div>${esc(lab(d))}</div></div></div>`).join('')}</div></div>` : '';
   return vCalSemana({ w: [], p: [], ses, pres: f.pres || [], todos, DP, H: {}, PS, lunes, aid: a.id, alumno: false, fut: false })
-    .replace('</div></section>', !pl && !Object.keys(PS).length ? `<div class="small muted">No ha marcado en su check-in qué días entrena esta semana.</div></div></section>` : '</div></section>');
+    .replace('</div></section>', `${bandeja}</div></section>`);
 }
 function vCalPlanAlumno() {
   const D = S.d, lunes = S.semFutA || lunesDe(hoyISO()), pr = ctxEnSemana(D.contextos || [], lunes) || D.programa; if (!pr?.dias?.length) return '';
@@ -4977,7 +4981,7 @@ async function moverSesionCal(aid, lunes, num, k) {
   const colEn = (x, y) => { gh && (gh.style.display = 'none'); const c = document.elementFromPoint(x, y)?.closest('[data-dk]'); gh && (gh.style.display = ''); return c; };
   const empezar = (x, y) => { on = true; navigator.vibrate?.(15); el.classList.add('cal-cogido'); gh = el.cloneNode(true); gh.className = 'cal-ghost'; gh.style.width = el.offsetWidth + 'px'; document.body.appendChild(gh); mover(x, y); };
   const mover = (x, y) => { if (!gh) return; gh.style.left = (x - gh.offsetWidth / 2) + 'px'; gh.style.top = (y - 20) + 'px'; document.querySelectorAll('[data-dk].cal-sobre').forEach(c => c.classList.remove('cal-sobre')); const c = colEn(x, y); if (c && c.closest('.card') === el.closest('.card')) c.classList.add('cal-sobre'); };
-  const soltar = (x, y) => { if (!on) return limpiar(); const c = colEn(x, y), e = el; if (c && c.closest('.card') === e.closest('.card')) { const k = +c.dataset.dk, de = +e.closest('[data-dk]').dataset.dk; if (k !== de) moverSesionCal(e.dataset.al, e.dataset.l, e.dataset.drag, k); } limpiar(); };
+  const soltar = (x, y) => { if (!on) return limpiar(); const c = colEn(x, y), e = el; if (c && c.closest('.card') === e.closest('.card')) { const k = +c.dataset.dk, de = e.closest('[data-dk]') ? +e.closest('[data-dk]').dataset.dk : -1; if (k !== de) moverSesionCal(e.dataset.al, e.dataset.l, e.dataset.drag, k); } limpiar(); };
   document.addEventListener('touchstart', ev => { const d = ev.target.closest?.('.cal-drag'); if (!d || S.modo !== 'coach') return; el = d; const p = ev.touches[0]; x0 = p.clientX; y0 = p.clientY; t = setTimeout(() => { t = null; if (el) empezar(x0, y0); }, 400); }, { passive: true });
   document.addEventListener('touchmove', ev => { if (!el) return; const p = ev.touches[0]; if (!on) { if (Math.hypot(p.clientX - x0, p.clientY - y0) > 10) limpiar(); return; } ev.preventDefault(); mover(p.clientX, p.clientY); }, { passive: false });
   document.addEventListener('touchend', ev => { if (!el) return; const p = ev.changedTouches[0]; soltar(p.clientX, p.clientY); }, { passive: true });
@@ -9730,7 +9734,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v523';
+const APP_VER = 'v524';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
