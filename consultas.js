@@ -393,7 +393,7 @@ const Consultas = (() => {
     const fila = aid => { const L = todas.filter(c => c.alumno_id === aid), pend0 = ab.filter(c => c.alumno_id === aid), pend = pend0.length ? pend0 : NL.includes(aid) ? [{ creado_at: new Date().toISOString(), _nl: 1 }] : [], u = mensajes(L.slice().reverse()).pop(), viejo = pend.reduce((m, c) => Math.max(m, edad(c)), 0);
       const col = !pend.length ? '' : viejo > H48 ? 'bad' : viejo > 24 * 36e5 ? 'warn' : 'ok';
       return { pend: pend.length, viejo, html: `<div class="wa-fila" data-act="cq" data-q="hilo" data-v="${aid}" style="cursor:pointer">${avatarDe(perfilDe(aid), 44)}<div class="grow" style="min-width:0"><div class="row"><b class="grow">${esc(nombreAl(aid))}</b>${FJ.includes(aid) ? '<span class="wa-pin" aria-label="Fijado">📌</span>' : ''}${u ? `<span class="small ${pend.length ? 'wa-nue' : 'muted'}">${esc(cuando(u.t))}</span>` : ''}</div>
-        <div class="row"><span class="small muted wa-prev grow">${u ? (u.de === 'je' ? 'Tú: ' : '') + esc(u.txt) : ''}</span>${pend.length ? `<span class="wa-badge ${col}">${pend[0]?._nl ? '●' : pend.length}</span>` : ''}</div></div></div>` }; };
+        <div class="row"><span class="small muted wa-prev grow">${u ? (u.de === 'je' ? 'Tú: ' : '') + esc(u.txt) : ''}</span>${pend.length ? `<span class="wa-badge ${pend[0]?._nl ? 'nl' : col}">${pend[0]?._nl ? '' : pend.length}</span>` : ''}</div></div></div>` }; };
     const F0 = ids.map(aid => ({ aid, ...fila(aid) })), fij = FJ.map(id => F0.find(f => f.aid === id)).filter(Boolean);
     const F = F0.filter(f => !FJ.includes(f.aid)).sort((a, b) => b.pend - a.pend || b.viejo - a.viejo), conP = F.filter(f => f.pend), sinP = F.filter(f => !f.pend);
     const fijH = fij.length ? `<div class="eyebrow" style="margin-top:4px">📌 Fijados</div>${fij.map(f => f.html).join('')}<div class="eyebrow" style="margin-top:8px">Chats</div>` : '';
@@ -682,14 +682,22 @@ document.addEventListener('input', e => { if (e.target.matches && e.target.match
     document.body.insertAdjacentHTML('beforeend', `<div class="cq-fmenu" id="cq-fmenu"><div class="cq-fm-in"><button type="button" data-m="fij">${fij ? '📌 Quitar de fijados' : '📌 Fijar arriba'}</button><button type="button" data-m="nl">${nl ? '✓ Marcar como leído' : '● Marcar como no leído'}</button><button type="button" data-m="x" class="x">Cancelar</button></div></div>`);
     const m = document.getElementById('cq-fmenu'); m.addEventListener('click', async ev => { const b = ev.target.closest('[data-m]'); if (ev.target === m || b?.dataset.m === 'x') return m.remove(); if (!b) return; m.remove();
       if (b.dataset.m === 'fij') { await Consultas.ponFijado(aid, !fij); toast(fij ? 'Quitado de fijados' : 'Chat fijado arriba'); refrescar(); } else alternarLeido(el); }); };
-  document.addEventListener('pointerdown', e => { const el = e.target.closest?.('.wa-fila[data-v]'); if (!el || S.modo !== 'coach') return; f = el; x0 = e.clientX; y0 = e.clientY; dx = 0; sw = false; clearTimeout(t);
-    t = setTimeout(() => { t = null; if (sw) return; S._cqLP = Date.now(); navigator.vibrate?.(15); menu(el); }, 550); });
-  document.addEventListener('pointermove', e => { if (!f) return; const ddx = e.clientX - x0, ddy = e.clientY - y0;
+  /* Táctil (iPhone/iPad): touch events, más fiables que pointer dentro de listas con scroll */
+  const ini = (el, x, y) => { f = el; x0 = x; y0 = y; dx = 0; sw = false; clearTimeout(t); t = setTimeout(() => { t = null; if (sw || !f) return; S._cqLP = Date.now(); navigator.vibrate?.(15); menu(el); }, 550); };
+  const mov = (x, y, ev) => { if (!f) return; const ddx = x - x0, ddy = y - y0;
     if (t && Math.hypot(ddx, ddy) > 10) { clearTimeout(t); t = null; }
-    if (!sw) { if (Math.abs(ddy) > 12 && Math.abs(ddy) > Math.abs(ddx)) { f = null; return; } if (ddx > 14 && ddx > Math.abs(ddy) * 1.3) { sw = true; f.classList.add('wa-desl'); } else return; }
-    dx = Math.max(0, Math.min(ddx, 110)); f.style.transform = `translateX(${dx}px)`; f.classList.toggle('wa-listo', dx >= 70); });
-  ['pointerup', 'pointercancel'].forEach(ev => document.addEventListener(ev, () => { clearTimeout(t); t = null; if (!f) return; const el = f; f = null;
-    if (sw) { S._cqLP = Date.now(); el.style.transition = 'transform .18s'; el.style.transform = ''; setTimeout(() => { el.style.transition = ''; el.classList.remove('wa-desl', 'wa-listo'); }, 200); if (dx >= 70) alternarLeido(el); } }));
+    if (!sw) { if (Math.abs(ddy) > 10 && Math.abs(ddy) >= Math.abs(ddx)) { f = null; return; } if (ddx > 12 && ddx > Math.abs(ddy) * 1.2) { sw = true; f.classList.add('wa-desl'); } else return; }
+    if (ev?.cancelable) ev.preventDefault();
+    dx = Math.max(0, Math.min(ddx, 140)); f.style.setProperty('--dx', dx + 'px'); f.classList.toggle('wa-listo', dx >= 80); };
+  const fin = () => { clearTimeout(t); t = null; if (!f) return; const el = f; f = null; if (!sw) return; S._cqLP = Date.now();
+    el.classList.remove('wa-desl', 'wa-listo'); el.style.removeProperty('--dx'); if (dx >= 80) alternarLeido(el); };
+  document.addEventListener('touchstart', e => { const el = e.target.closest?.('.wa-fila[data-v]'); if (!el || S.modo !== 'coach') return; const p = e.touches[0]; ini(el, p.clientX, p.clientY); }, { passive: true });
+  document.addEventListener('touchmove', e => { if (!f) return; const p = e.touches[0]; mov(p.clientX, p.clientY, e); }, { passive: false });
+  document.addEventListener('touchend', fin, { passive: true }); document.addEventListener('touchcancel', fin, { passive: true });
+  /* Ratón (ordenador): mantener pulsado = menú */
+  document.addEventListener('mousedown', e => { const el = e.target.closest?.('.wa-fila[data-v]'); if (!el || S.modo !== 'coach') return; ini(el, e.clientX, e.clientY); });
+  document.addEventListener('mousemove', e => { if (f && e.buttons) mov(e.clientX, e.clientY); });
+  document.addEventListener('mouseup', fin);
   document.addEventListener('contextmenu', e => { const el = e.target.closest?.('.wa-fila[data-v]'); if (el) { e.preventDefault(); if (S.modo === 'coach') menu(el); } });
 })();
 document.addEventListener('change', e => { const sel = e.target.closest && e.target.closest('[data-cq-nuevo]'); if (sel && sel.value) Consultas.abrirHilo(sel.value); if (e.target.id === 'cq-foto') Consultas.elegirFoto(e.target); });
