@@ -2207,7 +2207,8 @@ setInterval(() => { if (navigator.onLine && Cola.leer().length) Cola.enviar(); }
 const Peso = {
   /* Al terminar el ejercicio (todas sus series marcadas): si se usó un peso distinto al pautado, ¿se queda para las próximas semanas o fue algo temporal? */
   revisar(es, fila, T, sid) {
-    const z = S.sesion; z.pesoPreg ||= {}; if (z.pesoPreg[es] || !avisoAl('peso')) return;
+    /* Entrenando tú con el alumno: pregunta siempre (decides tú). Solo: según su ajuste «Cambio de peso» */
+    const z = S.sesion; z.pesoPreg ||= {}; if (z.pesoPreg[es] || (!S.obj && !avisoAl('peso'))) return;
     const e = S.dia.bloques_sesion.flatMap(b => b.ejercicios_sesion).find(x => x.id === es); if (!e || esSinPeso(e)) return;
     const series = +e.series || 0, hechas = Object.keys(z.regs || {}).filter(k => k.startsWith(es + '-')).length;
     if (series && hechas < series) return;   // aún no ha terminado el ejercicio
@@ -9625,7 +9626,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v507';
+const APP_VER = 'v508';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
