@@ -4879,8 +4879,36 @@ function vCalPlanAlumno() {
   const todos = [D.programa, D.programaBase, ...(D.contextos || []), ...(D.alternativos || [])].filter(Boolean).flatMap(q => q.dias || []), dDe = id => todos.find(d => d.id === id);
   const ses = (D.sesiones || []).filter(x => !x.previa), PS = psDePlan(DP, lunes, ses, dDe, planDe(lunes)?.dias);
   const sinPlan = !Object.keys(PS).length && lunes >= lunesDe(hoyISO());
+  const puede = usaPlan() && !S.vista && lunes === lunesDe(hoyISO()) && !DP.every(d => [0, 1, 2, 3, 4, 5, 6].some(k => esDia(d, norm(DSEM_L[k])))) && pendSemana(DP, lunes, ses, dDe).length;
   return vCalSemana({ w: [], p: [], ses, pres: D.presenciales || [], todos, DP, H: {}, PS, lunes, alumno: true, fut: false })
-    .replace('</div></section>', sinPlan && usaPlan() ? `<div class="small muted">Planifica tus días de entreno de esta semana y aquí verás qué te toca cada día.</div></div></section>` : '</div></section>');
+    .replace('</div></section>', `${sinPlan && usaPlan() ? '<div class="small muted">Planifica tus días de entreno de esta semana y aquí verás qué te toca cada día.</div>' : ''}${puede ? '<button class="btn ghost full" data-act="cambiarDias" style="margin-top:8px">📅 Cambiar mis días de esta semana</button>' : ''}</div></section>`);
+}
+/* Sesiones que le quedan esta semana (en orden) y días ya entrenados */
+function pendSemana(DP, lunes, ses, dDe) {
+  const fin = sumaDias(lunes, 6), hechoN = new Set(ses.filter(x => x.fecha >= lunes && x.fecha <= fin).map(x => dDe(x.dia_id)?.numero));
+  return DP.filter(d => !hechoN.has(d.numero) && d.tipo_dia !== 'descanso');
+}
+/* El alumno cambia qué día hace cada sesión que le queda (en orden: Día 2 antes que Día 3…). Se guarda en su plan de la semana */
+function formCambiarDias() {
+  const D = S.d, lunes = lunesDe(hoyISO()), pr = ctxEnSemana(D.contextos || [], lunes) || D.programa; if (!pr?.dias?.length) return;
+  const DP = pr.dias.filter(d => !d.oculto).slice().sort((x, y) => (x.numero || 0) - (y.numero || 0)), todos = [D.programa, D.programaBase, ...(D.contextos || []), ...(D.alternativos || [])].filter(Boolean).flatMap(q => q.dias || []), dDe = id => todos.find(d => d.id === id);
+  const ses = (D.sesiones || []).filter(x => !x.previa), fin = sumaDias(lunes, 6), semS = ses.filter(x => x.fecha >= lunes && x.fecha <= fin);
+  const conSes = new Set(semS.map(x => (fecha(x.fecha).getDay() + 6) % 7)), pend = pendSemana(DP, lunes, ses, dDe), PS = psDePlan(DP, lunes, ses, dDe, planDe(lunes)?.dias), min = hoyIdx();
+  S.cdSel = pend.map(d => PS[d.numero] != null && PS[d.numero] >= min ? PS[d.numero] : null);
+  const pinta = () => {
+    const hechas = semS.map(x => `<div class="cd-s ok"><div class="cd-t"><span class="cd-ic">✓</span><div>${esc(nomDia(dDe(x.dia_id) || {}))}<small>Hecha el ${esc(DSEM_L[(fecha(x.fecha).getDay() + 6) % 7])} ${fecha(x.fecha).getDate()}</small></div></div></div>`).join('');
+    const filas = pend.map((d, i) => { const prev = Math.max(-1, ...S.cdSel.slice(0, i).filter(k => k != null));
+      return `<div class="cd-s"><div class="cd-t"><span class="cd-ic">💪</span><div>${esc(nomDia(d))}${d.duracion_min ? `<small>~${d.duracion_min} min</small>` : ''}</div></div>
+        <div class="cd-d">${DSEM.map((x, k) => { const no = k < min || conSes.has(k) || k <= prev; return `<button type="button" data-cd="${i}" data-k="${k}" class="${S.cdSel[i] === k ? 'on' : ''}" ${no ? 'disabled' : ''} aria-label="${DSEM_L[k]}">${x}</button>`; }).join('')}</div></div>`; }).join('');
+    const falta = S.cdSel.some(k => k == null);
+    $('#cd-cuerpo').innerHTML = `${hechas}${filas}${falta ? '<div class="aprox small">Hay alguna sesión sin día. Si esta semana no te da para todas, déjala sin marcar y Jesús lo verá.</div>' : ''}`;
+  };
+  abrirSheet(`<div class="stack"><h2 style="margin:0">Cambia tus días de esta semana</h2><p class="small muted" style="margin:0">Toca el día en que vas a hacer cada sesión. Van en orden (el Día 2 antes que el Día 3) y los días que ya han pasado no se pueden elegir.</p>
+    <div class="stack" id="cd-cuerpo" style="gap:8px"></div><button class="btn full" id="cd-ok">Guardar mi semana</button><p class="small muted" style="margin:0;text-align:center">Jesús verá el cambio en tu ficha. Si es por algo importante (lesión, viaje…), cuéntaselo en el chat.</p></div>`);
+  pinta();
+  $('#cd-cuerpo').addEventListener('click', e => { const b = e.target.closest('[data-cd]'); if (!b || b.disabled) return; const i = +b.dataset.cd, k = +b.dataset.k;
+    S.cdSel[i] = S.cdSel[i] === k ? null : k; for (let j = i + 1; j < S.cdSel.length; j++) if (S.cdSel[j] != null && S.cdSel[j] <= (S.cdSel[i] ?? -1)) S.cdSel[j] = null; pinta(); });
+  $('#cd-ok').addEventListener('click', async () => { const dias = [...new Set([...conSes, ...S.cdSel.filter(k => k != null)])]; cerrarSheet(); await guardarPlanSemana(lunes, dias); toast('Tu semana queda así. ¡A por ella!'); });
 }
 function vCalSemana({ w, p, ses = [], pres = [], todos, DP, H, PS, PB, lunes, aid, alumno, fut = true }) {
   const hoy = hoyISO(), L = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'], dDe = id => todos.find(d => d.id === id);
@@ -9667,7 +9695,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v519';
+const APP_VER = 'v520';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -10067,6 +10095,7 @@ document.addEventListener('click', async e => {
       await Promise.all(L.map(o => { const tx = o.x.map(([, t]) => t === 'partido' ? 'el post-partido' : 'el cierre de semana').join(' y ');
         return sb.functions.invoke('enviar-aviso-enviar-aviso', { body: { alumno_ids: [o.a.id], titulo: '⚽ Te falta tu check-in', cuerpo: `${(o.a.nombre || '').split(' ')[0]}, te falta ${tx} de este fin de semana. Entra y rellénalo: 1 minuto.`, url: './', tag: 'lof-exc' } }).catch(() => { }); }));
       toast(`Recordatorio enviado a ${L.length}: ${L.map(o => (o.a.nombre || '').split(' ')[0]).join(', ')}`); b.disabled = false; break; }
+    case 'cambiarDias': formCambiarDias(); break;
     case 'devVisto': {   /* check-in semanal que no necesita respuesta: queda atendido sin enviarle devolución (el alumno no ve nada) */
       const aid = b.dataset.id, l = lunesDe(hoyISO()), chk = (S.c.checkins || []).filter(k => k.alumno_id === aid && k.semana_inicio >= sumaDias(l, -7)).sort((x, y) => y.semana_inicio.localeCompare(x.semana_inicio))[0];
       if (!chk) break; b.disabled = true;
