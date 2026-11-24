@@ -697,18 +697,28 @@ Tandas.ed = {
     if (M.tipo === 'top') el.textContent = p[0].kg ? `Top set ${p[0].kg}${numero(panel.querySelector('[data-a="rm"]').value) ? ' (90 % del 1RM)' : ''} · back-off ${p[1]?.kg || '—'} (−15 %)${p.length > 2 ? ' · ' + p.slice(1).map(t => t.kg).join(' → ') : ''}` : 'Escribe el peso del top set (o el 1RM) y el resto sale solo.';
   },
   /* Conecta el panel con las filas de la pauta del formulario */
-  montar(cont, filas, metSel, nombreDe) {
+  /* 1RM del alumno (de su test o estimado de sus series): se rellena al elegir Topset y se indica de dónde sale */
+  rellenaRM(cont, rmDe, forzar) {
+    const panel = cont.querySelector('.as-panel'); if (!panel || panel.dataset.tipo !== 'top') return false;
+    const inp = panel.querySelector('[data-a="rm"]'); if (!inp) return false; panel.querySelector('[data-rmsrc]')?.remove();
+    const r = rmDe?.(); if (!r) { if (forzar && inp.dataset.auto === '1') { inp.value = ''; inp.dataset.auto = ''; } return false; }
+    inp.insertAdjacentHTML('afterend', `<span class="small" data-rmsrc style="color:#0B5CFF;font-weight:600">${esc(r.txt)}</span>`);
+    if (forzar && (!inp.value.trim() || inp.dataset.auto === '1')) { inp.value = fmtNum(r.kg, 1); inp.dataset.auto = '1'; const k = panel.querySelector('[data-a="kg"]'); if (k) k.value = fmtNum(this.red(r.kg * 0.9), 2); return true; }
+    return false;
+  },
+  montar(cont, filas, metSel, nombreDe, rmDe) {
     const pintar = cambio => {
       const met = nombreDe(metSel.value), pauta = [...filas.querySelectorAll('[data-tramo]')].map((f, i) => leerFilaTramo(f, i));
-      cont.innerHTML = this.html(met, pauta, cambio); const panel = cont.querySelector('.as-panel'); if (!panel) return; this.previa(panel);
+      cont.innerHTML = this.html(met, pauta, cambio); const panel = cont.querySelector('.as-panel'); if (!panel) return; this.rellenaRM(cont, rmDe, cambio); this.previa(panel);
     };
+    cont.lofRM = forzar => { if (this.rellenaRM(cont, rmDe, forzar)) volcar(); };
     const volcar = () => { const panel = cont.querySelector('.as-panel'); if (!panel) return; const p = this.pauta(panel); filas.innerHTML = p.map((t, i) => filaTramo(t, i === 0)).join(''); this.previa(panel); };
     metSel.addEventListener('change', () => { pintar(true); volcar(); });
     cont.addEventListener('input', ev => {
       const panel = cont.querySelector('.as-panel'); if (!panel) return;
       if (/^kg2(\.\d+)?$/.test(ev.target.dataset.a || '')) ev.target.dataset.auto = ev.target.value.trim() ? '' : '1';
       if (/^(kg|t1|t2)(\.\d+)?$/.test(ev.target.dataset.a || '')) { const suf = (ev.target.dataset.a.match(/\.\d+$/) || [''])[0], k2 = panel.querySelector(`[data-a="kg2${suf}"]`); if (k2 && k2.dataset.auto === '1') k2.value = ''; }
-      if (ev.target.dataset.a === 'rm') { const k = panel.querySelector('[data-a="kg"]'); const rm = numero(ev.target.value); if (k && rm) k.value = fmtNum(this.red(rm * 0.9), 2); }
+      if (ev.target.dataset.a === 'rm') { ev.target.dataset.auto = ''; const k = panel.querySelector('[data-a="kg"]'); const rm = numero(ev.target.value); if (k && rm) k.value = fmtNum(this.red(rm * 0.9), 2); }
       volcar();
     });
     cont.addEventListener('change', ev => { const da = ev.target.dataset.a || ''; if (da === 'ps' || da === 'modo' || da === 'orden' || (da === 's' && cont.querySelector('[data-a="ps"]')) || (/^m\d$/.test(da) && cont.querySelector('.as-panel')?.dataset.tipo === 'seriesmix')) { volcar(); pintar(false); return; } if (/^t[12](\.\d+)?$/.test(da)) { const l = ev.target.closest('.as-grid').querySelector(`[data-a="r${da[1]}${da.slice(2)}"]`)?.closest('label'); if (l) l.firstChild.textContent = ev.target.value === 'iso' ? 'Segundos' : 'Reps'; volcar(); } if (ev.target.dataset.a === 'var') { const c = cont.querySelector('[data-a-v="bn"]'); if (c) c.textContent = ev.target.value === 'rp' ? 3 : 2; volcar(); } });

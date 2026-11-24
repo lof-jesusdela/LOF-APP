@@ -8879,7 +8879,25 @@ async function abrirEditor(alumnoId, progId = null, quieto = false) {
   const p = prog.data?.[0] || null;
   if (p) { p.quitados = (p.dias || []).filter(d => d.oculto); p.dias = (p.dias || []).filter(d => !d.oculto); ordSemana(p.dias ||= []); p.dias.forEach(d => { d.bloques_sesion.sort(ordBloque); d.bloques_sesion.forEach(b => b.ejercicios_sesion.sort((a, b) => a.orden - b.orden)); }); }
   S.editor = { alumnoId, progId, plantilla: !!progId && !alumnoId, prog: p, metodos: met.data || [], ctx: p ? [...(S.ficha?.contextos || []), ...(S.c?.contextos || [])].find(x => x.id === p.id) || null : null }; render();
+  cargarRMEditor(alumnoId || p?.alumno_id).catch(e => console.warn('RM', e));
 }
+/* 1RM del alumno en un ejercicio: 1º su último test 1RM con ese mismo ejercicio; 2º estimado de su mejor serie de las últimas 4 semanas (≤ 10 reps) */
+async function cargarRMEditor(aid) {
+  if (!aid || !S.editor) return;
+  const desde = sumaDias(hoyISO(), -28);
+  const [v, r] = await Promise.all([
+    sb.from('valoraciones').select('fecha,pruebas(tipo,datos)').eq('alumno_id', aid).order('fecha', { ascending: false }),
+    conRespaldo(() => sb.from('registros_series').select('kg,repeticiones,creado_at,ejercicio_nombre,ejercicios_sesion(ejercicios(nombre))').eq('alumno_id', aid).gte('creado_at', desde).gt('kg', 0).limit(3000),
+      () => sb.from('registros_series').select('kg,repeticiones,creado_at,ejercicios_sesion(ejercicios(nombre))').eq('alumno_id', aid).gte('creado_at', desde).gt('kg', 0).limit(3000))
+  ]);
+  if (!S.editor || (S.editor.alumnoId || S.editor.prog?.alumno_id) !== aid) return;
+  const test = {}, reg = {};
+  (v.data || []).forEach(x => (x.pruebas || []).filter(p => p.tipo === '1rm').forEach(p => (p.datos || []).forEach(d => { const k = normaliza(d.ejercicio || ''), kg = numDe(d.valor); if (k && kg && !test[k]) test[k] = { kg, txt: `Del test 1RM del ${fCorta(x.fecha)}` }; })));
+  (r.data || []).forEach(x => { const n = x.ejercicios_sesion?.ejercicios?.nombre || x.ejercicio_nombre, rep = numDe(x.repeticiones), kg = numDe(x.kg); if (!n || !kg || !rep || rep < 1 || rep > 10) return;
+    const k = normaliza(n), e = rmEstimado(kg, Math.round(rep)); if (!reg[k] || e > reg[k].kg) reg[k] = { kg: e, txt: `Estimado de sus series: ${fmtNum(kg)} kg × ${Math.round(rep)} el ${fCorta(String(x.creado_at).slice(0, 10))}` }; });
+  S.editor.rm = { test, reg };
+}
+const rmAlumnoEj = nombre => { const R = S.editor?.rm, k = normaliza(nombre || ''); return R && k ? R.test[k] || R.reg[k] || null : null; };
 async function refrescarEditor() { const id = S.editor.alumnoId, pid = S.editor.progId, y = window.scrollY, dia = S.editor.dia; await abrirEditor(id, pid, true); S.editor.dia = dia; if (id && id === S.user.id) await cargarAlumno(S.user.id); if (!id) await cargarPlantillas(); render(); window.scrollTo(0, y); requestAnimationFrame(() => window.scrollTo(0, y)); }
 function vEditor() {
   const E = S.editor, a = S.c.perfiles.find(x => x.id === E.alumnoId) || {};
@@ -9288,7 +9306,8 @@ function formEjSesion(id, bloqueId) {
   $('#es-prev').addEventListener('click', ev => { if (ev.target.id === 'es-img') ev.target.classList.toggle('grande'); });
   $('#es-nfoto').addEventListener('change', ev => { st.nfoto = ev.target.files[0] || null; $('#es-nprev').innerHTML = st.nfoto ? `<img class="es-nimg" src="${esc(URL.createObjectURL(st.nfoto))}" alt="">` : ''; });
   $('#es-add').addEventListener('click', () => { $('#es-tramos').insertAdjacentHTML('beforeend', filaTramo({ d: 0 }, false)); });
-  Tandas.ed.montar($('#es-asis'), $('#es-tramos'), $('#es-met'), v => (S.editor.metodos || []).find(m => m.id === +v)?.nombre);
+  Tandas.ed.montar($('#es-asis'), $('#es-tramos'), $('#es-met'), v => (S.editor.metodos || []).find(m => m.id === +v)?.nombre, () => rmAlumnoEj(todosEj.find(z => z.id === +sel.value)?.nombre));
+  sel.addEventListener('change', () => $('#es-asis').lofRM?.(true));
   $('#es-tramos').addEventListener('change', ev => { if (ev.target.dataset.k === 'tipo') { const l = ev.target.closest('[data-tramo]').querySelector('[data-mtl]'); if (l) l.textContent = ev.target.value === 'serie' ? 'Método de estas series' : 'Método del tramo'; } });
   $('#es-tramos').addEventListener('click', ev => { const q = ev.target.closest('[data-quitar]'); if (q && document.querySelectorAll('#es-tramos [data-tramo]').length > 1) q.closest('[data-tramo]').remove(); });
   $('#f-ejs').addEventListener('submit', async ev => {
@@ -9735,7 +9754,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v525';
+const APP_VER = 'v526';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
