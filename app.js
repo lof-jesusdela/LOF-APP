@@ -9301,6 +9301,8 @@ function formEjSesion(id, bloqueId) {
       const row = { agarre: $('#es-agarre').value || null, ejercicio_id: +ejId, pauta: filas, series: filas.reduce((t, x) => t + (x.s || 0), 0), repeticiones: filas[0].r, rir: rirNum ?? null,
         peso_ref: filas.find(t => t.kg)?.kg || null, descanso_seg: filas[filas.length - 1].d, metodo_id: numero($('#es-met').value), ajustes: $('#es-aj').value.trim() || null,
         grupo: $('#es-gr').value.trim() || null, aproximacion_631: $('#es-631').checked };
+      /* «Sin descanso» entre series ya no convierte el ejercicio en superserie con el siguiente: para eso está «juntar» */
+      if (row.descanso_seg === 0 && !row.grupo) row.grupo = SS_SEP;
       { const ks = [...document.querySelectorAll('.es-631kgs')].map(x => x.value.trim().replace(',', '.')), hay = ks.some(Boolean);
         if (hay || e?.aprox_kgs != null) row.aprox_kgs = hay ? ks.join(';') : null;
         if (hay || e?.aprox_kg != null) row.aprox_kg = hay ? numero(ks[1]) : null; }
@@ -9702,7 +9704,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v521';
+const APP_VER = 'v522';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
