@@ -1704,7 +1704,7 @@ async function descartarEntreno() {
       /* Si la base de datos no deja borrar (permisos), no da error: se comprueba que se haya borrado de verdad */
       if ((b.data || []).length < ids.length) { const c = await sb.from('sesiones_hechas').update({ estado: 'omitida' }).in('id', ids).select('id'); if (c.error || (c.data || []).length < ids.length) throw new Error('sin permiso para borrar'); }
       if (S.d?.sesiones) S.d.sesiones = S.d.sesiones.filter(z => !ids.includes(z.id)); if (S.c?.sesiones) S.c.sesiones = S.c.sesiones.filter(z => !ids.includes(z.id)); }
-  } catch (err) { console.error(err); alert('⚠️ Se ha salido del entreno, pero NO se ha podido borrar lo guardado: puede contar como hecho. Avísame (Claude) con una captura.'); }
+  } catch (err) { console.error(err); alert('⚠️ Se ha salido del entreno, pero NO se ha podido borrar lo guardado: puede contar como hecho. Haz una captura y mándasela a Jesús.'); }
   S.reanudar = null;
   if (dentro) { stopTimer(); if (S.obj) { await salirComo(); } else { S.dia = null; S.sesion = null; } }
   detectarEntrenoEnCurso(); toast('Entreno descartado: no cuenta como hecho'); render();
