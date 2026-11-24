@@ -629,15 +629,12 @@ function checkinPend() {
 const tocaCheckin = () => !!checkinPend();
 /* Globo de Hoy: cuántas cosas importantes tiene pendientes. Futbolista: sus check-ins. Resto: su foco (y su hábito) de hoy
    sin marcar + el check-in semanal si le toca. También va al icono de la app en el móvil (con el chat sin leer). */
+let _nHoy = { t: 0, n: 0 };
 function nHoy() {
-  try {
-    const s = S.d?.servicio; if (!s || S.modo === 'coach') return 0;
-    if (s.modulo_futbol) return pendientesFutbol().length;
-    const hoy = hoyISO(), r = (S.d.diario || []).find(x => x.fecha === hoy) || {}, fo = s.foco; let n = tocaCheckin() ? 1 : 0;
-    if (fo?.tipo && !['pasos', 'entrenos', 'sueno'].includes(fo.tipo)) n += (fo.tipo === 'alimentacion' ? r.ingestas == null : r.foco_ok == null) ? 1 : 0;
-    const hb = s.modulo_habitos ? habitoFoco(hoy) : null; if (hb && !(S.d.habReg || []).some(x => x.habito_id === hb.id && x.fecha === hoy && x.valor)) n++;
-    return n;
-  } catch (e) { return 0; }
+  if (!S.d?.servicio || S.modo === 'coach') return 0;
+  if (Date.now() - _nHoy.t < 400) return _nHoy.n;
+  let n = 0; try { n = lineasPend(S.d.servicio).length; } catch (e) { n = 0; }
+  _nHoy = { t: Date.now(), n }; return n;
 }
 function badgeApp() { if (S.modo === 'coach' || S.vista || S.prueba || !('setAppBadge' in navigator)) return; const n = nHoy() + (nChat() || 0); (n ? navigator.setAppBadge(n) : navigator.clearAppBadge?.())?.catch?.(() => { }); }
 async function avisoCuota() {
@@ -1078,9 +1075,19 @@ function cuotaPend() {
   const venc = x.filter(p => p.vence < hoy), dias = venc.length ? Math.round((fecha(hoy) - fecha(venc[0].vence)) / 864e5) : 0;
   return { x, venc, dias, total: x.reduce((t, p) => t + +p.importe, 0) };
 }
-function vPendientesHoy(s) {
-  /* Todo lo que se quedó sin hacer y conviene rellenar: registros de días pasados, fotos y reflexión del mes, check-in semanal y menú de la semana */
+/* Centro de pendientes del alumno (arriba del todo en Hoy): lo que tiene que hacer, cada cosa con su botón para resolverla
+   ahí mismo o ir a su sitio. El globo de Hoy cuenta exactamente estas líneas. */
+function lineasPend(s) {
   const hoy = hoyISO(), lineas = [], fase = Nutricion.fase(S.d), activo = Acomp.estado(s).k !== 'pausado';
+  const yn = (act, extra) => `<div class="md-yn"><button type="button" data-act="${act}" data-v="1" ${extra}>Hecho</button><button type="button" data-act="${act}" data-v="0" ${extra}>No</button></div>`;
+  if (s.modulo_futbol) pendientesFutbol().forEach(x => lineas.push([x.atr ? '⚠️' : '⚽', esc(x.txt), x.atr ? 'Con estos datos Jesús ajusta tu carga. No desaparece hasta que lo rellenes.' : esc(x.sub || 'Te toca hoy'), `data-act="wellness" data-t="${x.t}" data-f="${x.f}"`, 'Rellenar ›', !!x.atr]));
+  else if (activo) {
+    const r = (S.d.diario || []).find(x => x.fecha === hoy) || {}, fo = s.foco;
+    if (fo?.tipo && !['pasos', 'entrenos', 'sueno'].includes(fo.tipo) && (fo.tipo === 'alimentacion' ? r.ingestas == null : r.foco_ok == null))
+      lineas.push(['🎯', 'Marca tu foco de hoy', esc(fo.tipo === 'libre' ? (fo.texto || 'Tu foco') : (fo.texto || Foco.titulo(fo))), '', '', false, fo.tipo === 'alimentacion' ? yn('cumplePlan', '') : yn('mdFoco', `data-f="${hoy}"`)]);
+    const hb = s.modulo_habitos ? habitoFoco(hoy) : null;
+    if (hb && !(S.d.habReg || []).some(x => x.habito_id === hb.id && x.fecha === hoy && x.valor)) lineas.push(['🌱', 'Marca tu hábito de hoy', esc(hb.titulo), '', '', false, yn('mdHab', `data-id="${hb.id}" data-f="${hoy}"`)]);
+  }
   const exige = !s.modulo_futbol && (conPasos(s) || (s.modulo_nutricion && fase === 'activo' && Nutricion.acuerdo(S.d).nivel === 'habitual')) && activo;
   if (exige) {
     const hecho = x => !!x && (x.pasos != null || x.ingestas != null || x.comidas_hechas != null || !!x.alimentacion || !!x.observacion);
@@ -1100,11 +1107,15 @@ function vPendientesHoy(s) {
     if (Cuest.estado('preferencias') !== 'enviado') lineas.push(['🥦', 'Elige los alimentos que no te gustan', 'Tu plan se hará solo con alimentos que te gustan. Es un momento: tocas los que no quieres', 'data-act="cqPref"', 'Elegir']);
   }
   if (s.modulo_nutricion && fase === 'recogida' && avisoAl('incorporacion')) lineas.push(['🍽', 'Registro de 7 días de comidas', 'Con una foto o una frase de lo que comes, sin cambiar nada: sirve para preparar tu plan a tu medida', 'data-act="tab" data-t="nutri"', 'Apuntar']);
+  return lineas;
+}
+function vPendientesHoy(s) {
+  const lineas = lineasPend(s);
   const tarjetas = [Acomp.tarjetaDevolucionHoy(), Nutricion.tarjetaTemporal(), (avisoAl('casos') ? Casos.lineaHoy() : ''), (avisoAl('fotos') ? Casos.tarjetaHoy(true) : ''), Bienvenida.tarjeta()].join('');
   if (!lineas.length && !tarjetas.trim()) return '';
   /* La alerta roja solo cuando algo va de verdad tarde (check-in de la semana pasada a partir del miércoles, 4+ días sin registrar o último día para completar la semana) */
   const urge = lineas.some(l => l[5]);
-  return `${lineas.length ? `<section class="section"><div class="card ${urge ? 'pend' : 'pend-suave'}" ${urge ? 'role="alert"' : ''}><div class="pend-cab"><span class="pend-ic">${urge ? '⚠️' : '📌'}</span><h2>Pendiente</h2><span class="pend-n">${lineas.length}</span></div><p class="small pend-sub">${urge ? 'Hay algo que ya va con retraso: cada punto te dice para qué sirve y hasta cuándo.' : 'Lo que acordamos y aún falta. Cada punto te dice para qué sirve y hasta cuándo.'}</p>${lineas.map(([ic, t, d, at, b, u]) => `<div class="pend-linea ${u ? 'urge' : ''}"><span class="pend-i">${ic}</span><div class="grow"><b>${t}</b><div class="small">${d}</div></div><button class="btn sm pend-btn" ${at}>${b}</button></div>`).join('')}</div></section>` : ''}${tarjetas}`;
+  return `${lineas.length ? `<section class="section"><div class="card ${urge ? 'pend' : 'pend-suave'}" ${urge ? 'role="alert"' : ''}><div class="pend-cab"><span class="pend-ic">${urge ? '⚠️' : '📌'}</span><h2>${lineas.length === 1 ? 'Tienes 1 cosa pendiente' : `Tienes ${lineas.length} cosas pendientes`}</h2></div><p class="small pend-sub">${urge ? 'Hay algo que ya va con retraso. Resuélvelo desde aquí mismo.' : 'Resuélvelo desde aquí mismo: cada punto tiene su botón.'}</p>${lineas.map(([ic, t, d, at, b, u, html]) => `<div class="pend-linea ${u ? 'urge' : ''}"><span class="pend-i">${ic}</span><div class="grow"><b>${t}</b><div class="small">${d}</div></div>${html || `<button class="btn sm pend-btn" ${at}>${b}</button>`}</div>`).join('')}</div></section>` : ''}${tarjetas}`;
 }
 /* Próximamente: revisión mensual, entrenos con Jesús (saldo, próxima reserva y un solo botón) */
 function vProximamente(s) {
@@ -1207,7 +1218,7 @@ function vHoy() {
     if (rt && dr && !toca.includes(`data-id="${rt.id}"`)) toca = `<div class="line aprox" style="margin-bottom:8px"><div class="ico gold">${svg('entreno')}</div><div class="grow"><h3>Continuar donde lo dejaste</h3><div class="small muted">${esc(nomDia(dr))} · ${rt.fecha === hoyISO() ? 'hoy' : esc(fLarga(rt.fecha))} · ${rt.series_hechas || 0} de ${rt.series_total || '—'} series</div></div><div class="row" style="gap:6px"><button class="btn sm rojo" data-act="salirParcial" data-id="${rt.id}">Salir</button><button class="btn sm gold" data-act="retomar" data-id="${rt.id}">Continuar</button></div></div>` + toca; }
   const _ali = s.modulo_nutricion ? `<div class="stack" style="gap:8px"><span class="small muted">¿Cómo ha ido hoy la alimentación?</span><div class="choice" role="group">${[['si', 'Cumplido'], ['no', 'No cumplido']].map(([v, l]) => `<button data-act="ali" data-v="${v}" aria-pressed="${r.alimentacion === v}">${l}</button>`).join('')}</div></div>` : '';
   const dur = s.duracion_semanas, semN = s.inicio ? Math.floor((fecha(hoy) - fecha(s.inicio)) / 6048e5) + 1 : null;
-  return `<section class="card hero stack">
+  return `${vPendientesHoy(s)}<section class="card hero stack">
     <span class="eyebrow">${esc(fLarga(hoy))}</span>
     <div class="row" style="gap:14px;align-items:center"><div class="grow stack" style="gap:8px"><h1 style="margin:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">Hola, ${esc((S.perfil.nombre || '').split(' ')[0])}${S.d?.servicio?.modulo_futbol && S.d.servicio.club_escudo ? escudo(S.d.servicio.club_escudo, S.d.servicio.club_nombre, 36).replace('class="esc"', `class="esc" title="${esc(S.d.servicio.club_nombre || '')}"`) : ''}</h1>
       <p class="frase-hoy">${esc(S.perfil.frase_motivacion || FRASE_DEF)}</p></div>${avatarDe(S.perfil, 72)}</div>
@@ -1219,7 +1230,6 @@ function vHoy() {
   ${vAvisosHoy()}
   ${Consultas.vAvisoHoy()}
   ${esWeekCard()}
-  ${vPendientesHoy(s)}
   ${!/Hoy toca descanso/.test(toca) || /Continuar donde lo dejaste/.test(toca) ? `<section class="section"><h2>Lo que toca hoy</h2><div class="card">${toca.replace(/<div class="line"><div class="ico">(?:(?!<div class="line).)*Hoy toca descanso[^]*$/s, '')}</div></section>` : ''}
   ${s.modulo_futbol ? vFutbolHoy() + (s.modulo_habitos ? Habitos.tarjetaHoy(false) : '') : vRegistroDia(s)}
   ${s.oposicion ? Oposicion.tarjeta(false) : ''}
@@ -4091,7 +4101,7 @@ function vFutbolHoy() {
   let su = null; try { su = resumenSueno(w14, D.servicio, ini14, hoyISO()); } catch (e) { }
   const toca = fs.filter(f => chkTipoDia(f, D.partidos) && (f < hoyISO() || wDe(w14, f, chkTipoDia(f, D.partidos)))), hechos = toca.filter(f => wDe(w14, f, chkTipoDia(f, D.partidos)));
   const mis = `<section class="section"><div class="card stack"><span class="eyebrow">Mis check-ins · 14 días</span><div class="mis-chk"><div><span>Fatiga media</span><b>${fv.length ? fmtNum(fv.reduce((a, b) => a + b, 0) / fv.length, 1) : '—'}</b></div><div><span>Sueño</span><b>${su?.media != null ? fmtNum(su.media, 1) + ' h' : '—'}</b></div><div><span>Rellenados</span><b>${hechos.length}/${toca.length}</b></div></div><span class="small muted">Los lunes y los días de partido cuentan con su propio check-in.</span></div></section>`;
-  return rojo + (M.prox ? `<section class="section">${vPartidoXL(M.prox, D.servicio)}</section>` : '') + `<section class="section"><div class="card md-card stack">
+  return (S.modo === 'coach' ? rojo : '') + (M.prox ? `<section class="section">${vPartidoXL(M.prox, D.servicio)}</section>` : '')   /* el alumno ya los ve arriba en «Tienes N cosas pendientes» */ + `<section class="section"><div class="card md-card stack">
       <div class="row"><span class="md-chip">${esc(M.md || '—')}</span><div class="grow"><b>${esc(M.txt)}</b>${M.prox ? `<div class="small muted">Próximo: ${esc(M.prox.rival || 'partido')} · ${esc(fCorta(M.prox.fecha))}${M.prox.hora ? ' · ' + esc(String(M.prox.hora).slice(0, 5)) : ''}${M.prox.lugar ? ' · ' + esc(M.prox.lugar) : M.prox.local === false ? ' · fuera' : M.prox.local ? ' · en casa' : ''}</div>${M.prox.descripcion ? `<div class="small" style="margin-top:4px">${esc(M.prox.descripcion)}</div>` : ''}` : '<div class="small muted">Añade tu próximo partido para que Jesús ajuste tu semana.</div>'}</div></div>
       ${hoyP.map(p => `<button class="pend-b" data-act="wellness" data-t="${p.t}" data-f="${p.f}"><span class="badge-dot" style="position:static"></span><div class="grow" style="text-align:left"><b>${esc(p.txt)}</b><div class="small muted">${esc(p.sub)}</div></div><span style="color:var(--blue-text);font-weight:700">Rellenar ›</span></button>`).join('')}
       ${!hoyP.length ? '<div class="small" style="color:var(--ok)"><b>✓ Lo de hoy, al día.</b> Gracias: Jesús ya tiene tu información de hoy.</div>' : ''}
@@ -9576,7 +9586,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v503';
+const APP_VER = 'v504';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
