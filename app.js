@@ -2670,6 +2670,8 @@ async function cargarCoach() {
     /* Métodos de la app que aún no están en tu lista (p. ej. «Series mixtas»): se crean solos para poder elegirlos en el editor */
     let borr = []; try { borr = JSON.parse((ap.data || []).find(x => x.clave === 'metodos_borrados')?.valor || '[]'); } catch (e) { /* nada */ }
     if (!mt.error) for (const n of ['Series mixtas', 'Concentradas']) if (!borr.includes(n) && !S.c.metodos.some(m => normaliza(m.nombre) === normaliza(n))) { const r = await sb.from('metodos').insert({ nombre: n, explicacion: Tandas.MET[n].info.replace(/^[^:]+:\s*/, '') }).select().single(); if (!r.error && r.data) S.c.metodos.push(r.data); }
+    /* Concentradas: si quedó con la explicación corta de la primera versión, se pone la completa */
+    { const c = S.c.metodos.find(m => m.nombre === 'Concentradas'); if (c && (!c.explicacion || /^en la misma serie, primero las repeticiones/i.test(c.explicacion))) { const ex = Tandas.MET.Concentradas.info.replace(/^[^:]+:\s*/, ''), r = await sb.from('metodos').update({ explicacion: ex }).eq('id', c.id); if (!r.error) c.explicacion = ex; } }
     Tandas.dinamicos(S.c.metodos); }
   { const mc = await sb.from('movilidad_catalogo').select('*').order('titulo'); S.c.movCat = mc.error ? null : (mc.data || []); }
   { const t = await sb.from('tareas_coach').select('*').is('hecha_at', null); S.c.tareas = t.error ? null : (t.data || []); }
@@ -9796,7 +9798,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v530';
+const APP_VER = 'v531';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
