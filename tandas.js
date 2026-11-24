@@ -22,6 +22,7 @@ const Tandas = {
     'Forzadas': { tipo: 'simple', forz: true, info: 'Forzadas: llega a las repeticiones objetivo aunque no te salgan seguidas. Cuando no puedas más, para 5 segundos y sigue sumando hasta llegar.' },
     'Topset': { tipo: 'top', info: 'Top set: la 1ª serie es la más pesada. Las siguientes van con un 15 % menos de peso.' },
     'Series parciales': { tipo: 'simple', parcial: true, info: 'Series parciales: la misma serie, con el mismo ejercicio, pero cambiando el rango de movimiento (o el ajuste de la máquina) en cada tramo o en cada serie. Fíjate en el rango indicado antes de empezar cada una.' },
+    'Concentradas': { tipo: 'simple', conc: true, info: 'Concentradas: en la misma serie, primero las repeticiones con el recorrido completo (sin perder rango de movimiento). Cuando estés cerca del fallo, sin parar, acorta el recorrido y haz las repeticiones indicadas solo en la zona de contracción, donde el músculo tiene más fuerza, para sumar repeticiones efectivas.' },
     'Series mixtas': { tipo: 'seriesmix', info: 'Series mixtas: cada serie (o grupo de series) con su propio método. Por ejemplo, la 1ª serie en isométrico y la 2ª y 3ª en dinámico. Fíjate en el método de cada serie antes de empezarla.' },
     'Mixto': { tipo: 'mixto', info: 'Mixto: dentro de la misma serie se encadenan tramos con métodos distintos. Cada tramo indica su método; haz uno detrás de otro, con la pausa que se indique.' },
     'Isométrico': { tipo: 'simple', iso: true, info: 'Isométrico: sostén la carga, sin moverte, en la posición indicada durante el tiempo marcado. Aquí no cuentas repeticiones, sino segundos.' }
@@ -536,6 +537,7 @@ Tandas.ed = {
       v.modo = un ? 'series' : 'misma'; v.items = it.map(t => ({ rg: t.op?.rg || '', r: Tandas.limpiaR(t.r || '') })); v.n = Math.max(2, it.length); v.s = un ? (g[0].s || 1) : (t0.s || 3);
       v.pausa = !un && it.length > 1 ? (it[0].d ?? 0) : 0;
     }
+    if (M.conc) { const tr = g[0]?.tramos || []; v.r = Tandas.limpiaR(tr[0]?.r || '') || '10'; v.r2 = Tandas.limpiaR(tr[1]?.r || '') || '10'; v.rg2 = tr[1]?.op?.rg || 'Rango corto, solo la zona de contracción'; v.s = t0.s || 3; }
     if (tipo === 'mixto') {
       const it = g[0]?.tramos || [];
       v.items = it.map(t => { const iso = Tandas.esIso(t); return { m: t.op?.mt || '', r: iso ? String(Tandas.segDe(t) || 30) : Tandas.limpiaR(t.r || ''), kg: numero(kgDe(t)) ?? '', rg: t.op?.rg || '' }; }); v.n = Math.max(2, it.length);
@@ -569,7 +571,7 @@ Tandas.ed = {
   sel: (id, lbl, val, ops) => `<label>${lbl}<select data-a="${id}">${ops.map(([k, l]) => `<option value="${k}" ${String(val) === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`,
   contador: (id, lbl, val, min, max) => `<div class="as-cont"><span class="small">${lbl}</span><div class="row" style="gap:6px;align-items:center"><button type="button" class="mini" data-menos="${id}" aria-label="Quitar">−</button><b data-a-v="${id}">${val}</b><button type="button" class="mini" data-mas="${id}" data-max="${max}" data-min="${min}" aria-label="Añadir">＋</button></div></div>`,
   filaRango(k, o, o0) { return `<div class="as-grid" style="grid-template-columns:2fr 1fr">${this.txt('g' + k, `Rango o ajuste ${k + 1}`, o.rg, k ? 'Ej.: mitad superior' : 'Ej.: rango completo')}${this.txt('r' + k, 'Reps', o.r || o0.r || '10')}</div>`; },
-  METS_MIXTO: () => Object.keys(Tandas.MET).filter(n => !['Mixto', 'Series mixtas', 'Series parciales', 'Topset'].includes(n)),
+  METS_MIXTO: () => Object.keys(Tandas.MET).filter(n => !['Mixto', 'Series mixtas', 'Series parciales', 'Topset', 'Concentradas'].includes(n)),
   filaSerieMix(k, o) {
     const ops = [['', 'Normal (dinámico)'], ...this.METS_MIXTO().map(n => [n, n])], iso = Tandas.MET[o.m]?.iso;
     return `<div class="as-grid" style="padding:8px;border:1px solid var(--line);border-radius:10px">${this.sel('m' + k, `Método · bloque ${k + 1}`, o.m || '', ops)}${this.num('s' + k, 'Nº series', o.s || 1)}${this.txt('r' + k, iso ? 'Segundos' : 'Reps', o.r || (iso ? '30' : '10'))}${this.num('k' + k, 'Peso (kg)', o.kg ?? '')}${this.txt('i' + k, 'RIR', o.rir ?? '')}${this.num('d' + k, 'Descanso (s)', o.d ?? 90)}</div>`;
@@ -607,6 +609,8 @@ Tandas.ed = {
         : M.tipo === 'ucontraste' ? this.sel('orden', 'Orden', v.orden, [['lado', 'Por lado: derecho (1ª y 2ª parte) y luego izquierdo'], ['fase', 'Por partes: 1ª parte con los dos lados y luego la 2ª']]) : ''].join('');
     } else if (M.tipo === 'doble') {
       campos = [this.num('s', 'Series', v.s), this.txt('r', 'Reps por lado', v.r), this.num('kg', 'Peso (kg)', v.kg), this.txt('rir', 'RIR 1ª vuelta', v.rir), this.txt('rir2', 'RIR 2ª vuelta', v.rir2), this.num('d', 'Descanso entre series (s)', v.d)].join('');
+    } else if (M.conc) {
+      campos = [this.num('s', 'Series', v.s), this.num('kg', 'Peso (kg)', v.kg), this.txt('r', 'Reps con recorrido completo', v.r), this.txt('r2', 'Reps con recorrido corto', v.r2), this.txt('rg2', 'Recorrido corto', v.rg2, 'Ej.: solo la mitad superior, en la contracción'), this.txt('rir', 'RIR (al terminar el recorrido corto)', v.rir), this.num('d', 'Descanso entre series (s)', v.d)].join('');
     } else if (M.parcial) {
       const N = Math.min(Math.max(v.n, 2), 5), it = v.items || [];
       campos = [this.sel('modo', 'Cómo cambia el rango', v.modo || 'misma', [['misma', 'Dentro de la misma serie, sin parar'], ['series', 'En series distintas (un rango por serie)']]), this.num('s', (v.modo === 'series' ? 'Series por rango' : 'Series'), v.s), this.num('kg', 'Peso (kg)', v.kg), this.txt('rir', 'RIR', v.rir),
@@ -640,6 +644,7 @@ Tandas.ed = {
     const met = panel.dataset.met, M = Tandas.MET[met], a = k => panel.querySelector(`[data-a="${k}"]`)?.value.trim() ?? '', n = k => numero(a(k)), cnt = k => +(panel.querySelector(`[data-a-v="${k}"]`)?.textContent || 0);
     const s = Math.max(1, n('s') || 1), kg = n('kg'), rir = a('rir') === '' ? undefined : (/^\d+$/.test(a('rir')) ? +a('rir') : a('rir')), d = n('d') ?? 120;
     const R = v => v === '' ? undefined : (/^\d+$/.test(v) ? +v : v);
+    if (M.conc) return [T({ s, r: a('r') || '10', kg: this.kg(kg), d: 0, op: { rg: 'Recorrido completo' } }), T({ r: a('r2') || '10', rir, kg: this.kg(kg), d, op: { rg: a('rg2') || 'Rango corto, solo la zona de contracción' } })];
     if (M.parcial) {
       const N = cnt('n'), op = k => a('g' + k) ? { rg: a('g' + k) } : undefined, r = k => a('r' + k) || a('r0') || '10';
       if (a('modo') === 'series') return [...Array(N)].map((_, k) => T({ s, r: r(k), rir, kg: this.kg(kg), d, op: op(k) }));

@@ -2668,7 +2668,8 @@ async function cargarCoach() {
     S.c.contextos = cx.error ? [] : (cx.data || []).filter(esContexto); }
   { const mt = await sb.from('metodos').select('*').order('nombre'); S.c.metodos = mt.data || [];
     /* Métodos de la app que aún no están en tu lista (p. ej. «Series mixtas»): se crean solos para poder elegirlos en el editor */
-    if (!mt.error) for (const n of ['Series mixtas']) if (!S.c.metodos.some(m => normaliza(m.nombre) === normaliza(n))) { const r = await sb.from('metodos').insert({ nombre: n, explicacion: Tandas.MET[n].info.replace(/^[^:]+:\s*/, '') }).select().single(); if (!r.error && r.data) S.c.metodos.push(r.data); }
+    let borr = []; try { borr = JSON.parse((ap.data || []).find(x => x.clave === 'metodos_borrados')?.valor || '[]'); } catch (e) { /* nada */ }
+    if (!mt.error) for (const n of ['Series mixtas', 'Concentradas']) if (!borr.includes(n) && !S.c.metodos.some(m => normaliza(m.nombre) === normaliza(n))) { const r = await sb.from('metodos').insert({ nombre: n, explicacion: Tandas.MET[n].info.replace(/^[^:]+:\s*/, '') }).select().single(); if (!r.error && r.data) S.c.metodos.push(r.data); }
     Tandas.dinamicos(S.c.metodos); }
   { const mc = await sb.from('movilidad_catalogo').select('*').order('titulo'); S.c.movCat = mc.error ? null : (mc.data || []); }
   { const t = await sb.from('tareas_coach').select('*').is('hecha_at', null); S.c.tareas = t.error ? null : (t.data || []); }
@@ -6724,7 +6725,7 @@ document.addEventListener('change', async ev => { const k = ev.target.dataset?.t
 document.addEventListener('change', async ev => { const c = ev.target.dataset?.tema, f = ev.target.files?.[0]; if (!c || !f) return;
   try { toast('Subiendo…'); const u = await subirImagenEj(f, 'tema-' + c, 1400); const { error } = await sb.from('ajustes').upsert([{ clave: 'tema_' + c, valor: u }], { onConflict: 'clave' }); if (error) throw error; (S.temas ||= {})[c] = u; render(); toast('Portada guardada'); } catch (err) { fallo(err); } });
 const BASE_ETQ = { '': 'Series normales (solo explicación para el alumno)', ...Tandas.BASES };
-const BASE_FIJA = { 'Rest-pause': 'tandas', 'Cluster': 'tandas', 'Myo reps': 'tandas', 'Dropset': 'drop', 'Unilateral': 'lados', 'Unilateral lento': 'lados', 'Superlento': '', 'Unilateral superlento': 'lados', 'Unilateral doble': 'lados', 'Contrastes': 'tandas', 'Unilateral contraste': 'lados', 'Forzadas': '', 'Topset': '', 'Isométrico': 'iso', 'Superserie': '' };
+const BASE_FIJA = { 'Concentradas': '', 'Rest-pause': 'tandas', 'Cluster': 'tandas', 'Myo reps': 'tandas', 'Dropset': 'drop', 'Unilateral': 'lados', 'Unilateral lento': 'lados', 'Superlento': '', 'Unilateral superlento': 'lados', 'Unilateral doble': 'lados', 'Contrastes': 'tandas', 'Unilateral contraste': 'lados', 'Forzadas': '', 'Topset': '', 'Isométrico': 'iso', 'Superserie': '' };
 function vMetodos() {
   const l = (S.c.metodos || []).slice().sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '')), fijo = n => n in Tandas.MET && !(Tandas._propios || []).includes(n) || n in BASE_FIJA;
   return `${bibTabs()}<section class="stack"><span class="eyebrow">Tu metodología</span><h1>Métodos</h1><p class="small muted">Lo que escribas en la explicación lo ve el alumno al tocar el método en su entreno. Los métodos nuevos que crees salen al instante en el editor de programas.</p></section>
@@ -6740,7 +6741,7 @@ function formMetodo(id) {
     ${fijo ? '' : `<label class="f">¿Cómo lo registra el alumno?<select id="m-base">${Object.entries(BASE_ETQ).map(([k, l]) => `<option value="${k}" ${k === base ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
     <label class="f" id="m-pausa-w" ${base === 'tandas' ? '' : 'hidden'}>Pausa entre tandas (segundos)<input type="text" inputmode="numeric" id="m-pausa" value="${esc(x?.pausa ?? 20)}"></label>`}
     <p class="err" id="m-err"></p><button class="btn full" type="submit" id="m-btn">Guardar</button>
-    ${x && !fijo ? '<button type="button" class="btn ghost full" data-act="borrarMetodo" data-id="' + x.id + '">Eliminar este método</button>' : ''}</form>`);
+    ${x ? '<button type="button" class="btn ghost full" data-act="borrarMetodo" data-id="' + x.id + '" style="color:var(--bad)">Eliminar este método</button>' : ''}</form>`);
   $('#m-base')?.addEventListener('change', e => { $('#m-pausa-w').hidden = e.target.value !== 'tandas'; });
   $('#f-met').addEventListener('submit', async ev => {
     ev.preventDefault(); const btn = $('#m-btn'); btn.disabled = true; btn.textContent = 'Guardando…';
@@ -6757,13 +6758,25 @@ function formMetodo(id) {
     } catch (err) { btn.disabled = false; btn.textContent = 'Guardar'; $('#m-err').textContent = /column|base|pausa|propio|row-level|policy|permission/i.test(err?.message || '') ? 'Falta ejecutar el Bloque 64 en Supabase.' : (err?.message || 'No se ha podido guardar'); console.error(err); }
   });
 }
+/* Eliminar un método (también los de la app, si te sobran o están duplicados). Si lo usan ejercicios, eliges a qué método pasarlos */
 async function borrarMetodo(id) {
   const x = (S.c.metodos || []).find(z => z.id === id); if (!x) return;
-  const u = await sb.from('ejercicios_sesion').select('id', { count: 'exact', head: true }).eq('metodo_id', id);
-  if (!u.error && u.count) return toast(`No se puede eliminar: lo usan ${u.count} ejercicios de programas. Quítaselo primero.`);
-  if (!confirm(`¿Eliminar el método «${x.nombre}»?`)) return;
-  const r = await sb.from('metodos').delete().eq('id', id); if (r.error) return toast('No se ha podido eliminar');
-  await cargarCoach(); cerrarSheet(); toast('Método eliminado'); render();
+  const u = await sb.from('ejercicios_sesion').select('id', { count: 'exact', head: true }).eq('metodo_id', id), n = u.error ? 0 : (u.count || 0);
+  const otros = (S.c.metodos || []).filter(m => m.id !== id).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+  abrirSheet(`<div class="stack"><h2>Eliminar «${esc(x.nombre)}»</h2>
+    ${n ? `<p class="small">Lo usan <b>${n} ${n === 1 ? 'ejercicio' : 'ejercicios'}</b> de programas y plantillas. Elige a qué método pasarlos (si es un duplicado, el bueno):</p>
+    <label class="f">Pasar sus ejercicios a<select id="bm-dest"><option value="">Ninguno (series normales)</option>${otros.map(m => `<option value="${m.id}">${esc(m.nombre)}</option>`).join('')}</select></label>` : '<p class="small muted">No lo usa ningún ejercicio.</p>'}
+    <p class="small muted">Desaparece del editor y de tu lista. Las sesiones ya registradas no cambian.</p>
+    <p class="err" id="bm-err"></p><button class="btn full" id="bm-ok" style="background:var(--bad)">Eliminar método</button><button class="btn ghost full" data-act="editarMetodo" data-id="${id}">Cancelar</button></div>`);
+  $('#bm-ok').addEventListener('click', async ev => {
+    const b = ev.currentTarget; b.disabled = true; b.textContent = 'Eliminando…';
+    try {
+      if (n) { const dest = $('#bm-dest').value ? +$('#bm-dest').value : null, r1 = await sb.from('ejercicios_sesion').update({ metodo_id: dest }).eq('metodo_id', id); if (r1.error) throw r1.error; }
+      const r = await sb.from('metodos').delete().eq('id', id); if (r.error) throw r.error;
+      if (x.nombre in Tandas.MET) { let l = []; try { l = JSON.parse(S.c.fiscal?.metodos_borrados || '[]'); } catch (e) { /* nada */ } if (!l.includes(x.nombre)) { l.push(x.nombre); const v = JSON.stringify(l); await sb.from('ajustes_privados').upsert([{ clave: 'metodos_borrados', valor: v }], { onConflict: 'clave' }); (S.c.fiscal ||= {}).metodos_borrados = v; } }
+      await cargarCoach(); cerrarSheet(); toast('Método eliminado'); render();
+    } catch (err) { console.error(err); b.disabled = false; b.textContent = 'Eliminar método'; $('#bm-err').textContent = /policy|permission|row-level/i.test(err?.message || '') ? 'Supabase no deja borrar este método (permisos).' : (err?.message || 'No se ha podido eliminar'); }
+  });
 }
 /* Láminas de «músculo objetivo»: una imagen por músculo prioritario. La app asigna la lámina por el músculo que pusiste
    en el ejercicio (si lo hay) o por el nombre; el coach puede cambiarla a mano. Se guarda en musculo_img_url como enlace a img/musculos/ */
@@ -9783,7 +9796,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v529';
+const APP_VER = 'v530';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
