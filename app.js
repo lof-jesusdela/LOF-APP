@@ -1430,7 +1430,7 @@ function vEjercicio(e, i, ro) {
     if (simple) T.push(`<div class="xt xt-d"><span class="xt-l">${esc(ajP[0][0].replace(/^altura\s+/i, ''))}</span><b class="xt-n">${esc(ajP[0][1])}</b></div>`);
     const foto1 = (u, l) => `<button class="xt xt-f" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver ${esc(l.toLowerCase())}"><img src="${esc(u)}" alt="${esc(l)}" loading="lazy" onerror="this.parentNode.hidden=true"><span>${esc(l)}</span></button>`;
     const ag = AGARRES.find(x => x[0] === e.agarre);
-    const txtT = (l, v) => `<div class="xt xt-o"><span class="xt-l">${l}</span><b class="xt-n xt-s xt-t">${esc(v)}</b></div>`;
+    const txtT = (l, v) => `<div class="xt xt-d"><span class="xt-l">${l}</span><b class="xt-n xt-s xt-t">${esc(v)}</b></div>`;
     if (ag) { const u = S.agarres?.[ag[0]]; T.push(u ? foto1(u, 'Agarre') : txtT('Agarre', ag[1])); }
     else if (agTxt) T.push(txtT('Agarre', agTxt.replace(/^agarre\s*:?\s*/i, '')));
     const mt = e.material ?? ej.material, mi = e.material_img_url ?? ej.material_img_url;
@@ -9667,7 +9667,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v516';
+const APP_VER = 'v517';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
