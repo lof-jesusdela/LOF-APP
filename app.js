@@ -1902,10 +1902,10 @@ function vBloque(b, cont, ro) {
   return `<div class="stack"><div class="row"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}</h3></div>${grupos.length === b.ejercicios_sesion.length && b.agrupacion ? `<p class="note">${esc(b.agrupacion)}</p>` : ''}${grupos.map(g => {
     const pu = h => ro ? h : `<div class="paso-u" data-paso-n="${esc(b.letra || '')}" data-paso-t="${esc(g.map(e => ejDe(e).nombre || '').join(' + '))}">${h}</div>`;
     const aqui = e => !ro && coachEnSes() ? `<button type="button" class="btn sm ghost" data-act="edEjSes" data-b="${b.id}" data-tras="${e.id}" style="align-self:flex-start;margin:-4px 0 4px">＋ Añadir ejercicio aquí</button>` : '';
-    if (g.length === 1) return pu(vEjercicio(g[0], ++cont.n, ro)) + aqui(g[0]);
+    if (g.length === 1) return pu(vEjercicio(g[0], ++cont.n, ro) + aqui(g[0]));
     const ult = g[g.length - 1], d = ult.descanso_seg ?? 60, n0 = cont.n + 1;
     const cards = g.map((e, k) => vEjercicio(e, ++cont.n, ro) + (k < g.length - 1 ? `<div class="ss-sig">↓ ${(e.descanso_seg ?? 60) > 0 ? 'Pausa de ' + seg(e.descanso_seg) + ' y sigue con el siguiente' : 'Sin descanso, sigue con el siguiente'}</div>` : '')).join('');
-    return pu(`<div class="superserie"><div class="ss-cab"><b>Superserie · ejercicios ${n0} a ${cont.n}</b><span class="small">${g.slice(0, -1).every(e => !(e.descanso_seg > 0)) ? 'Hazlos seguidos, sin descanso entre ellos.' : 'Alterna los ejercicios con la pausa indicada entre ellos.'} Al terminar el último, descansa ${d ? seg(d) : 'lo justo'} y repite la secuencia.</span></div>${cards}</div>`) + aqui(ult);
+    return pu(`<div class="superserie"><div class="ss-cab"><b>Superserie · ejercicios ${n0} a ${cont.n}</b><span class="small">${g.slice(0, -1).every(e => !(e.descanso_seg > 0)) ? 'Hazlos seguidos, sin descanso entre ellos.' : 'Alterna los ejercicios con la pausa indicada entre ellos.'} Al terminar el último, descansa ${d ? seg(d) : 'lo justo'} y repite la secuencia.</span></div>${cards}</div>` + aqui(ult));
   }).join('')}${!ro && coachEnSes() && !b.ejercicios_sesion.length ? `<button type="button" class="btn sm ghost" data-act="edEjSes" data-b="${b.id}" style="align-self:flex-start">＋ Añadir ejercicio</button>` : ''}</div>`;
 }
 /* Entrenando a un alumno (coach): modificar un ejercicio o añadir uno sin salir del entreno. El cambio va a su programa */
@@ -9880,7 +9880,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v538';
+const APP_VER = 'v539';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}

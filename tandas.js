@@ -249,10 +249,12 @@ const Tandas = {
   },
   mpReset(b) { b._tm = null; b.classList.remove('fin'); const fl = b.querySelector('.fl'); fl.style.transition = 'none'; fl.style.width = '100%'; b.querySelector('.ct').textContent = this.mpTxt(+b.dataset.d); },
   microPausa(b) {
-    if (b._tm) { clearInterval(b._tm); return this.mpReset(b); }
+    if (b._tm) { clearInterval(b._tm); try { stopTimer(); } catch (e) { } return this.mpReset(b); }
     document.querySelectorAll('.rp-mp').forEach(x => { if (x !== b && x._tm) { clearInterval(x._tm); this.mpReset(x); } });
     const fl = b.querySelector('.fl'), ct = b.querySelector('.ct'), tot = +b.dataset.d; let r = tot;
     fl.style.transition = 'none'; fl.style.width = '100%'; void fl.offsetWidth; fl.style.transition = `width ${tot}s linear`; fl.style.width = '0%'; ct.textContent = this.mpTxt(r);
+    /* Mismo temporizador que el descanso: anillo grande, sonido y pantalla de fin al acabar la micro pausa */
+    try { startTimer(tot, 'Micro pausa', 'Siguiente tanda'); } catch (e) { console.warn(e); }
     b._tm = setInterval(() => {
       if (!b.isConnected) { clearInterval(b._tm); b._tm = null; return; }
       r--; ct.textContent = r > 0 ? this.mpTxt(r) : '¡Ya!';
