@@ -2145,7 +2145,7 @@ function trasRenderEnt() {
   const vis = !!$('#ses-pasos');
   if (enCurso() && S.sesion?.inicio) {
     if (!vis) { pausarEnt(); S.sesion._volver = true; }
-    else if (S.sesion._volver) { S.sesion._volver = false; const el = S.sesion.ultEx && document.getElementById(S.sesion.ultEx); if (el) requestAnimationFrame(() => setTimeout(() => { el.scrollIntoView({ block: 'start' }); window.scrollBy(0, -150); }, 30)); }
+    else if (S.sesion._volver) { S.sesion._volver = false; reanudarEnt(); const el = S.sesion.ultEx && document.getElementById(S.sesion.ultEx); if (el) requestAnimationFrame(() => setTimeout(() => { el.scrollIntoView({ block: 'start' }); window.scrollBy(0, -150); }, 30)); }
   }
   pintaVuelve(vis);
 }
@@ -9880,7 +9880,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v537';
+const APP_VER = 'v538';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -10011,6 +10011,7 @@ function stopTimer() { silencioVivo(false); avisoSW(false); clearInterval(T.iv);
 /* Bloquear la pantalla o salir de la app para la alarma al momento */
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') { callar(); if (enCurso()) { pausarEnt(); if (S.sesion) S.sesion._volver = true; } return; }
+  if (S.sesion?._volver && $('#ses-pasos')) { S.sesion._volver = false; reanudarEnt(); }   /* vuelve a la app con el entreno a la vista: se reanuda solo */
   try { if (T.ctx && T.ctx.state !== 'running' && !$('#timer').hidden) T.ctx.resume(); } catch (e) { }
   if (!$('#timer').hidden && T.iv) tick();
 });
