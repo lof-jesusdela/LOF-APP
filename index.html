@@ -508,6 +508,11 @@ body.tm-grande main{padding-bottom:50vh}
 .crono{position:sticky;top:64px;z-index:4;display:flex;align-items:center;gap:12px;background:var(--ink);color:var(--on-ink);border-radius:14px;padding:10px 14px;margin:2px 0 12px;box-shadow:0 6px 18px rgba(12,20,40,.18)}
 .crono .muted{color:var(--on-ink-muted)}
 .crono-t{font-family:var(--display);font-weight:800;font-size:26px;line-height:1;color:var(--glow)}
+.crono{flex-wrap:wrap;gap:8px 10px}.crono .grow{flex:1}.crono.pausa{background:#854F0B}.crono.pausa .crono-t{color:#FAC775}
+.crono-b{border:0;border-radius:10px;padding:9px 12px;font:inherit;font-weight:800;font-size:14px;cursor:pointer;white-space:nowrap}
+.crono-b.pa{background:#EF9F27;color:#412402}.crono-b.te{background:#E24B4A;color:#fff}.crono-b.re{background:#3B9A2E;color:#fff;padding:10px 18px;font-size:16px}
+.vuelve-ent{position:fixed;right:14px;bottom:calc(env(safe-area-inset-bottom) + 96px);z-index:40;border:0;border-radius:999px;background:#E24B4A;color:#fff;font:inherit;font-weight:800;font-size:15px;padding:12px 16px;box-shadow:0 8px 22px rgba(162,45,45,.35);cursor:pointer}
+@media(min-width:900px){.vuelve-ent{bottom:24px}}
 .sets .foco,.sets input.foco{outline:2px solid var(--blue);outline-offset:1px;border-radius:8px;background:var(--blue-soft)}
 .coach img{width:48px;height:48px;border-radius:50%;object-fit:cover;box-shadow:0 0 0 2px var(--gold);flex:none}
 @media (prefers-reduced-motion:no-preference){.card{animation:in .22s ease both}@keyframes in{from{transform:translateY(4px)}to{transform:none}}}

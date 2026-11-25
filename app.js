@@ -573,6 +573,7 @@ function render() {
   $('#tabs').hidden = false;
   $('#tabs-in').innerHTML = tabs.map(([k, l]) => `<button ${!coach && k === 'coach' ? 'class="tab-c" ' : ''}data-act="${coach ? 'ctab' : 'tab'}" data-t="${k}" ${actual === k && !((S.ficha || S.editor || S.obj) && coach) ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${!coach && k === 'coach' && nChat() ? `<i class="badge-n">${nChat()}</i>` : ''}${!coach && k === 'hoy' && nHoy() ? `<i class="badge-n">${nHoy()}</i>` : ''}</button>`).join(''); if (!coach) badgeApp();
   if (S.dia && ((!coach && S.tab === 'entreno') || (coach && S.obj))) rellenarSesion();
+  trasRenderEnt();
   if (document.getElementById('calc-inline')) Nutricion.montarCalc();
 }
 
@@ -1712,7 +1713,7 @@ async function cerrarEntrenoVencido(x) {   /* sin abrir el entreno (app cerrada 
   } catch (err) { console.error(err); } finally { _cerrando.delete(k); }
 }
 async function cerrarEntrenoSolo() {   /* con el entreno abierto en pantalla: guarda lo apuntado, sin el formulario final */
-  if (!S.dia || !S.sesion?.inicio || S.sesion.editar || S.sesion.finMin || S.obj) return;
+  if (!S.dia || !S.sesion?.inicio || S.sesion.pausa || S.sesion.editar || S.sesion.finMin || S.obj) return;
   if (Date.now() - S.sesion.inicio < LIM_ENTRENO_MIN * 60000 || S.sesion._cierra || document.querySelector('[data-act="guardarSesion"]')) return;
   S.sesion._cierra = true;
   try {
@@ -2085,7 +2086,7 @@ function vSesion() {
     <p class="note">Corrige kg, repeticiones o RIR: los cambios de una serie ya marcada se guardan solos al salir de la casilla. Para añadir una serie que no apuntó, rellénala y marca el check. Para borrarla, quita el check.</p></section>
   <section class="section">${vBloquesDia(d, cont)}
   <button class="btn full dark" data-act="terminar">Listo, ver sesión</button></section>`;
-  return como + `<div class="crono" id="crono">${ini ? `<span class="crono-t num" id="crono-t">${fmtCrono(Date.now() - ini)}</span><span class="small">Entrenamiento en curso</span>` : S.sesion?.finMin ? `<span class="small">✓ Entrenamiento terminado · ${S.sesion.finMin} min</span>` : `<button class="btn sm" data-act="empezarCrono">⏱ Empezar entrenamiento</button><span class="small muted">El cronómetro mide tu sesión completa</span>`}</div>
+  return como + `<div class="crono${S.sesion?.pausa && ini ? ' pausa' : ''}" id="crono">${ini ? cronoHTML() : S.sesion?.finMin ? `<span class="small">✓ Entrenamiento terminado · ${S.sesion.finMin} min</span>` : `<button class="btn sm" data-act="empezarCrono">⏱ Empezar entrenamiento</button><span class="small muted">El cronómetro mide tu sesión completa</span>`}</div>
   <section class="stack"><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm ghost" data-act="cerrarDia" style="align-self:flex-start">← Semana</button>${!S.sesion?.editar && !S.sesion?.finMin ? `<button class="btn sm" data-act="descartarEntreno" style="background:var(--bad);color:#fff;border-color:var(--bad)" title="Si lo empezaste por error o es una prueba: no se guarda nada">✕ Salir y descartar</button>` : ''}</div>
     <span class="eyebrow">${esc(S.d.programa?.nombre || '')} · ${esc(d.nombre)}</span><h1 class="tit-uno" id="ses-h1">${esc(d.titulo || d.foco || d.nombre)}</h1>
     ${cicloSesion()}
@@ -2095,7 +2096,7 @@ function vSesion() {
   ${Guia.barra()}
   <section class="section ${Guia.activo() ? 'guiado' : ''}" id="ses-pasos">${vBloquesDia(d, cont)}
   ${Guia.activo() ? '<div class="row guia-nav" style="gap:8px;margin:4px 0 12px"><button class="btn ghost grow" data-act="guiaPaso" data-d="-1">◀ Anterior</button><button class="btn grow" data-act="guiaPaso" data-d="1" id="guia-sig">Siguiente ▶</button></div>' : ''}
-  <button class="btn full dark" data-act="terminar">Terminar sesión</button></section>`;
+  <button class="btn full dark" data-act="pedirTerminar">Terminar sesión</button></section>`;
 }
 
 /* Cronómetro de la sesión completa (sobrevive a cerrar la app) */
@@ -2110,9 +2111,47 @@ function empezarCrono() {
 }
 function pintarCrono() {
   const el = $('#crono'); if (!el || !S.sesion?.inicio) return;
-  el.innerHTML = `<span class="crono-t num" id="crono-t">${fmtCrono(Date.now() - S.sesion.inicio)}</span><span class="small">Entrenamiento en curso</span>`;
+  el.classList.toggle('pausa', !!S.sesion.pausa); el.innerHTML = cronoHTML();
 }
-setInterval(() => { const t = $('#crono-t'); if (t && S.sesion?.inicio) t.textContent = fmtCrono(Date.now() - S.sesion.inicio); }, 1000);
+/* ---- Pausa del entreno: el tiempo en pausa no cuenta. Se pausa solo al salir del visor del entreno o de la app ---- */
+const clavePausa = () => claveCrono() + '-p';
+const msEnt = () => S.sesion?.inicio ? Math.max(0, (S.sesion.pausa || Date.now()) - S.sesion.inicio) : 0;
+function cronoHTML() {
+  const p = !!S.sesion?.pausa;
+  return `<span class="crono-t num" id="crono-t">${fmtCrono(msEnt())}</span><span class="small grow">${p ? 'En pausa' : 'En curso'}</span>${p ? '<button type="button" class="crono-b re" data-act="reanudarEnt">▶ Reanudar</button>' : '<button type="button" class="crono-b pa" data-act="pausarEnt">❚❚ Pausar</button>'}<button type="button" class="crono-b te" data-act="pedirTerminar">■ Terminar</button>`;
+}
+function pausarEnt() {
+  if (!S.sesion?.inicio || S.sesion.pausa || S.sesion.finMin || S.sesion.editar) return;
+  S.sesion.pausa = Date.now(); try { localStorage.setItem(clavePausa(), String(S.sesion.pausa)); } catch (e) { } pintarCrono(); pintaVuelve();
+}
+function reanudarEnt() {
+  if (!S.sesion?.pausa) return;
+  if (S.sesion.inicio) { S.sesion.inicio += Date.now() - S.sesion.pausa; try { localStorage.setItem(claveCrono(), String(S.sesion.inicio)); } catch (e) { } }
+  S.sesion.pausa = null; try { localStorage.removeItem(clavePausa()); } catch (e) { } pintarCrono(); pintaVuelve();
+}
+function pedirTerminar() {
+  const c = S.dia && S.sesion ? conteoSeries(S.dia, S.sesion) : null;
+  abrirSheet(`<div class="stack"><h2>¿Terminar el entreno?</h2>${c?.total ? `<p class="small">${S.obj ? 'Lleva' : 'Llevas'} <b>${c.hechas} de ${c.total} series</b>. Se guarda lo hecho.</p>` : ''}
+    <button class="btn full" data-act="terminarYa">Sí, terminar</button><button class="btn ghost full" data-act="cerrarSheet">Seguir entrenando</button></div>`);
+}
+/* Botón flotante para volver al entreno (al ejercicio donde estaba) cuando se está en otra pantalla */
+function pintaVuelve(vis = !!$('#ses-pasos')) {
+  let b = $('#vuelve-ent'); const ver = enCurso() && !!S.sesion?.inicio && !vis;
+  if (!ver) { if (b) b.hidden = true; return; }
+  if (!b) { document.body.insertAdjacentHTML('beforeend', '<button type="button" id="vuelve-ent" class="vuelve-ent" data-act="volverEnt"></button>'); b = $('#vuelve-ent'); }
+  b.hidden = false; b.innerHTML = `▶ Volver al entreno <span class="num" id="vuelve-t">${fmtCrono(msEnt())}</span>`;
+}
+function trasRenderEnt() {
+  const vis = !!$('#ses-pasos');
+  if (enCurso() && S.sesion?.inicio) {
+    if (!vis) { pausarEnt(); S.sesion._volver = true; }
+    else if (S.sesion._volver) { S.sesion._volver = false; const el = S.sesion.ultEx && document.getElementById(S.sesion.ultEx); if (el) requestAnimationFrame(() => setTimeout(() => { el.scrollIntoView({ block: 'start' }); window.scrollBy(0, -150); }, 30)); }
+  }
+  pintaVuelve(vis);
+}
+/* Recuerda el ejercicio que se está viendo para volver a él */
+window.addEventListener('scroll', () => { if (!S.sesion || !$('#ses-pasos')) return; const c = [...document.querySelectorAll('#ses-pasos .ex[id^="ex-"]')].find(x => x.getBoundingClientRect().bottom > 170); if (c) S.sesion.ultEx = c.id; }, { passive: true });
+setInterval(() => { if (!S.sesion?.inicio) return; const t = $('#crono-t'); if (t) t.textContent = fmtCrono(msEnt()); const v = $('#vuelve-t'); if (v) v.textContent = fmtCrono(msEnt()); }, 1000);
 
 async function abrirDia(id, op = {}) {
   if (enCurso() && !S.obj && !op.editar) {   /* un solo entreno a la vez: el mismo se retoma; otro no se abre hasta terminar o salir */
@@ -2125,7 +2164,7 @@ async function abrirDia(id, op = {}) {
   const fechaS = op.fecha || S.obj?.fecha || hoyISO(), editar = !!op.editar;
   const prev = S.sesion?.diaId === id && S.sesion.fecha === fechaS && !!S.sesion.editar === editar ? S.sesion : null;   // al volver a la misma sesión se conserva lo escrito sin confirmar
   S.sesion = { id: null, regs: {}, valores: {}, ultimos: {}, inicio: null, fecha: fechaS, editar, diaId: id, borr: prev?.borr || {}, abiertas: prev?.abiertas || {} }; S.paso = null;
-  if (!editar) try { const v = +localStorage.getItem(claveCrono()); if (v) S.sesion.inicio = v; } catch (e) { }
+  if (!editar) try { const v = +localStorage.getItem(claveCrono()); if (v) S.sesion.inicio = v; const pz = +localStorage.getItem(clavePausa()); if (pz && v && pz >= v) S.sesion.pausa = pz; } catch (e) { }
   S.previa = editar ? null : id;
   S.tab = 'entreno'; window.scrollTo(0, 0);
   const ids = S.dia.bloques_sesion.flatMap(b => b.ejercicios_sesion.map(e => e.id));
@@ -2328,6 +2367,7 @@ function vFinViejo(escala, el) {
 }
 function terminar() {
   if (S.obj && S.sesion?.editar) return guardarSesion();
+  reanudarEnt();
   const min = S.sesion?.inicio ? Math.max(1, Math.round((Date.now() - S.sesion.inicio) / 60000)) : null;
   const escala = (id, txt, ext) => `<div class="stack" style="gap:6px"><span class="small"><b>${txt}</b></span><div class="escala" role="group" id="${id}">${[1, 2, 3, 4, 5].map(n => `<button type="button" data-act="escala" data-g="${id}" data-v="${n}" aria-pressed="false">${n}</button>`).join('')}</div><div class="row small muted"><span class="grow">${ext[0]}</span><span>${ext[1]}</span></div></div>`;
   const el = S.obj ? 'se ha sentido' : 'te has sentido';
@@ -2353,7 +2393,7 @@ async function guardarSesion() {
     { const c = conteoSeries(S.dia, S.sesion), est = { estado: !c.total || c.hechas >= c.total ? 'completa' : 'parcial', series_hechas: c.hechas, series_total: c.total };
       const r = await sb.from('sesiones_hechas').update(est).eq('id', id); if (!r.error) Object.assign(S.d.sesiones.find(x => x.id === id) || {}, est); }
     if (fe && !S.obj) await Consultas.crearDeFin(fe, id);   /* en presencial queda en la nota de la sesión, sin consulta */
-    try { localStorage.removeItem(claveCrono()); } catch (e) { } S.sesion.inicio = null; S.reanudar = null;
+    try { localStorage.removeItem(claveCrono()); localStorage.removeItem(clavePausa()); } catch (e) { } S.sesion.inicio = null; S.sesion.pausa = null; S.reanudar = null;
     if (S.obj) { const canj = S.obj.presencial; await registrarPresencial(id); cerrarSheet(); stopTimer(); await salirComo(); toast(canj ? 'Sesión guardada y presencial canjeada' : 'Sesión guardada en su ficha'); await verSesion(id); return; }
     cerrarSheet(); stopTimer(); S.dia = null; S.sesion = null; S.tab = 'hoy'; toast('Sesión guardada. ¡Buen trabajo!'); render(); window.scrollTo(0, 0);
   } catch (err) { fallo(err); }
@@ -9840,7 +9880,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v536';
+const APP_VER = 'v537';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -9970,7 +10010,7 @@ function stopTimer() { silencioVivo(false); avisoSW(false); clearInterval(T.iv);
     S.tmMini = dy > 0; el.classList.toggle('mini', S.tmMini); document.body.classList.toggle('tm-grande', !S.tmMini); }, { passive: true }); })();
 /* Bloquear la pantalla o salir de la app para la alarma al momento */
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') { callar(); return; }
+  if (document.visibilityState === 'hidden') { callar(); if (enCurso()) { pausarEnt(); if (S.sesion) S.sesion._volver = true; } return; }
   try { if (T.ctx && T.ctx.state !== 'running' && !$('#timer').hidden) T.ctx.resume(); } catch (e) { }
   if (!$('#timer').hidden && T.iv) tick();
 });
@@ -10212,6 +10252,11 @@ document.addEventListener('click', async e => {
     case 'edEjSes': editarEjEnSesion(+b.dataset.id || null, +b.dataset.b || null, +b.dataset.tras || null); break;
     case 'metodo': { const n = b.dataset.n; abrirSheet(`<div class="stack"><span class="eyebrow">Método</span><h2>${esc(n)}</h2><p class="pre">${esc((S.d?.metodos || {})[n] || Tandas.MET[n]?.info || 'Pregúntale a Jesús por este método.')}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`); break; }
     case 'terminar': terminar(); break;
+    case 'pedirTerminar': pedirTerminar(); break;
+    case 'terminarYa': cerrarSheet(); terminar(); break;
+    case 'pausarEnt': pausarEnt(); break;
+    case 'reanudarEnt': reanudarEnt(); break;
+    case 'volverEnt': { cerrarSheet(); if (S.sesion) S.sesion._volver = true; S.entVer = false; if (S.modo !== 'coach') S.tab = 'entreno'; reanudarEnt(); render(); break; }
     case 'retomar': { const x = S.d.sesiones.find(z => z.id === +b.dataset.id); if (x) await abrirDia(x.dia_id, { sesionId: x.id, fecha: x.fecha, dia: [S.d.programa, S.d.programaBase, ...(S.d.contextos || []), ...(S.d.alternativos || [])].filter(Boolean).flatMap(q => q.dias || []).find(z => z.id === x.dia_id) }); break; }
     case 'guardarSesion': await guardarSesion(); break;
     case 'guardarDiario': { const sc = $('#r-ctx'); if (sc && !sc.value) { toast('Elige qué tipo de día has tenido'); sc.closest('.md-it')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); break; } await guardarDiario(sc?.value ? { contexto: sc.value } : {}); break; }
