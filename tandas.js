@@ -249,16 +249,17 @@ const Tandas = {
   },
   mpReset(b) { b._tm = null; b.classList.remove('fin'); const fl = b.querySelector('.fl'); fl.style.transition = 'none'; fl.style.width = '100%'; b.querySelector('.ct').textContent = this.mpTxt(+b.dataset.d); },
   microPausa(b) {
-    if (b._tm) { clearInterval(b._tm); try { stopTimer(); } catch (e) { } return this.mpReset(b); }
+    if (b._tm) { clearInterval(b._tm); return this.mpReset(b); }
     document.querySelectorAll('.rp-mp').forEach(x => { if (x !== b && x._tm) { clearInterval(x._tm); this.mpReset(x); } });
     const fl = b.querySelector('.fl'), ct = b.querySelector('.ct'), tot = +b.dataset.d; let r = tot;
     fl.style.transition = 'none'; fl.style.width = '100%'; void fl.offsetWidth; fl.style.transition = `width ${tot}s linear`; fl.style.width = '0%'; ct.textContent = this.mpTxt(r);
-    /* Mismo temporizador que el descanso: anillo grande, sonido y pantalla de fin al acabar la micro pausa */
-    try { startTimer(tot, 'Micro pausa', 'Siguiente tanda'); } catch (e) { console.warn(e); }
+    try { audio(); } catch (e) { }   /* desbloquea el sonido con este toque (iPhone) */
     b._tm = setInterval(() => {
       if (!b.isConnected) { clearInterval(b._tm); b._tm = null; return; }
       r--; ct.textContent = r > 0 ? this.mpTxt(r) : '¡Ya!';
-      if (r <= 0) { clearInterval(b._tm); b._tm = null; b.classList.add('fin'); fl.style.transition = 'none'; fl.style.width = '100%'; try { navigator.vibrate?.(200); } catch (e) { } setTimeout(() => { if (b.isConnected) this.mpReset(b); }, 1600); }
+      if (r <= 0) { clearInterval(b._tm); b._tm = null; b.classList.add('fin'); fl.style.transition = 'none'; fl.style.width = '100%'; try { navigator.vibrate?.(200); } catch (e) { } setTimeout(() => { if (b.isConnected) this.mpReset(b); }, 1600);
+        /* Fin de la micro pausa: suena y sale la pantalla de aviso, como al acabar el descanso */
+        try { const ov = document.getElementById('alarma'); if (ov) { ov.hidden = false; document.getElementById('al-tit').textContent = 'Fin de la micro pausa'; document.getElementById('al-lbl').textContent = 'Sigue con la siguiente tanda'; const m = ov.querySelector('[data-silenciar]'); if (m) { m.setAttribute('aria-pressed', 'false'); m.textContent = '🔇 Silenciar'; } } sonarFin(); } catch (e) { console.warn(e); } }
     }, 1000);
   },
   /* Todas las tandas de la serie se guardan de una vez; el descanso entre series arranca al terminar */
