@@ -1900,21 +1900,22 @@ function vBloque(b, cont, ro) {
   const grupos = cadenasDe(b.ejercicios_sesion, b.agrupacion);
   return `<div class="stack"><div class="row"><span class="pill gold">${esc(b.letra)}</span><h3 class="grow">${esc(b.nombre)}</h3></div>${grupos.length === b.ejercicios_sesion.length && b.agrupacion ? `<p class="note">${esc(b.agrupacion)}</p>` : ''}${grupos.map(g => {
     const pu = h => ro ? h : `<div class="paso-u" data-paso-n="${esc(b.letra || '')}" data-paso-t="${esc(g.map(e => ejDe(e).nombre || '').join(' + '))}">${h}</div>`;
-    if (g.length === 1) return pu(vEjercicio(g[0], ++cont.n, ro));
+    const aqui = e => !ro && coachEnSes() ? `<button type="button" class="btn sm ghost" data-act="edEjSes" data-b="${b.id}" data-tras="${e.id}" style="align-self:flex-start;margin:-4px 0 4px">＋ Añadir ejercicio aquí</button>` : '';
+    if (g.length === 1) return pu(vEjercicio(g[0], ++cont.n, ro)) + aqui(g[0]);
     const ult = g[g.length - 1], d = ult.descanso_seg ?? 60, n0 = cont.n + 1;
     const cards = g.map((e, k) => vEjercicio(e, ++cont.n, ro) + (k < g.length - 1 ? `<div class="ss-sig">↓ ${(e.descanso_seg ?? 60) > 0 ? 'Pausa de ' + seg(e.descanso_seg) + ' y sigue con el siguiente' : 'Sin descanso, sigue con el siguiente'}</div>` : '')).join('');
-    return pu(`<div class="superserie"><div class="ss-cab"><b>Superserie · ejercicios ${n0} a ${cont.n}</b><span class="small">${g.slice(0, -1).every(e => !(e.descanso_seg > 0)) ? 'Hazlos seguidos, sin descanso entre ellos.' : 'Alterna los ejercicios con la pausa indicada entre ellos.'} Al terminar el último, descansa ${d ? seg(d) : 'lo justo'} y repite la secuencia.</span></div>${cards}</div>`);
-  }).join('')}${!ro && coachEnSes() ? `<button type="button" class="btn sm ghost" data-act="edEjSes" data-b="${b.id}" style="align-self:flex-start">＋ Añadir ejercicio</button>` : ''}</div>`;
+    return pu(`<div class="superserie"><div class="ss-cab"><b>Superserie · ejercicios ${n0} a ${cont.n}</b><span class="small">${g.slice(0, -1).every(e => !(e.descanso_seg > 0)) ? 'Hazlos seguidos, sin descanso entre ellos.' : 'Alterna los ejercicios con la pausa indicada entre ellos.'} Al terminar el último, descansa ${d ? seg(d) : 'lo justo'} y repite la secuencia.</span></div>${cards}</div>`) + aqui(ult);
+  }).join('')}${!ro && coachEnSes() && !b.ejercicios_sesion.length ? `<button type="button" class="btn sm ghost" data-act="edEjSes" data-b="${b.id}" style="align-self:flex-start">＋ Añadir ejercicio</button>` : ''}</div>`;
 }
 /* Entrenando a un alumno (coach): modificar un ejercicio o añadir uno sin salir del entreno. El cambio va a su programa */
 const coachEnSes = () => !!(S.obj && S.perfil?.rol === 'coach' && S.dia && S.sesion);
-async function editarEjEnSesion(esId, bloqueId) {
+async function editarEjEnSesion(esId, bloqueId, tras) {
   const pid = S.dia?.programa_id; if (!pid) return toast('No encuentro el programa de este entreno');
   toast('Abriendo…');
   const [prog, met] = await Promise.all([sb.from('programas').select(SEL_EDITOR).eq('id', pid).limit(1), sb.from('metodos').select('id,nombre').order('nombre')]);
   const p = prog.data?.[0]; if (!p) return fallo(prog.error, 'No se ha podido abrir el programa.');
   p.dias = (p.dias || []).filter(d => !d.oculto); p.dias.forEach(d => { d.bloques_sesion.sort(ordBloque); d.bloques_sesion.forEach(b => b.ejercicios_sesion.sort((a, b) => a.orden - b.orden)); });
-  S.editor = { alumnoId: S.obj.id, progId: pid, plantilla: false, prog: p, metodos: met.data || [], ctx: null, enSes: true };
+  S.editor = { alumnoId: S.obj.id, progId: pid, plantilla: false, prog: p, metodos: met.data || [], ctx: null, enSes: true, tras: tras || null };
   cargarRMEditor(S.obj.id).catch(() => {});
   formEjSesion(esId || null, bloqueId || null);
 }
@@ -9450,7 +9451,12 @@ function formEjSesion(id, bloqueId) {
       if (nota || (e && e.nota != null)) row.nota = nota || null;
       Object.entries(datos).forEach(([k, v]) => { if (v !== undefined) row[k] = v; });
       if (e && +ejId !== e.ejercicio_id) ['imagen_url', 'nombre', 'video_url', 'musculo_img_url'].forEach(k => { if (e[k]) row[k] = null; });
-      if (destino !== blq || !e) { row.bloque_id = destino.id; row.orden = Math.max(0, ...destino.ejercicios_sesion.map(x => x.orden)) + 1; }
+      if (destino !== blq || !e) { row.bloque_id = destino.id; row.orden = Math.max(0, ...destino.ejercicios_sesion.map(x => x.orden)) + 1;
+        /* Añadido desde «＋ Añadir ejercicio aquí»: va justo debajo de ese ejercicio y los de detrás bajan un puesto */
+        const tr = !e && destino === blq && S.editor?.tras ? destino.ejercicios_sesion.find(x => x.id === S.editor.tras) : null;
+        if (tr) { const sig = destino.ejercicios_sesion.filter(x => x.orden > tr.orden).sort((a, b) => b.orden - a.orden);
+          for (const x of sig) { const ru = await sb.from('ejercicios_sesion').update({ orden: x.orden + 1 }).eq('id', x.id); if (ru.error) throw ru.error; x.orden += 1; }
+          row.orden = tr.orden + 1; } }
       const guardaEj = r => e ? sb.from('ejercicios_sesion').update(r).eq('id', e.id) : sb.from('ejercicios_sesion').insert(r);
       let { error } = await guardaEj(row);
       if (error && /aprox_kg/.test(error.message || '')) {   // faltan los bloques 67/68: se guarda igual, sin los pesos manuales
@@ -9833,7 +9839,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v534';
+const APP_VER = 'v535';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -10202,7 +10208,7 @@ document.addEventListener('click', async e => {
     case 'aprox': { b.classList.add('on'); Guia.series(); const dos = b.dataset.dos ? ` con ${b.dataset.dos}` : ''; if (b.dataset.j === '2') startTimer(60, 'Descanso tras la aproximación 6·3·1'); else toast(b.dataset.j === '0' ? `Ahora 3 repeticiones${dos} (${b.dataset.dos ? 'el 90 % de tu máximo con las dos' : 'tu peso objetivo'})` : `Ahora 1 repetición${dos}, un 10 % más`); break; }
     case 'rir': { const r = b.dataset.r, propio = (S.d?.metodos || {}).RIR;
       abrirSheet(`<div class="stack"><span class="eyebrow">Esfuerzo</span><h2>RIR${r ? ' ' + esc(r) : ''}</h2>${r ? `<p class="aprox" style="margin:0"><b>${esc(Tandas.rirTxt(r))}</b></p>` : ''}<p class="pre" style="margin:0">${esc(propio || 'RIR son las repeticiones que te quedan en reserva al terminar la serie: las que todavía podrías hacer con buena técnica si siguieras.\n\nRIR 0: no podrías hacer ni una más.\nRIR 1: te quedaría 1.\nRIR 2: te quedarían 2.\n\nElige el peso para llegar al final de la serie con ese margen. Si te sobran más, sube el peso; si no llegas a las repeticiones, bájalo.')}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`); break; }
-    case 'edEjSes': editarEjEnSesion(+b.dataset.id || null, +b.dataset.b || null); break;
+    case 'edEjSes': editarEjEnSesion(+b.dataset.id || null, +b.dataset.b || null, +b.dataset.tras || null); break;
     case 'metodo': { const n = b.dataset.n; abrirSheet(`<div class="stack"><span class="eyebrow">Método</span><h2>${esc(n)}</h2><p class="pre">${esc((S.d?.metodos || {})[n] || Tandas.MET[n]?.info || 'Pregúntale a Jesús por este método.')}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`); break; }
     case 'terminar': terminar(); break;
     case 'retomar': { const x = S.d.sesiones.find(z => z.id === +b.dataset.id); if (x) await abrirDia(x.dia_id, { sesionId: x.id, fecha: x.fecha, dia: [S.d.programa, S.d.programaBase, ...(S.d.contextos || []), ...(S.d.alternativos || [])].filter(Boolean).flatMap(q => q.dias || []).find(z => z.id === x.dia_id) }); break; }
