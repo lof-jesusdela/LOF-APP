@@ -1918,14 +1918,20 @@ async function editarEjEnSesion(esId, bloqueId) {
   cargarRMEditor(S.obj.id).catch(() => {});
   formEjSesion(esId || null, bloqueId || null);
 }
-/* Tras guardar: recarga solo este día y conserva lo ya registrado, el crono y el descanso */
+/* Tras guardar: recarga los datos del alumno y vuelve a pintar el entreno conservando lo ya registrado, el crono y el descanso */
 async function refrescarSesionEj() {
-  S.edSesPend = null; if (!S.dia) return;
-  const r = await sb.from('dias').select('*,bloques_sesion(*,ejercicios_sesion(*,ejercicios(*),metodos(nombre,explicacion)))').eq('id', S.dia.id).single();
-  if (r.error || !r.data) return toast('Guardado. Sal y vuelve a entrar al entreno para verlo.');
-  const d = r.data; d.bloques_sesion.sort(ordBloque); d.bloques_sesion.forEach(b => b.ejercicios_sesion.sort((a, b) => a.orden - b.orden));
-  S.dia.bloques_sesion = d.bloques_sesion; ['titulo', 'objetivo', 'volumen', 'intensidad', 'foco'].forEach(k => { S.dia[k] = d[k]; });
-  const y = window.scrollY; render(); window.scrollTo(0, y);
+  S.edSesPend = null; if (!S.dia || !S.obj) return;
+  const id = S.dia.id, ses = S.sesion, prev = S.previa, tab = S.tab, y = window.scrollY;
+  toast('Actualizando el entreno…');
+  try { await cargarAlumno(S.obj.id); } catch (err) { console.error(err); }
+  let nd = [S.d.programa, S.d.programaBase, ...(S.d.contextos || []), ...(S.d.alternativos || [])].filter(Boolean).flatMap(q => q.dias || []).find(d => d.id === id);
+  if (!nd) {   /* por si el día no está entre los programas cargados: solo ese día */
+    const r = await sb.from('dias').select('*,bloques_sesion(*,ejercicios_sesion(*,ejercicios(*),metodos(nombre,explicacion)))').eq('id', id).single();
+    if (r.error || !r.data) { console.error(r.error); return toast('Guardado, pero no se ha podido recargar: sal y vuelve a entrar al entreno'); }
+    nd = r.data; ordenarDia(nd);
+  }
+  S.dia = nd; S.sesion = ses; S.previa = prev; S.tab = tab;
+  render(); window.scrollTo(0, y); toast('Entreno actualizado');
 }
 function cicloSesion() { return cicloSesion0() + avisoRetomada(); }
 function avisoRetomada() {
@@ -9827,7 +9833,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v533';
+const APP_VER = 'v534';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
