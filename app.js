@@ -1908,23 +1908,24 @@ function vBloque(b, cont, ro) {
   }).join('')}${!ro && coachEnSes() && !b.ejercicios_sesion.length ? `<button type="button" class="btn sm ghost" data-act="edEjSes" data-b="${b.id}" style="align-self:flex-start">＋ Añadir ejercicio</button>` : ''}</div>`;
 }
 /* Entrenando a un alumno (coach): modificar un ejercicio o añadir uno sin salir del entreno. El cambio va a su programa */
-const coachEnSes = () => !!(S.obj && S.perfil?.rol === 'coach' && S.dia && S.sesion);
+const coachEnSes = () => !!(S.perfil?.rol === 'coach' && !S.vista && !S.prueba && S.dia && S.sesion && !S.sesion.editar);   /* entrenando a un alumno o tu propio entreno */
 async function editarEjEnSesion(esId, bloqueId, tras) {
   const pid = S.dia?.programa_id; if (!pid) return toast('No encuentro el programa de este entreno');
+  if (!S.c?.ejercicios) { try { await cargarCoach(); } catch (e) { console.error(e); } if (!S.c?.ejercicios) return toast('Abre una vez el modo Coach y vuelve a intentarlo'); }
   toast('Abriendo…');
   const [prog, met] = await Promise.all([sb.from('programas').select(SEL_EDITOR).eq('id', pid).limit(1), sb.from('metodos').select('id,nombre').order('nombre')]);
   const p = prog.data?.[0]; if (!p) return fallo(prog.error, 'No se ha podido abrir el programa.');
   p.dias = (p.dias || []).filter(d => !d.oculto); p.dias.forEach(d => { d.bloques_sesion.sort(ordBloque); d.bloques_sesion.forEach(b => b.ejercicios_sesion.sort((a, b) => a.orden - b.orden)); });
-  S.editor = { alumnoId: S.obj.id, progId: pid, plantilla: false, prog: p, metodos: met.data || [], ctx: null, enSes: true, tras: tras || null };
-  cargarRMEditor(S.obj.id).catch(() => {});
+  S.editor = { alumnoId: uidSes(), progId: pid, plantilla: false, prog: p, metodos: met.data || [], ctx: null, enSes: true, tras: tras || null };
+  cargarRMEditor(uidSes()).catch(() => {});
   formEjSesion(esId || null, bloqueId || null);
 }
 /* Tras guardar: recarga los datos del alumno y vuelve a pintar el entreno conservando lo ya registrado, el crono y el descanso */
 async function refrescarSesionEj() {
-  S.edSesPend = null; if (!S.dia || !S.obj) return;
+  S.edSesPend = null; if (!S.dia) return;
   const id = S.dia.id, ses = S.sesion, prev = S.previa, tab = S.tab, y = window.scrollY;
   toast('Actualizando el entreno…');
-  try { await cargarAlumno(S.obj.id); } catch (err) { console.error(err); }
+  try { await cargarAlumno(uidSes()); } catch (err) { console.error(err); }
   let nd = [S.d.programa, S.d.programaBase, ...(S.d.contextos || []), ...(S.d.alternativos || [])].filter(Boolean).flatMap(q => q.dias || []).find(d => d.id === id);
   if (!nd) {   /* por si el día no está entre los programas cargados: solo ese día */
     const r = await sb.from('dias').select('*,bloques_sesion(*,ejercicios_sesion(*,ejercicios(*),metodos(nombre,explicacion)))').eq('id', id).single();
@@ -9839,7 +9840,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v535';
+const APP_VER = 'v536';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
