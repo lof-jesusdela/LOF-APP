@@ -2376,7 +2376,13 @@ function terminar() {
     <button class="btn full" data-act="guardarSesion">Guardar y salir</button></div>`);
 }
 async function guardarSesion() {
-  try {
+  /* Un solo guardado a la vez: un doble toque en «Guardar y salir» lanzaba un segundo guardado cuando el primero ya había cerrado la sesión */
+  if (S._guardandoSes || !S.sesion) return; S._guardandoSes = true;
+  const bG = document.querySelector('[data-act="guardarSesion"]'); if (bG) { bG.disabled = true; bG.textContent = 'Guardando…'; }
+  try { await guardarSesion0(); } catch (err) { if (bG?.isConnected) { bG.disabled = false; bG.textContent = 'Guardar y salir'; } fallo(err); } finally { S._guardandoSes = false; }
+}
+async function guardarSesion0() {
+  {
     if (S.obj && S.sesion?.editar) { const sid = S.sesion.id; cerrarSheet(); stopTimer(); await salirComo(); toast('Cambios guardados'); if (sid) await verSesion(sid); return; }
     const id = await asegurarSesion(), fe = Consultas.leerFinEntreno(), rev = $('#s-rev')?.value.trim(), cambios = {};
     const nota = fe ? [fe.si ? `🩹 ${fe.ej || 'Ejercicio'}: ${fe.det || 'a revisar'}` : '', fe.otra].filter(Boolean).join('\n') : $('#s-nota').value.trim();
@@ -2396,7 +2402,7 @@ async function guardarSesion() {
     try { localStorage.removeItem(claveCrono()); localStorage.removeItem(clavePausa()); } catch (e) { } S.sesion.inicio = null; S.sesion.pausa = null; S.reanudar = null;
     if (S.obj) { const canj = S.obj.presencial; await registrarPresencial(id); cerrarSheet(); stopTimer(); await salirComo(); toast(canj ? 'Sesión guardada y presencial canjeada' : 'Sesión guardada en su ficha'); await verSesion(id); return; }
     cerrarSheet(); stopTimer(); S.dia = null; S.sesion = null; S.tab = 'hoy'; toast('Sesión guardada. ¡Buen trabajo!'); render(); window.scrollTo(0, 0);
-  } catch (err) { fallo(err); }
+  }
 }
 
 /* ---------- Nutrición (pendiente de cargar planes) ---------- */
@@ -9880,7 +9886,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v540';
+const APP_VER = 'v541';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
