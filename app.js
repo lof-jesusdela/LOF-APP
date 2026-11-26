@@ -631,6 +631,8 @@ function checkinPend() {
   return (D.checkins || []).some(c => c.semana_inicio === obj) ? null : obj;
 }
 const tocaCheckin = () => !!checkinPend();
+/* Semana que rellena el check-in si no se eligió otra: la pendiente (la que acaba de terminar); si no hay pendiente, la actual */
+const semanaChkDef = () => { try { return checkinPend() || lunesDe(hoyISO()); } catch (e) { return lunesDe(hoyISO()); } };
 /* Globo de Hoy: cuántas cosas importantes tiene pendientes. Futbolista: sus check-ins. Resto: su foco (y su hábito) de hoy
    sin marcar + el check-in semanal si le toca. También va al icono de la app en el móvil (con el chat sin leer). */
 let _nHoy = { t: 0, n: 0 };
@@ -650,7 +652,8 @@ async function avisoCuota() {
 async function avisoCheckin() {
   if (!tocaCheckin() || !('Notification' in window) || Notification.permission !== 'granted') return;
   const k = 'lof-aviso-chk-' + hoyISO(); try { if (localStorage.getItem(k)) return; localStorage.setItem(k, '1'); } catch (e) { }
-  try { const reg = await navigator.serviceWorker?.ready; const op = { body: 'Es fin de semana: rellena tu check-in semanal para Jesús. Tarda 2 minutos.', icon: 'icons/icon-192.png', tag: 'checkin' }; reg ? reg.showNotification('Check-in semanal', op) : new Notification('Check-in semanal', op); } catch (e) { }
+  const dw = new Date().getDay(); if (dw >= 4) return;   /* domingo: cierra la semana; lunes–miércoles: recordatorio de la pasada; de jueves a sábado no se insiste con avisos (sigue en Hoy) */
+  try { const reg = await navigator.serviceWorker?.ready; const op = { body: dw === 0 ? 'Hoy acaba tu semana: rellena tu check-in semanal para Jesús. Tarda 2 minutos.' : 'Te falta el check-in de la semana pasada. Son 2 minutos y con él Jesús prepara tu semana.', icon: 'icons/icon-192.png', tag: 'checkin' }; reg ? reg.showNotification('Check-in semanal', op) : new Notification('Check-in semanal', op); } catch (e) { }
 }
 /* Avisos del futbolista: wellness diario, wellness de lunes y del partido. Salen al abrir la app, una vez al día por tipo */
 async function avisoFutbol() {
@@ -2671,7 +2674,7 @@ function vOrgSemana(ln) {
     <span class="small muted">Si algún día cambia, lo cambias en Nutrición tocando tu tipo de día.</span></div>`;
 }
 function vCheckin(enHoy) {
-  const lunes = S.chkSemana || lunesDe(hoyISO()), w = semana(lunes), c = S.d.checkins.find(x => x.semana_inicio === lunes);
+  const lunes = S.chkSemana || semanaChkDef(), w = semana(lunes), c = S.d.checkins.find(x => x.semana_inicio === lunes);
   if (!S.chipsCargados && c) { S.chips = new Set(c.proxima_semana_etiquetas || []); S.chipsCargados = true; }
   const s = S.d.servicio || {}, p = S.d.programa;
   const mot = c?.motivacion ?? 7, imp = c?.implicacion ?? 7;
@@ -2689,8 +2692,8 @@ const planNutriDe = aid => S.ficha?.id === aid && S.ficha.plan ? S.ficha.plan : 
 const APLICACION = [['aplicado', 'He podido aplicar lo acordado'], ['parte', 'Lo he aplicado en parte'], ['ayuda', 'Necesito ayuda para adaptarlo']];
 const aplTxt = v => (APLICACION.find(x => x[0] === v) || [])[1] || '';
 async function enviarCheckin() {
-  const c0 = (S.d.checkins || []).find(x => x.semana_inicio === (S.chkSemana || lunesDe(hoyISO())));
-  const row = { alumno_id: S.user.id, semana_inicio: S.chkSemana || lunesDe(hoyISO()), dificultades: $('#k-dif')?.value.trim() || c0?.dificultades || null,
+  const c0 = (S.d.checkins || []).find(x => x.semana_inicio === (S.chkSemana || semanaChkDef()));
+  const row = { alumno_id: S.user.id, semana_inicio: S.chkSemana || semanaChkDef(), dificultades: $('#k-dif')?.value.trim() || c0?.dificultades || null,
     proxima_semana_etiquetas: [...S.chips], proxima_semana: $('#k-prox').value.trim() || null,
     ...($('#k-mot') ? { motivacion: +$('#k-mot').value, implicacion: +$('#k-imp').value } : {}), enviado_at: new Date().toISOString() };
   if ($('#k-foco')) row.foco_comentario = $('#k-foco').value.trim() || null;
@@ -9934,7 +9937,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v546';
+const APP_VER = 'v547';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
