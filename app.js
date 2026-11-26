@@ -626,7 +626,9 @@ function ingestasSemana(reg, ini, srv) {
 /* Check-in pendiente: el domingo, el de esta semana; de lunes a sábado, el de la semana que acaba de terminar si no se envió */
 function checkinPend() {
   const D = S.d, srv = D?.servicio; if (!D || !srv || Acomp.estado(srv).k === 'pausado' || srv.modulo_futbol) return null;
-  const l = lunesDe(hoyISO()), obj = new Date().getDay() === 0 ? l : sumaDias(l, -7);
+  /* Se pide el domingo y el lunes, se recuerda el martes y el miércoles desaparece; los anteriores ya no se reclaman */
+  const dw = new Date().getDay(); if (dw >= 3) return null;
+  const l = lunesDe(hoyISO()), obj = dw === 0 ? l : sumaDias(l, -7);
   if (srv.inicio && srv.inicio > sumaDias(obj, 6)) return null;
   return (D.checkins || []).some(c => c.semana_inicio === obj) ? null : obj;
 }
@@ -867,8 +869,16 @@ function vRegistroDia(s) {
     else if (['pasos', 'entrenos', 'sueno'].includes(fo.tipo)) fs.push(`<div class="md-fo"><span class="md-ib" style="background:#C9A227">🎯</span><b class="grow">${tit}</b><small class="muted">se cuenta solo</small></div>`);
     else fs.push(`<div class="md-fo"><span class="md-ib" style="background:#C9A227">🎯</span><b class="grow">${tit}</b>${yn('mdFoco', `data-f="${sel}"`, 'Hecho', 'No', r.foco_ok == null ? null : !!r.foco_ok)}</div>`);
   }
-  if (hb) { const v = (S.d.habReg || []).find(x => x.habito_id === hb.id && x.fecha === sel)?.valor; fs.push(`<div class="md-fo"><span class="md-ib" style="background:#C9A227">🌱</span><b class="grow">${esc(hb.titulo)}</b>${yn('mdHab', `data-id="${hb.id}" data-f="${sel}"`, 'Hecho', 'No', v ? v !== 'no' : null)}</div>`); }
+  const hbP = hb && Habitos.pasosHab?.(hb);
+  if (hbP) { const v = (S.d.habReg || []).find(x => x.habito_id === hb.id && x.fecha === sel)?.valor;
+    fs.push(`<div class="md-fo"><span class="md-ib" style="background:#C9A227">🌱</span><div class="grow"><b>${esc(hb.titulo)}</b><small class="muted" style="display:block">Objetivo ${fmtNum(hbP.meta, 0)}${hbP.min ? ` · mínimo ${fmtNum(hbP.min, 0)}` : ''}${v ? ' · ' + (v === 'hecho' ? '✅ cumplido' : v === 'minimo' ? '🟡 mínimo' : 'por debajo') : ''}</small></div><input id="r-pasos" class="md-num" type="number" inputmode="numeric" min="0" placeholder="Pasos" value="${r.pasos ?? ''}" aria-label="Pasos"></div>`); }
+  else if (hb) { const v = (S.d.habReg || []).find(x => x.habito_id === hb.id && x.fecha === sel)?.valor; fs.push(`<div class="md-fo"><span class="md-ib" style="background:#C9A227">🌱</span><b class="grow">${esc(hb.titulo)}</b>${yn('mdHab', `data-id="${hb.id}" data-f="${sel}"`, 'Hecho', 'No', v ? v !== 'no' : null)}</div>`); }
   if (fs.length) h += `<div class="md-focos">${fs.join('')}</div>`;
+  /* Comidas del plan cumplidas (cuando ya se le mide la alimentación y no es su foco) */
+  if (s.modulo_nutricion && fo?.tipo !== 'alimentacion' && midoAlumno() && Nutricion.acuerdo(S.d).nivel !== 'ligero') {
+    const n = Math.max(1, r.comidas_hechas || comidasDia(s));
+    h += it('🥗', '#EAF6DD', 'Comidas de tu plan', `¿Cuántas de tus ${n} has cumplido${esHoy ? ' hoy' : ''}?`, `<div class="md-yn" style="flex-wrap:wrap">${[...Array(n + 1)].map((_, i) => `<button type="button" class="${r.ingestas === i ? (i === n ? 'ok' : 'no') : ''}" data-act="ingestas" data-v="${i}" aria-pressed="${r.ingestas === i}">${i}</button>`).join('')}</div>`);
+  }
   /* Tipo de día: el que marcó en su semana; lo puede cambiar */
   const cx = s.modulo_nutricion && (s.avisos_alumno || {}).dia_contexto !== false ? Nutricion.ctxDe(S.d.nutri || { plan: [] }) : [];
   if (cx.length) {
@@ -1109,7 +1119,7 @@ function cuotaPend() {
 function lineasPend(s) {
   const hoy = hoyISO(), lineas = [], fase = Nutricion.fase(S.d), activo = Acomp.estado(s).k !== 'pausado';
   const yn = (act, extra) => `<div class="md-yn"><button type="button" data-act="${act}" data-v="1" ${extra}>Hecho</button><button type="button" data-act="${act}" data-v="0" ${extra}>No</button></div>`;
-  if (s.modulo_futbol) pendientesFutbol().forEach(x => lineas.push([x.atr ? '⚠️' : '⚽', esc(x.txt), x.atr ? 'Con estos datos Jesús ajusta tu carga. No desaparece hasta que lo rellenes.' : esc(x.sub || 'Te toca hoy'), `data-act="wellness" data-t="${x.t}" data-f="${x.f}"`, 'Rellenar ›', !!x.atr]));
+  if (s.modulo_futbol) pendientesFutbol().forEach(x => lineas.push([x.atr ? '⚠️' : '⚽', esc(x.txt), x.atr ? 'Con estos datos Jesús ajusta tu carga. Rellénalo cuanto antes.' : esc(x.sub || 'Te toca hoy'), `data-act="wellness" data-t="${x.t}" data-f="${x.f}"`, 'Rellenar ›', !!x.atr]));
   else if (activo) {
     const r = (S.d.diario || []).find(x => x.fecha === hoy) || {}, fo = s.foco;
     if (fo?.tipo && !['pasos', 'entrenos', 'sueno'].includes(fo.tipo) && (fo.tipo === 'alimentacion' ? r.ingestas == null : r.foco_ok == null))
@@ -1120,9 +1130,10 @@ function lineasPend(s) {
   const exige = !s.modulo_futbol && (conPasos(s) || (s.modulo_nutricion && fase === 'activo' && Nutricion.acuerdo(S.d).nivel === 'habitual')) && activo;
   if (exige) {
     const hecho = x => !!x && (x.pasos != null || x.ingestas != null || x.comidas_hechas != null || !!x.alimentacion || !!x.observacion);
-    const faltan = ventanaRegistro().filter(f => f < hoy && (!s.inicio || f >= s.inicio) && !hecho(S.d.diario.find(x => x.fecha === f)));
+    /* Solo se recuerda el día de ayer (24 h); lo anterior ya no se reclama */
+    const ay = sumaDias(hoy, -1), faltan = [ay].filter(f => (!s.inicio || f >= s.inicio) && !hecho(S.d.diario.find(x => x.fecha === f)));
     const lunesHoy = hoy === lunesDe(hoy), plazo = lunesHoy ? 'Hoy es el último día para completar la semana pasada' : 'Puedes completarlos hasta el domingo';
-    if (faltan.length >= 2 && avisoAl('registro')) lineas.push(['📝', faltan.length === 1 ? 'Te falta registrar un día' : `Te faltan ${faltan.length} días por registrar`, faltan.map(f => fecha(f).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' })).join(' · ') + ` · ${conPasos(s) ? 'tus pasos' : ''}${conPasos(s) && exige && s.modulo_nutricion && fase === 'activo' ? ' y ' : ''}${s.modulo_nutricion && fase === 'activo' && Nutricion.acuerdo(S.d).nivel === 'habitual' ? 'las comidas de tu plan' : ''}, para que Jesús vea tu semana real. ${plazo}.`, faltan[0] ? `data-act="irRegistroDia" data-f="${faltan[0]}"` : '', 'Rellenar', faltan.length >= 4 || lunesHoy]);
+    if (faltan.length && avisoAl('registro')) lineas.push(['📝', faltan.length === 1 ? 'Te falta registrar un día' : `Te faltan ${faltan.length} días por registrar`, faltan.map(f => fecha(f).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' })).join(' · ') + ` · ${conPasos(s) ? 'tus pasos' : ''}${conPasos(s) && exige && s.modulo_nutricion && fase === 'activo' ? ' y ' : ''}${s.modulo_nutricion && fase === 'activo' && Nutricion.acuerdo(S.d).nivel === 'habitual' ? 'las comidas de tu plan' : ''}, para que Jesús vea tu semana real. ${plazo}.`, faltan[0] ? `data-act="irRegistroDia" data-f="${faltan[0]}"` : '', 'Rellenar', faltan.length >= 4 || lunesHoy]);
   }
   const lc = checkinPend(); if (lc && new Date().getDay() !== 0 && avisoAl('checkin')) lineas.push(['✅', 'Check-in semanal sin enviar', `Semana del ${fCorta(lc)} al ${fCorta(sumaDias(lc, 6))} · es lo que Jesús usa para preparar tu revisión y ajustar tu plan. Son 2 minutos`, `data-act="abrirCheckin" data-l="${lc}"`, 'Rellenar', [3, 4, 5, 6].includes(new Date().getDay())]);
   const mp = avisoAl('menu') && MenuSemana.pendiente(); if (mp) lineas.push(mp);
@@ -1286,6 +1297,7 @@ async function guardarDiario(extra = {}) {
   if (error && /observacion/.test(error.message || '')) { delete row.observacion; ({ data, error } = await sb.from('registro_diario').upsert(row, { onConflict: 'alumno_id,fecha' }).select().single()); }
   if (error) return fallo(error);
   S.d.diario = S.d.diario.filter(x => x.fecha !== row.fecha).concat(data);
+  { const hb = S.d.servicio?.modulo_habitos ? habitoFoco(f) : null; if (hb && row.pasos > 0 && Habitos.pasosHab?.(hb)) await Habitos.autoPasos(hb, f, row.pasos); }
   toast(extra.ingestas != null || extra.comidas_hechas != null ? 'Comidas guardadas' : 'Registro de hoy guardado'); render();
 }
 
@@ -4182,7 +4194,7 @@ function pendientesFutbol() {
   const s = S.d?.servicio; if (!s?.modulo_futbol || S.d.futbolErr) return [];
   const w = S.d.wellness || [], hoy = hoyISO(), dow = (fecha(hoy).getDay() + 6) % 7, out = [];
   if (hoy < CORTE_CHK) return excPend(w, S.d.partidos).map(([f, t]) => { const pt = (S.d.partidos || []).find(x => x.fecha === f); return { t, f, atr: 1, exc: 1, txt: `${NOM_CHK[t]}${t === 'partido' && pt?.rival ? ' contra ' + pt.rival : ''} · ${fecha(f).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' })}`, sub: '' }; });
-  const jugados = (S.d.partidos || []).filter(p => p.fecha <= hoy && p.fecha >= sumaDias(hoy, -3) && p.fecha >= CORTE_CHK && !wDe(w, p.fecha, 'partido'));
+  const jugados = (S.d.partidos || []).filter(p => p.fecha <= hoy && p.fecha >= sumaDias(hoy, -2) && p.fecha >= CORTE_CHK && !wDe(w, p.fecha, 'partido'));
   jugados.forEach(p => out.push({ t: 'partido', f: p.fecha, txt: `${NOM_CHK.partido}${p.rival ? ' contra ' + p.rival : ''}`, sub: p.fecha === hoy ? 'Rellénalo al terminar: antes, durante y después.' : 'Te falta contarle a Jesús cómo fue.' }));
   if (chkToca(hoy, S.d.partidos) === 'lunes' && !wDe(w, hoy, 'lunes')) out.push({ t: 'lunes', f: hoy, txt: NOM_CHK.lunes, sub: 'Tu fatiga después del partido y tu semana con el equipo. 2 minutos.' });
   const dom = dow === 6 ? hoy : dow === 0 ? sumaDias(hoy, -1) : null;
@@ -4190,9 +4202,10 @@ function pendientesFutbol() {
   if (!wDe(w, hoy, 'diario') && tocaDiario(hoy, S.d.partidos, w)) out.push({ t: 'diario', f: hoy, txt: NOM_CHK.diario, sub: 'Al levantarte: carga, sueño y fatiga. 30 segundos. Sin él no podrás entrenar hoy.' });
   /* Atrasados: todos los que falten desde que empezó a usar los check-ins, sin límite; no se van hasta que los rellena */
   const ini = [CORTE_CHK, s.inicio].filter(Boolean).sort().pop();
-  for (let d = sumaDias(hoy, -1); d >= ini; d = sumaDias(d, -1)) {
+  /* Atrasados: el diario solo el de ayer (24 h); post-partido y cierre, hasta 2 días. Lo anterior ya no se reclama */
+  for (let d = sumaDias(hoy, -1); d >= ini && d >= sumaDias(hoy, -2); d = sumaDias(d, -1)) {
     const t = chkToca(d, S.d.partidos), pt = (S.d.partidos || []).find(x => x.fecha === d), DL = fecha(d).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
-    if (!t || wDe(w, d, t) || out.some(o => o.t === t && o.f === d)) continue;
+    if (!t || (t === 'diario' && d < sumaDias(hoy, -1)) || wDe(w, d, t) || out.some(o => o.t === t && o.f === d)) continue;
     out.push({ t, f: d, txt: `${NOM_CHK[t]} del ${DL}`, sub: t === 'partido' ? (pt?.rival ? 'Contra ' + pt.rival : 'Cómo fue el partido') : t === 'lunes' ? 'Tu fatiga y tu semana con el equipo' : 'Carga del día y fatiga', atr: 1 });
   }
   return out;
@@ -9968,7 +9981,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v552';
+const APP_VER = 'v553';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}

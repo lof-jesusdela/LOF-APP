@@ -202,6 +202,12 @@ const Habitos = (() => {
     d.habReg = (d.habReg || []).filter(x => !(x.habito_id === id && x.fecha === f)).concat(q.data || row);
     render(); toast(v === 'hecho' ? `¡${fmtNum(n, 0)} pasos! Objetivo cumplido` : v === 'minimo' ? `${fmtNum(n, 0)} pasos: mínimo cumplido` : `${fmtNum(n, 0)} pasos guardados`);
   }
+  /* Desde «Marca tu día»: con los pasos ya guardados, el hábito de pasos se marca solo */
+  async function autoPasos(h, f, n) {
+    const P = pasosHab(h); if (!P || !(n > 0)) return; const d = lista(), v = n >= P.meta ? 'hecho' : P.min && n >= P.min ? 'minimo' : 'no';
+    const row = { habito_id: h.id, alumno_id: h.alumno_id, fecha: f, valor: v, motivo: null }, q = await sb.from('habitos_registro').upsert(row, { onConflict: 'habito_id,fecha' }).select().single(); if (q.error) return;
+    d.habReg = (d.habReg || []).filter(x => !(x.habito_id === h.id && x.fecha === f)).concat(q.data || row);
+  }
   function filaMarca(h, regs, dia) {
     const v = regs.find(x => x.habito_id === h.id && x.fecha === dia), P = pasosHab(h);
     if (P) { const r = (lista().diario || []).find(x => x.fecha === dia), est = v?.valor === 'hecho' ? '✅ Objetivo cumplido' : v?.valor === 'minimo' ? '🟡 Mínimo cumplido' : v?.valor === 'no' ? 'Por debajo del mínimo' : '';
@@ -606,5 +612,5 @@ const Habitos = (() => {
   const aislar = fn => (...args) => { try { return fn(...args); } catch (err) { console.error(err); return `<section class="section"><div class="card small muted">No se han podido mostrar los hábitos. Mándale a Jesús este mensaje: ${esc(String(err && err.message || err).slice(0, 160))}</div></section>`; } };
   /* ¿Tiene un hábito de pasos en marcha? (entonces los pasos se registran en su hábito, no también en el registro del día) */
   function tienePasos(dia = hoyISO()) { try { return mios().some(x => x.estado === 'instalacion' && x.inicio && x.inicio <= dia && /paso|camin/i.test([x.titulo, x.si, x.minimo].filter(Boolean).join(' '))); } catch (e) { return false; } }
-  return { marcar, tienePasos, ajustesRecientes, vista: aislar(vista), tarjetaHoy: aislar(tarjetaHoy), enRegistro: aislar(enRegistro), ctaInforme: aislar(ctaInforme), vCoach: aislar(vCoach), resumenCoach: aislar(resumenCoach), cargar, cargarCoach, cargarFicha, contexto, proponer, ordenar, filasPlan, stats, bloque, siguiente, CAT };
+  return { pasosHab, autoPasos, marcar, tienePasos, ajustesRecientes, vista: aislar(vista), tarjetaHoy: aislar(tarjetaHoy), enRegistro: aislar(enRegistro), ctaInforme: aislar(ctaInforme), vCoach: aislar(vCoach), resumenCoach: aislar(resumenCoach), cargar, cargarCoach, cargarFicha, contexto, proponer, ordenar, filasPlan, stats, bloque, siguiente, CAT };
 })();
