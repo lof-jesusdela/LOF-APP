@@ -447,7 +447,7 @@ async function cargarAlumno(uid) {
   S.d = {
     servicio: srv.data?.[0] || null, programa: p, mediciones: (med.data || []).filter(m => !m.es_objetivo), medObj: (med.data || []).find(m => m.es_objetivo) || null, diario: reg.data || [],
     sesiones: ses.data || [], checkins: chk.data || [], ruta: ruta.data || [],
-    metodos: (Tandas.dinamicos(met.data), Object.fromEntries((met.data || []).map(m => [m.nombre, m.explicacion]))),
+    metodos: (Tandas.dinamicos(met.data), metInfo(met.data), Object.fromEntries((met.data || []).map(m => [m.nombre, m.explicacion]))),
     valoraciones: ordenarValoraciones(val.data || []),
     presenciales: pres.data || [], uid, contextos: ctxs, programaBase: p
   };
@@ -1432,7 +1432,7 @@ function vEjercicio(e, i, ro) {
   const topViejo = () => `
     ${ej.imagen_url || ej.musculo_img_url ? `<div class="imgs">${ej.imagen_url ? `<button class="img" data-act="verImagen" data-src="${esc(ej.imagen_url)}" aria-label="Ver imagen del ejercicio"><img src="${esc(ej.imagen_url)}" alt="${esc(ej.nombre)}" loading="lazy" onerror="this.parentNode.hidden=true"><span>Ejercicio</span></button>` : ''}${ej.musculo_img_url ? `<button class="img${laminaDe(ej.musculo_img_url) ? ' lam' : ''}" data-act="verImagen" data-src="${esc(ej.musculo_img_url)}" aria-label="Ver músculo objetivo"><img src="${esc(ej.musculo_img_url)}" alt="Músculo objetivo${laminaDe(ej.musculo_img_url) ? ': ' + esc(laminaNombre(laminaDe(ej.musculo_img_url))) : ''}" loading="lazy" onerror="this.parentNode.hidden=true"><span>Músculo objetivo</span></button>` : ''}</div>` : ''}
     <div class="row" style="align-items:flex-start"><div class="grow">${!ej.musculo_img_url && ej.musculo ? `<div class="small muted">${esc(ej.musculo)}</div>` : ''}</div><div class="stack" style="gap:6px;align-items:flex-end">${vid}${ro ? '' : `<button class="btn sm ghost omitir-b" data-act="omitir" data-es="${e.id}" data-n="${esc(ej.nombre)}">No lo hago</button>`}</div></div>
-    <div class="chips ex-chips"><span class="pill ex-series">${e.series} ${e.series === 1 ? 'serie' : 'series'}</span>${tandas ? '' : `<span class="pill">${desc ? 'Descanso ' + seg(desc) : 'Sin descanso'}</span>`}${(() => { const ms = Tandas.metodosSeries(e); if (!ms.length) return e.metodos ? `<button class="pill ex-met" data-act="metodo" data-n="${esc(e.metodos.nombre)}">${esc(e.metodos.nombre)} ⓘ</button>` : '';
+    <div class="chips ex-chips"><span class="pill ex-series">${e.series} ${e.series === 1 ? 'serie' : 'series'}</span>${tandas ? '' : `<span class="pill">${desc ? 'Descanso ' + seg(desc) : 'Sin descanso'}</span>`}${(() => { const ms = Tandas.metodosSeries(e); if (!ms.length) return e.metodos ? `<button class="pill ex-met" data-act="metodo" data-n="${esc(e.metodos.nombre)}">${esc(nomMet(e.metodos.nombre))} ⓘ</button>` : '';
       const sr = x => x.de === x.a ? `${x.de}ª` : `${x.de}ª–${x.a}ª`; return '<button class="pill ex-met" data-act="metodo" data-n="Series mixtas">Series mixtas ⓘ</button>' + ms.map(x => x.mt === 'Normal' ? `<span class="pill">${sr(x)} serie${x.de === x.a ? '' : 's'}: dinámico</span>` : `<button class="pill ex-met" data-act="metodo" data-n="${esc(x.mt)}">${sr(x)} serie${x.de === x.a ? '' : 's'}: ${esc(x.mt)} ⓘ</button>`).join(''); })()}${e.aproximacion_631 ? '<button class="pill ex-met" data-act="metodo" data-n="Aproximación 6·3·1">Aproximación 6·3·1 ⓘ</button>' : ''}</div>
     ${(() => { const ag = AGARRES.find(x => x[0] === e.agarre); if (!ag) return ''; const u = S.agarres?.[ag[0]]; return `<div class="row a-medida small" style="gap:10px;align-items:center">${u ? `<button class="img mat-img" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver imagen del agarre"><img src="${esc(u)}" alt="Agarre ${ag[1]}" loading="lazy" onerror="this.parentNode.hidden=true"></button>` : ''}<span><b>Agarre:</b> ${ag[1]}</span></div>`; })()}
     ${(() => { const mt = e.material ?? ej.material, mi = e.material_img_url ?? ej.material_img_url; return mt || mi ? `<div class="row a-medida small" style="gap:10px;align-items:center">${mi ? String(mi).split(';').filter(Boolean).map(u => `<button class="img mat-img" data-act="verImagen" data-src="${esc(u)}" aria-label="Ver imagen del material"><img src="${esc(u)}" alt="Material" loading="lazy" onerror="this.parentNode.hidden=true"></button>`).join('') : ''}${mt ? `<span><b>Material:</b> ${esc(mt)}</span>` : '<span><b>Material</b></span>'}</div>` : ''; })()}
@@ -1449,7 +1449,7 @@ function vEjercicio(e, i, ro) {
     const T = [];   // casillas
     T.push(`<div class="xt xt-o"><span class="xt-l">Series</span><b class="xt-n">${e.series}</b></div>`);
     if (ms.length) T.push(`<button class="xt xt-o" data-act="metodo" data-n="Series mixtas"><span class="xt-l">Método ⓘ</span><b class="xt-n xt-s">Mixtas</b></button>`);
-    else if (e.metodos) T.push(`<button class="xt xt-o" data-act="metodo" data-n="${esc(e.metodos.nombre)}"><span class="xt-l">Método ⓘ</span><b class="xt-n xt-s">${esc(e.metodos.nombre)}</b></button>`);
+    else if (e.metodos) T.push(`<button class="xt xt-o" data-act="metodo" data-n="${esc(e.metodos.nombre)}"><span class="xt-l">Método ⓘ</span><b class="xt-n xt-s">${esc(nomMet(e.metodos.nombre))}</b></button>`);
     /* Ajustes: uno sencillo («Silla: 3», «Polea: 16», «Banco: 30°») → casilla grande; varios → chips */
     const par = x => { const m = /^([^:]{2,22}):\s*(.+)$/.exec(x); return m ? [m[1].trim(), m[2].trim()] : [x, '']; };
     /* Ajuste = cómo se adapta la máquina al cuerpo («Silla: 3», «Polea: 16»). Agarre y material NUNCA cuentan como ajuste */
@@ -1917,7 +1917,7 @@ async function editarEjEnSesion(esId, bloqueId, tras) {
   const pid = S.dia?.programa_id; if (!pid) return toast('No encuentro el programa de este entreno');
   if (!S.c?.ejercicios) { try { await cargarCoach(); } catch (e) { console.error(e); } if (!S.c?.ejercicios) return toast('Abre una vez el modo Coach y vuelve a intentarlo'); }
   toast('Abriendo…');
-  const [prog, met] = await Promise.all([sb.from('programas').select(SEL_EDITOR).eq('id', pid).limit(1), sb.from('metodos').select('id,nombre').order('nombre')]);
+  const [prog, met] = await Promise.all([sb.from('programas').select(SEL_EDITOR).eq('id', pid).limit(1), sb.from('metodos').select('*').order('nombre')]);
   const p = prog.data?.[0]; if (!p) return fallo(prog.error, 'No se ha podido abrir el programa.');
   p.dias = (p.dias || []).filter(d => !d.oculto); p.dias.forEach(d => { d.bloques_sesion.sort(ordBloque); d.bloques_sesion.forEach(b => b.ejercicios_sesion.sort((a, b) => a.orden - b.orden)); });
   S.editor = { alumnoId: uidSes(), progId: pid, plantilla: false, prog: p, metodos: met.data || [], ctx: null, enSes: true, tras: tras || null };
@@ -2062,7 +2062,7 @@ function vPrevia(d) {
   const obj = d.objetivo || S.temasDesc?.[tema] || '';
   const fila = (src, nom, sub) => `<div class="pv-ej">${src ? `<img src="${esc(src)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'pv-sin'}))">` : '<span class="pv-sin"></span>'}<div class="grow"><b>${esc(nom)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</div></div>`;
   const bloques = bl.map(b => `<div class="pv-bl"><h4>${esc(b.nombre || b.letra || '')}</h4>${b.tipo === 'fuerza'
-    ? b.ejercicios_sesion.map(e => { const x = ejDe(e); return fila(x.imagen_url, x.nombre || 'Ejercicio', `${e.series} ${e.series === 1 ? 'serie' : 'series'}${e.repeticiones ? ' · ' + e.repeticiones + ' reps' : ''}${e.metodos?.nombre ? ' · ' + e.metodos.nombre : ''}`); }).join('')
+    ? b.ejercicios_sesion.map(e => { const x = ejDe(e); return fila(x.imagen_url, x.nombre || 'Ejercicio', `${e.series} ${e.series === 1 ? 'serie' : 'series'}${e.repeticiones ? ' · ' + e.repeticiones + ' reps' : ''}${e.metodos?.nombre ? ' · ' + nomMet(e.metodos.nombre) : ''}`); }).join('')
     : fila(b.imagen_url || fotosCardio(b)[0] || miniYoutube(b.video_url), b.maquina || b.nombre || '', b.duracion || '')}</div>`).join('');
   return `<div class="pv">
     <div class="pv-hero" style="${img ? `background-image:url('${esc(img)}')` : ''}"><button class="pv-volver" data-act="cerrarDia" aria-label="Volver">←</button></div>
@@ -2744,7 +2744,7 @@ async function cargarCoach() {
   try { await Nutricion.cargarCoach(S.c); } catch (err) { S.c.creacionesNuevas = []; }
   { const cx = await sb.from('programas').select('id,alumno_id,nombre,dias_semana,' + CTX_COLS.slice(0, -1)).gte('contexto_hasta', sumaDias(hoyISO(), -70)).order('contexto_desde');
     S.c.contextos = cx.error ? [] : (cx.data || []).filter(esContexto); }
-  { const mt = await sb.from('metodos').select('*').order('nombre'); S.c.metodos = mt.data || [];
+  { const mt = await sb.from('metodos').select('*').order('nombre'); S.c.metodos = mt.data || []; metInfo(S.c.metodos);
     /* Métodos de la app que aún no están en tu lista (p. ej. «Series mixtas»): se crean solos para poder elegirlos en el editor */
     let borr = []; try { borr = JSON.parse((ap.data || []).find(x => x.clave === 'metodos_borrados')?.valor || '[]'); } catch (e) { /* nada */ }
     if (!mt.error) for (const n of ['Series mixtas', 'Concentradas']) if (!borr.includes(n) && !S.c.metodos.some(m => normaliza(m.nombre) === normaliza(n))) { const r = await sb.from('metodos').insert({ nombre: n, explicacion: Tandas.MET[n].info.replace(/^[^:]+:\s*/, '') }).select().single(); if (!r.error && r.data) S.c.metodos.push(r.data); }
@@ -6860,19 +6860,24 @@ document.addEventListener('change', async ev => { const k = ev.target.dataset?.t
   const { error } = await sb.from('ajustes').upsert([{ clave: 'temadesc_' + k, valor: v }], { onConflict: 'clave' }); if (error) return fallo(error); (S.temasDesc ||= {})[k] = v; toast('Objetivo guardado'); });
 document.addEventListener('change', async ev => { const c = ev.target.dataset?.tema, f = ev.target.files?.[0]; if (!c || !f) return;
   try { toast('Subiendo…'); const u = await subirImagenEj(f, 'tema-' + c, 1400); const { error } = await sb.from('ajustes').upsert([{ clave: 'tema_' + c, valor: u }], { onConflict: 'clave' }); if (error) throw error; (S.temas ||= {})[c] = u; render(); toast('Portada guardada'); } catch (err) { fallo(err); } });
+/* Nombre que ve el alumno (etiqueta) y orden de los métodos: Bloque 121. El nombre interno no cambia en los métodos de la app (de él depende cómo se registran) */
+let MET_ETQ = {}, MET_ORD = {};
+function metInfo(rows) { (rows || []).forEach(m => { if (m.etiqueta) MET_ETQ[m.nombre] = m.etiqueta; else delete MET_ETQ[m.nombre]; if (m.orden != null) MET_ORD[m.nombre] = m.orden; }); }
+const nomMet = n => MET_ETQ[n] || n;
+const ordMet = (a, b) => (MET_ORD[a.nombre] ?? 999) - (MET_ORD[b.nombre] ?? 999) || (nomMet(a.nombre) || '').localeCompare(nomMet(b.nombre) || '');
 const BASE_ETQ = { '': 'Series normales (solo explicación para el alumno)', ...Tandas.BASES };
 const BASE_FIJA = { 'Concentradas': '', 'Rest-pause': 'tandas', 'Cluster': 'tandas', 'Myo reps': 'tandas', 'Dropset': 'drop', 'Unilateral': 'lados', 'Unilateral lento': 'lados', 'Superlento': '', 'Unilateral superlento': 'lados', 'Unilateral doble': 'lados', 'Contrastes': 'tandas', 'Unilateral contraste': 'lados', 'Forzadas': '', 'Topset': '', 'Isométrico': 'iso', 'Superserie': '' };
 function vMetodos() {
-  const l = (S.c.metodos || []).slice().sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '')), fijo = n => n in Tandas.MET && !(Tandas._propios || []).includes(n) || n in BASE_FIJA;
+  const l = (S.c.metodos || []).slice().sort(ordMet), fijo = n => n in Tandas.MET && !(Tandas._propios || []).includes(n) || n in BASE_FIJA;
   return `${bibTabs()}<section class="stack"><span class="eyebrow">Tu metodología</span><h1>Métodos</h1><p class="small muted">Lo que escribas en la explicación lo ve el alumno al tocar el método en su entreno. Los métodos nuevos que crees salen al instante en el editor de programas.</p></section>
   <section class="section"><button class="btn full" data-act="nuevoMetodo">＋ Crear un método nuevo</button>
-  <div class="card" style="margin-top:12px">${l.map(m => `<div class="line" data-act="editarMetodo" data-id="${m.id}" style="cursor:pointer"><div class="grow"><h3>${esc(m.nombre)}</h3><div class="small muted">${esc((m.explicacion || 'Sin explicación todavía').slice(0, 110))}${(m.explicacion || '').length > 110 ? '…' : ''}</div></div><span class="pill ${fijo(m.nombre) ? '' : 'ok'}">${fijo(m.nombre) ? 'De serie' : 'Tuyo'}</span></div>`).join('') || '<p class="muted small" style="padding:12px">Todavía no hay métodos. Ejecuta el Bloque 64 en Supabase.</p>'}</div></section>`;
+  <div class="card" style="margin-top:12px">${l.map(m => `<div class="line" data-act="editarMetodo" data-id="${m.id}" style="cursor:pointer"><span class="stack" style="gap:2px;flex:none"><button type="button" class="btn sm ghost" data-act="ordMetodo" data-id="${m.id}" data-d="-1" aria-label="Subir" style="padding:2px 8px">▲</button><button type="button" class="btn sm ghost" data-act="ordMetodo" data-id="${m.id}" data-d="1" aria-label="Bajar" style="padding:2px 8px">▼</button></span><div class="grow"><h3>${esc(nomMet(m.nombre))}${MET_ETQ[m.nombre] ? ` <span class="small muted">(${esc(m.nombre)})</span>` : ''}</h3><div class="small muted">${esc((m.explicacion || 'Sin explicación todavía').slice(0, 110))}${(m.explicacion || '').length > 110 ? '…' : ''}</div></div><span class="pill ${fijo(m.nombre) ? '' : 'ok'}">${fijo(m.nombre) ? 'De serie' : 'Tuyo'}</span></div>`).join('') || '<p class="muted small" style="padding:12px">Todavía no hay métodos. Ejecuta el Bloque 64 en Supabase.</p>'}</div></section>`;
 }
 function formMetodo(id) {
   const x = id ? (S.c.metodos || []).find(z => z.id === id) : null; if (id && !x) return;
   const fijo = x && (x.nombre in BASE_FIJA || (x.nombre in Tandas.MET && !(Tandas._propios || []).includes(x.nombre))), base = x?.base ?? '';
-  abrirSheet(`<form class="stack" id="f-met"><h2>${x ? esc(x.nombre) : 'Método nuevo'}</h2>
-    ${fijo ? '<p class="small muted">Es un método de la app: puedes cambiar su explicación. Su forma de registrarse en el entreno no se cambia.</p>' : `<label class="f">Nombre del método<input type="text" id="m-nom" value="${esc(x?.nombre || '')}" placeholder="Ej.: Pre-fatiga" maxlength="60" required></label>`}
+  abrirSheet(`<form class="stack" id="f-met"><h2>${x ? esc(nomMet(x.nombre)) : 'Método nuevo'}</h2>
+    ${fijo ? `<label class="f">Nombre que ve el alumno<input type="text" id="m-etq" value="${esc(x.etiqueta || '')}" placeholder="${esc(x.nombre)}" maxlength="60"></label><p class="small muted" style="margin-top:-6px">Es un método de la app: puedes cambiar su nombre visible y su explicación. Su forma de registrarse en el entreno no cambia.</p>` : `<label class="f">Nombre del método<input type="text" id="m-nom" value="${esc(x?.nombre || '')}" placeholder="Ej.: Pre-fatiga" maxlength="60" required></label>`}
     <label class="f">Explicación para el alumno<textarea id="m-exp" rows="5" placeholder="Cómo se hace y qué tiene que notar el alumno">${esc(x?.explicacion || '')}</textarea></label>
     ${fijo ? '' : `<label class="f">¿Cómo lo registra el alumno?<select id="m-base">${Object.entries(BASE_ETQ).map(([k, l]) => `<option value="${k}" ${k === base ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
     <label class="f" id="m-pausa-w" ${base === 'tandas' ? '' : 'hidden'}>Pausa entre tandas (segundos)<input type="text" inputmode="numeric" id="m-pausa" value="${esc(x?.pausa ?? 20)}"></label>`}
@@ -6883,6 +6888,7 @@ function formMetodo(id) {
     ev.preventDefault(); const btn = $('#m-btn'); btn.disabled = true; btn.textContent = 'Guardando…';
     try {
       const exp = $('#m-exp').value.trim() || null, cambios = { explicacion: exp };
+      if (fijo && $('#m-etq')) { const et = $('#m-etq').value.trim(); if (et || x.etiqueta) cambios.etiqueta = et && et !== x.nombre ? et : null; }
       if (!fijo) {
         const nom = $('#m-nom').value.trim(); if (!nom) throw new Error('Pon un nombre al método');
         if ((S.c.metodos || []).some(m => m.id !== x?.id && norm(m.nombre) === norm(nom))) throw new Error('Ya hay un método con ese nombre');
@@ -6891,7 +6897,7 @@ function formMetodo(id) {
       const r = x ? await sb.from('metodos').update(cambios).eq('id', x.id).select().single() : await sb.from('metodos').insert({ ...cambios, propio: true }).select().single();
       if (r.error) throw r.error;
       await cargarCoach(); cerrarSheet(); toast(x ? 'Método guardado' : 'Método creado'); render();
-    } catch (err) { btn.disabled = false; btn.textContent = 'Guardar'; $('#m-err').textContent = /column|base|pausa|propio|row-level|policy|permission/i.test(err?.message || '') ? 'Falta ejecutar el Bloque 64 en Supabase.' : (err?.message || 'No se ha podido guardar'); console.error(err); }
+    } catch (err) { btn.disabled = false; btn.textContent = 'Guardar'; $('#m-err').textContent = /etiqueta|orden/i.test(err?.message || '') ? 'Falta ejecutar el Bloque 121 en Supabase.' : /column|base|pausa|propio|row-level|policy|permission/i.test(err?.message || '') ? 'Falta ejecutar el Bloque 64 en Supabase.' : (err?.message || 'No se ha podido guardar'); console.error(err); }
   });
 }
 /* Eliminar un método (también los de la app, si te sobran o están duplicados). Si lo usan ejercicios, eliges a qué método pasarlos */
@@ -9059,7 +9065,7 @@ async function abrirEditor(alumnoId, progId = null, quieto = false) {
   const [prog, met] = await Promise.all([
     progId ? conRespaldo(() => sb.from('programas').select('categoria,' + SEL_EDITOR).eq('id', progId).limit(1), () => sb.from('programas').select(SEL_EDITOR).eq('id', progId).limit(1))
       : sb.from('programas').select(SEL_EDITOR).eq('alumno_id', alumnoId).eq('activo', true).order('id', { ascending: false }).limit(1),
-    sb.from('metodos').select('id,nombre').order('nombre')
+    sb.from('metodos').select('*').order('nombre')
   ]);
   const p = prog.data?.[0] || null;
   if (p) { p.quitados = (p.dias || []).filter(d => d.oculto); p.dias = (p.dias || []).filter(d => !d.oculto); ordSemana(p.dias ||= []); p.dias.forEach(d => { d.bloques_sesion.sort(ordBloque); d.bloques_sesion.forEach(b => b.ejercicios_sesion.sort((a, b) => a.orden - b.orden)); }); }
@@ -9422,7 +9428,7 @@ function formEjSesion(id, bloqueId) {
       <label class="f">Foto (opcional)<input type="file" id="es-nfoto" accept="image/*"></label><div id="es-nprev"></div>
       <label class="f">Vídeo (opcional)<input type="text" id="es-nvid" inputmode="url" placeholder="https://youtu.be/…"></label></div>
     ${hermanos.length ? `<label class="f">Bloque<select id="es-blq">${hermanos.map(x => `<option value="${x.id}" ${x.id === blq.id ? 'selected' : ''}>${esc(x.letra)} · ${esc(x.nombre)}</option>`).join('')}<option value="nuevo">＋ En un bloque nuevo, después del ${esc(blq.letra)}</option></select></label>` : ''}
-    <label class="f">Método<select id="es-met"><option value="">Sin método</option>${S.editor.metodos.map(m => `<option value="${m.id}" ${e?.metodo_id === m.id ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('')}</select></label>
+    <label class="f">Método<select id="es-met"><option value="">Sin método</option>${S.editor.metodos.slice().sort(ordMet).map(m => `<option value="${m.id}" ${e?.metodo_id === m.id ? 'selected' : ''}>${esc(nomMet(m.nombre))}</option>`).join('')}</select></label>
     <div id="es-asis"></div>
     <div class="stack" style="gap:8px"><span class="small muted">Pauta serie a serie. Usa "Tramo sin parar" para las tandas de un método (dropset, cluster, rest-pause…). Series mixtas (cada serie con su método): elige el método «Series mixtas» o pon el método en cada fila de «Nuevas series», p. ej. 1 serie Isométrico + 2 series Normal (dinámico).</span><div id="es-tramos" class="stack" style="gap:10px">${pauta.map((t, i) => filaTramo(t, i === 0)).join('')}</div><button type="button" class="btn sm ghost" id="es-add" style="align-self:flex-start">+ Añadir fila</button></div>
     <label class="f">Ajustes a su medida<input type="text" id="es-aj" value="${esc(e?.ajustes || '')}" placeholder="Ej. Silla: 5 · pies altos"></label>
@@ -9948,7 +9954,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v549';
+const APP_VER = 'v550';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -10318,8 +10324,12 @@ document.addEventListener('click', async e => {
     case 'aprox': { b.classList.add('on'); Guia.series(); const dos = b.dataset.dos ? ` con ${b.dataset.dos}` : ''; if (b.dataset.j === '2') startTimer(60, 'Descanso tras la aproximación 6·3·1'); else toast(b.dataset.j === '0' ? `Ahora 3 repeticiones${dos} (${b.dataset.dos ? 'el 90 % de tu máximo con las dos' : 'tu peso objetivo'})` : `Ahora 1 repetición${dos}, un 10 % más`); break; }
     case 'rir': { const r = b.dataset.r, propio = (S.d?.metodos || {}).RIR;
       abrirSheet(`<div class="stack"><span class="eyebrow">Esfuerzo</span><h2>RIR${r ? ' ' + esc(r) : ''}</h2>${r ? `<p class="aprox" style="margin:0"><b>${esc(Tandas.rirTxt(r))}</b></p>` : ''}<p class="pre" style="margin:0">${esc(propio || 'RIR son las repeticiones que te quedan en reserva al terminar la serie: las que todavía podrías hacer con buena técnica si siguieras.\n\nRIR 0: no podrías hacer ni una más.\nRIR 1: te quedaría 1.\nRIR 2: te quedarían 2.\n\nElige el peso para llegar al final de la serie con ese margen. Si te sobran más, sube el peso; si no llegas a las repeticiones, bájalo.')}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`); break; }
+    case 'ordMetodo': { const l = (S.c.metodos || []).slice().sort(ordMet), i = l.findIndex(m => m.id === +b.dataset.id), j = i + +b.dataset.d; if (i < 0 || j < 0 || j >= l.length) break;
+      [l[i], l[j]] = [l[j], l[i]]; const cam = l.map((m, k) => [m, k]).filter(([m, k]) => m.orden !== k);
+      try { for (const [m, k] of cam) { const r = await sb.from('metodos').update({ orden: k }).eq('id', m.id); if (r.error) throw r.error; m.orden = k; } metInfo(S.c.metodos); render(); }
+      catch (err) { fallo(err, /orden/i.test(err?.message || '') ? 'Falta ejecutar el Bloque 121 en Supabase.' : 'No se ha podido ordenar.'); } break; }
     case 'edEjSes': editarEjEnSesion(+b.dataset.id || null, +b.dataset.b || null, +b.dataset.tras || null); break;
-    case 'metodo': { const n = b.dataset.n; abrirSheet(`<div class="stack"><span class="eyebrow">Método</span><h2>${esc(n)}</h2><p class="pre">${esc((S.d?.metodos || {})[n] || Tandas.MET[n]?.info || 'Pregúntale a Jesús por este método.')}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`); break; }
+    case 'metodo': { const n = b.dataset.n; abrirSheet(`<div class="stack"><span class="eyebrow">Método</span><h2>${esc(nomMet(n))}</h2><p class="pre">${esc((S.d?.metodos || {})[n] || Tandas.MET[n]?.info || 'Pregúntale a Jesús por este método.')}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`); break; }
     case 'terminar': terminar(); break;
     case 'pedirTerminar': pedirTerminar(); break;
     case 'terminarYa': cerrarSheet(); terminar(); break;
