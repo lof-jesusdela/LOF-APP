@@ -895,9 +895,12 @@ function vRegistroDia(s) {
     ${dias.length > 1 ? `<div class="reg-dias" role="group" aria-label="Día a registrar" style="--n:${Math.max(7, dias.length)}">${dias.map(f => { const x = S.d.diario.find(y => y.fecha === f); return `<button type="button" data-act="regDia" data-f="${f}" aria-pressed="${f === sel}" class="${x || S.d.sesiones.some(z => z.fecha === f) ? 'hecho' : ''}">${DIA3[fecha(f).getDay()]}<small>${fecha(f).getDate()}</small></button>`; }).join('')}</div>` : ''}
     ${h}
     ${(s.avisos_alumno || {}).dia_nota === false ? '' : `<textarea id="r-obs" class="chk-txt" rows="2" placeholder="¿Algo importante de ${esHoy ? 'hoy' : 'ese día'}? (opcional)">${esc(r.observacion || '')}</textarea>`}
-    <button class="btn full" data-act="guardarDiario">Guardar mi día</button>
+    ${r.fecha ? '<button id="md-guardar" class="btn full md-guardado" data-act="guardarDiario">✓ ¡DATOS ACTUALIZADOS!</button>' : '<button id="md-guardar" class="btn full" data-act="guardarDiario">Guardar mi día</button>'}
   </div></section>`;
 }
+/* Si toca algo tras guardar, el botón verde vuelve a azul para que no se olvide de guardar */
+const mdSucio = e => { if (!e.target.closest?.('#registro') || e.target.type === 'file') return; const b = document.getElementById('md-guardar'); if (b?.classList.contains('md-guardado')) { b.classList.remove('md-guardado'); b.textContent = 'Guardar cambios'; } };
+document.addEventListener('input', mdSucio); document.addEventListener('change', mdSucio);
 /* Entreno de un día pasado hecho sin la app: elige qué sesión fue y queda registrado ese día (sin pesos) */
 function formEntPasado(f) {
   const P = S.d.programa || S.d.programaBase; if (!P) return toast('No tienes programa activo');
@@ -10002,7 +10005,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v555';
+const APP_VER = 'v556';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
