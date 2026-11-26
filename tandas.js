@@ -398,14 +398,16 @@ const Tandas = {
     return { modo, p };
   },
   ponKg(es, n, p, v) {
-    const z = S.sesion, i = document.getElementById(`kg-${es}-${n}-${p}`); if (!i || this.hecha(z, `${es}-${n}`, p) || !(v > 0)) return;
+    const z = S.sesion, i = document.getElementById(`kg-${es}-${n}-${p}`); if (!i || this.hecha(z, `${es}-${n}`, p) || !(v > 0) || z.man?.[i.id]) return;
     i.value = fmtNum(v, 2); (z.borr ||= {})[i.id] = i.value;
   },
   /* Reparte el peso w (el de la tanda en la posición i) por el resto de tandas aún sin hacer de la serie; desde = solo las siguientes */
+  /* Solo rellena las tandas SIGUIENTES que el alumno no ha tocado a mano; si una la cambió él, las de detrás bajan desde la suya */
   repartir(es, n, s, L, i, w, desde) {
-    const ps = s.tandas.map(t => t.partes[0].p), z = S.sesion, fila = `${es}-${n}`;
-    ps.forEach((p, j) => { if (j === i || (desde && j < i) || this.hecha(z, fila, p) || (desde && z.man?.[`kg-${es}-${n}-${p}`])) return;
-      this.ponKg(es, n, p, this.red(L.modo === 'drop' ? w * Math.pow(1 - L.p, j - i) : w)); });
+    const ps = s.tandas.map(t => t.partes[0].p), z = S.sesion, fila = `${es}-${n}`; let base = w;
+    ps.forEach((p, j) => { if (j <= i) return; const id = `kg-${es}-${n}-${p}`;
+      if (this.hecha(z, fila, p) || z.man?.[id]) { const v = numero(document.getElementById(id)?.value) || numero(z.valores[`${fila}-${p}`]?.kg); if (v > 0) base = v; return; }
+      base = this.red(L.modo === 'drop' ? base * (1 - L.p) : base); this.ponKg(es, n, p, base); });
   },
   reenlazar(inp) {
     const m = /^kg-(\d+)-(\d+)-(\d+)$/.exec(inp.id || ''); if (!m || !S.sesion) return;
@@ -421,11 +423,9 @@ const Tandas = {
     }
     const L = this.enlace(e, s, fila); if (!L) return;
     const ps = s.tandas.map(t => t.partes[0].p), i = ps.indexOf(p); if (i < 0) return;
-    let w = v;
-    if (L.modo === 'drop') {   // nunca menos de un 20 % de bajada respecto a la última tanda ya hecha
-      for (let j = i - 1; j >= 0; j--) { const a = numero(z.valores[`${fila}-${ps[j]}`]?.kg); if (a > 0) { const tope = this.red(a * Math.pow(0.8, i - j)); if (w > tope) { w = tope; inp.value = fmtNum(w, 2); z.borr[inp.id] = inp.value; toast(`En un dropset bajas un 20–30 % cada tanda: lo he ajustado a ${fmtNum(w, 2)} kg`); } break; } }
-    }
-    this.repartir(es, n, s, L, i, w, false);
+    const w = v;
+    /* El peso que pone el alumno manda: puede bajar más (o menos) que la pauta para llegar a su rango de reps */
+    this.repartir(es, n, s, L, i, w, true);
   },
   trasGuardar(e, n, k, sid, L, callado) {
     const z = S.sesion, es = e.id, SER = this.estructura(e), s = SER[n - 1], fila = `${es}-${n}`;
