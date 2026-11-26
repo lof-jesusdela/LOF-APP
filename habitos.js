@@ -188,8 +188,26 @@ const Habitos = (() => {
   const ctxMio = () => contexto(miTemp(), S.perfil?.sexo, S.d?.servicio);
 
   /* ---------- Piezas de interfaz ---------- */
+  /* Hábito de pasos con número (p. ej. «12000 pasos diarios»): se apunta el número exacto de pasos, no Hecho/Mínimo/No.
+     El número va al registro del día (lo usa también el anillo de pasos) y el hábito se marca solo: hecho si llega al objetivo, mínimo si llega a su mínimo */
+  const numPasos = t => { const m = String(t || '').replace(/(\d)[.\s](\d{3})/g, '$1$2').match(/\d{4,6}/); return m ? +m[0] : null; };
+  const pasosHab = h => /paso/i.test([h.titulo, h.si_entonces, h.minimo].filter(Boolean).join(' ')) ? { meta: numPasos(h.titulo) || numPasos(h.si_entonces) || (typeof objPasos === 'function' ? objPasos(S.d?.servicio || {}) : 10000) || 10000, min: numPasos(h.minimo) } : null;
+  async function guardarPasos(id, f) {
+    const d = lista(), h = (d.habitos || []).find(x => x.id === id), P = h && pasosHab(h), inp = document.getElementById(`hbp-${id}-${f}`); if (!P || !inp) return;
+    const n = Math.round(numero(inp.value) || 0); if (!(n > 0)) return toast('Escribe tus pasos');
+    const uid = h.alumno_id, r = await sb.from('registro_diario').upsert({ alumno_id: uid, fecha: f, pasos: n }, { onConflict: 'alumno_id,fecha' }).select().single(); if (r.error) return fallo(r.error);
+    if (d.diario) { d.diario = d.diario.filter(x => x.fecha !== f).concat(r.data); }
+    const v = n >= P.meta ? 'hecho' : P.min && n >= P.min ? 'minimo' : 'no';
+    const row = { habito_id: id, alumno_id: uid, fecha: f, valor: v, motivo: null }, q = await sb.from('habitos_registro').upsert(row, { onConflict: 'habito_id,fecha' }).select().single(); if (q.error) return fallo(q.error);
+    d.habReg = (d.habReg || []).filter(x => !(x.habito_id === id && x.fecha === f)).concat(q.data || row);
+    render(); toast(v === 'hecho' ? `¡${fmtNum(n, 0)} pasos! Objetivo cumplido` : v === 'minimo' ? `${fmtNum(n, 0)} pasos: mínimo cumplido` : `${fmtNum(n, 0)} pasos guardados`);
+  }
   function filaMarca(h, regs, dia) {
-    const v = regs.find(x => x.habito_id === h.id && x.fecha === dia);
+    const v = regs.find(x => x.habito_id === h.id && x.fecha === dia), P = pasosHab(h);
+    if (P) { const r = (lista().diario || []).find(x => x.fecha === dia), est = v?.valor === 'hecho' ? '✅ Objetivo cumplido' : v?.valor === 'minimo' ? '🟡 Mínimo cumplido' : v?.valor === 'no' ? 'Por debajo del mínimo' : '';
+      return `<div class="hb-hoy"><div class="stack" style="gap:3px"><b>${esc(h.titulo)}</b><span class="small muted">Objetivo ${fmtNum(P.meta, 0)}${P.min ? ` · mínimo ${fmtNum(P.min, 0)}` : ''}</span></div>
+        <div class="row" style="gap:8px"><input id="hbp-${h.id}-${dia}" type="text" inputmode="numeric" placeholder="Tus pasos" value="${r?.pasos != null ? esc(String(r.pasos)) : ''}" style="flex:1;font-size:18px;text-align:center"><button type="button" class="btn" data-act="hbPasos" data-id="${h.id}" data-f="${dia}">Guardar</button></div>
+        ${est ? `<span class="small">${est}</span>` : ''}</div>`; }
     return `<div class="hb-hoy"><div class="stack" style="gap:3px"><b>${esc(h.titulo)}</b>${h.si_entonces ? `<span class="small muted">${esc(h.si_entonces)}</span>` : ''}</div>
       <div class="hb-3" role="group" aria-label="¿Lo has hecho?">${[['hecho', 'Hecho'], ['minimo', 'Mínimo'], ['no', 'No']].map(([k, l]) => `<button type="button" class="${k}" data-act="hbMarca" data-id="${h.id}" data-v="${k}" data-f="${dia}" aria-pressed="${v?.valor === k}">${l}</button>`).join('')}</div>
       ${h.minimo ? `<span class="small muted">Mínimo: ${esc(h.minimo)}. También cuenta.</span>` : ''}
@@ -559,6 +577,7 @@ const Habitos = (() => {
       case 'hbCrear': await crear(b); break;
       case 'hbDia': S.hDia = b.dataset.f; render(); break;
       case 'hbMarca': await marcar(id, b.dataset.f, b.dataset.v); break;
+      case 'hbPasos': await guardarPasos(id, b.dataset.f); break;
       case 'hbMotivo': await motivo(id, b.dataset.f, b.dataset.v); break;
       case 'hbActivar': formActivar(id); break;
       case 'hbAjustar': formAjustar(id, false); break;
