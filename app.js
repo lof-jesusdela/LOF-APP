@@ -7364,6 +7364,13 @@ const FCA = {
   on(srv, k) { return k === 'pasos' ? srv.pasos_activo !== false : (srv.avisos_alumno || {})[k] !== false; },
   aplica(srv, k) { return !srv.modulo_futbol && (k !== 'dia_contexto' || !!srv.modulo_nutricion); },
   nAv(srv) { const va = srv.avisos_alumno || {}; return AVISOS_ALUMNO.filter(([k]) => va[k] !== false).length; },
+  /* Cumplimiento de alimentación (comidas del día): lo marca el alumno si tiene Nutrición y ya se le mide; en observación aún no. Toca para ir a su ficha */
+  comidas(aid, sv) {
+    if (sv.modulo_futbol || !sv.modulo_nutricion) return '<button type="button" class="fca-c na" disabled>—</button>';
+    let mide = false, lig = false; try { mide = midoCoach(aid); lig = mide && Nutricion.acuerdoDe(planNutriDe(aid)).nivel === 'ligero'; } catch (e) { }
+    const t = !mide ? 'Obs.' : lig ? 'Ligero' : '✓', c = mide && !lig ? 'y' : 'n';
+    return `<button type="button" class="fca-c ${c}" data-act="fcaAlumno" data-id="${aid}" title="${!mide ? 'En observación: aún no marca comidas' : lig ? 'Seguimiento ligero: sin comidas diarias' : 'Marca cada día las comidas cumplidas'}">${t}</button>`;
+  },
   focoTxt(aid, srv) { if (srv.modulo_futbol) return 'Fútbol'; const f = Foco.de(aid); return f ? Foco.titulo(f) : 'Sin foco'; },
   async cambiar(aid, k) {
     const srv = srvDe(aid); if (!srv) return; const v = !this.on(srv, k);
@@ -7375,10 +7382,10 @@ const FCA = {
   tabla() {
     const L = this.alumnos(), cel = (on, act, aid, k, txt) => `<button type="button" class="fca-c ${on === null ? 'na' : on ? 'y' : 'n'}" ${on === null ? 'disabled' : `data-act="${act}" data-id="${aid}" data-k="${k || ''}"`}>${txt ?? (on === null ? '—' : on ? '✓' : 'No')}</button>`;
     abrirSheet(`<div class="stack"><h2 style="margin:0">Foco, check-ins y avisos</h2><p class="small muted" style="margin:0">Toca una casilla para cambiarla: se guarda al momento y el alumno lo nota ya. Toca el nombre para ver su ficha completa.</p>
-      <div class="fca-wrap"><div class="fca-t fca-cab"><span></span><span></span><span class="fca-g" style="grid-column:span ${this.DIA.length}">Check-in diario</span><span class="fca-g av" style="grid-column:span ${AVISOS_ALUMNO.length}">Avisos si no lo hace</span>
-        <span></span><span class="fca-h">Foco</span>${this.DIA.map(([, t]) => `<span class="fca-h">${t}</span>`).join('')}${AVISOS_ALUMNO.map(([k]) => `<span class="fca-h av">${this.CORTO[k] || k}</span>`).join('')}</div>
+      <div class="fca-wrap"><div class="fca-t fca-cab"><span></span><span></span><span class="fca-g" style="grid-column:span ${this.DIA.length + 1}">Check-in diario</span><span class="fca-g av" style="grid-column:span ${AVISOS_ALUMNO.length}">Avisos si no lo hace</span>
+        <span></span><span class="fca-h">Foco</span>${this.DIA.map(([, t]) => `<span class="fca-h">${t}</span>`).join('')}<span class="fca-h">Comidas</span>${AVISOS_ALUMNO.map(([k]) => `<span class="fca-h av">${this.CORTO[k] || k}</span>`).join('')}</div>
       <div class="fca-t fca-cuerpo" id="fca-cuerpo">${L.map(a => { const sv = srvDe(a.id), f = sv.modulo_futbol ? null : Foco.de(a.id);
-        return `<button type="button" class="fca-n" data-act="fcaAlumno" data-id="${a.id}">${esc((a.nombre || '').split(' ').slice(0, 2).join(' '))}</button>${sv.modulo_futbol ? cel(null, '', a.id, '', '⚽ Check-ins') : `<button type="button" class="fca-c ${f ? 'fo' : 'n'}" data-act="fcaFoco" data-id="${a.id}">${esc(this.focoTxt(a.id, sv))}</button>`}${this.DIA.map(([k]) => cel(this.aplica(sv, k) ? this.on(sv, k) : null, 'fcaDia', a.id, k)).join('')}${AVISOS_ALUMNO.map(([k]) => cel((sv.avisos_alumno || {})[k] !== false, 'fcaDia', a.id, k)).join('')}`; }).join('')}</div></div></div>`);
+        return `<button type="button" class="fca-n" data-act="fcaAlumno" data-id="${a.id}">${esc((a.nombre || '').split(' ').slice(0, 2).join(' '))}</button>${sv.modulo_futbol ? cel(null, '', a.id, '', '⚽ Check-ins') : `<button type="button" class="fca-c ${f ? 'fo' : 'n'}" data-act="fcaFoco" data-id="${a.id}">${esc(this.focoTxt(a.id, sv))}</button>`}${this.DIA.map(([k]) => cel(this.aplica(sv, k) ? this.on(sv, k) : null, 'fcaDia', a.id, k)).join('')}${this.comidas(a.id, sv)}${AVISOS_ALUMNO.map(([k]) => cel((sv.avisos_alumno || {})[k] !== false, 'fcaDia', a.id, k)).join('')}`; }).join('')}</div></div></div>`);
     $('#sheet-in')?.classList.add('ancho', 'fca');
     /* Vuelve a donde estabas en la lista (al volver de un foco o de una ficha) */
     const cu = $('#fca-cuerpo'); if (cu && S.fcaScroll) { cu.scrollTop = S.fcaScroll; } if (cu) cu.addEventListener('scroll', () => { S.fcaScroll = cu.scrollTop; }, { passive: true });
@@ -7509,12 +7516,14 @@ function vAnillosFicha(a, f, src, hoy, lunes) {
 }
 let MONT_LABS = null;   /* letras de los días cuando la semana no empieza en lunes (últimos 7 días) */
 function vAnillos(a, R, d, detalle, yo) {
+  let FUS = null;   /* foco que coincide con un anillo (pasos o entrenos): va dentro de ese anillo, no aparte */
   const su = yo ? 'tu' : 'su', w = d.w, dias = [...Array(7)].map((_, i) => sumaDias(R.lunes, i)); MONT_LABS = dias.map(x => DSEM[(fecha(x).getDay() + 6) % 7]); const _x0 = 0, hoyF = hoyISO(), FUT = { v: null, t: 'Aún no ha llegado' }, srv = d.srv, L = [], filas = [];
   const fila = (k, tit, val, sub, chart, nota) => `<details class="rg-ban"${detalle ? ' open' : ''}${yo ? '' : ` data-ir="${k}"`}><summary><i style="background:${RG_COL[k]}"></i><span class="grow"><b${yo ? '' : ` class="rg-tit"`}>${tit}</b><small>${sub}</small></span><b class="num rg-v" style="color:${RG_COL[k]}">${val}</b></summary>${chart}${nota ? `<div class="small muted">${nota}</div>` : ''}</details>`;
   const plana = (k, tit, val, sub) => `<div class="rg-ban rg-plana"><div class="rg-sum"><i style="background:${RG_COL[k]};opacity:.35"></i><span class="grow"><b>${tit}</b><small>${sub}</small></span><b class="num rg-v">${val}</b></div></div>`;
   /* Foco: el anillo exterior y el más importante; solo en la semana (o los 7 días) que incluye hoy */
   { const fo = a._sinFoco ? null : yo ? S.d.servicio?.foco : Foco.de(a.id), hoyIn = dias.includes(hoyF), src = yo ? S.d : (R.src || S.c);
-    if (fo?.tipo) { let e = null; try { e = focoEstado(fo, src, a.id, hoyIn ? undefined : dias[6]); } catch (er) { }
+    if (fo?.tipo === 'pasos' || fo?.tipo === 'entrenos') FUS = { k: fo.tipo, meta: +fo.meta || 0, txt: fo.texto || Foco.titulo(fo) };
+    else if (fo?.tipo) { let e = null; try { e = focoEstado(fo, src, a.id, hoyIn ? undefined : dias[6]); } catch (er) { }
       if (e) { const okD = f => e.ult7.find(z => z.f === f)?.ok, hechos = dias.filter(f => f <= hoyF && okD(f)).length, enRango = dias.filter(f => f <= hoyF && okD(f) !== undefined).length;
         const tot = fo.tipo === 'entrenos' ? Math.max(1, Math.round(+fo.meta || 1)) : enRango, pct = tot ? Math.min(100, Math.round(hechos / tot * 100)) : 0;
         L.push({ tit: 'Foco', pct, col: RG_COL.foc });
@@ -7527,11 +7536,12 @@ function vAnillos(a, R, d, detalle, yo) {
       L.push({ tit: 'Hábito', pct, col: RG_COL.hab });
       filas.push(fila('hab', '🌱 Hábito', pct + ' %', `${esc(hb.titulo)} · ${hechos} de ${pasados.length} días`,
         montanitas(dias.map(f => f > hoyF ? FUT : f < hb.inicio ? { v: null, t: 'Aún no había empezado' } : !v(f) ? { v: null, t: 'Sin marcar' } : { v: v(f) === 'no' ? 0 : 100, t: v(f) === 'no' ? 'No' : v(f) === 'minimo' ? 'Versión mínima' : 'Hecho' }), RG_COL.hab), '')); } }
-  if (d.dpw) {
-    L.push({ tit: 'Entrenos', pct: d.pctE, col: RG_COL.ent });
-    const extra = w.entrenos > d.dpw ? ` · +${w.entrenos - d.dpw} extra` : '';
-    filas.push(fila('ent', 'Entrenos', `${d.pctE} %`, `${Math.min(w.entrenos, d.dpw)} de ${d.dpw} hechos${extra}`,
-      montanitas(dias.map(f => { if (f > hoyF) return FUT; const ss = w.ses.filter(x => x.fecha === f); return { v: ss.length ? 100 : 0, t: ss.length ? ss.map(x => nomDia(x.dias)).join(' + ') : 'Sin entreno', et: ss.length > 1 ? '×' + ss.length : '' }; }), RG_COL.ent),
+  if (d.dpw || FUS?.k === 'entrenos') {
+    const fE = FUS?.k === 'entrenos', dpw = fE && FUS.meta ? Math.max(1, Math.round(FUS.meta)) : d.dpw, pctE = Math.min(100, Math.round(w.entrenos / Math.max(1, dpw) * 100)), kE = fE ? 'foc' : 'ent';
+    L.push({ tit: fE ? 'Foco' : 'Entrenos', pct: pctE, col: RG_COL[kE] });
+    const extra = w.entrenos > dpw ? ` · +${w.entrenos - dpw} extra` : '';
+    filas.push(fila(kE, fE ? '🎯 Foco · Entrenos' : 'Entrenos', `${pctE} %`, `${Math.min(w.entrenos, dpw)} de ${dpw} hechos${extra}`,
+      montanitas(dias.map(f => { if (f > hoyF) return FUT; const ss = w.ses.filter(x => x.fecha === f); return { v: ss.length ? 100 : 0, t: ss.length ? ss.map(x => nomDia(x.dias)).join(' + ') : 'Sin entreno', et: ss.length > 1 ? '×' + ss.length : '' }; }), RG_COL[kE]),
       w.ent?.retomadas ? `${w.ent.retomadas} sesión${w.ent.retomadas === 1 ? '' : 'es'} retomada${w.ent.retomadas === 1 ? '' : 's'}: cuenta una vez.` : ''));
   }
   if (srv?.modulo_nutricion) {
@@ -7546,10 +7556,11 @@ function vAnillos(a, R, d, detalle, yo) {
         w.ing.dias < 7 ? (yo ? 'Los puntos grises son días sin apuntar.' : 'Los puntos grises son días sin registro: no cuentan como fallo.') : ''));
     }
   }
-  if (conPasos(srv) && !(yo && w.pasosMedia == null && srv?.modulo_habitos && Habitos.tienePasos(hoyISO()))) {
-    L.push({ tit: 'Pasos', pct: d.pctP, col: RG_COL.pas });
-    filas.push(fila('pas', 'Pasos', w.pasosMedia != null ? fmtNum(w.pasosMedia, 0) : '—', `media · obj. ${fmtNum(d.obj, 0)}`,
-      montanitas(dias.map(f => { if (f > hoyF) return FUT; const r = w.reg.find(x => x.fecha === f && x.pasos != null); return r ? { v: Math.round(r.pasos / d.obj * 100), t: fmtNum(r.pasos, 0) + ' pasos', et: r.pasos >= 1000 ? Math.round(r.pasos / 1000) + 'k' : '' } : { v: null, t: 'Sin registro' }; }), RG_COL.pas, d.obj),
+  if (FUS?.k === 'pasos' || conPasos(srv) && !(yo && w.pasosMedia == null && srv?.modulo_habitos && Habitos.tienePasos(hoyISO()))) {
+    const fP = FUS?.k === 'pasos', kP = fP ? 'foc' : 'pas'; if (fP && FUS.meta) d = { ...d, obj: FUS.meta, pctP: w.pasosMedia != null ? Math.round(w.pasosMedia / FUS.meta * 100) : null };
+    L.push({ tit: fP ? 'Foco' : 'Pasos', pct: d.pctP, col: RG_COL[kP] });
+    filas.push(fila(kP, fP ? '🎯 Foco · Pasos' : 'Pasos', w.pasosMedia != null ? fmtNum(w.pasosMedia, 0) : '—', `media · obj. ${fmtNum(d.obj, 0)}`,
+      montanitas(dias.map(f => { if (f > hoyF) return FUT; const r = w.reg.find(x => x.fecha === f && x.pasos != null); return r ? { v: Math.round(r.pasos / d.obj * 100), t: fmtNum(r.pasos, 0) + ' pasos', et: r.pasos >= 1000 ? Math.round(r.pasos / 1000) + 'k' : '' } : { v: null, t: 'Sin registro' }; }), RG_COL[kP], d.obj),
       `${yo ? 'Apuntaste' : 'Registró'} ${w.diasPasos} de 7 días. La línea discontinua es ${su} objetivo.`));
   }
   if (!filas.length) return '<p class="small muted">Sin objetivos medibles esta semana.</p>';
@@ -9937,7 +9948,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v547';
+const APP_VER = 'v548';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
