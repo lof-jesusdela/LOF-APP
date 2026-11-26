@@ -2117,16 +2117,16 @@ function pintarCrono() {
 const clavePausa = () => claveCrono() + '-p';
 const msEnt = () => S.sesion?.inicio ? Math.max(0, (S.sesion.pausa || Date.now()) - S.sesion.inicio) : 0;
 function cronoHTML() {
-  const p = !!S.sesion?.pausa;
-  return `<span class="crono-t num" id="crono-t">${fmtCrono(msEnt())}</span><span class="small grow">${p ? 'En pausa' : 'En curso'}</span>${p ? '<button type="button" class="crono-b re" data-act="reanudarEnt">▶ Reanudar</button>' : '<button type="button" class="crono-b pa" data-act="pausarEnt">❚❚ Pausar</button>'}<button type="button" class="crono-b te" data-act="pedirTerminar">■ Terminar</button>`;
+  return `<span class="crono-t num" id="crono-t">${fmtCrono(msEnt())}</span><span class="small grow">En curso</span><button type="button" class="crono-b te" data-act="pedirTerminar">■ Terminar</button>`;
 }
 function pausarEnt() {
+  return;   /* sin pausa: el tiempo de entreno corre siempre, también con el móvil bloqueado o en otra pantalla */
   if (!S.sesion?.inicio || S.sesion.pausa || S.sesion.finMin || S.sesion.editar) return;
   S.sesion.pausa = Date.now(); try { localStorage.setItem(clavePausa(), String(S.sesion.pausa)); } catch (e) { } pintarCrono(); pintaVuelve();
 }
 function reanudarEnt() {
   if (!S.sesion?.pausa) return;
-  if (S.sesion.inicio) { S.sesion.inicio += Date.now() - S.sesion.pausa; try { localStorage.setItem(claveCrono(), String(S.sesion.inicio)); } catch (e) { } }
+  if (S.sesion.inicio && false) { S.sesion.inicio += Date.now() - S.sesion.pausa; try { localStorage.setItem(claveCrono(), String(S.sesion.inicio)); } catch (e) { } }
   S.sesion.pausa = null; try { localStorage.removeItem(clavePausa()); } catch (e) { } pintarCrono(); pintaVuelve();
 }
 function pedirTerminar() {
@@ -2139,12 +2139,12 @@ function pintaVuelve(vis = !!$('#ses-pasos')) {
   let b = $('#vuelve-ent'); const ver = enCurso() && !!S.sesion?.inicio && !vis;
   if (!ver) { if (b) b.hidden = true; return; }
   if (!b) { document.body.insertAdjacentHTML('beforeend', '<button type="button" id="vuelve-ent" class="vuelve-ent" data-act="volverEnt"></button>'); b = $('#vuelve-ent'); }
-  b.hidden = false; b.innerHTML = `▶ Volver al entreno <span class="num" id="vuelve-t">${fmtCrono(msEnt())}</span>`;
+  b.hidden = false; b.innerHTML = `🏋️ Volver al entreno <span class="num" id="vuelve-t">${fmtCrono(msEnt())}</span>`;
 }
 function trasRenderEnt() {
   const vis = !!$('#ses-pasos');
   if (enCurso() && S.sesion?.inicio) {
-    if (!vis) { pausarEnt(); S.sesion._volver = true; }
+    if (!vis) S.sesion._volver = true;
     else if (S.sesion._volver) { S.sesion._volver = false; reanudarEnt(); const el = S.sesion.ultEx && document.getElementById(S.sesion.ultEx); if (el) requestAnimationFrame(() => setTimeout(() => { el.scrollIntoView({ block: 'start' }); window.scrollBy(0, -150); }, 30)); }
   }
   pintaVuelve(vis);
@@ -2164,7 +2164,7 @@ async function abrirDia(id, op = {}) {
   const fechaS = op.fecha || S.obj?.fecha || hoyISO(), editar = !!op.editar;
   const prev = S.sesion?.diaId === id && S.sesion.fecha === fechaS && !!S.sesion.editar === editar ? S.sesion : null;   // al volver a la misma sesión se conserva lo escrito sin confirmar
   S.sesion = { id: null, regs: {}, valores: {}, ultimos: {}, inicio: null, fecha: fechaS, editar, diaId: id, borr: prev?.borr || {}, abiertas: prev?.abiertas || {} }; S.paso = null;
-  if (!editar) try { const v = +localStorage.getItem(claveCrono()); if (v) S.sesion.inicio = v; const pz = +localStorage.getItem(clavePausa()); if (pz && v && pz >= v) S.sesion.pausa = pz; } catch (e) { }
+  if (!editar) try { const v = +localStorage.getItem(claveCrono()); if (v) S.sesion.inicio = v; localStorage.removeItem(clavePausa()); } catch (e) { }
   S.previa = editar ? null : id;
   S.tab = 'entreno'; window.scrollTo(0, 0);
   const ids = S.dia.bloques_sesion.flatMap(b => b.ejercicios_sesion.map(e => e.id));
@@ -9934,7 +9934,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v543';
+const APP_VER = 'v544';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -10064,7 +10064,7 @@ function stopTimer() { silencioVivo(false); avisoSW(false); clearInterval(T.iv);
     S.tmMini = dy > 0; el.classList.toggle('mini', S.tmMini); document.body.classList.toggle('tm-grande', !S.tmMini); }, { passive: true }); })();
 /* Bloquear la pantalla o salir de la app para la alarma al momento */
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') { callar(); if (enCurso()) { pausarEnt(); if (S.sesion) S.sesion._volver = true; } return; }
+  if (document.visibilityState === 'hidden') { callar(); if (enCurso() && S.sesion) S.sesion._volver = true; return; }
   if (S.sesion?._volver && $('#ses-pasos')) { S.sesion._volver = false; reanudarEnt(); }   /* vuelve a la app con el entreno a la vista: se reanuda solo */
   try { if (T.ctx && T.ctx.state !== 'running' && !$('#timer').hidden) T.ctx.resume(); } catch (e) { }
   if (!$('#timer').hidden && T.iv) tick();
