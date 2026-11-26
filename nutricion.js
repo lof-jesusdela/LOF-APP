@@ -416,7 +416,7 @@ const Nutricion = (() => {
     const fs = fotosDe(x), u = fs[0] && fotoUrl(fs[0]), todas = fs.map(fotoUrl).filter(Boolean).join('|');
     const mini = u ? (coach ? `<button class="img nu-mini" data-act="verImagenes" data-s="${esc(todas)}" aria-label="Ver fotos" style="position:relative"><img src="${esc(u)}" alt="">${fs.length > 1 ? `<span class="pill" style="position:absolute;right:2px;bottom:2px">+${fs.length - 1}</span>` : ''}</button>` : `<span style="position:relative;display:inline-block"><img class="nu-mini" src="${esc(u)}" alt="">${fs.length > 1 ? `<span class="pill" style="position:absolute;right:2px;bottom:2px">+${fs.length - 1}</span>` : ''}</span>`) : `<span class="nu-mini nu-ph" aria-hidden="true">🍽</span>`;
     return `<div class="line nu-com" ${coach ? '' : `data-act="nuEditar" data-id="${x.id}"`}>${mini}<div class="grow stack" style="gap:2px;min-width:0"><span class="small"><b>${esc(x.momento || 'Comida')}</b>${x.plato ? ' · ' + esc(x.plato) : ''}${x.contexto ? ` <span class="muted">· ${esc(x.contexto)}</span>` : ''}</span>
-      ${alimentosTxt(x) ? `<span class="small muted">${esc(alimentosTxt(x))}</span>` : ''}${x.nota ? `<span class="small muted">«${esc(x.nota)}»</span>` : ''}</div>${coach ? pillEnc(x) : pillEncA(x)}</div>`;
+      ${alimentosTxt(x) ? `<span class="small muted">${esc(alimentosTxt(x))}</span>` : ''}${x.nota ? `<span class="small muted">«${esc(x.nota)}»</span>` : ''}${x.coach_nota && !coach ? `<span class="small"><b>Jesús:</b> ${esc(x.coach_nota)}</span>` : ''}</div>${coach ? pillEnc(x) : pillEncA(x)}</div>`;
   }
   function estadoCreacion(x) {
     return x.coach_estado === 'anadido' ? '<span class="pill ok">✓ Añadida a tus menús</span>' : x.coach_estado === 'visto' ? '<span class="pill blue">Revisada por Jesús</span>' : '<span class="pill">Enviada · pendiente de revisión</span>';
@@ -431,7 +431,7 @@ const Nutricion = (() => {
       ${l.length ? `<div>${l.map(x => lineaComida(x, false)).join('')}</div>` : `<p class="small muted" style="margin:0">${sel === hoyISO() ? 'Hoy' : 'Ese día'} no has apuntado nada.</p>`}
       <button class="btn" data-act="nuFoto7">📷 Subir foto de una comida</button><button class="btn ghost" data-act="nuNueva">＋ Apuntar con detalle (alimentos, creación propia…)</button></div></section>
       <section class="section"><div class="section-head"><h2>Tus creaciones</h2></div><div class="card stack">
-        ${mias.length ? `<div>${mias.slice().reverse().map(x => `<div class="line" style="align-items:flex-start" data-act="nuEditar" data-id="${x.id}"><div class="grow stack" style="gap:2px"><span class="small"><b>${esc(x.plato || 'Plato sin nombre')}</b> <span class="muted">· ${esc(fCorta(x.fecha))}</span></span>${alimentosTxt(x) ? `<span class="small muted">${esc(alimentosTxt(x))}</span>` : ''}${x.coach_nota ? `<span class="small"><b>Jesús:</b> ${esc(x.coach_nota)}</span>` : ''}</div>${estadoCreacion(x)}</div>`).join('')}</div>` : ''}
+        ${mias.length ? `<div>${mias.slice().reverse().map(x => `<div class="line" id="nuc-${x.id}" style="align-items:flex-start" data-act="nuEditar" data-id="${x.id}"><div class="grow stack" style="gap:2px"><span class="small"><b>${esc(x.plato || 'Plato sin nombre')}</b> <span class="muted">· ${esc(fCorta(x.fecha))}</span></span>${alimentosTxt(x) ? `<span class="small muted">${esc(alimentosTxt(x))}</span>` : ''}${x.coach_nota ? `<span class="small"><b>Jesús:</b> ${esc(x.coach_nota)}</span>` : ''}</div>${estadoCreacion(x)}</div>`).join('')}</div>` : ''}
         <p class="small muted" style="margin:0">¿Has inventado un plato que encaja con tu plan? Apúntalo y marca «Es una creación mía». Jesús la revisará y, si encaja con tu plan, puede añadirla a tus menús. Verás aquí en qué punto está.</p></div></section>`;
   }
   function momentoSugerido(dia) {
@@ -546,10 +546,12 @@ const Nutricion = (() => {
     const f = S.ficha, x = f?.comidas?.find(c => c.id === id); if (!x) return;
     abrirSheet(`<form class="stack" id="f-nun"><h2>Responder</h2><p class="small muted">${esc(x.plato || 'Su creación')}: lo verá en su pestaña Nutrición.</p><label class="f">Tu respuesta<textarea id="nun-t" rows="4" placeholder="Ej. ¡Genial! La añado como opción de comida en tu día de entreno.">${esc(x.coach_nota || '')}</textarea></label><button class="btn full" type="submit">Guardar</button></form>`);
     $('#f-nun').addEventListener('submit', async e => {
-      e.preventDefault(); const t = $('#nun-t').value.trim() || null, c = { coach_nota: t, coach_estado: x.coach_estado || 'visto' };
+      e.preventDefault(); const t = $('#nun-t').value.trim() || null, c = { coach_nota: t, coach_estado: x.coach_estado || 'visto' }, antes = x.coach_nota || null;
       const { error } = await sb.from('comidas_registro').update(c).eq('id', id); if (error) return fallo(error);
       Object.assign(x, c); if (S.c?.creacionesNuevas) S.c.creacionesNuevas = S.c.creacionesNuevas.filter(z => z.id !== id);
-      cerrarSheet(); toast('Respuesta guardada'); render();
+      /* También le llega al chat, con la foto de la comida, y le avisa al móvil */
+      let chat = false; if (t && t !== antes) { try { await Consultas.mensajeJesus(x.alumno_id || f.id, Consultas.marcaComida(x, fotosDe(x)[0]) + t); chat = true; } catch (er) { console.warn(er); } }
+      cerrarSheet(); toast(chat ? 'Respuesta guardada y enviada a su chat' : 'Respuesta guardada'); render();
     });
   }
   /* Vista previa para el coach: lo que ve el alumno (sin su diario) */

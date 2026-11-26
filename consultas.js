@@ -101,6 +101,13 @@ const Consultas = (() => {
   /* ---------- Hilo tipo WhatsApp ---------- */
   /* Responder a un mensaje concreto (deslizar a la derecha, como en WhatsApp): la cita va al inicio del texto como [[cita:id:al|je]] */
   const CITA = /^\[\[cita:([^:\]]+):(al|je)\]\]\s*/;
+  /* Respuesta de Jesús a una comida que subió el alumno: [[comida:id|foto|fecha|plato]] al inicio; en el chat sale la foto y, al tocarla, va a esa comida en Nutrición */
+  const COMIDA = /^\[\[comida:([^|\]]*)\|([^|\]]*)\|([^|\]]*)\|([^\]]*)\]\]\s*/;
+  const conComida = txt => { const r = COMIDA.exec(txt || ''); return r ? { txt: String(txt).slice(r[0].length), comida: { id: r[1], foto: r[2], fecha: r[3], plato: r[4] } } : { txt, comida: null }; };
+  const marcaComida = (x, foto) => `[[comida:${x.id}|${String(foto || '').replace(/[|\]]/g, '')}|${x.fecha || ''}|${String(x.plato || x.momento || 'Tu comida').replace(/[|\]]/g, '')}]]`;
+  function vComidaMsg(cm) {
+    return `<button type="button" class="wa-comida" data-act="cq" data-q="irComida" data-v="${esc(cm.id)}" data-f="${esc(cm.fecha)}">${cm.foto ? `<img data-cfoto="${esc(cm.foto)}" alt="">` : '<span class="ph">🍽️</span>'}<span><b>🍽️ ${esc(cm.plato)}</b><small>${cm.fecha ? esc(fCorta(cm.fecha)) + ' · ' : ''}Toca para verla</small></span></button>`;
+  }
   const conCita = txt => { const r = CITA.exec(txt || ''); return r ? { txt: String(txt).slice(r[0].length), cita: { id: r[1], de: r[2] } } : { txt, cita: null }; };
   function vCita(ci, yo, aid) {
     const L = (yo === 'je' ? S.c?.consultas : S.d?.consultas) || [], o = L.find(x => String(x.id) === String(ci.id));
@@ -113,7 +120,7 @@ const Consultas = (() => {
     L.forEach(c => {
       if (/^wa_/.test(c.tema)) { if (conSys) { const [, ico, t] = tm(c.tema); M.push({ sys: true, t: c.creado_at, txt: `${ico} Abrió WhatsApp para: ${t.toLowerCase()}` }); } return; }
       if (c.texto) M.push({ de: 'al', t: c.creado_at, ...conCita(c.texto), c });
-      if (c.respuesta) M.push({ de: 'je', t: c.respondida_at || c.creado_at, ...conCita(c.respuesta), c });
+      if (c.respuesta) { const q = conCita(c.respuesta), k = conComida(q.txt); M.push({ de: 'je', t: c.respondida_at || c.creado_at, ...q, txt: k.txt, comida: k.comida, c }); }
     });
     return M.sort((a, b) => new Date(a.t) - new Date(b.t));
   }
@@ -138,7 +145,7 @@ const Consultas = (() => {
     const ejHtml = ej ? `<button type="button" class="wa-ejref" data-act="cq" data-q="fotourl" data-u="${esc(ej.imagen_url || '')}">${ej.imagen_url ? `<img src="${esc(ej.imagen_url)}" alt="" loading="lazy">` : '<span class="ph">🏋️</span>'}<b>${esc(ej.nombre)}</b></button>` : '';
     const foto = m.de === 'al' && c.foto ? `<button type="button" class="wa-foto" data-act="cq" data-q="foto" data-p="${esc(c.foto)}"><img data-foto="${esc(c.foto)}" alt="Foto"></button>` : '';
     const marca = MARCA_AV.test(m.txt || ''), txt = marca ? m.txt.replace(MARCA_AV, '').trim() : m.txt;
-    return `<div class="wa-msg ${mio ? 'mio' : ''}${yo === 'je' ? ' pulsable' : ''}" id="m-${c.id}-${m.de}"${yo === 'je' ? ` data-cid="${c.id}" data-de="${m.de}"` : ''}>${m.cita ? vCita(m.cita, yo, c.alumno_id) : ''}${chip}${ejHtml}${foto}${txt && !(foto && txt === '📷') ? `<span class="wa-txt">${esc(txt)}</span>` : ''}${marca ? vAvisosMsg(yo) : ''}<span class="wa-hr">${esc(hora(m.t))}${tick}</span></div>${leidoTxt}`;
+    return `<div class="wa-msg ${mio ? 'mio' : ''}${yo === 'je' ? ' pulsable' : ''}" id="m-${c.id}-${m.de}"${yo === 'je' ? ` data-cid="${c.id}" data-de="${m.de}"` : ''}>${m.cita ? vCita(m.cita, yo, c.alumno_id) : ''}${m.comida ? vComidaMsg(m.comida) : ''}${chip}${ejHtml}${foto}${txt && !(foto && txt === '📷') ? `<span class="wa-txt">${esc(txt)}</span>` : ''}${marca ? vAvisosMsg(yo) : ''}<span class="wa-hr">${esc(hora(m.t))}${tick}</span></div>${leidoTxt}`;
   }
   function hilo(L, yo) {
     const M = mensajes(L, yo === 'je'); let ult = '';
@@ -162,6 +169,9 @@ const Consultas = (() => {
   }
   /* Fotos privadas: enlaces firmados de 1 h, sin volver a pintar el chat */
   async function pintaFotos() {
+    const cf = [...document.querySelectorAll('#sheet-in img[data-cfoto]')];
+    if (cf.length) { const fl = [...new Set(cf.map(i => i.dataset.cfoto).filter(p => !FOTOS['c:' + p]))]; if (fl.length) { const r = await sb.storage.from('comidas').createSignedUrls(fl, 3600); (r.data || []).forEach(x => { if (x.signedUrl) FOTOS['c:' + x.path] = x.signedUrl; }); }
+      cf.forEach(i => { if (FOTOS['c:' + i.dataset.cfoto]) i.src = FOTOS['c:' + i.dataset.cfoto]; }); }
     const imgs = [...document.querySelectorAll('#sheet-in img[data-foto]')]; if (!imgs.length) return;
     const faltan = [...new Set(imgs.map(i => i.dataset.foto).filter(p => !FOTOS[p]))];
     if (faltan.length) { const r = await sb.storage.from('consultas').createSignedUrls(faltan, 3600); (r.data || []).forEach(x => { if (x.signedUrl) FOTOS[x.path] = x.signedUrl; }); }
@@ -579,7 +589,7 @@ Jesús`, 'nutricion']];
   async function mensajeJesus(aid, txt) {
     const ahora = new Date().toISOString();
     const { data, error } = await sb.from('consultas').insert({ alumno_id: aid, tema: 'jesus', texto: null, respuesta: txt, estado: 'respondida', respondida_at: ahora }).select().single();
-    if (error) throw error; meter((S.c.consultas ||= []), data); avisarAlumno(aid, txt, '💬 Jesús te ha enviado un mensaje'); return data;
+    if (error) throw error; meter((S.c.consultas ||= []), data); const k = conComida(txt); avisarAlumno(aid, k.comida ? `${k.comida.plato}: ${k.txt}` : txt, k.comida ? '🍽️ Jesús ha respondido a tu comida' : '💬 Jesús te ha enviado un mensaje'); return data;
   }
   function avisarAlumno(aid, txt, titulo = '💬 Jesús te ha respondido') {
     if (S.vista || S.prueba) return;
@@ -653,6 +663,9 @@ Jesús`, 'nutricion']];
       case 'fotourl': if (b.dataset.u) verFoto(null, b.dataset.u); break;
       case 'envresp': await guardaResp(false); break;
       case 'sincita': S.cqCita = null; pintaCita(); break;
+      case 'irComida': { if (S.modo === 'coach' && !S.obj) { const u = FOTOS['c:' + (b.querySelector('img')?.dataset.cfoto || '')]; if (u) verFoto(null, u); break; }
+        cerrarSheet(); S.tab = 'nutricion'; if (b.dataset.f && b.dataset.f >= sumaDias(hoyISO(), -6)) S.nDia = b.dataset.f; render(); window.scrollTo(0, 0);
+        setTimeout(() => { const el = document.getElementById('nuc-' + b.dataset.v); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1600); } }, 250); break; }
       case 'irCita': { const el = document.getElementById(v); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1400); } else toast('Ese mensaje ya no está en el chat'); break; }
       case 'cerrar': await guardaResp(true); break;
     }
@@ -667,7 +680,7 @@ Jesús`, 'nutricion']];
     const t = new Date(mio).getTime(), h = (Date.now() - t) / 36e5;
     return (!suyo || suyo < mio) && h >= 48 && h <= 24 * 21 ? mio.slice(0, 10) : null;
   }
-  return { fijados, ponFijado, citar, marcarLeido, ponNoLeido, abrirLista, sinRespuesta, mensajeJesus, menuMsg, reenviarPick, difTecleo: () => { if (S.cqDif) { S.cqDif.conf = false; clearTimeout(S.cqDifT); S.cqDifT = setTimeout(() => { const t = document.getElementById('cq-dif'); if (!t) return; const pos = t.selectionStart; S.cqDif.txt = t.value; abrirDifusion(); const n = document.getElementById('cq-dif'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }, 900); } }, ajustaAlto, elegirFoto, TEL, vBoton, abrirLista, vDevolucion, metrica, cargarAlumno, cargarCoach, vAlumno, vAvisoHoy, vCoach, vFinEntreno, leerFinEntreno, crearDeFin, accion, sinLeer, abiertas, abrirHilo };
+  return { marcaComida, fijados, ponFijado, citar, marcarLeido, ponNoLeido, abrirLista, sinRespuesta, mensajeJesus, menuMsg, reenviarPick, difTecleo: () => { if (S.cqDif) { S.cqDif.conf = false; clearTimeout(S.cqDifT); S.cqDifT = setTimeout(() => { const t = document.getElementById('cq-dif'); if (!t) return; const pos = t.selectionStart; S.cqDif.txt = t.value; abrirDifusion(); const n = document.getElementById('cq-dif'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }, 900); } }, ajustaAlto, elegirFoto, TEL, vBoton, abrirLista, vDevolucion, metrica, cargarAlumno, cargarCoach, vAlumno, vAvisoHoy, vCoach, vFinEntreno, leerFinEntreno, crearDeFin, accion, sinLeer, abiertas, abrirHilo };
 })();
 
 /* Intro envía el mensaje (Mayús+Intro hace salto de línea) */
