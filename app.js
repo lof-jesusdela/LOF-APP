@@ -871,7 +871,7 @@ function vRegistroDia(s) {
   }
   const hbP = hb && Habitos.pasosHab?.(hb);
   if (hbP) { const v = (S.d.habReg || []).find(x => x.habito_id === hb.id && x.fecha === sel)?.valor;
-    fs.push(`<div class="md-fo"><span class="md-ib" style="background:#C9A227">🌱</span><div class="grow"><b>${esc(hb.titulo)}</b><small class="muted" style="display:block">Objetivo ${fmtNum(hbP.meta, 0)}${hbP.min ? ` · mínimo ${fmtNum(hbP.min, 0)}` : ''}${v ? ' · ' + (v === 'hecho' ? '✅ cumplido' : v === 'minimo' ? '🟡 mínimo' : 'por debajo') : ''}</small></div><input id="r-pasos" class="md-num" type="number" inputmode="numeric" min="0" placeholder="Pasos" value="${r.pasos ?? ''}" aria-label="Pasos"></div>`); }
+    fs.push(`<div class="md-fo md-fo-pasos"><span class="md-ib" style="background:#C9A227">🌱</span><div class="grow"><b>${esc(hb.titulo)}</b><small class="muted" style="display:block">Objetivo ${fmtNum(hbP.meta, 0)}${hbP.min ? ` · mínimo ${fmtNum(hbP.min, 0)}` : ''}${v ? ' · ' + (v === 'hecho' ? '✅ cumplido' : v === 'minimo' ? '🟡 mínimo' : 'por debajo') : ''}</small></div><input id="r-pasos" class="md-num md-num-pasos" type="number" inputmode="numeric" min="0" placeholder="Pasos de hoy" value="${r.pasos ?? ''}" aria-label="Pasos"></div>`); }
   else if (hb) { const v = (S.d.habReg || []).find(x => x.habito_id === hb.id && x.fecha === sel)?.valor; fs.push(`<div class="md-fo"><span class="md-ib" style="background:#C9A227">🌱</span><b class="grow">${esc(hb.titulo)}</b>${yn('mdHab', `data-id="${hb.id}" data-f="${sel}"`, 'Hecho', 'No', v ? v !== 'no' : null)}</div>`); }
   if (fs.length) h += `<div class="md-focos">${fs.join('')}</div>`;
   /* Comidas del plan cumplidas (cuando ya se le mide la alimentación y no es su foco) */
@@ -10002,7 +10002,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v554';
+const APP_VER = 'v555';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
