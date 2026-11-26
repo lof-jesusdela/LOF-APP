@@ -573,7 +573,7 @@ function render() {
   $('#tabs').hidden = false;
   $('#tabs-in').innerHTML = tabs.map(([k, l]) => `<button ${!coach && k === 'coach' ? 'class="tab-c" ' : ''}data-act="${coach ? 'ctab' : 'tab'}" data-t="${k}" ${actual === k && !((S.ficha || S.editor || S.obj) && coach) ? 'aria-current="page"' : ''}>${svg(k)}<span>${l}</span>${!coach && k === 'coach' && nChat() ? `<i class="badge-n">${nChat()}</i>` : ''}${!coach && k === 'hoy' && nHoy() ? `<i class="badge-n">${nHoy()}</i>` : ''}</button>`).join(''); if (!coach) badgeApp();
   if (S.dia && ((!coach && S.tab === 'entreno') || (coach && S.obj))) rellenarSesion();
-  trasRenderEnt();
+  trasRenderEnt(); if (S.reporte && document.querySelector('.rep-it')) repFiltrar();
   if (document.getElementById('calc-inline')) Nutricion.montarCalc();
 }
 
@@ -7646,6 +7646,20 @@ function vReporteAlumno(a, R, detalle) {
     ${detalle ? `<div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn grow" data-act="reporteFicha" data-id="${a.id}">Abrir su ficha para revisarlo a fondo</button><button class="btn ghost grow" data-act="alWa" data-id="${a.id}">💬 Habla con ${esc((a.nombre || '').split(' ')[0])}</button></div>` : ''}
   </div>`;
 }
+/* Filtro del reporting: por nombre y por modalidad (online, híbrido, presencial…). Se aplica al momento, sin recargar */
+const repMod = id => { const v = srvDe(id); return v?.modulo_futbol ? 'Futbolista' : modalidadDe(id); };
+function vRepFiltro(als) {
+  const mods = [...new Set(als.map(a => repMod(a.id)))].filter(Boolean), orden = ['Online', 'Híbrido', 'Presencial', 'Bono', 'Futbolista'];
+  mods.sort((a, b) => (orden.indexOf(a) + 1 || 99) - (orden.indexOf(b) + 1 || 99)); const m0 = S.repMod || '';
+  return `<div class="stack rep-f" style="gap:8px;margin:6px 0 10px"><input type="search" id="rep-q" placeholder="Buscar alumno…" value="${esc(S.repQ || '')}" autocomplete="off">
+    <div class="chips" role="group" aria-label="Modalidad">${[['', 'Todos'], ...mods.map(m => [m, m])].map(([v, l]) => `<button type="button" class="chip" data-act="repMod" data-v="${esc(v)}" aria-pressed="${m0 === v}">${esc(l)} <span class="muted">${v ? als.filter(a => repMod(a.id) === v).length : als.length}</span></button>`).join('')}</div></div>`;
+}
+function repFiltrar() {
+  const q = normaliza(S.repQ || ''), m = S.repMod || ''; let n = 0;
+  document.querySelectorAll('.rep-it').forEach(el => { const ok = (!q || el.dataset.n.includes(q)) && (!m || el.dataset.m === m); el.hidden = !ok; if (ok) n++; });
+  const z = document.getElementById('rep-nada'); if (z) z.hidden = n > 0 || !document.querySelector('.rep-it');
+}
+document.addEventListener('input', ev => { if (ev.target?.id === 'rep-q') { S.repQ = ev.target.value; repFiltrar(); } });
 function vReporte() {
   const R = S.reporte, fin = sumaDias(R.lunes, 6);
   const cab = `<section class="stack"><button class="btn sm ghost" data-act="cerrarReporte" style="align-self:flex-start">← Volver</button><span class="eyebrow">Semana ${esc(String(numSemanaISO(R.lunes)))} del año</span><h1>Reporting semanal</h1>
@@ -7659,7 +7673,7 @@ function vReporte() {
   if (R.alumno) { const a = S.c.perfiles.find(p => p.id === R.alumno) || { id: R.alumno, nombre: 'Alumno' }; let fut = ''; try { if (futbolistas().some(x => x.id === a.id)) fut = `<section class="section"><h2>⚽ Control de futbolista</h2>${vFutbolFicha(a)}</section>`; } catch (er) { console.warn(er); } return cab + aviso + `<section class="section">${tarjeta(a, true)}</section>` + fut; }
   const als = S.c.perfiles.filter(p => p && p.activo !== false && !esFamilia(p.id) && (S.c.servicios.some(x => x.alumno_id === p.id) || S.c.programas.some(x => x.alumno_id === p.id)) && (!srvDe(p.id) || conSeguimiento(srvDe(p.id))));
   const lista = als.map(a => { try { return { a, d: datosReporte(a, R) }; } catch (err) { console.error('Reporting de', a?.nombre, err); return { a, d: { score: -1 } }; } }).sort((x, y) => x.d.score - y.d.score);
-  return cab + aviso + `<button class="btn full" data-act="fcaAbrir" style="margin:4px 0 8px">🎯 Foco, check-ins y avisos de tus alumnos</button><section class="section rep-lista"><p class="small muted">Ordenados de menor a mayor cumplimiento. Toca "Ver" para el detalle de cada alumno.</p><details class="small muted"><summary>Cómo se calcula la alimentación</summary><p style="margin:6px 0 0">Comidas del plan = comidas que el alumno marca como hechas ÷ comidas previstas de los días que registró. Solo se valora con ${MIN_DIAS_NUTRI} días o más; los días sin información no cuentan como fallo y se muestran aparte. Bien ≥ 85 %, regular 60–84 %, mal &lt; 60 %. La aplicación declarada en el check-in («aplicado», «en parte», «necesito ayuda») se muestra tal cual, sin convertirla en porcentaje. Con seguimiento ligero solo cuenta esa respuesta.</p></details>${lista.map(({ a }) => tarjeta(a, false)).join('') || '<div class="empty">Sin alumnos activos.</div>'}</section>` + (() => { try { return futbolistas().length ? `<section class="section"><h2>⚽ Control de futbolistas</h2>${vFutbolCoach()}</section>` : ''; } catch (er) { console.warn(er); return ''; } })();
+  return cab + aviso + `<button class="btn full" data-act="fcaAbrir" style="margin:4px 0 8px">🎯 Foco, check-ins y avisos de tus alumnos</button><section class="section rep-lista"><p class="small muted">Ordenados de menor a mayor cumplimiento. Toca "Ver" para el detalle de cada alumno.</p><details class="small muted"><summary>Cómo se calcula la alimentación</summary><p style="margin:6px 0 0">Comidas del plan = comidas que el alumno marca como hechas ÷ comidas previstas de los días que registró. Solo se valora con ${MIN_DIAS_NUTRI} días o más; los días sin información no cuentan como fallo y se muestran aparte. Bien ≥ 85 %, regular 60–84 %, mal &lt; 60 %. La aplicación declarada en el check-in («aplicado», «en parte», «necesito ayuda») se muestra tal cual, sin convertirla en porcentaje. Con seguimiento ligero solo cuenta esa respuesta.</p></details>${vRepFiltro(lista.map(x => x.a))}${lista.map(({ a }) => `<div class="rep-it" data-n="${esc(normaliza(a.nombre || ''))}" data-m="${esc(repMod(a.id))}">${tarjeta(a, false)}</div>`).join('') || '<div class="empty">Sin alumnos activos.</div>'}<div class="empty" id="rep-nada" hidden>Ningún alumno con ese filtro.</div></section>` + (() => { try { return futbolistas().length ? `<section class="section"><h2>⚽ Control de futbolistas</h2>${vFutbolCoach()}</section>` : ''; } catch (er) { console.warn(er); return ''; } })();
 }
 const numSemanaISO = iso => { const d = fecha(iso); d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7); const y = new Date(d.getFullYear(), 0, 4); return 1 + Math.round(((d - y) / 864e5 - 3 + (y.getDay() + 6) % 7) / 7); };
 
@@ -9954,7 +9968,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v551';
+const APP_VER = 'v552';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -10328,6 +10342,7 @@ document.addEventListener('click', async e => {
       [l[i], l[j]] = [l[j], l[i]]; const cam = l.map((m, k) => [m, k]).filter(([m, k]) => m.orden !== k);
       try { for (const [m, k] of cam) { const r = await sb.from('metodos').update({ orden: k }).eq('id', m.id); if (r.error) throw r.error; m.orden = k; } metInfo(S.c.metodos); render(); }
       catch (err) { fallo(err, /orden/i.test(err?.message || '') ? 'Falta ejecutar el Bloque 121 en Supabase.' : 'No se ha podido ordenar.'); } break; }
+    case 'repMod': { S.repMod = b.dataset.v || ''; document.querySelectorAll('[data-act="repMod"]').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === S.repMod)); repFiltrar(); break; }
     case 'edEjSes': editarEjEnSesion(+b.dataset.id || null, +b.dataset.b || null, +b.dataset.tras || null); break;
     case 'metodo': { const n = b.dataset.n; abrirSheet(`<div class="stack"><span class="eyebrow">Método</span><h2>${esc(nomMet(n))}</h2><p class="pre">${esc((S.d?.metodos || {})[n] || Tandas.MET[n]?.info || 'Pregúntale a Jesús por este método.')}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`); break; }
     case 'terminar': terminar(); break;
