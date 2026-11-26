@@ -4667,7 +4667,8 @@ async function marcaVisto(...ks) {
 const nivelTarea = t => { const h = hoyISO(); return t.nivel || (!t.vence || t.vence > sumaDias(h, 3) ? 'semana' : t.vence <= h ? 'hoy' : '3dias'); };
 const tareaVencida = t => { const h = hoyISO(), n = new Date(), ahora = `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`; return !!t.vence && (t.vence < h || (t.vence === h && !!t.hora && String(t.hora).slice(0, 5) < ahora)); };
 /* ===== Capacidad semanal: tope de entrenos según si es semana con niños (15) o sin niños (20), con cupo de arranque y 2 huecos de grupo reducido ===== */
-const CAP = { ninos: { tope: 15, arranque: 3 }, libre: { tope: 20, arranque: 5 }, grupos: 2 };
+/* ideal = lo que deja horas para el online; max = lo que de verdad cabe en los huecos (con niños: mar–vie 9:30–12:45 = 12, sáb 6:45–10:15 = 4, mar tarde = 2 → 18) */
+const CAP = { ninos: { tope: 15, max: 18, arranque: 3 }, libre: { tope: 20, max: 25, arranque: 5 }, grupos: 2 };
 const capRef = () => S.c?.fiscal?.semana_ninos_ref || '2026-11-23';   /* un lunes de semana con niños; alternan cada semana */
 const conNinos = lun => (Math.round((new Date(lun + 'T12:00') - new Date(capRef() + 'T12:00')) / 864e5 / 7) % 2 + 2) % 2 === 0;
 const cuentaHora = x => x.estado !== 'cancelada' && !/videollamada|online|reuni|tarea/i.test(x.tipo || '') && (x.alumno_id || /entren|valoraci|pti|revisi|presencial/i.test(x.tipo || ''));
@@ -4679,15 +4680,17 @@ function capSemana(lun) {
   H.forEach(x => { const g = x._g || [x]; if (g.length > 1) return gru++;
     const nuevo = !x.alumno_id || (prim[x.alumno_id] && prim[x.alumno_id] >= sumaDias(lun, -21)); nuevo ? arr++ : est++; });
   const k = conNinos(lun) ? CAP.ninos : CAP.libre, total = est + arr + gru;
-  return { lun, ninos: conNinos(lun), tope: k.tope, maxArr: k.arranque, est, arr, gru, total, libres: Math.max(0, k.tope - total) };
+  return { lun, ninos: conNinos(lun), tope: k.tope, max: k.max, maxArr: k.arranque, est, arr, gru, total, libres: Math.max(0, k.tope - total) };
 }
 function barraCap(c, titulo) {
-  const sobre = c.total - c.tope, w = n => (100 * n / Math.max(c.tope, c.total)).toFixed(1) + '%';
-  const col = sobre > 0 ? '#E24B4A' : c.total >= c.tope ? '#EF9F27' : '#3B9A2E';
-  const msg = sobre > 0 ? `Te pasas en ${sobre}. No aceptes más esta semana: ofrece la siguiente o la app.` : c.total >= c.tope ? 'Semana completa. Lo nuevo, a la semana siguiente.' : `Te ${c.libres === 1 ? 'queda 1 hueco' : `quedan ${c.libres} huecos`}.`;
-  return `<div style="margin:8px 0 10px"><div class="row" style="gap:8px;align-items:baseline"><b class="grow">${titulo} · ${c.ninos ? '👧👦 con niños' : 'sin niños'}</b><b style="font-size:22px;color:${col}" class="num">${c.total}/${c.tope}</b></div>
+  const sobre = c.total - c.tope, w = n => (100 * n / Math.max(c.max, c.total)).toFixed(1) + '%';
+  const col = c.total > c.max ? '#E24B4A' : sobre > 0 ? '#EF9F27' : c.total === c.tope ? '#EF9F27' : '#3B9A2E';
+  const msg = c.total > c.max ? `Te pasas de tu máximo (${c.max}) en ${c.total - c.max}. No cabe: ofrece la semana siguiente o empezar con la app.`
+    : sobre > 0 ? `${sobre} por encima de tu ideal: ${c.ninos ? 'esta semana ya no te quedan horas para el online' : 'le estás quitando horas al online'}. Máximo ${c.max}.`
+    : c.total >= c.tope ? 'Ideal completo. Lo nuevo, a la semana siguiente.' : `Te ${c.libres === 1 ? 'queda 1 hueco' : `quedan ${c.libres} huecos`} hasta tu ideal.`;
+  return `<div style="margin:8px 0 10px"><div class="row" style="gap:8px;align-items:baseline"><b class="grow">${titulo} · ${c.ninos ? '👧👦 con niños' : 'sin niños'}</b><b style="font-size:22px;color:${col}" class="num">${c.total}/${c.tope}</b><span class="small muted">máx. ${c.max}</span></div>
     <div style="display:flex;height:16px;border-radius:8px;overflow:hidden;background:#E3E8F2;margin:6px 0;outline:${sobre > 0 ? '2px solid #E24B4A' : 'none'}">
-      <span title="Alumnos estables" style="width:${w(c.est)};background:#0B5CFF"></span><span title="Arranques" style="width:${w(c.arr)};background:#C9A227"></span><span title="Grupos reducidos" style="width:${w(c.gru)};background:#7F77DD"></span></div>
+      <span title="Alumnos estables" style="width:${w(c.est)};background:#0B5CFF"></span><span title="Arranques" style="width:${w(c.arr)};background:#C9A227"></span><span title="Grupos reducidos" style="width:${w(c.gru)};background:#7F77DD"></span><span style="flex:1;border-left:2px dashed #3B9A2E;margin-left:${Math.max(0, (100 * c.tope / Math.max(c.max, c.total)) - (100 * c.total / Math.max(c.max, c.total))).toFixed(1)}%"></span></div>
     <div class="small"><span style="color:#0B5CFF">■</span> Estables ${c.est} · <span style="color:#C9A227">■</span> Arranque ${c.arr}/${c.maxArr}${c.arr > c.maxArr ? ' <b style="color:#E24B4A">⚠ demasiados nuevos</b>' : ''} · <span style="color:#7F77DD">■</span> Grupos ${c.gru}/${CAP.grupos}</div>
     <div class="small" style="margin-top:3px;color:${col};font-weight:700">${msg}</div></div>`;
 }
@@ -4696,7 +4699,7 @@ function vCapacidad() {
   const l = lunesDe(hoyISO()), a = capSemana(l), b = capSemana(sumaDias(l, 7));
   return `<section class="section"><div class="card" style="border:2px solid ${a.total > a.tope ? '#E24B4A' : 'var(--line)'}">
     ${barraCap(a, 'Esta semana')}${barraCap(b, 'Semana que viene')}
-    <div class="small muted">Tope: 15 con niños · 20 sin niños · 2 huecos de grupo reducido (mín. 2 personas). Alumno en sus primeras 4 semanas = arranque. <button type="button" data-act="capNinos" style="border:0;background:none;padding:0;color:var(--blue-text);font:inherit;font-weight:700;cursor:pointer">¿No coincide la semana con niños? Cambiar</button></div></div></section>`;
+    <div class="small muted">Ideal 15 con niños (máx. 18) · 20 sin niños (máx. 25) · 2 huecos de grupo reducido (mín. 2 personas, cuentan como 1). Lunes sin entrenos. Alumno en sus primeras 4 semanas = arranque. <button type="button" data-act="capNinos" style="border:0;background:none;padding:0;color:var(--blue-text);font:inherit;font-weight:700;cursor:pointer">¿No coincide la semana con niños? Cambiar</button></div></div></section>`;
 }
 async function cambiarSemanaNinos() {
   const l = lunesDe(hoyISO()), ref = conNinos(l) ? sumaDias(l, 7) : l;
@@ -4706,9 +4709,9 @@ async function cambiarSemanaNinos() {
 }
 /* Al crear una cita en una semana llena, aviso claro antes de guardar */
 function avisoCapEnForm(fecha) {
-  if (!fecha || !S.c?.presenciales) return; const c = capSemana(lunesDe(fecha)); if (c.total < c.tope) return;
+  if (!fecha || !S.c?.presenciales) return; const c = capSemana(lunesDe(fecha)); if (c.total < c.tope && new Date(fecha + 'T12:00').getDay() !== 1) return;
   const f = document.getElementById('f-prog'); if (!f || f.querySelector('.cap-aviso')) return;
-  f.insertAdjacentHTML('afterbegin', `<div class="cap-aviso" style="background:#FCEBEB;border:2px solid #E24B4A;color:#791F1F;border-radius:12px;padding:10px 12px;margin-bottom:10px;font-weight:700">🛑 Esa semana ya tienes ${c.total}/${c.tope} (${c.ninos ? 'con niños' : 'sin niños'}). ¿De verdad cabe otra? Ofrece la semana siguiente o empezar con la app.</div>`);
+  f.insertAdjacentHTML('afterbegin', `<div class="cap-aviso" style="background:#FCEBEB;border:2px solid #E24B4A;color:#791F1F;border-radius:12px;padding:10px 12px;margin-bottom:10px;font-weight:700">${new Date(fecha + 'T12:00').getDay() === 1 ? '🛑 Los lunes no entrenas: es tu día para escalar y organizar.' : c.total >= c.max ? `🛑 Esa semana ya tienes ${c.total} y tu máximo es ${c.max} (${c.ninos ? 'con niños' : 'sin niños'}). No cabe: ofrece la semana siguiente o empezar con la app.` : `⚠️ Esa semana ya tienes ${c.total}/${c.tope} (${c.ninos ? 'con niños' : 'sin niños'}, máx. ${c.max}). Cada una de más sale de tus horas de online. ¿De verdad cabe?`}</div>`);
 }
 function tdCalendario() {
   const hoy = hoyISO(), ini = S.tdIni || lunesDe(hoy), dias = [...Array(7)].map((_, i) => sumaDias(ini, i));
@@ -9931,7 +9934,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v542';
+const APP_VER = 'v543';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
