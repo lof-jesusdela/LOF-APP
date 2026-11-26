@@ -856,8 +856,8 @@ function vRegistroDia(s) {
     const l = S.d.sesiones.filter(x => x.fecha === sel), pl = planDe(lunesDe(sel)), toca = pl?.dias?.includes(k);
     const todos = [S.d.programaBase, S.d.programa, ...(S.d.contextos || []), ...(S.d.alternativos || [])].filter(Boolean).flatMap(p => p.dias || []), nom = x => nomDia(todos.find(d => d.id === x.dia_id)) || 'Entreno';
     h += l.length ? it('🏋️', '#FCE3EA', 'Entreno', `${toca ? 'Tocaba · ' : ''}hecho · ${esc([...new Set(l.map(nom))].join(' · '))}`, '<span class="md-ok">✓</span>')
-      : toca ? it('🏋️', '#FCE3EA', 'Entreno', esHoy ? 'Hoy toca y aún no lo has hecho' : 'Tocaba y no se registró', esHoy ? '<button type="button" class="btn sm" data-act="tab" data-t="entreno">Entrenar</button>' : '<span class="md-no">✗</span>')
-      : it('🏋️', '#F3F5FA', 'Entreno', esHoy ? 'Hoy no te toca' : 'No tocaba', '<span class="muted">—</span>');
+      : toca ? it('🏋️', '#FCE3EA', 'Entreno', esHoy ? 'Hoy toca y aún no lo has hecho' : 'Tocaba y no se registró', esHoy ? '<button type="button" class="btn sm" data-act="tab" data-t="entreno">Entrenar</button>' : `<button type="button" class="btn sm ghost" data-act="entPasado" data-f="${sel}">Lo hice</button>`)
+      : it('🏋️', '#F3F5FA', 'Entreno', esHoy ? 'Hoy no te toca' : 'No tocaba', esHoy ? '<span class="muted">—</span>' : `<button type="button" class="btn sm ghost" data-act="entPasado" data-f="${sel}">＋ Entrené</button>`);
   }
   /* Pasos */
   if (conPasos(s) && !(s.modulo_habitos && Habitos.tienePasos(sel))) h += it('👟', '#DDF3FA', 'Pasos', objPasos(s) ? 'Objetivo ' + fmtNum(objPasos(s), 0) : '', `<input id="r-pasos" class="md-num" type="number" inputmode="numeric" min="0" placeholder="0" value="${r.pasos ?? ''}" aria-label="Pasos">`);
@@ -876,8 +876,11 @@ function vRegistroDia(s) {
   if (fs.length) h += `<div class="md-focos">${fs.join('')}</div>`;
   /* Comidas del plan cumplidas (cuando ya se le mide la alimentación y no es su foco) */
   if (s.modulo_nutricion && fo?.tipo !== 'alimentacion' && midoAlumno() && Nutricion.acuerdo(S.d).nivel !== 'ligero') {
-    const n = Math.max(1, r.comidas_hechas || comidasDia(s));
-    h += it('🥗', '#EAF6DD', 'Comidas de tu plan', `¿Cuántas de tus ${n} has cumplido${esHoy ? ' hoy' : ''}?`, `<div class="md-yn" style="flex-wrap:wrap">${[...Array(n + 1)].map((_, i) => `<button type="button" class="${r.ingestas === i ? (i === n ? 'ok' : 'no') : ''}" data-act="ingestas" data-v="${i}" aria-pressed="${r.ingestas === i}">${i}</button>`).join('')}</div>`);
+    const pl = Math.max(1, comidasDia(s)), hechas = r.comidas_hechas ?? null, n = Math.max(1, hechas ?? pl), nf = (r.fotos || []).length;
+    const chips = (act, de, a, sel, okN) => `<div class="md-yn" style="flex-wrap:wrap;margin-left:40px">${[...Array(a - de + 1)].map((_, k) => { const i = de + k; return `<button type="button" class="${sel === i ? (okN == null || i >= okN ? 'ok' : 'no') : ''}" data-act="${act}" data-v="${i}" aria-pressed="${sel === i}">${i}</button>`; }).join('')}</div>`;
+    h += it('🥗', '#EAF6DD', esHoy ? 'Ingestas hoy' : 'Ingestas ese día', `Cuántas comidas has hecho · tu plan tiene ${pl}`, '') + chips('comidasHechas', 1, Math.max(6, pl + 1), hechas, null);
+    h += it('✅', '#EAF6DD', 'De esas, ¿cuántas cumplen con el plan?', '', '') + chips('ingestas', 0, n, r.ingestas ?? null, n);
+    h += `<label class="btn sm ghost" style="margin-left:40px;align-self:flex-start;cursor:pointer">📷 ${nf ? `${nf} foto${nf > 1 ? 's' : ''} · añadir más` : 'Añadir fotos de las comidas del día'} <span class="muted">(opcional)</span><input type="file" id="r-fotos" accept="image/*" multiple hidden></label>`;
   }
   /* Tipo de día: el que marcó en su semana; lo puede cambiar */
   const cx = s.modulo_nutricion && (s.avisos_alumno || {}).dia_contexto !== false ? Nutricion.ctxDe(S.d.nutri || { plan: [] }) : [];
@@ -889,11 +892,29 @@ function vRegistroDia(s) {
   return `<section class="section" id="registro"><div class="card stack md-card">
     <div class="row" style="align-items:baseline"><span class="md-ey grow">Tu día · ${esc(dia)}</span>${dias.length > 1 ? `<span class="small muted">${esHoy ? 'Hoy' : 'Día pasado'}</span>` : ''}</div>
     <h2 class="md-t">Marca tu día</h2>
-    ${dias.length > 1 ? `<div class="reg-dias" role="group" aria-label="Día a registrar" style="--n:${Math.max(7, dias.length)}">${dias.map(f => { const x = S.d.diario.find(y => y.fecha === f); return `<button type="button" data-act="regDia" data-f="${f}" aria-pressed="${f === sel}" class="${x ? 'ok' : ''}">${DIA3[fecha(f).getDay()]}<small>${fecha(f).getDate()}</small></button>`; }).join('')}</div>` : ''}
+    ${dias.length > 1 ? `<div class="reg-dias" role="group" aria-label="Día a registrar" style="--n:${Math.max(7, dias.length)}">${dias.map(f => { const x = S.d.diario.find(y => y.fecha === f); return `<button type="button" data-act="regDia" data-f="${f}" aria-pressed="${f === sel}" class="${x || S.d.sesiones.some(z => z.fecha === f) ? 'hecho' : ''}">${DIA3[fecha(f).getDay()]}<small>${fecha(f).getDate()}</small></button>`; }).join('')}</div>` : ''}
     ${h}
     ${(s.avisos_alumno || {}).dia_nota === false ? '' : `<textarea id="r-obs" class="chk-txt" rows="2" placeholder="¿Algo importante de ${esHoy ? 'hoy' : 'ese día'}? (opcional)">${esc(r.observacion || '')}</textarea>`}
     <button class="btn full" data-act="guardarDiario">Guardar mi día</button>
   </div></section>`;
+}
+/* Entreno de un día pasado hecho sin la app: elige qué sesión fue y queda registrado ese día (sin pesos) */
+function formEntPasado(f) {
+  const P = S.d.programa || S.d.programaBase; if (!P) return toast('No tienes programa activo');
+  const l = lunesDe(f), hechas = new Set(S.d.sesiones.filter(z => z.fecha >= l && z.fecha <= sumaDias(l, 6)).map(z => z.dia_id));
+  const dias = (P.dias || []).filter(d => d.tipo_dia !== 'descanso' && !d.oculto), pend = dias.filter(d => !hechas.has(d.id)), resto = dias.filter(d => hechas.has(d.id));
+  const fila = d => `<button type="button" class="line" data-act="entPasadoOk" data-f="${f}" data-id="${d.id}" style="width:100%;text-align:left;background:none;border:0;cursor:pointer;color:inherit"><span class="grow"><b>${esc(nomDia(d))}</b>${d.foco ? `<span class="small muted" style="display:block">${esc(d.foco)}</span>` : ''}</span><span class="small" style="color:var(--blue-text)">Este ›</span></button>`;
+  abrirSheet(`<div class="stack"><h2>¿Qué entreno hiciste el ${esc(fecha(f).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' }))}?</h2><p class="small muted" style="margin:0">Queda registrado ese día para que cuente en tu semana. Los pesos no se guardan: la próxima vez, entrena con la app para que Jesús vea tus series.</p>
+    ${pend.length ? `<span class="eyebrow">Te quedaban esta semana</span><div class="card" style="padding:4px 12px">${pend.map(fila).join('')}</div>` : ''}${resto.length ? `<span class="eyebrow">Otros de tu programa</span><div class="card" style="padding:4px 12px">${resto.map(fila).join('')}</div>` : ''}
+    <button class="btn ghost full" data-act="cerrarSheet">Cancelar</button></div>`);
+}
+async function guardarEntPasado(f, diaId) {
+  const P = S.d.programa || S.d.programaBase, d = (P?.dias || []).find(x => x.id === diaId); if (!d) return;
+  let tot = 0; try { tot = conteoSeries(d, { valores: {}, regs: {} }).total; } catch (e) { }
+  const fila = { alumno_id: S.user.id, dia_id: diaId, fecha: f, estado: 'completa', series_hechas: tot, series_total: tot };
+  const { data, error } = await conRespaldo(() => sb.from('sesiones_hechas').insert(fila).select().single(), () => sb.from('sesiones_hechas').insert({ alumno_id: S.user.id, dia_id: diaId, fecha: f }).select().single());
+  if (error) return fallo(error, 'No se ha podido registrar el entreno.');
+  S.d.sesiones = [...S.d.sesiones, { ...data, dias: d }]; cerrarSheet(); toast('Entreno registrado'); render();
 }
 async function subirFotosComida(input) {
   const files = [...(input?.files || [])]; if (!files.length) return;
@@ -9981,7 +10002,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v553';
+const APP_VER = 'v554';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -10356,6 +10377,8 @@ document.addEventListener('click', async e => {
       try { for (const [m, k] of cam) { const r = await sb.from('metodos').update({ orden: k }).eq('id', m.id); if (r.error) throw r.error; m.orden = k; } metInfo(S.c.metodos); render(); }
       catch (err) { fallo(err, /orden/i.test(err?.message || '') ? 'Falta ejecutar el Bloque 121 en Supabase.' : 'No se ha podido ordenar.'); } break; }
     case 'repMod': { S.repMod = b.dataset.v || ''; document.querySelectorAll('[data-act="repMod"]').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === S.repMod)); repFiltrar(); break; }
+    case 'entPasado': formEntPasado(b.dataset.f); break;
+    case 'entPasadoOk': await guardarEntPasado(b.dataset.f, +b.dataset.id); break;
     case 'edEjSes': editarEjEnSesion(+b.dataset.id || null, +b.dataset.b || null, +b.dataset.tras || null); break;
     case 'metodo': { const n = b.dataset.n; abrirSheet(`<div class="stack"><span class="eyebrow">Método</span><h2>${esc(nomMet(n))}</h2><p class="pre">${esc((S.d?.metodos || {})[n] || Tandas.MET[n]?.info || 'Pregúntale a Jesús por este método.')}</p><button class="btn ghost full" data-act="cerrarSheet">Entendido</button></div>`); break; }
     case 'terminar': terminar(); break;
