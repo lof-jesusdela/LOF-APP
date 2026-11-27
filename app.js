@@ -898,6 +898,18 @@ function vRegistroDia(s) {
     ${r.fecha ? '<button id="md-guardar" class="btn full md-guardado" data-act="guardarDiario">✓ ¡DATOS ACTUALIZADOS!</button>' : '<button id="md-guardar" class="btn full" data-act="guardarDiario">Guardar mi día</button>'}
   </div></section>`;
 }
+/* Buscadores: una ✕ para borrar de golpe el nombre y escribir otro */
+function ponXBuscadores(root = document) {
+  root.querySelectorAll?.('input[type="search"]:not([data-x])').forEach(i => {
+    i.dataset.x = '1'; const w = document.createElement('span'); w.className = 'bx-w'; if (i.style.marginTop) { w.style.marginTop = i.style.marginTop; i.style.marginTop = '0'; }
+    i.parentNode.insertBefore(w, i); w.appendChild(i);
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'bx-x'; b.setAttribute('aria-label', 'Borrar búsqueda'); b.textContent = '✕';
+    const pinta = () => { b.hidden = !i.value; }; pinta(); i.addEventListener('input', pinta);
+    b.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); pinta(); i.focus(); });
+    w.appendChild(b);
+  });
+}
+new MutationObserver(() => ponXBuscadores()).observe(document.documentElement, { childList: true, subtree: true });
 /* Si toca algo tras guardar, el botón verde vuelve a azul para que no se olvide de guardar */
 const mdSucio = e => { if (!e.target.closest?.('#registro') || e.target.type === 'file') return; const b = document.getElementById('md-guardar'); if (b?.classList.contains('md-guardado')) { b.classList.remove('md-guardado'); b.textContent = 'Guardar cambios'; } };
 document.addEventListener('input', mdSucio); document.addEventListener('change', mdSucio);
@@ -1147,7 +1159,7 @@ function lineasPend(s) {
   else if (activo) {
     const r = (S.d.diario || []).find(x => x.fecha === hoy) || {}, fo = s.foco;
     if (fo?.tipo && !['pasos', 'entrenos', 'sueno'].includes(fo.tipo) && (fo.tipo === 'alimentacion' ? r.ingestas == null : r.foco_ok == null))
-      lineas.push(['🎯', 'Marca tu foco de hoy', esc(fo.tipo === 'libre' ? (fo.texto || 'Tu foco') : (fo.texto || Foco.titulo(fo))), '', '', false, fo.tipo === 'alimentacion' ? yn('cumplePlan', '') : yn('mdFoco', `data-f="${hoy}"`)]);
+      lineas.push(Object.assign(['🎯', 'Marca tu foco de hoy', esc(fo.tipo === 'libre' ? (fo.texto || 'Tu foco') : (fo.texto || Foco.titulo(fo))), '', '', false, fo.tipo === 'alimentacion' ? yn('cumplePlan', '') : yn('mdFoco', `data-f="${hoy}"`)], { _p: 2 }));
     const hb = s.modulo_habitos ? habitoFoco(hoy) : null;
     if (hb && !(S.d.habReg || []).some(x => x.habito_id === hb.id && x.fecha === hoy && x.valor)) lineas.push(['🌱', 'Marca tu hábito de hoy', esc(hb.titulo), '', '', false, yn('mdHab', `data-id="${hb.id}" data-f="${hoy}"`)]);
   }
@@ -1159,23 +1171,29 @@ function lineasPend(s) {
     const lunesHoy = hoy === lunesDe(hoy), plazo = lunesHoy ? 'Hoy es el último día para completar la semana pasada' : 'Puedes completarlos hasta el domingo';
     if (faltan.length && avisoAl('registro')) lineas.push(['📝', faltan.length === 1 ? 'Te falta registrar un día' : `Te faltan ${faltan.length} días por registrar`, faltan.map(f => fecha(f).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' })).join(' · ') + ` · ${conPasos(s) ? 'tus pasos' : ''}${conPasos(s) && exige && s.modulo_nutricion && fase === 'activo' ? ' y ' : ''}${s.modulo_nutricion && fase === 'activo' && Nutricion.acuerdo(S.d).nivel === 'habitual' ? 'las comidas de tu plan' : ''}, para que Jesús vea tu semana real. ${plazo}.`, faltan[0] ? `data-act="irRegistroDia" data-f="${faltan[0]}"` : '', 'Rellenar', faltan.length >= 4 || lunesHoy]);
   }
-  const lc = checkinPend(); if (lc && new Date().getDay() !== 0 && avisoAl('checkin')) lineas.push(['✅', 'Check-in semanal sin enviar', `Semana del ${fCorta(lc)} al ${fCorta(sumaDias(lc, 6))} · es lo que Jesús usa para preparar tu revisión y ajustar tu plan. Son 2 minutos`, `data-act="abrirCheckin" data-l="${lc}"`, 'Rellenar', [3, 4, 5, 6].includes(new Date().getDay())]);
+  const lc = checkinPend(); if (lc && new Date().getDay() !== 0 && avisoAl('checkin')) lineas.push(Object.assign(['✅', 'Check-in semanal sin enviar', `Semana del ${fCorta(lc)} al ${fCorta(sumaDias(lc, 6))} · es lo que Jesús usa para preparar tu revisión y ajustar tu plan. Son 2 minutos`, `data-act="abrirCheckin" data-l="${lc}"`, 'Rellenar', [3, 4, 5, 6].includes(new Date().getDay())], { _p: 1 }));
   const mp = avisoAl('menu') && MenuSemana.pendiente(); if (mp) lineas.push(mp);
   { const c = cuotaPend(); if (c) { const p0 = c.x[0], eur2 = n => fmtNum(+n, 2).replace(/,00$/, '') + ' €';
-    lineas.push(['💳', c.venc.length ? (c.venc.length === 1 ? 'Tienes una cuota pendiente de pago' : `Tienes ${c.venc.length} cuotas pendientes de pago`) : p0.vence === hoyISO() ? 'Hoy vence tu cuota' : `Tu próxima cuota vence el ${fecha(p0.vence).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' })}`,
+    lineas.push(Object.assign(['💳', c.venc.length ? (c.venc.length === 1 ? 'Tienes una cuota pendiente de pago' : `Tienes ${c.venc.length} cuotas pendientes de pago`) : p0.vence === hoyISO() ? 'Hoy vence tu cuota' : `Tu próxima cuota vence el ${fecha(p0.vence).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' })}`,
       `${c.x.map(p => `${p.concepto || 'Cuota'} · ${eur2(p.importe)}${p.vence < hoyISO() ? ` (venció el ${fCorta(p.vence)})` : ''}`).join(' · ')}. Si ya la has pagado, avisa a Jesús y desaparecerá cuando la registre`,
-      `data-act="cuotaAviso"`, 'Avisar a Jesús', c.dias > 3]); } }
-  const fm = avisoAl('fotos') && Casos.pendienteMes(); if (fm) lineas.push(fm);
+      `data-act="cuotaAviso"`, 'Avisar a Jesús', c.dias > 3], { _p: 0 })); } }
+  const fm = avisoAl('fotos') && Casos.pendienteMes(); if (fm) lineas.push(Object.assign(fm, { _p: 9 }));
   if (s.modulo_nutricion && (fase === 'recogida' || fase === 'preparacion') && avisoAl('incorporacion')) {
     if (Cuest.estado('estilo') !== 'enviado') lineas.push(['📝', Cuest.estado('estilo') === 'borrador' ? 'Termina tu cuestionario de estilo de vida' : 'Cuestionario de estilo de vida', 'Unos 10 minutos sobre tu trabajo, descanso, actividad, alimentación y estrés: con esto Jesús adapta el plan a tu vida real', 'data-act="cqEstilo"', Cuest.estado('estilo') === 'borrador' ? 'Seguir' : 'Rellenar']);
     if (Cuest.estado('preferencias') !== 'enviado') lineas.push(['🥦', 'Elige los alimentos que no te gustan', 'Tu plan se hará solo con alimentos que te gustan. Es un momento: tocas los que no quieres', 'data-act="cqPref"', 'Elegir']);
   }
   if (s.modulo_nutricion && fase === 'recogida' && avisoAl('incorporacion')) lineas.push(['🍽', 'Registro de 7 días de comidas', 'Con una foto o una frase de lo que comes, sin cambiar nada: sirve para preparar tu plan a tu medida', 'data-act="tab" data-t="nutri"', 'Apuntar']);
-  return lineas;
+  /* Máximo 3 por persona: primero pago, check-in y foco; fotos y testimonio, lo último */
+  const pr = l => l._p ?? (l[0] === '🌱' ? 3 : 5);
+  return lineas.map((l, i) => [l, i]).sort((a, b) => pr(a[0]) - pr(b[0]) || a[1] - b[1]).map(x => x[0]).slice(0, PEND_MAX);
 }
+const PEND_MAX = 3;
 function vPendientesHoy(s) {
   const lineas = lineasPend(s);
-  const tarjetas = [Acomp.tarjetaDevolucionHoy(), Nutricion.tarjetaTemporal(), (avisoAl('casos') ? Casos.lineaHoy() : ''), (avisoAl('fotos') ? Casos.tarjetaHoy(true) : ''), Bienvenida.tarjeta()].join('');
+  /* Fotos y testimonio solo si queda hueco dentro de los 3 */
+  let hueco = PEND_MAX - lineas.length; const bajo = h => { if (!h || !h.trim() || hueco <= 0) return ''; hueco--; return h; };
+  const tarjetas = [Acomp.tarjetaDevolucionHoy(), Nutricion.tarjetaTemporal(), (avisoAl('casos') ? bajo(Casos.lineaHoy()) : ''), (avisoAl('fotos') ? bajo(Casos.tarjetaHoy(true)) : ''), Bienvenida.tarjeta()].join('');
+  S._huecoPend = hueco;
   if (!lineas.length && !tarjetas.trim()) return '';
   /* La alerta roja solo cuando algo va de verdad tarde (check-in de la semana pasada a partir del miércoles, 4+ días sin registrar o último día para completar la semana) */
   const urge = lineas.some(l => l[5]);
@@ -1183,7 +1201,7 @@ function vPendientesHoy(s) {
 }
 /* Próximamente: revisión mensual, entrenos con Jesús (saldo, próxima reserva y un solo botón) */
 function vProximamente(s) {
-  const ev = vEventos(s, []).replace('<h2>Próximos eventos</h2>', '<h2>Próximamente</h2>');
+  const ev = vEventos(s, [], true).replace('<h2>Próximos eventos</h2>', '<h2>Próximamente</h2>');
   return ev;   // las sesiones con Jesús y su reserva viven en la pestaña de entrenamientos
 }
 function vPresResumen(srv, lista) {
@@ -1295,14 +1313,14 @@ function vHoy() {
   ${vAvisosHoy()}
   ${Consultas.vAvisoHoy()}
   ${esWeekCard()}
-  ${!/Hoy toca descanso/.test(toca) || /Continuar donde lo dejaste/.test(toca) ? `<section class="section"><h2>Lo que toca hoy</h2><div class="card">${toca.replace(/<div class="line"><div class="ico">(?:(?!<div class="line).)*Hoy toca descanso[^]*$/s, '')}</div></section>` : ''}
+  ${(() => { const m = /<div class="line aprox"[^]*?Continuar donde lo dejaste[^]*?<\/button><\/div><\/div>/.exec(toca); return m ? `<section class="section"><div class="card">${m[0]}</div></section>` : ''; })()}
   ${s.modulo_futbol ? vFutbolHoy() + (s.modulo_habitos ? Habitos.tarjetaHoy(false) : '') : vRegistroDia(s)}
   ${s.oposicion ? Oposicion.tarjeta(false) : ''}
   ${Acomp.ultimaIndicacion()}
   ${s.modulo_futbol ? '' : vProximamente(s)}
   ${vCheckinTarjeta()}
   ${MenuSemana.tarjeta()}
-  ${avisoAl('fotos') ? Casos.tarjetaHoy(false) : ''}
+  ${avisoAl('fotos') && (S._huecoPend ?? 1) > 0 ? Casos.tarjetaHoy(false) : ''}
   ${s.modulo_futbol && !s.modulo_habitos ? '' : Temperamento.tarjetaHoy()}
   ${s.modulo_futbol || !s.modulo_habitos ? '' : Habitos.tarjetaHoy(true)}
   `;
@@ -1335,13 +1353,38 @@ function vEntreno() {
   const hechoSemana = id => { const l = S.d.sesiones.filter(s => s.dia_id === id && s.fecha >= lunes); return l.find(esCompleta) || l[l.length - 1] || null; };
   const P = proceso(S.d.servicio), Pn = P && !P.antes ? S.d.sesiones.filter(x => x.fecha >= P.cc.ini && x.fecha <= P.cc.fin).length : null;
   return como + `<section class="stack"><span class="eyebrow">${esc(p.nombre)}</span><h1>Entreno</h1>${P && !P.antes && !P.fuera ? `<div class="row" style="flex-wrap:wrap;gap:6px"><span class="pill blue">Ciclo ${P.ciclo}</span><span class="pill gold">Semana ${P.semCiclo} de ${P.cc.sem}</span><span class="pill">${Pn} ${(S.d.programaBase || p).dias_semana ? 'de ' + previstosCiclo(P.cc, S.d.uid, (S.d.programaBase || p).dias_semana) + ' ' : ''}entrenos del ciclo</span></div>` : ''}</section>
-  ${S.d.servicio?.modulo_futbol ? vCalFutAlumno() : vCalPlanAlumno()}${vEntrenoHoy()}${vAvisoContexto()}<section class="section"><h2>Tus entrenos</h2>${S.d.servicio?.modulo_futbol ? `<details class="card fx-ban"><summary><span class="fx-ban-ic">🏋️</span><span class="grow"><b>${p.dias.filter(d => !(d.tipo_dia === 'descanso' && !d.bloques_sesion.length)).length} entrenos</b><span class="small muted"> · toca para verlos</span></span></summary>` : ''}<div class="card${S.d.servicio?.modulo_futbol ? ' fx-in' : ''}">${p.dias.map(d => { const ab = !(d.tipo_dia === 'descanso' && !d.bloques_sesion.length); return `<div class="wk ${esDia(d, hoyN) ? 'today' : ''}${ab ? ' wk-ab' : ''}"${ab ? ` data-act="abrirDia" data-id="${d.id}" role="button" tabindex="0"` : ''}><span class="d">${esc(/^d[ií]a (\d+)/i.test(d.nombre || '') ? 'D' + d.nombre.match(/\d+/)[0] : d.nombre.slice(0, 3))}</span><div class="grow"><h3>${esc(d.titulo || d.foco || d.nombre)}</h3>${(r => r ? `<span class="pill ${r.toca === d && !r.hecha ? 'gold' : ''}" style="margin:2px 0">🔁 ${d === r.a ? 'A' : 'B'} · alterna con Día ${(d === r.a ? r.b : r.a).numero}${r.hecha === d ? ' · hecha esta semana' : r.toca === d && !r.hecha ? ' · toca esta semana' : ''}</span>` : '')(esFlex(p) ? semanaFlex(p).AL.find(r => r.a === d || r.b === d) : null)}${tipoDiaDe(d) ? `<span class="pill ${conPartido(d) ? 'gold' : ''}" style="margin:2px 0">${tipoDiaDe(d)[2]} ${tipoDiaDe(d)[1]}</span>` : ''}${conPartido(d) ? (() => { const pt = partidoDelDia(d, S.d.partidos); return pt ? `<div class="small"><b>vs ${esc(pt.rival || 'rival')}</b>${pt.hora ? ' · ' + esc(String(pt.hora).slice(0, 5)) : ''}${pt.lugar ? ' · ' + esc(pt.lugar) : ''}</div>` : ''; })() : ''}<div class="small muted">${esc(estTxt(d))}</div></div>${pillSesion(hechoSemana(d.id))}${ab ? '<span class="wk-ir">›</span>' : ''}</div>`; }).join('')}</div>${S.d.servicio?.modulo_futbol ? '</details>' : ''}</section>
+  ${S.d.servicio?.modulo_futbol ? vCalFutAlumno() : vCalPlanAlumno()}${vEntrenoHoy()}${vAvisoContexto()}<section class="section"><h2>Tus entrenos</h2>${S.d.servicio?.modulo_futbol ? `<details class="card fx-ban"><summary><span class="fx-ban-ic">🏋️</span><span class="grow"><b>${p.dias.filter(d => !(d.tipo_dia === 'descanso' && !d.bloques_sesion.length)).length} entrenos</b><span class="small muted"> · toca para verlos</span></span></summary>` : ''}<div class="te-lista${S.d.servicio?.modulo_futbol ? ' fx-in' : ''}">${vTusEntrenos(p, hechoSemana, hoyN)}</div>${S.d.servicio?.modulo_futbol ? '</details>' : ''}</section>
   ${vAlternativos(hechoSemana)}
   ${(() => { const z = vZonasFC() + vRitmosVAM(); return !z ? '' : S.d.servicio?.modulo_futbol ? `<section class="section"><h2>Tus zonas</h2><details class="card fx-ban"><summary><span class="fx-ban-ic">🫀</span><span class="grow"><b>Zonas de frecuencia cardiaca y ritmos</b><span class="small muted"> · toca para verlas</span></span></summary><div class="fx-in">${z}</div></details></section>` : `<section class="section" style="margin-bottom:-12px"><h2>Tus zonas</h2></section>${z}`; })()}
   ${(() => { const t = vLineaTiempo(S.d.servicio, 'Tus ciclos de entrenamiento', false, p); if (!t) return ''; const P2 = proceso(S.d.servicio);
     return `<section class="section"><h2>Tus ciclos</h2><details class="card fx-ban"><summary><span class="fx-ban-ic">🧱</span><span class="grow"><b>${P2 && !P2.antes && !P2.fuera ? `Ciclo ${P2.ciclo} de ${P2.ciclos.length} · semana ${P2.semCiclo} de ${P2.cc.sem}` : 'Tus ciclos de entrenamiento'}</b>${P2 && !P2.antes && !P2.fuera ? `<span class="small muted"> · ${P2.sinFin ? '' : Math.round(P2.pctTotal) + ' % del proceso'}</span><div class="track" style="margin-top:6px"><i style="width:${Math.round(Math.min(100, (P2.semCiclo / P2.cc.sem) * 100))}%"></i></div>` : ''}</span></summary><div class="fx-ban-in">${t}</div></details></section>`; })()}
   ${S.obj ? '' : vCalendarioPres()}
   `;
+}
+/* Icono de cada día en «Tus entrenos»: la lámina del músculo principal (foco o título; si no, el que más se repite en sus ejercicios). Carrera → foto de correr */
+function iconoDia(d) {
+  const t = sinTildes([d.foco, d.titulo, d.nombre].filter(Boolean).join(' ')), car = (d.bloques_sesion || []).some(b => b.tipo === 'cardio' && esCorrer?.(b.maquina || ''));
+  if (/correr|carrera|rodaje|umbral|series de|running|\bvam\b/.test(t) || (car && !(d.bloques_sesion || []).some(b => b.tipo === 'fuerza'))) return { url: 'img/correr-pista.jpg', n: 'Carrera' };
+  const R = [[/pierna.*posterior|posterior.*pierna|cadena posterior/, 'cadena-posterior'], [/\bempuje\b/, 'pectoral'], [/traccion/, 'dorsales']];
+  let k = (R.find(([re]) => re.test(t)) || [])[1];
+  if (!k) { const s = t.replace(/\bcore\b\s*\+?\s*/, '').trim() || t; try { k = laminaSugerida(s, s); } catch (e) { } }
+  if (!k) { const c = {}; (d.bloques_sesion || []).filter(b => b.tipo === 'fuerza').forEach(b => (b.ejercicios_sesion || []).forEach(e => { const j = ejDe(e); let x = laminaDe(j.musculo_img_url); if (!x) try { x = laminaSugerida(j.nombre || '', j.musculo || ''); } catch (er) { } if (x) c[x] = (c[x] || 0) + 1; }));
+    k = Object.keys(c).sort((a, b) => c[b] - c[a])[0]; }
+  if (!k && /\bcore\b|abdom/.test(t)) k = 'abdominales';
+  k = k || 'cuerpo-completo';
+  return { url: `img/musculos/${k}.jpg`, n: laminaNombre(k) || 'Cuerpo completo' };
+}
+function vTusEntrenos(p, hechoSemana, hoyN) {
+  const DS = p.dias, ab = d => !(d.tipo_dia === 'descanso' && !d.bloques_sesion.length), AB = DS.filter(ab);
+  const ok = d => { const x = hechoSemana(d.id); return x && x.estado !== 'parcial' && x.estado !== 'omitida' ? x : null; };
+  const hoyD = entrenoDeHoy()?.d, sig = (hoyD && !ok(hoyD) && AB.includes(hoyD)) ? hoyD : AB.find(d => !ok(d) && !d.oculto);
+  const nOk = AB.filter(ok).length;
+  const puntos = d => { const c = String(d.intensidad || estimaDia(d).intens || '').toLowerCase(), n = /alta/.test(c) ? 3 : /media/.test(c) ? 2 : /baja/.test(c) ? 1 : 0; return n ? `<span class="te-dots" aria-label="Complejidad ${n} de 3">${[0, 1, 2].map(i => `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</span>` : ''; };
+  const cab = `<div class="te-cab"><div class="row" style="align-items:baseline"><b class="grow">Tu semana</b><span class="te-n">${nOk} de ${AB.length} hechos</span></div><div class="te-barra">${AB.map(d => `<i class="${ok(d) ? 'ok' : d === sig ? 'sig' : ''}"></i>`).join('')}</div></div>`;
+  return cab + DS.map(d => { const a = ab(d), x = hechoSemana(d.id), hecho = ok(d), ic = iconoDia(d), E = estimaDia(d), num = /^d[ií]a (\d+)/i.test(d.nombre || '') ? 'D' + d.nombre.match(/\d+/)[0] : (d.nombre || '').slice(0, 3);
+    const extra = `${(r => r ? `<span class="pill ${r.toca === d && !r.hecha ? 'gold' : ''}" style="margin:4px 0 0">🔁 ${d === r.a ? 'A' : 'B'} · alterna con Día ${(d === r.a ? r.b : r.a).numero}${r.hecha === d ? ' · hecha esta semana' : r.toca === d && !r.hecha ? ' · toca esta semana' : ''}</span>` : '')(esFlex(p) ? semanaFlex(p).AL.find(r => r.a === d || r.b === d) : null)}${tipoDiaDe(d) ? `<span class="pill ${conPartido(d) ? 'gold' : ''}" style="margin:4px 0 0">${tipoDiaDe(d)[2]} ${tipoDiaDe(d)[1]}</span>` : ''}${conPartido(d) ? (() => { const pt = partidoDelDia(d, S.d.partidos); return pt ? `<div class="small"><b>vs ${esc(pt.rival || 'rival')}</b>${pt.hora ? ' · ' + esc(String(pt.hora).slice(0, 5)) : ''}${pt.lugar ? ' · ' + esc(pt.lugar) : ''}</div>` : ''; })() : ''}`;
+    const der = hecho ? '' : d === sig ? '<span class="te-sig">Siguiente</span>' : x ? pillSesion(x) : a ? '<span class="wk-ir">›</span>' : '';
+    return `<div class="te-it${hecho ? ' hecho' : ''}${d === sig ? ' sig' : ''}${esDia(d, hoyN) ? ' today' : ''}"${a ? ` data-act="abrirDia" data-id="${d.id}" role="button" tabindex="0"` : ''}><span class="te-ic"><img src="${esc(ic.url)}" alt="" loading="lazy">${hecho ? '<span class="te-ok">✓</span>' : ''}</span><div class="grow" style="min-width:0"><b class="te-t">${esc(num)} · ${esc(d.titulo || d.foco || d.nombre)}</b><div class="te-m"><span class="te-mus">${esc(ic.n)}</span>${E.min ? ` · ${E.min} min` : ''} ${puntos(d)}</div>${extra}</div>${der}</div>`; }).join('');
 }
 /* Lo primero de Entreno: el entreno que le toca HOY (por el día de la semana, su horario o lo que marcó en su check-in). Si hoy no toca, no sale */
 function entrenoDeHoy() {
@@ -6461,11 +6504,11 @@ function controlesMensuales(srv, hasta = sumaDias(hoyISO(), 70)) {
   return out;
 }
 const controlEnSemana = (srv, lunes) => controlesMensuales(srv, sumaDias(lunes, 6)).find(c => c.lunes === lunes);
-function vEventos(srv, pres) {
+function vEventos(srv, pres, sinRev) {
   const hoy = hoyISO(), lunes = lunesDe(hoy), ev = [];
   const rev = revisionPendiente(srv, S.d?.revisiones || [], S.d?.revisionesErr);
   const cEsta = rev || (S.d?.revisionesErr ? controlEnSemana(srv, lunes) : null), cProx = !cEsta && controlEnSemana(srv, sumaDias(lunes, 7));
-  if (!avisoAl('control')) { /* el coach lo ha quitado para este alumno */ }
+  if (sinRev || !avisoAl('control')) { /* la revisión mensual solo se te avisa a ti, no al alumno */ }
   else if (rev) ev.push(`<div class="line evento"><div class="ico gold">${svg('progreso')}</div><div class="grow"><b class="small">Toca tu revisión mensual con Jesús</b><div class="small muted">Una llamada o videollamada de 10-15 minutos para ver cómo te sientes, cómo vas con tus objetivos y tu composición corporal. Escríbele para agendarla.</div><div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px">${waJesus(`Hola Jesús, me toca la revisión mensual ${rev.n}. ¿Cuándo te viene bien la llamada?`) ? `<a class="btn sm" href="${esc(waJesus(`Hola Jesús, me toca la revisión mensual ${rev.n}. ¿Cuándo te viene bien la llamada?`))}" target="_blank" rel="noopener">Agendar por WhatsApp</a>` : ''}${srv?.modulo_presencial ? '' : '<button class="btn sm ghost" data-act="misMedidas">Añadir mis medidas</button>'}</div></div></div>`);
   else if (cEsta) ev.push(`<div class="line evento"><div class="ico gold">${svg('progreso')}</div><div class="grow"><b class="small">Esta semana toca tu control mensual ${cEsta.n}</b><div class="small muted">Composición corporal, ajustes y mejoras: tienes pendiente la reunión de seguimiento mensual con Jesús.${srv?.modulo_presencial ? '' : ' Antes de la reunión, tómate tus medidas y tus fotos de progreso.'}</div>${srv?.modulo_presencial ? '' : '<button class="btn sm" data-act="misMedidas" style="margin-top:8px">Añadir medidas y fotos</button>'}</div></div>`);
   else if (cProx) ev.push(`<div class="line evento"><div class="ico">${svg('progreso')}</div><div class="grow"><b class="small">La semana que viene: control mensual ${cProx.n}</b><div class="small muted">Semana del ${esc(fCorta(cProx.lunes))}. Reunión de seguimiento, composición corporal y ajustes.</div></div></div>`);
@@ -10005,7 +10048,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v556';
+const APP_VER = 'v557';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
