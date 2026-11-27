@@ -551,6 +551,8 @@ const nChat = () => S.modo !== 'coach' && typeof Consultas !== 'undefined' ? Con
 function globoApp() { try { if (S.modo === 'coach' || S.vista || !navigator.setAppBadge) return; const n = nChat(); n ? navigator.setAppBadge(n) : navigator.clearAppBadge(); } catch (e) { } }
 function render() {
   setTimeout(globoApp, 0);
+  if (EcoR.bloqueo()) { $('#app').innerHTML = EcoR.gate(); $('#tabs').hidden = true; document.body.classList.remove('modo-coach', 'modo-alumno'); return; }
+  if (EcoR.listo() && !EcoR.st().ini) EcoR.inicio();
   const coach = S.modo === 'coach'; if (coach && typeof Compromisos !== 'undefined') Compromisos.invalidar();
   if (!coach && !S.vista && !S.prueba && S.d?.avisos?.length) { const lun = lunesDe(hoyISO()), vistos = S.d.avisos.filter(x => x.tipo === 'semana' && (S.tab === 'entreno' || (x.semana_inicio || String(x.creado_at || '').slice(0, 10)) < lun));
     if (vistos.length) { S.d.avisos = S.d.avisos.filter(x => !vistos.includes(x)); sb.from('avisos').update({ visto_at: new Date().toISOString() }).in('id', vistos.map(x => x.id)).then(() => { }, () => { }); } }
@@ -4748,6 +4750,65 @@ async function marcaVisto(...ks) {
 }
 const nivelTarea = t => { const h = hoyISO(); return t.nivel || (!t.vence || t.vence > sumaDias(h, 3) ? 'semana' : t.vence <= h ? 'hoy' : '3dias'); };
 const tareaVencida = t => { const h = hoyISO(), n = new Date(), ahora = `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`; return !!t.vence && (t.vence < h || (t.vence === h && !!t.hora && String(t.hora).slice(0, 5) < ahora)); };
+/* ===== Responsabilidades económicas de Jesús: diaria, semanal (lunes) y mensual (día 1). Si pasan 24 h sin hacerla, bloquea el modo coach y «Yo» hasta resolverla (la app de los alumnos no cambia) ===== */
+var EcoR = {
+  st() { let v = {}; try { v = JSON.parse(S.c?.fiscal?.eco_resp || '{}'); } catch (e) { } return v; },
+  async guarda(v) { const t = JSON.stringify(v); (S.c.fiscal ||= {}).eco_resp = t; const r = await sb.from('ajustes_privados').upsert({ clave: 'eco_resp', valor: t }, { onConflict: 'clave' }); if (r.error) toast('No se ha podido guardar: revisa la conexión'); },
+  listo() { return S.perfil?.rol === 'coach' && !!S.c?.fiscal && !S.vista && !S.prueba; },
+  /* Arranca hoy: nada de lo anterior a la primera vez cuenta */
+  async inicio() { const v = this.st(); if (!v.ini && this.listo()) { v.ini = hoyISO(); await this.guarda(v); } return v.ini || hoyISO(); },
+  tareas() {
+    const v = this.st(), hoy = hoyISO(), ini = v.ini || hoy, ay = sumaDias(hoy, -1), lun = lunesDe(hoy), mes1 = hoy.slice(0, 8) + '01', out = [];
+    /* Diaria: la de ayer sin hacer → bloquea; la de hoy, pendiente */
+    if ((v.d || '') < hoy) out.push({ k: 'dia', t: 'Apunta los cobros y gastos de hoy', sub: '1 minuto · si no ha habido nada, pulsa «Nada que apuntar»', bloq: ay >= ini && (v.d || '') < ay });
+    /* Semanal: lunes. Desde el martes, bloquea */
+    if (lun >= ini && (v.s || '') < lun) out.push({ k: 'sem', t: 'Revisión semanal del dinero', sub: '10 min · saldo real del banco y gastos de la semana marcados', bloq: hoy > lun });
+    /* Mensual: día 1. Desde el día 2, bloquea */
+    if (mes1 >= ini && (v.m || '') < hoy.slice(0, 7)) out.push({ k: 'mes', t: `Cierre de ${new Date(sumaDias(mes1, -1) + 'T12:00').toLocaleDateString('es-ES', { month: 'long' })}`, sub: '20 min · resultado, reserva de impuestos, tu sueldo y facturas al gestor', bloq: hoy > mes1 });
+    return out;
+  },
+  pase() { const p = this.st().pase; return p && p.f === hoyISO() && Date.now() < p.hasta ? p : null; },
+  bloqueo() { if (!this.listo()) return null; if (this.pase()) return null; return this.tareas().find(t => t.bloq) || null; },
+  card(enGate) {
+    if (!this.listo()) return ''; const L = this.tareas(); if (!L.length) return enGate ? '' : `<section class="section"><div class="card eco-r ok"><span class="eco-ic">💶</span><div class="grow"><b>Economía al día</b><div class="small muted">Responsabilidades de hoy hechas</div></div><span class="md-ok">✓</span></div></section>`;
+    return `<section class="section"><div class="card eco-r ${L.some(t => t.bloq) ? 'bloq' : ''}"><div class="eco-cab"><span class="eco-ic">💶</span><b class="grow">Tu responsabilidad económica</b><span class="small">${L.length} pendiente${L.length > 1 ? 's' : ''}</span></div>${L.map(t => `<div class="eco-l ${t.bloq ? 'bloq' : ''}"><div class="grow"><b>${t.bloq ? '⛔ ' : ''}${esc(t.t)}</b><div class="small">${esc(t.sub)}${t.bloq ? ' · <b>bloquea la app</b>' : ' · si pasan 24 h, bloquea la app'}</div></div><button class="btn sm ${t.bloq ? 'rojo' : ''}" data-act="ecoR" data-k="${t.k}">Hacer</button></div>`).join('')}</div></section>`;
+  },
+  gate() {
+    const t = this.bloqueo(), p = this.st().pase, usado = p && p.f === hoyISO();
+    return `<div class="eco-gate"><div class="eco-g-in"><span class="eco-g-ic">🔒</span><h1>Primero, tu economía</h1><p>Llevas más de 24 h sin hacer esto. Hasta que lo resuelvas no puedes trabajar con ningún alumno ni con tu entreno.</p>
+      ${this.card(true)}
+      <button class="btn full" data-act="ecoR" data-k="${t.k}">Resolverlo ahora</button>
+      ${usado ? '<p class="small" style="opacity:.7;margin-top:14px">Ya has usado hoy tu hora de emergencia.</p>' : '<button class="btn ghost full" data-act="ecoR" data-k="pase" style="margin-top:10px">🏋️ Estoy entrenando a alguien · 1 hora de acceso</button><p class="small" style="opacity:.7;margin-top:6px">Solo una vez al día. Queda registrado.</p>'}</div></div>`;
+  },
+  async hacer(k) {
+    const v = this.st(), hoy = hoyISO();
+    if (k === 'pase') { if (v.pase?.f === hoy) return toast('Ya la has usado hoy'); v.pase = { f: hoy, hasta: Date.now() + 36e5 }; (v.log ||= []).push({ f: hoy, h: new Date().toTimeString().slice(0, 5), t: 'pase' }); v.log = v.log.slice(-60); await this.guarda(v); toast('1 hora de acceso. Después vuelve el bloqueo'); setTimeout(() => render(), 36e5 + 2000); return render(); }
+    if (k === 'dia') return abrirSheet(`<div class="stack"><h2>Cobros y gastos de hoy</h2><p class="small muted">Apunta lo que haya entrado o salido hoy. Si no ha habido nada, ciérralo.</p>
+      <div class="row" style="gap:8px"><button class="btn ghost grow" data-act="ecoMov" data-t="gasto">＋ Gasto</button><button class="btn ghost grow" data-act="ecoMov" data-t="ingreso">＋ Ingreso</button></div>
+      <button class="btn full" data-act="ecoOk" data-k="dia">✓ Todo apuntado</button><button class="btn ghost full" data-act="ecoOk" data-k="dia">Nada que apuntar hoy</button></div>`);
+    if (k === 'sem') { const lun = lunesDe(hoy), sal = (S.c.saldos || [])[0], okS = sal && sal.fecha >= lun, gp = (S.c.movs || []).filter(m => m.tipo === 'gasto' && !m.pagado && m.fecha <= hoy);
+      return abrirSheet(`<div class="stack"><h2>Revisión semanal</h2>
+        <div class="eco-l"><div class="grow"><b>${okS ? '✅' : '1.'} Saldo real del banco</b><div class="small muted">${okS ? `${eur(+sal.importe)} € · ${fCorta(sal.fecha)}` : 'Míralo en el banco y apúntalo'}</div></div>${okS ? '' : '<button class="btn sm" data-act="ecoSaldo">Apuntar</button>'}</div>
+        <div class="eco-l"><div class="grow"><b>${gp.length ? '2.' : '✅'} Gastos de la semana</b><div class="small muted">${gp.length ? `${gp.length} sin marcar como pagados: ábrelos en Economía` : 'Ninguno pendiente de marcar'}</div></div><button class="btn sm ghost" data-act="ecoMov" data-t="gasto">＋ Gasto</button></div>
+        <div class="eco-l"><div class="grow"><b>3. Cobros vencidos</b><div class="small muted">${(S.c.pagos || []).filter(p => !p.pagado_at && p.vence < hoy).length} vencidos · revisa Cobros</div></div></div>
+        <button class="btn full" data-act="ecoOk" data-k="sem">✓ Revisión hecha</button></div>`); }
+    if (k === 'mes') { const fin = sumaDias(hoy.slice(0, 8) + '01', -1), ini = fin.slice(0, 8) + '01', en = f => f && f.slice(0, 10) >= ini && f.slice(0, 10) <= fin;
+      const cob = (S.c.pagos || []).filter(p => en(p.pagado_at)).reduce((t, p) => t + +p.importe, 0) + (S.c.movs || []).filter(m => m.tipo === 'ingreso' && m.pagado && !m.ref && en(m.fecha)).reduce((t, m) => t + +m.importe, 0);
+      const gas = (S.c.movs || []).filter(m => m.tipo === 'gasto' && m.pagado && en(m.fecha)).reduce((t, m) => t + +m.importe, 0);
+      const ck = (id, l) => `<label class="row eco-ck" style="gap:10px"><input type="checkbox" class="eco-mc" id="${id}"><span>${l}</span></label>`;
+      return abrirSheet(`<div class="stack"><h2>Cierre de ${new Date(fin + 'T12:00').toLocaleDateString('es-ES', { month: 'long' })}</h2>
+        <div class="card stack small" style="gap:6px"><div class="row"><span class="grow">Cobrado</span><b class="num" style="color:var(--ok)">${eur(cob)} €</b></div><div class="row"><span class="grow">Gastos pagados</span><b class="num">${eur(gas)} €</b></div><div class="row" style="border-top:1px solid var(--line);padding-top:6px"><b class="grow">Resultado</b><b class="num">${eur(cob - gas)} €</b></div></div>
+        ${ck('mc1', 'He revisado el resultado del mes')}${ck('mc2', 'He apartado la reserva de impuestos y autónomo')}${ck('mc3', 'Me he pagado el sueldo fijo (y nada más)')}${ck('mc4', 'He enviado facturas y gastos al gestor')}
+        <button class="btn full" data-act="ecoOk" data-k="mes">✓ Mes cerrado</button></div>`); }
+  },
+  async ok(k) {
+    if (k === 'mes' && [...document.querySelectorAll('.eco-mc')].some(x => !x.checked)) return toast('Marca los 4 puntos para cerrar el mes');
+    if (k === 'sem') { const sal = (S.c.saldos || [])[0]; if (!sal || sal.fecha < lunesDe(hoyISO())) return toast('Primero apunta el saldo real del banco de esta semana'); }
+    const v = this.st(), hoy = hoyISO(); if (k === 'dia') v.d = hoy; if (k === 'sem') v.s = lunesDe(hoy); if (k === 'mes') v.m = hoy.slice(0, 7);
+    (v.log ||= []).push({ f: hoy, h: new Date().toTimeString().slice(0, 5), t: k }); v.log = v.log.slice(-60);
+    await this.guarda(v); cerrarSheet(); toast(k === 'dia' ? 'Día apuntado' : k === 'sem' ? 'Revisión semanal hecha' : 'Mes cerrado'); render();
+  },
+};
 /* ===== Capacidad semanal: tope de entrenos según si es semana con niños (15) o sin niños (20), con cupo de arranque y 2 huecos de grupo reducido ===== */
 /* ideal = lo que deja horas para el online; max = lo que de verdad cabe en los huecos (con niños: mar–vie 9:30–12:45 = 12, sáb 6:45–10:15 = 4, mar tarde = 2 → 18) */
 const CAP = { ninos: { tope: 15, max: 18, arranque: 3 }, libre: { tope: 20, max: 25, arranque: 5 }, grupos: 2 };
@@ -4843,7 +4904,7 @@ function tdAlertasNegocio() {
 }
 function vTuDia() {
   const f = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
-  return `<section class="stack"><span class="eyebrow">${esc(f)}</span><h1>Tu día</h1></section>${vCapacidad()}${vPartidosHoy()}${tdCalendario()}${Consultas.vCoach()}${tdTareas()}${tdAlertasAlumnos()}${tdAlertasNegocio()}`;
+  return `<section class="stack"><span class="eyebrow">${esc(f)}</span><h1>Tu día</h1></section>${EcoR.card()}${vCapacidad()}${vPartidosHoy()}${tdCalendario()}${Consultas.vCoach()}${tdTareas()}${tdAlertasAlumnos()}${tdAlertasNegocio()}`;
 }
 /* Día de partido: aviso arriba con los jugadores que juegan hoy; al desplegar, datos del partido y su check-in */
 /* Al tocar el aviso del check-in (partido o lunes) se abre directamente el formulario */
@@ -9924,7 +9985,7 @@ function lineaPago(p) {
 function vEconomiaTabs() {
   let t = S.ecoTab; if (!t) { try { t = localStorage.getItem('lof-eco-tab'); } catch (e) { } t = S.ecoTab = t || 'programas'; }
   const tabs = [['programas', 'Programas'], ['caja', 'Caja y gastos'], ['cobros', 'Cobros']];
-  return `<nav class="eco-tabs" aria-label="Economía">${tabs.map(([k, l]) => `<button class="${k === t ? 'on' : ''}" data-act="ecoTab" data-t="${k}" aria-current="${k === t ? 'page' : 'false'}">${l}</button>`).join('')}</nav>`
+  return EcoR.card() + `<nav class="eco-tabs" aria-label="Economía">${tabs.map(([k, l]) => `<button class="${k === t ? 'on' : ''}" data-act="ecoTab" data-t="${k}" aria-current="${k === t ? 'page' : 'false'}">${l}</button>`).join('')}</nav>`
     + (t === 'caja' ? Negocio.vEconomia() : t === 'cobros' ? vPagos() : `<section class="stack"><span class="eyebrow">Tu negocio</span><h1>Economía</h1></section>` + Programas.vista());
 }
 function vPagos() {
@@ -10044,7 +10105,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v558';
+const APP_VER = 'v559';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
@@ -10428,6 +10489,8 @@ document.addEventListener('click', async e => {
     case 'terminarYa': cerrarSheet(); terminar(); break;
     case 'pausarEnt': pausarEnt(); break;
     case 'capNinos': cambiarSemanaNinos(); break;
+    case 'ecoR': EcoR.hacer(b.dataset.k); break;
+    case 'ecoOk': EcoR.ok(b.dataset.k); break;
     case 'reanudarEnt': reanudarEnt(); break;
     case 'volverEnt': { cerrarSheet(); if (S.sesion) S.sesion._volver = true; S.entVer = false; if (S.modo !== 'coach') S.tab = 'entreno'; reanudarEnt(); render(); break; }
     case 'retomar': { const x = S.d.sesiones.find(z => z.id === +b.dataset.id); if (x) await abrirDia(x.dia_id, { sesionId: x.id, fecha: x.fecha, dia: [S.d.programa, S.d.programaBase, ...(S.d.contextos || []), ...(S.d.alternativos || [])].filter(Boolean).flatMap(q => q.dias || []).find(z => z.id === x.dia_id) }); break; }
