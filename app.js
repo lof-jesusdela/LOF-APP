@@ -860,9 +860,9 @@ function vRegistroDia(s) {
       : it('🏋️', '#F3F5FA', 'Entreno', esHoy ? 'Hoy no te toca' : 'No tocaba', esHoy ? '<span class="muted">—</span>' : `<button type="button" class="btn sm ghost" data-act="entPasado" data-f="${sel}">＋ Entrené</button>`);
   }
   /* Pasos */
-  if (conPasos(s) && !(s.modulo_habitos && Habitos.tienePasos(sel))) h += it('👟', '#DDF3FA', 'Pasos', objPasos(s) ? 'Objetivo ' + fmtNum(objPasos(s), 0) : '', `<input id="r-pasos" class="md-num" type="number" inputmode="numeric" min="0" placeholder="0" value="${r.pasos ?? ''}" aria-label="Pasos">`);
+  if (conPasos(s) || (s.modulo_habitos && Habitos.tienePasos(sel))) h += it('👟', '#DDF3FA', 'Pasos', objPasos(s) ? 'Objetivo ' + fmtNum(objPasos(s), 0) : '', `<input id="r-pasos" class="md-num" type="number" inputmode="numeric" min="0" placeholder="0" value="${r.pasos ?? ''}" aria-label="Pasos">`);
   /* Focos: su foco y su hábito, cada uno de un toque */
-  const fo = s.foco, hb = s.modulo_habitos ? habitoFoco(sel) : null, fs = [];
+  const fo = s.foco, hb = null, fs = [];   /* los hábitos se marcan en su pestaña, no en Hoy */
   if (fo?.tipo) {
     const tit = esc(fo.tipo === 'libre' ? (fo.texto || 'Tu foco') : (fo.texto || Foco.titulo(fo)));
     if (fo.tipo === 'alimentacion') { const n = comidasDia(s), c = r.ingestas == null ? null : r.ingestas >= n; fs.push(`<div class="md-fo"><span class="md-ib" style="background:#C9A227">🎯</span><b class="grow">${tit}</b>${yn('cumplePlan', '', 'Hecho', 'No', c)}</div>`); }
@@ -1161,7 +1161,7 @@ function lineasPend(s) {
     if (fo?.tipo && !['pasos', 'entrenos', 'sueno'].includes(fo.tipo) && (fo.tipo === 'alimentacion' ? r.ingestas == null : r.foco_ok == null))
       lineas.push(Object.assign(['🎯', 'Marca tu foco de hoy', esc(fo.tipo === 'libre' ? (fo.texto || 'Tu foco') : (fo.texto || Foco.titulo(fo))), '', '', false, fo.tipo === 'alimentacion' ? yn('cumplePlan', '') : yn('mdFoco', `data-f="${hoy}"`)], { _p: 2 }));
     const hb = s.modulo_habitos ? habitoFoco(hoy) : null;
-    if (hb && !(S.d.habReg || []).some(x => x.habito_id === hb.id && x.fecha === hoy && x.valor)) lineas.push(['🌱', 'Marca tu hábito de hoy', esc(hb.titulo), '', '', false, yn('mdHab', `data-id="${hb.id}" data-f="${hoy}"`)]);
+    if (false && hb && !(S.d.habReg || []).some(x => x.habito_id === hb.id && x.fecha === hoy && x.valor)) lineas.push(['🌱', 'Marca tu hábito de hoy', esc(hb.titulo), '', '', false, yn('mdHab', `data-id="${hb.id}" data-f="${hoy}"`)]);
   }
   const exige = !s.modulo_futbol && (conPasos(s) || (s.modulo_nutricion && fase === 'activo' && Nutricion.acuerdo(S.d).nivel === 'habitual')) && activo;
   if (exige) {
@@ -1314,7 +1314,7 @@ function vHoy() {
   ${Consultas.vAvisoHoy()}
   ${esWeekCard()}
   ${(() => { const m = /<div class="line aprox"[^]*?Continuar donde lo dejaste[^]*?<\/button><\/div><\/div>/.exec(toca); return m ? `<section class="section"><div class="card">${m[0]}</div></section>` : ''; })()}
-  ${s.modulo_futbol ? vFutbolHoy() + (s.modulo_habitos ? Habitos.tarjetaHoy(false) : '') : vRegistroDia(s)}
+  ${s.modulo_futbol ? vFutbolHoy() : vRegistroDia(s)}
   ${s.oposicion ? Oposicion.tarjeta(false) : ''}
   ${Acomp.ultimaIndicacion()}
   ${s.modulo_futbol ? '' : vProximamente(s)}
@@ -1322,7 +1322,6 @@ function vHoy() {
   ${MenuSemana.tarjeta()}
   ${avisoAl('fotos') && (S._huecoPend ?? 1) > 0 ? Casos.tarjetaHoy(false) : ''}
   ${s.modulo_futbol && !s.modulo_habitos ? '' : Temperamento.tarjetaHoy()}
-  ${s.modulo_futbol || !s.modulo_habitos ? '' : Habitos.tarjetaHoy(true)}
   `;
 }
 
@@ -4766,23 +4765,20 @@ function capSemana(lun) {
   return { lun, ninos: conNinos(lun), tope: k.tope, max: k.max, maxArr: k.arranque, est, arr, gru, total, libres: Math.max(0, k.tope - total) };
 }
 function barraCap(c, titulo) {
-  const sobre = c.total - c.tope, w = n => (100 * n / Math.max(c.max, c.total)).toFixed(1) + '%';
-  const col = c.total > c.max ? '#E24B4A' : sobre > 0 ? '#EF9F27' : c.total === c.tope ? '#EF9F27' : '#3B9A2E';
-  const msg = c.total > c.max ? `Te pasas de tu máximo (${c.max}) en ${c.total - c.max}. No cabe: ofrece la semana siguiente o empezar con la app.`
-    : sobre > 0 ? `${sobre} por encima de tu ideal: ${c.ninos ? 'esta semana ya no te quedan horas para el online' : 'le estás quitando horas al online'}. Máximo ${c.max}.`
-    : c.total >= c.tope ? 'Ideal completo. Lo nuevo, a la semana siguiente.' : `Te ${c.libres === 1 ? 'queda 1 hueco' : `quedan ${c.libres} huecos`} hasta tu ideal.`;
-  return `<div style="margin:8px 0 10px"><div class="row" style="gap:8px;align-items:baseline"><b class="grow">${titulo} · ${c.ninos ? '👧👦 con niños' : 'sin niños'}</b><b style="font-size:22px;color:${col}" class="num">${c.total}/${c.tope}</b><span class="small muted">máx. ${c.max}</span></div>
-    <div style="display:flex;height:16px;border-radius:8px;overflow:hidden;background:#E3E8F2;margin:6px 0;outline:${sobre > 0 ? '2px solid #E24B4A' : 'none'}">
-      <span title="Alumnos estables" style="width:${w(c.est)};background:#0B5CFF"></span><span title="Arranques" style="width:${w(c.arr)};background:#C9A227"></span><span title="Grupos reducidos" style="width:${w(c.gru)};background:#7F77DD"></span><span style="flex:1;border-left:2px dashed #3B9A2E;margin-left:${Math.max(0, (100 * c.tope / Math.max(c.max, c.total)) - (100 * c.total / Math.max(c.max, c.total))).toFixed(1)}%"></span></div>
-    <div class="small"><span style="color:#0B5CFF">■</span> Estables ${c.est} · <span style="color:#C9A227">■</span> Arranque ${c.arr}/${c.maxArr}${c.arr > c.maxArr ? ' <b style="color:#E24B4A">⚠ demasiados nuevos</b>' : ''} · <span style="color:#7F77DD">■</span> Grupos ${c.gru}/${CAP.grupos}</div>
-    <div class="small" style="margin-top:3px;color:${col};font-weight:700">${msg}</div></div>`;
+  const esc100 = Math.max(c.max, c.total), w = n => (100 * n / esc100).toFixed(1) + '%', pct = Math.round(100 * c.total / c.max);
+  const rojo = c.total > c.max || c.total >= c.max, amb = !rojo && c.total >= c.tope;
+  const col = rojo ? '#D64545' : amb ? '#B7791F' : '#1E9E5A', bg = rojo ? '#FDE8E8' : amb ? '#FBF1DC' : '#E6F5EC', fg = rojo ? '#A32D2D' : amb ? '#8A5A0B' : '#1E7A47';
+  const msg = rojo ? '⛔ Lleno · no entra nadie esta semana' : amb ? `⚠ Ideal superado · máx. ${c.max}` : `✓ ${c.libres === 1 ? '1 hueco' : `${c.libres} huecos`} hasta tu ideal`;
+  return `<div class="cap-r"><div class="cap-top"><span class="cap-lbl">${titulo} · ${c.ninos ? 'con niños' : 'sin niños'}</span><span class="cap-num" style="color:${col}">${c.total}<small>/${c.tope}</small></span><span class="cap-pct" style="background:${bg};color:${fg}">${pct} % del máx.</span></div>
+    <div class="cap-bar"><i style="width:${w(c.est)};background:#0B1A33"></i><i style="width:${w(c.arr)};background:#C9A227"></i><i style="width:${w(c.gru)};background:#0B5CFF"></i><span class="cap-mk" style="left:${w(c.tope)}"></span><span class="cap-mk max" style="left:calc(${w(c.max)} - 2px)"></span></div>
+    <div class="cap-leg"><span style="--c:#0B1A33">Estables ${c.est}</span><span style="--c:#C9A227">Arranque ${c.arr}/${c.maxArr}${c.arr > c.maxArr ? ' ⚠' : ''}</span><span style="--c:#0B5CFF">Grupos ${c.gru}/${CAP.grupos}</span></div>
+    <div class="cap-msg" style="color:${fg}">${msg}</div></div>`;
 }
 function vCapacidad() {
   if (!S.c?.presenciales) return '';
   const l = lunesDe(hoyISO()), a = capSemana(l), b = capSemana(sumaDias(l, 7));
-  return `<section class="section"><div class="card" style="border:2px solid ${a.total > a.tope ? '#E24B4A' : 'var(--line)'}">
-    ${barraCap(a, 'Esta semana')}${barraCap(b, 'Semana que viene')}
-    <div class="small muted">Ideal 15 con niños (máx. 18) · 20 sin niños (máx. 25) · 2 huecos de grupo reducido (mín. 2 personas, cuentan como 1). Lunes sin entrenos. Alumno en sus primeras 4 semanas = arranque. <button type="button" data-act="capNinos" style="border:0;background:none;padding:0;color:var(--blue-text);font:inherit;font-weight:700;cursor:pointer">¿No coincide la semana con niños? Cambiar</button></div></div></section>`;
+  return `<section class="section"><div class="card cap-card">${barraCap(a, 'Esta semana')}${barraCap(b, 'Semana que viene')}
+    <div class="cap-pie"><span>▏ideal · <b style="color:#D64545">▏</b>máximo</span><button type="button" data-act="capNinos">Cambiar semana con niños</button></div></div></section>`;
 }
 async function cambiarSemanaNinos() {
   const l = lunesDe(hoyISO()), ref = conNinos(l) ? sumaDias(l, 7) : l;
@@ -10048,7 +10044,7 @@ document.addEventListener('change', async ev => {
   const li = (t, l) => l.length ? `<p class="small"><b>${t} (${l.length}):</b> ${l.map(esc).join(', ')}</p>` : '';
   abrirSheet(`<div class="stack"><h2>Datos fiscales importados</h2><p><b>${ok.length - fallos}</b> fichas actualizadas${igual.length ? ` · ${igual.length} ya estaban completas` : ''}${fallos ? ` · <b>${fallos} con error al guardar</b>` : ''}.</p>${li('Sin alumno que coincida', sin)}${li('Varios alumnos coinciden: revísalo a mano', dud)}${li('Con un DNI distinto ya guardado (no se ha tocado)', dif)}${li('DNI/NIE con letra incorrecta (no se guarda)', mal)}<button class="btn full" data-act="cerrarSheet">Listo</button></div>`);
 });
-const APP_VER = 'v557';
+const APP_VER = 'v558';
 function vCuenta() {
   abrirSheet(`<div class="stack"><div class="row" style="gap:12px;align-items:center">${avatarDe(S.perfil, 56)}<div class="grow"><h2 style="margin:0">${esc(S.perfil.nombre)}</h2><p class="small muted" style="margin:0">${esc(S.perfil.email)}</p></div></div>
     ${botonFoto(S.user.id, !!S.perfil.foto_url).replace('btn sm ghost', 'btn ghost full')}
